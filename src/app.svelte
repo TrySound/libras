@@ -251,6 +251,37 @@
     replaceQueueAndPlay(availableQueueItems(artistQueueItems(artist)));
   }
 
+  function playArtistNext(artist: Artist) {
+    const items = availableQueueItems(artistQueueItems(artist));
+    if (items.length === 0) return;
+    if (queue.length === 0) {
+      replaceQueueAndPlay(items);
+      return;
+    }
+
+    const insertAt = Math.max(0, currentIndex + 1);
+    queueEngine.update({
+      current: queueEngine.current,
+      position: currentTime,
+      tracks: [...queue.slice(0, insertAt), ...items, ...queue.slice(insertAt)],
+    });
+  }
+
+  function playArtistLast(artist: Artist) {
+    const items = availableQueueItems(artistQueueItems(artist));
+    if (items.length === 0) return;
+    if (queue.length === 0) {
+      replaceQueueAndPlay(items);
+      return;
+    }
+
+    queueEngine.update({
+      current: queueEngine.current,
+      position: currentTime,
+      tracks: [...queue, ...items],
+    });
+  }
+
   function playTrack(artist: Artist, album: Album, track: Track) {
     const albumTracks = availableQueueItems(albumQueueItems(artist, album));
     const selectedIndex = albumTracks.findIndex((item) => item.id === track.id);
@@ -1102,7 +1133,8 @@
           </div>
         {:else if visibleArtists.length > 0}
           <div class="artist-grid">
-            {#each visibleArtists as artist}
+            {#each visibleArtists as artist, index}
+              {@const menuId = `artist-menu-${index}`}
               <article class="artist-card">
                 <a class="artist-main" href={router.href(artistPath(artist))}>
                   <span class="cover artist-cover">
@@ -1130,19 +1162,61 @@
                 </a>
                 <button
                   type="button"
-                  class="icon-button artist-play"
+                  class="icon-button artist-menu-trigger"
                   data-size="sm"
                   data-variant="overlay"
-                  onclick={() => playArtist(artist)}
+                  commandfor={menuId}
+                  command="show-modal"
+                  title={`Open menu for ${artist.name}`}
                 >
-                  {#if queue[currentIndex]?.artist === artist.name && playbackLoading}
-                    {@render icon("loading")}
-                  {:else if queue[currentIndex]?.artist === artist.name && isPlaying}
-                    {@render icon("sound-bars")}
-                  {:else}
-                    {@render icon("play")}
-                  {/if}
+                  {@render icon("menu")}
                 </button>
+                <dialog id={menuId} class="artist-menu" aria-labelledby={`${menuId}-title`} closedby="closerequest">
+                  <strong id={`${menuId}-title`} class="type-title">{artist.name}</strong>
+                  <div class="track-list">
+                  <button
+                    type="button"
+                    class="track-item artist-menu-item"
+                    commandfor={menuId}
+                    command="close"
+                    onclick={() => playArtist(artist)}
+                  >
+                    {@render icon("play")}
+                    <span>Play</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="track-item artist-menu-item"
+                    commandfor={menuId}
+                    command="close"
+                    onclick={() => playArtistNext(artist)}
+                  >
+                    {@render icon("next")}
+                    <span>Play next</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="track-item artist-menu-item"
+                    commandfor={menuId}
+                    command="close"
+                    onclick={() => playArtistLast(artist)}
+                  >
+                    {@render icon("plus")}
+                    <span>Play last</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="track-item artist-menu-item"
+                    commandfor={menuId}
+                    command="close"
+                    onclick={() => downloadArtist(artist)}
+                  >
+                    {@render icon("download")}
+                    <span>Download</span>
+                  </button>
+                  </div>
+                  <button type="button" class="button" data-variant="neutral" commandfor={menuId} command="close">Cancel</button>
+                </dialog>
               </article>
             {/each}
           </div>
