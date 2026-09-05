@@ -1,3 +1,7 @@
+[hidden] {
+  display: none !important;
+}
+
 :root {
   --palette-transparent: transparent;
   --palette-black: #000;
@@ -763,6 +767,8 @@ a {
 
 .artist-main {
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
   transition:
     scale 160ms ease-out,
     filter 160ms ease-out;
@@ -813,7 +819,7 @@ a {
 .artist-name {
   position: absolute;
   z-index: 1;
-  right: 3.25rem;
+  right: 0.7rem;
   bottom: 0.65rem;
   left: 0.7rem;
   overflow: hidden;

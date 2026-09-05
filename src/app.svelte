@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
+  import { installLongPress } from "./long-press";
   import PwaUpdate from "./pwa-update.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
@@ -72,6 +73,8 @@
     const tracks = queueEngine.tracks;
     untrack(() => void refreshDownloadedState([...tracks]));
   });
+
+  onMount(() => installLongPress());
 
   onDestroy(() => {
     coverEngine.destroy();
@@ -1120,7 +1123,14 @@
             {#each visibleArtists as artist, index}
               {@const menuId = `artist-menu-${index}`}
               <article class="artist-card">
-                <a class="artist-main" href={router.href(artistPath(artist))}>
+                <a
+                  class="artist-main"
+                  href={router.href(artistPath(artist))}
+                  data-longpressfor={menuId}
+                  data-longpress="show-modal"
+                  aria-keyshortcuts="Shift+F10"
+                  title={`${artist.name} — hold for actions`}
+                >
                   <span class="cover artist-cover">
                     {#if artistCoverArts(artist).some(Boolean)}
                       {@const cover = coverEngine.getCover({
@@ -1147,6 +1157,7 @@
                 <button
                   type="button"
                   class="icon-button artist-menu-trigger"
+                  hidden
                   data-size="sm"
                   data-variant="overlay"
                   commandfor={menuId}
