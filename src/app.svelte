@@ -1278,24 +1278,73 @@
               </div>
             {/if}
           </div>
-          {#if !offlineMode}
+          <button
+            type="button"
+            class="icon-button"
+            data-size="md"
+            data-variant="neutral"
+            commandfor="artist-page-menu"
+            command="show-modal"
+            title={`Open menu for ${artist.name}`}
+          >
+            {@render icon("menu")}
+          </button>
+          <dialog
+            id="artist-page-menu"
+            class="action-menu"
+            aria-labelledby="artist-page-menu-title"
+            closedby="closerequest"
+            use:swipeToDismiss
+            onclick={(event) => event.currentTarget.close()}
+          >
+            <header class="action-menu-heading">
+              <strong id="artist-page-menu-title" class="type-title">{artist.name}</strong>
+            </header>
+            <div class="track-list">
+              <button
+                type="button"
+                class="track-item action-menu-item"
+
+                onclick={() => playArtist(artist)}
+              >
+                {@render icon("play")}
+                <span>Play</span>
+              </button>
+              <button
+                type="button"
+                class="track-item action-menu-item"
+
+                onclick={() => playNext(artistQueueItems(artist))}
+              >
+                {@render icon("next")}
+                <span>Play next</span>
+              </button>
+              <button
+                type="button"
+                class="track-item action-menu-item"
+
+                onclick={() => playLast(artistQueueItems(artist))}
+              >
+                {@render icon("plus")}
+                <span>Play last</span>
+              </button>
+              <button
+                type="button"
+                class="track-item action-menu-item"
+
+                onclick={() => downloadArtist(artist)}
+              >
+                {@render icon("download")}
+                <span>Download</span>
+              </button>
+            </div>
             <button
               type="button"
-              class="icon-button"
-              data-size="md"
+              class="button"
               data-variant="neutral"
-              onclick={() => downloadArtist(artist)}
-              title="Download artist"
-            >
-              {#if downloadingCollection === `artist:${artist.id ?? artist.name}`}
-                {@render icon("loading")}
-              {:else if collectionIsDownloaded(artistQueueItems(artist))}
-                {@render icon("check")}
-              {:else}
-                {@render icon("download")}
-              {/if}
-            </button>
-          {/if}
+
+            >Cancel</button>
+          </dialog>
         </div>
 
         {#if offlineScanning}
