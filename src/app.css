@@ -557,6 +557,7 @@ a {
 }
 
 .player-dialog {
+  --dialog-dismiss-offset: calc(50dvh + 50%);
   width: min(calc(100% - 2rem), 32rem);
   max-width: none;
   height: min(calc(100dvh - 2rem), 52rem);
@@ -739,34 +740,18 @@ a {
   box-sizing: border-box;
   border: 1px solid var(--color-border-strong);
   border-radius: 1rem 1rem 0 0;
-  opacity: 0;
   color: var(--color-text-primary);
   background: var(--color-surface-raised);
   box-shadow: 0 -1rem 3rem var(--color-shadow-raised);
-  transform: translateY(100%);
-  transition:
-    opacity 180ms ease,
-    transform 180ms ease,
-    overlay 180ms allow-discrete,
-    display 180ms allow-discrete;
 }
 
 .artist-menu[open] {
   display: grid;
   gap: var(--space-sm);
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .artist-menu::backdrop {
   background: var(--color-backdrop);
-}
-
-@starting-style {
-  .artist-menu[open] {
-    opacity: 0;
-    transform: translateY(100%);
-  }
 }
 
 .artist-menu-heading {
@@ -778,13 +763,46 @@ a {
 .player-dialog,
 .artist-menu {
   overscroll-behavior-y: contain;
-  translate: 0 var(--swipe-offset, 0px);
+  opacity: 0;
+  translate: 0 var(--dialog-dismiss-offset, 100%);
   transition:
     translate 180ms ease-out,
     opacity 180ms ease,
-    transform 180ms ease,
     overlay 180ms allow-discrete,
     display 180ms allow-discrete;
+}
+
+.player-dialog[open],
+.artist-menu[open] {
+  opacity: 1;
+  translate: 0 var(--swipe-offset, 0px);
+}
+
+.player-dialog::backdrop,
+.artist-menu::backdrop {
+  opacity: 0;
+  transition:
+    opacity 180ms ease,
+    overlay 180ms allow-discrete,
+    display 180ms allow-discrete;
+}
+
+.player-dialog[open]::backdrop,
+.artist-menu[open]::backdrop {
+  opacity: 1;
+}
+
+@starting-style {
+  .player-dialog[open],
+  .artist-menu[open] {
+    opacity: 0;
+    translate: 0 var(--dialog-dismiss-offset, 100%);
+  }
+
+  .player-dialog[open]::backdrop,
+  .artist-menu[open]::backdrop {
+    opacity: 0;
+  }
 }
 
 .player-dialog[data-dragging],
@@ -794,7 +812,9 @@ a {
 
 @media (prefers-reduced-motion: reduce) {
   .player-dialog,
-  .artist-menu {
+  .artist-menu,
+  .player-dialog::backdrop,
+  .artist-menu::backdrop {
     transition: none;
   }
 }
