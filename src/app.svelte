@@ -702,11 +702,6 @@
     }
   });
 
-  $effect(() => {
-    if (queueEngine.error) {
-      playbackError = "The queue could not be synchronized with Navidrome.";
-    }
-  });
 </script>
 
 <svelte:head>
@@ -1008,6 +1003,13 @@
 
           {#if playbackError}
             <p class="error type-small">{playbackError}</p>
+          {/if}
+          {#if queueEngine.error}
+            <p class="error type-small" role="status">
+              Queue synchronization failed: {queueEngine.error instanceof Error
+                ? queueEngine.error.message
+                : String(queueEngine.error)}. Local playback is unaffected.
+            </p>
           {/if}
         </div>
 
