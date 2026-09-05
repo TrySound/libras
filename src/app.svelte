@@ -1261,7 +1261,18 @@
 
     <section class="view library-view" use:scanLibrarySelection={{ artist }}>
       {#if connectedHost && !error && artist}
-        <div class="section-heading">
+        {@const artwork = coverEngine.getCover({
+          candidates: artistCoverArts(artist),
+          allowNetwork: !offlineMode,
+        })}
+        <div class="collection-art collection-art-artist" aria-hidden="true">
+          {#if artwork.source}
+            <img src={artwork.source} alt="" onload={artwork.cache} />
+          {:else}
+            {@render icon("music")}
+          {/if}
+        </div>
+        <div class="section-heading collection-heading">
           <div>
             <span class="type-eyebrow muted">Albums</span>
             <h2 class="type-heading">{artist.name}</h2>
@@ -1535,7 +1546,18 @@
       use:scanLibrarySelection={{ artist, album }}
     >
       {#if connectedHost && !error && artist && album}
-        <div class="section-heading">
+        {@const artwork = coverEngine.getCover({
+          candidates: albumCoverArts(album),
+          allowNetwork: !offlineMode,
+        })}
+        <div class="collection-art collection-art-album" aria-hidden="true">
+          {#if artwork.source}
+            <img src={artwork.source} alt="" onload={artwork.cache} />
+          {:else}
+            {@render icon("music")}
+          {/if}
+        </div>
+        <div class="section-heading collection-heading">
           <div>
             <span class="type-eyebrow muted">{artist.name}</span>
             <h2 class="type-heading">{album.name}</h2>
