@@ -16,6 +16,7 @@
     type RouterNavigate,
   } from "./router.svelte";
   import { TrackEngine } from "./track-engine";
+  import { swipeToDismiss } from "./swipe-to-dismiss";
 
   const offlineModeStorageKey = "navidrome-offline-mode";
   const authStore = new AuthStore();
@@ -923,7 +924,7 @@
   {/snippet}
 
   {#snippet playerDialog()}
-    <dialog id="player-dialog" class="player-dialog">
+    <dialog id="player-dialog" class="player-dialog" use:swipeToDismiss>
       <header class="topbar track-list">
         <button
           type="button"
@@ -1171,8 +1172,10 @@
                 >
                   {@render icon("menu")}
                 </button>
-                <dialog id={menuId} class="artist-menu" aria-labelledby={`${menuId}-title`} closedby="closerequest">
-                  <strong id={`${menuId}-title`} class="type-title">{artist.name}</strong>
+                <dialog id={menuId} class="artist-menu" aria-labelledby={`${menuId}-title`} closedby="closerequest" use:swipeToDismiss>
+                  <header class="artist-menu-heading">
+                    <strong id={`${menuId}-title`} class="type-title">{artist.name}</strong>
+                  </header>
                   <div class="track-list">
                   <button
                     type="button"

@@ -769,6 +769,36 @@ a {
   }
 }
 
+.artist-menu-heading {
+  display: grid;
+  min-height: 3rem;
+  align-items: center;
+}
+
+.player-dialog,
+.artist-menu {
+  overscroll-behavior-y: contain;
+  translate: 0 var(--swipe-offset, 0px);
+  transition:
+    translate 180ms ease-out,
+    opacity 180ms ease,
+    transform 180ms ease,
+    overlay 180ms allow-discrete,
+    display 180ms allow-discrete;
+}
+
+.player-dialog[data-dragging],
+.artist-menu[data-dragging] {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-dialog,
+  .artist-menu {
+    transition: none;
+  }
+}
+
 .artist-menu-item {
   min-height: 3rem;
   padding: 0.75rem;
