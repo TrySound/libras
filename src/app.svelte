@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
+  import PwaUpdate from "./pwa-update.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
   import {
@@ -1855,3 +1856,5 @@
     {/if}
   {/snippet}
 </main>
+
+<PwaUpdate />

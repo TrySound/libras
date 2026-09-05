@@ -218,6 +218,26 @@ input {
   line-height: 1.5rem;
 }
 
+.pwa-update {
+  position: fixed;
+  z-index: 40;
+  top: max(var(--space-sm), env(safe-area-inset-top));
+  inset-inline: var(--space-sm);
+  max-width: 30rem;
+  margin-inline: auto;
+  padding: var(--space-md);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.9rem;
+  background: var(--color-surface-raised);
+  box-shadow: 0 0.75rem 2rem var(--color-shadow-raised);
+}
+
+.pwa-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
 .app-shell {
   position: relative;
   width: 100%;
@@ -287,12 +307,19 @@ input:not([type="range"]):not([type="checkbox"]):focus {
 }
 
 .connection-card summary {
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 160ms ease-out;
   display: flex;
   padding: 0.85rem;
   align-items: center;
   gap: 0.75rem;
   cursor: pointer;
   list-style: none;
+}
+
+.connection-card summary:active {
+  background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+  transition-duration: 50ms;
 }
 
 .connection-card summary::-webkit-details-marker {
@@ -462,6 +489,10 @@ a {
 }
 
 .button {
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    scale 160ms ease-out,
+    filter 160ms ease-out;
   display: inline-grid;
   min-height: var(--control-size);
   padding-inline: var(--control-padding);
@@ -471,7 +502,17 @@ a {
   text-decoration: none;
 }
 
+.button:active:not(:disabled) {
+  scale: 0.97;
+  filter: brightness(0.9);
+  transition-duration: 50ms;
+}
+
 .icon-button {
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    scale 160ms ease-out,
+    background-color 160ms ease-out;
   display: inline-grid;
   width: var(--control-size);
   height: var(--control-size);
@@ -480,6 +521,16 @@ a {
   place-items: center;
   border-radius: 50%;
   font-size: var(--control-icon-size);
+}
+
+.icon-button:active:not(:disabled) {
+  scale: 0.9;
+  background-color: color-mix(
+    in srgb,
+    var(--control-background) 80%,
+    var(--color-text-primary) 20%
+  );
+  transition-duration: 50ms;
 }
 
 .button[data-size="sm"],
@@ -711,9 +762,19 @@ a {
 }
 
 .artist-main {
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    scale 160ms ease-out,
+    filter 160ms ease-out;
   display: grid;
   width: 100%;
   padding: 0;
+}
+
+.artist-main:active {
+  scale: 0.98;
+  filter: brightness(0.85);
+  transition-duration: 50ms;
 }
 
 .cover {
@@ -862,6 +923,8 @@ a {
 }
 
 .action-menu-item {
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 160ms ease-out;
   min-height: 3rem;
   padding: 0.75rem;
   border: 0;
@@ -874,6 +937,11 @@ a {
   line-height: var(--type-control-line);
   text-align: left;
   cursor: pointer;
+}
+
+.action-menu-item:active:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+  transition-duration: 50ms;
 }
 
 .action-menu-item .icon {
@@ -895,6 +963,8 @@ a {
 }
 
 .track-content {
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 160ms ease-out;
   display: grid;
   min-width: 0;
   min-height: 3.5rem;
@@ -910,6 +980,11 @@ a {
   text-align: left;
   text-decoration: none;
   cursor: pointer;
+}
+
+.track-content:active:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+  transition-duration: 50ms;
 }
 
 .track-content > * {
@@ -993,6 +1068,8 @@ a {
 }
 
 .mini-main {
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 160ms ease-out;
   display: grid;
   min-width: 0;
   padding: 0;
@@ -1005,6 +1082,53 @@ a {
   font-family: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.mini-main:active:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+  transition-duration: 50ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+
+  .button:active:not(:disabled) {
+    scale: none;
+  }
+
+  .icon-button {
+    transition: none;
+  }
+
+  .icon-button:active:not(:disabled) {
+    scale: none;
+  }
+
+  .action-menu-item {
+    transition: none;
+  }
+
+  .track-content {
+    transition: none;
+  }
+
+  .mini-main {
+    transition: none;
+  }
+
+  .artist-main {
+    transition: none;
+  }
+
+  .artist-main:active {
+    scale: none;
+  }
+
+  .connection-card summary {
+    transition: none;
+  }
 }
 
 .mini-art {

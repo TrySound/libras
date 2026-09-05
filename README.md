@@ -10,3 +10,34 @@ pnpm dev
 ```
 
 The Navidrome server must allow browser requests from the app's origin (CORS), and HTTPS should be used outside local development.
+
+## Install on Android
+
+The production app is installable as a standalone PWA. It includes regular and maskable icons and an offline app shell. Service workers are disabled in development to avoid interfering with hot reload.
+
+Build and serve it on the machine containing the project:
+
+```sh
+pnpm build
+pnpm preview --host 127.0.0.1 --port 4173 --strictPort
+```
+
+If the project runs on the phone itself (for example, in Termux), open `http://localhost:4173` in Chrome. If it runs on a remote SSH server, run this **on the phone** in an SSH client that supports local forwarding:
+
+```sh
+ssh -N -L 4173:127.0.0.1:4173 user@your-server
+```
+
+Keep the preview server and tunnel running, then open `http://localhost:4173` on the phone. Use Chrome's **Install app / Add to home screen** option and launch the installed app from the home screen. Localhost is a secure-context exception; a remote or LAN deployment needs HTTPS. Vite preview is for testing, not production hosting.
+
+The Navidrome server must be reachable **from the phone** and permit the frontend origin through CORS. Switching ports or hosts creates a different origin: saved authentication and downloaded music do not carry over automatically.
+
+## Offline behavior and updates
+
+- The service worker precaches only the production app shell, manifest, and install icons. The style guide is not available offline.
+- Subsonic API requests, artwork, and audio streams are not runtime-cached by the service worker. Metadata, artwork, and downloads remain owned by the existing engines.
+- First visit online so installation and shell caching can complete. Download music in the app before testing Offline Library mode.
+- A new version shows **Update now / Later**. Nothing reloads automatically during playback; choosing Update now explicitly reloads the app and interrupts playback.
+- Updates are checked when the app becomes visible and hourly while visible and online.
+
+To test updates, leave the installed app open, change the app, run `pnpm build` again, then return to the app to trigger a check. Chrome DevTools' Application panel can inspect the manifest, service worker, and caches. Clear site data or unregister the worker when testing a completely fresh installation (clearing site data also deletes saved app data).
