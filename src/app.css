@@ -968,6 +968,10 @@ a {
   text-align: right;
 }
 
+.track-leading .icon {
+  color: var(--color-accent-text);
+}
+
 .track-content {
   -webkit-tap-highlight-color: transparent;
   transition: background-color 160ms ease-out;

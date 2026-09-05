@@ -1039,7 +1039,17 @@
             <div class="track-list">
               {#each queue as item, index}
                 <div class="track-item" class:current={index === currentIndex}>
-                  <span class="track-leading">{index + 1}</span>
+                  <span class="track-leading">
+                    {#if index === currentIndex && playbackLoading}
+                      <span role="img" aria-label="Loading playback">{@render icon("loading")}</span>
+                    {:else if index === currentIndex && isPlaying}
+                      <span role="img" aria-label="Playing">{@render icon("sound-bars")}</span>
+                    {:else if trackEngine.getStatus(item.id) === "downloading"}
+                      <span role="img" aria-label="Downloading">{@render icon("loading")}</span>
+                    {:else}
+                      {index + 1}
+                    {/if}
+                  </span>
                   <button
                     type="button"
                     class="track-content"
@@ -1047,28 +1057,6 @@
                   >
                     <span>{item.title}</span>
                   </button>
-                  <span class="track-actions">
-                  <button
-                    type="button"
-                    class="icon-button"
-                    data-size="sm"
-                    data-variant="ghost"
-                    onclick={() => downloadQueueTrack(item)}
-                    title="Download track"
-                  >
-                    {#if index === currentIndex && playbackLoading}
-                      {@render icon("loading")}
-                    {:else if index === currentIndex && isPlaying}
-                      {@render icon("sound-bars")}
-                    {:else if trackEngine.getStatus(item.id) === "downloading"}
-                      {@render icon("loading")}
-                    {:else if trackEngine.getStatus(item.id) === "downloaded"}
-                      {@render icon("check")}
-                    {:else}
-                      {@render icon("download")}
-                    {/if}
-                  </button>
-                  </span>
                 </div>
               {/each}
             </div>
@@ -1666,7 +1654,17 @@
             {#each visibleTracks as track, index}
               {@const trackMenuId = `album-track-menu-${index}`}
               <div class="track-item">
-                <span class="track-leading">{track.track ?? index + 1}</span>
+                <span class="track-leading">
+                  {#if queue[currentIndex]?.id === track.id && playbackLoading}
+                    <span role="img" aria-label="Loading playback">{@render icon("loading")}</span>
+                  {:else if queue[currentIndex]?.id === track.id && isPlaying}
+                    <span role="img" aria-label="Playing">{@render icon("sound-bars")}</span>
+                  {:else if trackEngine.getStatus(track.id) === "downloading"}
+                    <span role="img" aria-label="Downloading">{@render icon("loading")}</span>
+                  {:else}
+                    {track.track ?? index + 1}
+                  {/if}
+                </span>
                 <button
                   type="button"
                   class="track-content"
