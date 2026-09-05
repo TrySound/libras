@@ -9,7 +9,12 @@
     <style>
       body {
         background:
-          radial-gradient(circle at top, rgb(117 101 246 / 16%), transparent 26rem), #10131a;
+          radial-gradient(
+            circle at top,
+            rgb(from var(--color-primary) r g b / 16%),
+            transparent 26rem
+          ),
+          var(--color-background);
       }
 
       .styleguide {
@@ -42,8 +47,8 @@
         width: fit-content;
         padding: 0.15rem 0.4rem;
         border-radius: 0.3rem;
-        color: #bcb4ff;
-        background: #252438;
+        color: var(--color-accent-text);
+        background: var(--color-surface-accent);
         font-family: ui-monospace, monospace;
         font-size: var(--type-caption-size);
         line-height: var(--type-caption-line);
@@ -75,7 +80,11 @@
         width: 3rem;
         height: 3rem;
         border-radius: 0.4rem;
-        background: linear-gradient(145deg, #7665f6, #d35b91);
+        background: linear-gradient(
+          145deg,
+          var(--color-gradient-primary),
+          var(--color-gradient-secondary)
+        );
       }
 
       .stack-example {
@@ -88,7 +97,7 @@
         display: block;
         min-height: 1.25rem;
         border-radius: 0.3rem;
-        background: linear-gradient(90deg, #7565f6, #a95cb3);
+        background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
       }
 
       .stack-example span:nth-child(2) {
@@ -161,7 +170,7 @@
             Buttons and inputs consume their typography tokens through element selectors.
           </p>
           <div class="control-row">
-            <button class="button" data-size="md" data-variant="primary" type="button">
+            <button class="button" data-size="md" data-variant="neutral" type="button">
               Connect server
             </button>
             <input aria-label="Server address example" value="music.example.com" readonly />
@@ -181,7 +190,6 @@
           <article class="stack-md">
             <p class="type-title">Text variants</p>
             <div class="button-row">
-              <button class="button" data-size="md" data-variant="primary">Primary</button>
               <button class="button" data-size="md" data-variant="neutral">Neutral</button>
             </div>
           </article>
@@ -189,8 +197,8 @@
           <article class="stack-md">
             <p class="type-title">Text sizes</p>
             <div class="button-row">
-              <button class="button" data-size="sm" data-variant="primary">Small</button>
-              <button class="button" data-size="md" data-variant="primary">Medium</button>
+              <button class="button" data-size="sm" data-variant="neutral">Small</button>
+              <button class="button" data-size="md" data-variant="neutral">Medium</button>
             </div>
           </article>
 
@@ -265,7 +273,7 @@
           <article class="stack-md">
             <p class="type-title">States and links</p>
             <div class="button-row">
-              <button class="button" data-size="md" data-variant="primary" disabled>
+              <button class="button" data-size="md" data-variant="neutral" disabled>
                 Disabled
               </button>
               <button
@@ -277,7 +285,7 @@
               >
                 <svg class="icon"><use href="#guide-plus" /></svg>
               </button>
-              <a class="button" data-size="md" data-variant="primary" href="#buttons-heading"
+              <a class="button" data-size="md" data-variant="neutral" href="#buttons-heading"
                 >Button link</a
               >
             </div>

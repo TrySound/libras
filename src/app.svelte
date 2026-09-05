@@ -849,7 +849,7 @@
             <button
               class="button"
               data-size="md"
-              data-variant="primary"
+              data-variant="neutral"
               type="submit"
               disabled={offlineMode || loading || refreshing}
             >
@@ -1495,7 +1495,7 @@
           <a
             class="button"
             data-size="md"
-            data-variant="primary"
+            data-variant="neutral"
             href={router.href(connectedHost ? "/library" : "/settings")}
             >{connectedHost ? "Open library" : "Open settings"}</a
           >
@@ -1748,7 +1748,7 @@
           <a
             class="button"
             data-size="md"
-            data-variant="primary"
+            data-variant="neutral"
             href={router.href(connectedHost ? "/library" : "/settings")}
             >{connectedHost ? "Open library" : "Open settings"}</a
           >
@@ -1766,7 +1766,7 @@
       <a
         class="button"
         data-size="md"
-        data-variant="primary"
+        data-variant="neutral"
         href={router.href("/settings")}>Open settings</a
       >
     </div>

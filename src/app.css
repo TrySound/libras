@@ -10,11 +10,11 @@
   --palette-gray-700: #1c212b;
   --palette-gray-800: #171b23;
   --palette-gray-900: #10131a;
-  --palette-purple-100: #bcb4ff;
-  --palette-purple-300: #8d7dff;
-  --palette-purple-500: #7565f6;
-  --palette-purple-700: #252438;
-  --palette-purple-900: #19182a;
+  --palette-crimson-100: #f0a5ad;
+  --palette-crimson-300: #c94d60;
+  --palette-crimson-500: #9f2940;
+  --palette-crimson-700: #341c24;
+  --palette-crimson-900: #24151b;
   --palette-pink-500: #d35b91;
   --palette-pink-900: #44293d;
   --palette-green-500: #53d58b;
@@ -33,26 +33,26 @@
   --color-surface: var(--palette-gray-800);
   --color-surface-input: var(--palette-gray-700);
   --color-surface-raised: var(--palette-gray-700);
-  --color-surface-accent: var(--palette-purple-700);
-  --color-surface-current: var(--palette-purple-900);
+  --color-surface-accent: var(--palette-crimson-700);
+  --color-surface-current: var(--palette-crimson-900);
   --color-surface-danger: var(--palette-red-900);
   --color-border-subtle: var(--palette-gray-600);
   --color-border-topbar: var(--palette-gray-600);
   --color-border: var(--palette-gray-500);
   --color-border-strong: var(--palette-gray-500);
   --color-control-neutral: var(--palette-gray-600);
-  --color-primary: var(--palette-purple-500);
-  --color-accent: var(--palette-purple-300);
-  --color-accent-text: var(--palette-purple-100);
+  --color-primary: var(--palette-crimson-500);
+  --color-accent: var(--palette-crimson-300);
+  --color-accent-text: var(--palette-crimson-100);
   --color-status-neutral: var(--palette-gray-400);
   --color-status-success: var(--palette-green-500);
   --color-status-warning: var(--palette-amber-500);
   --color-status-danger: var(--palette-red-500);
-  --color-status-offline-glow: rgb(from var(--palette-purple-300) r g b / 45%);
+  --color-status-offline-glow: rgb(from var(--palette-crimson-300) r g b / 45%);
   --color-status-success-glow: rgb(from var(--palette-green-500) r g b / 45%);
-  --color-gradient-primary: var(--palette-purple-500);
+  --color-gradient-primary: var(--palette-crimson-500);
   --color-gradient-secondary: var(--palette-pink-500);
-  --color-gradient-cover-start: var(--palette-purple-700);
+  --color-gradient-cover-start: var(--palette-crimson-700);
   --color-gradient-cover-end: var(--palette-pink-900);
   --color-overlay-control: rgb(from var(--palette-black) r g b / 72%);
   --color-overlay-border: rgb(from var(--palette-white) r g b / 25%);
@@ -495,7 +495,6 @@ a {
   --control-icon-size: 1.45rem;
 }
 
-.button[data-variant="primary"],
 .icon-button[data-variant="primary"] {
   --control-background: var(--color-primary);
 }
