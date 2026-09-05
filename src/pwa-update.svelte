@@ -8,6 +8,8 @@
   let error = $state("");
   let activated = false;
   let approved = false;
+  let reloading = false;
+  let updateTimeout: ReturnType<typeof setTimeout> | undefined;
   let updateServiceWorker: () => Promise<void> = async () => {};
 
   onMount(() => {
@@ -18,8 +20,10 @@
         dismissed = false;
       },
       onNeedReload() {
+        clearTimeout(updateTimeout);
         activated = true;
-        if (approved) window.location.reload();
+        updating = false;
+        if (approved) reload();
         else {
           available = true;
           dismissed = false;
@@ -40,25 +44,47 @@
         });
       }
     };
+    // Workbox may not classify a previously uncontrolled page as an update.
+    const controllerChange = () => {
+      if (approved) reload();
+      else if (available) activated = true;
+    };
+    navigator.serviceWorker?.addEventListener("controllerchange", controllerChange);
     document.addEventListener("visibilitychange", check);
     const timer = setInterval(check, 60 * 60 * 1000);
     return () => {
+      navigator.serviceWorker?.removeEventListener("controllerchange", controllerChange);
       document.removeEventListener("visibilitychange", check);
       clearInterval(timer);
+      clearTimeout(updateTimeout);
     };
   });
+
+  function reload() {
+    if (reloading) return;
+    reloading = true;
+    clearTimeout(updateTimeout);
+    window.location.reload();
+  }
 
   async function update() {
     approved = true;
     updating = true;
     error = "";
     if (activated) {
-      window.location.reload();
+      reload();
       return;
     }
+    clearTimeout(updateTimeout);
+    updateTimeout = setTimeout(() => {
+      approved = false;
+      updating = false;
+      error = "The update is taking too long. Please try again or reopen the app.";
+    }, 15_000);
     try {
       await updateServiceWorker();
     } catch {
+      clearTimeout(updateTimeout);
       approved = false;
       updating = false;
       error = "The update could not be applied. Please try again.";

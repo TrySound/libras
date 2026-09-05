@@ -36,7 +36,7 @@ export default defineConfig({
         runtimeCaching: [],
         cleanupOutdatedCaches: true,
         skipWaiting: false,
-        clientsClaim: false,
+        clientsClaim: true,
       },
       devOptions: { enabled: false },
     }),
