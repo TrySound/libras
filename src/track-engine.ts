@@ -48,6 +48,7 @@ export class TrackEngine {
   #client?: SubsonicClient;
   #jobs = new Map<string, DownloadJob>();
   #files = new Map<string, DownloadedFile>();
+  #ready: Promise<void>;
   #concurrency: number;
   #active = 0;
   #destroyed = false;
@@ -70,7 +71,11 @@ export class TrackEngine {
     this.#concurrency = options.concurrency ?? 3;
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1)
       throw new Error("Download concurrency must be a positive integer.");
-    void this.#refreshCatalog(true);
+    this.#ready = this.#refreshCatalog(true);
+  }
+
+  ready() {
+    return this.#ready;
   }
 
   get downloads(): readonly DownloadItem[] {

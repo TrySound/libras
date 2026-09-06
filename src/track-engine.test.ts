@@ -320,6 +320,57 @@ describe("track engine", () => {
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
+  it("filters offline tracks from memory without opening storage again", async () => {
+    installOpfs();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("audio")),
+    );
+    const client = new SubsonicClient(auth);
+    const engine = new TrackEngine({ client });
+    await engine.cache({ id: "saved" });
+    engine.destroy();
+    const restored = new TrackEngine({ client });
+    await restored.ready();
+    const storage = vi.spyOn(navigator.storage, "getDirectory");
+    storage.mockClear();
+    expect(["saved", "missing"].filter((id) => restored.getStatus(id) === "downloaded")).toEqual([
+      "saved",
+    ]);
+    await restored.ready();
+    expect(restored.getStatus("saved")).toBe("downloaded");
+    expect(storage).not.toHaveBeenCalled();
+    restored.setClient(new SubsonicClient({ ...auth, username: "other" }));
+    expect(restored.getStatus("saved")).toBe("idle");
+    restored.setClient(client);
+    expect(restored.getStatus("saved")).toBe("downloaded");
+    expect(storage).not.toHaveBeenCalled();
+    restored.destroy();
+  });
+
+  it("reports an in-progress transfer before an already downloaded format", async () => {
+    installOpfs(null, "probably");
+    const fetcher = vi.fn(async () => new Response("audio"));
+    vi.stubGlobal("fetch", fetcher);
+    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const track = { id: "saved", contentType: "audio/flac" };
+    await engine.cache(track);
+    let resolve!: (value: Response) => void;
+    fetcher.mockImplementationOnce(
+      () =>
+        new Promise<Response>((done) => {
+          resolve = done;
+        }),
+    );
+    const pending = engine.cache(track, { forceTranscode: true });
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(engine.getStatus(track.id)).toBe("downloading");
+    resolve(new Response("mp3"));
+    await pending;
+    expect(engine.getStatus(track.id)).toBe("downloaded");
+    engine.destroy();
+  });
+
   it("uses the original format when the browser supports it", async () => {
     installOpfs(null, "probably");
     const engine = new TrackEngine({ client: new SubsonicClient(auth) });

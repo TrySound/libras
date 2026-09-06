@@ -72,7 +72,7 @@
   );
   let downloadingCollection = $state("");
   let offlineMode = $state(false);
-  let offlineScanning = $state(false);
+  const offlineScanning = $derived(offlineMode && trackEngine.downloadsLoading);
   let loading = $derived(metadataEngine.status === "loading");
   let refreshing = $derived(metadataEngine.status === "refreshing");
   let refreshError = $state("");
@@ -83,11 +83,6 @@
   let pendingAuth = $state<SavedAuth | null>(null);
   let pendingClient = $state<SubsonicClient>();
   let navigateAfterConnection = $state(false);
-
-  $effect(() => {
-    const tracks = queueEngine.tracks;
-    untrack(() => void refreshDownloadedState([...tracks]));
-  });
 
   onMount(() => installLongPress());
   onMount(() => playback.mount());
@@ -121,20 +116,6 @@
       navigate("/settings", "replace");
     }
   });
-
-  function scanLibrarySelection(
-    _node: HTMLElement,
-    selection: { album?: Album; artist?: Artist },
-  ) {
-    const scan = ({ album, artist }: typeof selection) => {
-      if (!artist) return;
-      void refreshDownloadedState(
-        album ? albumQueueItems(artist, album) : artistQueueItems(artist),
-      );
-    };
-    scan(selection);
-    return { update: scan };
-  }
 
   function artistPath(artist: Artist) {
     return `/library/artist/${encodeURIComponent(artist.id ?? artist.name)}`;
@@ -223,9 +204,7 @@
 
   function availableQueueItems(items: QueueItem[]) {
     return offlineMode
-      ? items.filter(
-          (track) => trackEngine.getStatus(track.id) === "downloaded",
-        )
+      ? items.filter((track) => trackEngine.getStatus(track.id) === "downloaded")
       : items;
   }
 
@@ -328,36 +307,23 @@
     void downloadQueueTrack(trackQueueItem(artist, album, track));
   }
 
-  async function refreshDownloadedState(items: QueueItem[]) {
-    if (!activeAuth) return;
-    await trackEngine.scanCached(items);
-  }
+  async function applyOfflineLibrary() {
+    await trackEngine.ready();
+    if (!activeAuth || !offlineMode) return;
 
-  async function scanOfflineLibrary() {
-    if (!activeAuth) return;
+    const currentTrackId = queue[currentIndex]?.id;
+    const offlineQueue = queue.filter((track) => trackEngine.getStatus(track.id) === "downloaded");
+    if (offlineQueue.length === queue.length) return;
+    const offlineIndex = currentTrackId
+      ? offlineQueue.findIndex((track) => track.id === currentTrackId)
+      : -1;
 
-    offlineScanning = true;
-    try {
-      const libraryTracks = artists.flatMap(artistQueueItems);
-      await refreshDownloadedState(libraryTracks);
-
-      const currentTrackId = queue[currentIndex]?.id;
-      const offlineQueue = queue.filter(
-        (track) => trackEngine.getStatus(track.id) === "downloaded",
-      );
-      const offlineIndex = currentTrackId
-        ? offlineQueue.findIndex((track) => track.id === currentTrackId)
-        : -1;
-
-      if (currentTrackId && offlineIndex < 0) playback.stop();
-      queueEngine.update({
-        current: offlineIndex >= 0 ? currentTrackId : undefined,
-        position: offlineIndex >= 0 ? currentTime : 0,
-        tracks: offlineQueue,
-      });
-    } finally {
-      offlineScanning = false;
-    }
+    if (currentTrackId && offlineIndex < 0) playback.stop();
+    queueEngine.update({
+      current: offlineIndex >= 0 ? currentTrackId : undefined,
+      position: offlineIndex >= 0 ? currentTime : 0,
+      tracks: offlineQueue,
+    });
   }
 
   async function setOfflineMode(enabled: boolean) {
@@ -367,7 +333,7 @@
     const network = enabled ? "offline" : "online";
     metadataEngine.setNetwork(network);
     queueEngine.setNetwork(network);
-    if (enabled) await scanOfflineLibrary();
+    if (enabled) await applyOfflineLibrary();
     else if (activeAuth) loadArtists(activeAuth);
   }
 
@@ -496,7 +462,7 @@
       refreshError = `Background refresh failed: ${connectionError(metadataEngine.warning)}`;
     } else if (offlineMode) {
       connectionStatus = "disconnected";
-      scanOfflineLibrary().catch(() => {});
+      applyOfflineLibrary().catch(() => {});
     } else {
       connectionStatus = "connected";
       authStore.save(credentials);
@@ -648,7 +614,7 @@
           <strong class="type-title">Offline library</strong>
           <small class="type-small muted">
             {offlineScanning
-              ? "Checking downloaded tracks…"
+              ? "Reading downloads catalog…"
               : "Show only music downloaded to this device."}
             <a class="text-link" href={router.href("/downloads")}>View downloads</a>
           </small>
@@ -928,9 +894,7 @@
   {#snippet libraryRoute(_params: RouteParams, router: RouteControls)}
     {@const visibleArtists = offlineMode
       ? artists.filter((artist) =>
-          artistQueueItems(artist).some(
-            (track) => trackEngine.getStatus(track.id) === "downloaded",
-          ),
+          artistQueueItems(artist).some((track) => trackEngine.getStatus(track.id) === "downloaded"),
         )
       : artists}
 
@@ -1087,9 +1051,7 @@
     {@const visibleAlbums = artist
       ? offlineMode
         ? albumsFor(artist).filter((album) =>
-            tracksFor(album).some(
-              (track) => trackEngine.getStatus(track.id) === "downloaded",
-            ),
+            tracksFor(album).some((track) => trackEngine.getStatus(track.id) === "downloaded"),
           )
         : albumsFor(artist)
       : []}
@@ -1113,7 +1075,7 @@
     </header>
     {@render alerts()}
 
-    <section class="view library-view" use:scanLibrarySelection={{ artist }}>
+    <section class="view library-view">
       {#if connectedHost && !error && artist}
         {@const artwork = coverEngine.getCover({
           candidates: artistCoverArts(artist),
@@ -1219,9 +1181,7 @@
             {#each visibleAlbums as album, index}
               {@const albumMenuId = `album-menu-${index}`}
               {@const visibleTracks = offlineMode
-                ? tracksFor(album).filter(
-                    (track) => trackEngine.getStatus(track.id) === "downloaded",
-                  )
+                ? tracksFor(album).filter((track) => trackEngine.getStatus(track.id) === "downloaded")
                 : tracksFor(album)}
               <article class="track-item">
                 <a
@@ -1361,9 +1321,7 @@
       : undefined}
     {@const visibleTracks = album
       ? offlineMode
-        ? tracksFor(album).filter(
-            (track) => trackEngine.getStatus(track.id) === "downloaded",
-          )
+        ? tracksFor(album).filter((track) => trackEngine.getStatus(track.id) === "downloaded")
         : tracksFor(album)
       : []}
 
@@ -1390,7 +1348,6 @@
 
     <section
       class="view library-view"
-      use:scanLibrarySelection={{ artist, album }}
     >
       {#if connectedHost && !error && artist && album}
         {@const artwork = coverEngine.getCover({
