@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
+  import { PlayerMediaSession } from "./media-session";
   import PwaUpdate from "./pwa-update.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
@@ -50,6 +51,7 @@
   let playbackLoading = $state(false);
   let playbackError = $state("");
   let audio: HTMLAudioElement;
+  let mediaSession = $state<PlayerMediaSession>();
   const coverEngine = new CoverEngine();
   const trackEngine = new TrackEngine();
   let lastPositionSync = 0;
@@ -75,6 +77,34 @@
   });
 
   onMount(() => installLongPress());
+
+  onMount(() => {
+    const session = new PlayerMediaSession({
+      play: () => { if (audio.paused && queue.length) togglePlayback(); },
+      pause: () => { if (!audio.paused) togglePlayback(); },
+      previous: () => { if (currentIndex >= 0) previousTrack(); },
+      next: () => { if (currentIndex >= 0) nextTrack(); },
+      seek,
+    });
+    mediaSession = session;
+    return () => session.destroy();
+  });
+
+  $effect(() => {
+    const track = queue[currentIndex];
+    const artwork = track?.coverArt
+      ? coverEngine.getCover({ candidates: [track.coverArt], allowNetwork: !offlineMode }).source
+      : undefined;
+    mediaSession?.setMetadata(track, artwork);
+  });
+
+  $effect(() => {
+    mediaSession?.setPlaybackState(currentIndex < 0 ? "none" : isPlaying ? "playing" : "paused");
+  });
+
+  $effect(() => {
+    mediaSession?.setPosition(currentIndex < 0 ? 0 : duration, currentTime);
+  });
 
   onDestroy(() => {
     coverEngine.destroy();
