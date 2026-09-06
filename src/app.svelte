@@ -826,6 +826,10 @@
                       <span role="img" aria-label="Playing">
                         {@render icon("sound-bars")}
                       </span>
+                    {:else if index === currentIndex}
+                      <span role="img" aria-label="Current track, not playing">
+                        {@render icon("pause")}
+                      </span>
                     {:else if trackEngine.getStatus(item.id) === "downloading"}
                       <span role="img" aria-label="Downloading">
                         {@render icon("loading")}
@@ -1431,6 +1435,10 @@
                   {:else if queue[currentIndex]?.id === track.id && isPlaying}
                     <span role="img" aria-label="Playing">
                       {@render icon("sound-bars")}
+                    </span>
+                  {:else if queue[currentIndex]?.id === track.id}
+                    <span role="img" aria-label="Current track, not playing">
+                      {@render icon("pause")}
                     </span>
                   {:else if trackEngine.getStatus(track.id) === "downloading"}
                     <span role="img" aria-label="Downloading">
