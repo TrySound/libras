@@ -851,6 +851,7 @@
           {#if queue.length > 0}
             <div class="track-list">
               {#each queue as item, index}
+                {@const downloadStatus = trackEngine.getStatus(item.id)}
                 <div class="track-item" class:current={index === currentIndex}>
                   <span class="track-leading">
                     {#if index === currentIndex && playbackLoading}
@@ -865,9 +866,13 @@
                       <span role="img" aria-label="Current track, not playing">
                         {@render icon("pause")}
                       </span>
-                    {:else if trackEngine.getStatus(item.id) === "downloading"}
+                    {:else if downloadStatus === "downloading"}
                       <span role="img" aria-label="Downloading">
                         {@render icon("loading")}
+                      </span>
+                    {:else if downloadStatus === "queued"}
+                      <span role="img" aria-label="Queued for download">
+                        {@render icon("clock")}
                       </span>
                     {:else}
                       {index + 1}
@@ -1452,6 +1457,7 @@
           <div class="track-list">
             {#each visibleTracks as track, index}
               {@const trackMenuId = `album-track-menu-${index}`}
+              {@const downloadStatus = trackEngine.getStatus(track.id)}
               <div class="track-item">
                 <span class="track-leading">
                   {#if queue[currentIndex]?.id === track.id && playbackLoading}
@@ -1466,9 +1472,13 @@
                     <span role="img" aria-label="Current track, not playing">
                       {@render icon("pause")}
                     </span>
-                  {:else if trackEngine.getStatus(track.id) === "downloading"}
+                  {:else if downloadStatus === "downloading"}
                     <span role="img" aria-label="Downloading">
                       {@render icon("loading")}
+                    </span>
+                  {:else if downloadStatus === "queued"}
+                    <span role="img" aria-label="Queued for download">
+                      {@render icon("clock")}
                     </span>
                   {:else}
                     {track.track ?? index + 1}
@@ -1536,11 +1546,23 @@
                       <button
                         type="button"
                         class="track-item action-menu-item"
+                        disabled={downloadStatus !== "idle"}
                         onclick={() =>
                           downloadLibraryTrack(artist, album, track)}
                       >
-                        {@render icon("download")}
-                        <span>Download</span>
+                        {#if downloadStatus === "downloaded"}
+                          {@render icon("check")}
+                          <span>Downloaded</span>
+                        {:else if downloadStatus === "queued"}
+                          {@render icon("clock")}
+                          <span>Queued</span>
+                        {:else if downloadStatus === "downloading"}
+                          {@render icon("loading")}
+                          <span>Downloading…</span>
+                        {:else}
+                          {@render icon("download")}
+                          <span>Download</span>
+                        {/if}
                       </button>
                     </div>
                     <button type="button" class="button" data-variant="neutral">
