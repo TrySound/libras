@@ -117,6 +117,31 @@ describe("metadata engine", () => {
     expect(engine.error).toBeInstanceOf(Error);
   });
 
+  it("publishes cached metadata before a slow online revalidation completes", async () => {
+    installDatabase({ data: [artist], lastModified: 10, savedAt: 1 });
+    let resolve!: (value: Response) => void;
+    const fetcher = vi.fn(
+      () =>
+        new Promise<Response>((done) => {
+          resolve = done;
+        }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const engine = new MetadataEngine();
+    try {
+      engine.setClient(new SubsonicClient(auth));
+      await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+      expect(engine.status).toBe("refreshing");
+      expect(engine.getArtists()).toEqual([artist]);
+      resolve(response({ indexes: { lastModified: 10 } }));
+      await vi.waitFor(() => expect(engine.status).toBe("ready"));
+      expect(engine.getArtists()).toEqual([artist]);
+      expect(fetcher).toHaveBeenCalledOnce();
+    } finally {
+      engine.destroy();
+    }
+  });
+
   it("keeps existing metadata when the server reports no changes", async () => {
     installDatabase({ data: [artist], lastModified: 10, savedAt: 1 });
     const fetcher = vi.fn(async () => response({ indexes: { lastModified: 10 } }));

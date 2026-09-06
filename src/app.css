@@ -493,6 +493,11 @@ a {
   text-decoration: none;
 }
 
+.text-link {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 .button,
 .icon-button {
   --control-size: 2.75rem;

@@ -48,6 +48,14 @@
     covers: coverEngine,
   });
   let currentIndex = $derived(playback.currentIndex);
+  const currentRelease = $derived.by(() => {
+    const id = queue[currentIndex]?.id;
+    if (!id) return;
+    for (const artist of artists) {
+      const album = artist.albums.find((album) => album.tracks.some((track) => track.id === id));
+      if (album) return { artist, album };
+    }
+  });
   let currentTime = $derived(playback.position);
   let duration = $derived(playback.duration);
   let isPlaying = $derived(playback.playing);
@@ -467,24 +475,33 @@
     const credentials = pendingAuth;
     const client = pendingClient;
     const status = metadataEngine.status;
-    if (!credentials || !client || (status !== "ready" && status !== "error"))
+    if (!credentials || !client || (status !== "refreshing" && status !== "ready" && status !== "error"))
       return;
 
-    pendingAuth = null;
-    pendingClient = undefined;
     if (status === "error") {
+      pendingAuth = null;
+      pendingClient = undefined;
       connectionStatus = "error";
       error = connectionError(metadataEngine.error);
       return;
     }
 
-    activeAuth = credentials;
-    activeClient = client;
-    coverEngine.setClient(client);
-    queueEngine.setClient(client);
-    trackEngine.setClient(client);
+    // Cached metadata is usable while revalidation is still in flight.
+    // Configure dependent engines once, not again when refreshing becomes ready.
+    untrack(() => {
+      if (activeClient !== client) {
+        activeAuth = credentials;
+        activeClient = client;
+        coverEngine.setClient(client);
+        queueEngine.setClient(client);
+        trackEngine.setClient(client);
+      }
+    });
     connectedHost = credentials.host;
+    if (status === "refreshing") return;
 
+    pendingAuth = null;
+    pendingClient = undefined;
     if (metadataEngine.warning) {
       connectionStatus = "error";
       refreshError = `Background refresh failed: ${connectionError(metadataEngine.warning)}`;
@@ -717,7 +734,21 @@
             <p class="type-body">
               <strong class="type-heading">{queue[currentIndex].title}</strong>
               <br />
-              {queue[currentIndex].artist} — {queue[currentIndex].album}
+              {#if currentRelease}
+                <a
+                  class="text-link"
+                  href={`#${artistPath(currentRelease.artist)}`}
+                  onclick={(event) => event.currentTarget.closest("dialog")?.close()}
+                >{queue[currentIndex].artist}</a>
+                —
+                <a
+                  class="text-link"
+                  href={`#${albumPath(currentRelease.artist, currentRelease.album)}`}
+                  onclick={(event) => event.currentTarget.closest("dialog")?.close()}
+                >{queue[currentIndex].album}</a>
+              {:else}
+                {queue[currentIndex].artist} — {queue[currentIndex].album}
+              {/if}
             </p>
           {/if}
 
@@ -1334,10 +1365,10 @@
         </div>
         <div class="section-heading collection-heading">
           <div>
-            <span class="type-eyebrow muted">{artist.name}</span>
+            <a class="text-link type-eyebrow muted" href={router.href(artistPath(artist))}>{artist.name}</a>
             <h2 class="type-heading">{album.name}</h2>
             <p class="library-meta type-small">
-              {artist.name} · {album.year ?? "Unknown year"} · {visibleTracks.length}
+              {album.year ?? "Unknown year"} · {visibleTracks.length}
               track{visibleTracks.length === 1 ? "" : "s"}
             </p>
             {#if albumGenres(album).length > 0}
