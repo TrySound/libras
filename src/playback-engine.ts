@@ -4,6 +4,34 @@ import { PlayerMediaSession } from "./media-session";
 import type { QueueEngine } from "./queue-engine";
 import type { TrackEngine } from "./track-engine";
 
+const interactive =
+  'input, textarea, select, summary, audio, video, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]';
+
+function installPlaybackShortcuts(toggle: () => void, root: Document = document) {
+  const keydown = (event: KeyboardEvent) => {
+    if (
+      event.key !== " " ||
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey ||
+      event.shiftKey
+    )
+      return;
+    if (
+      event
+        .composedPath()
+        .some((target) => target instanceof Element && target.closest(interactive))
+    )
+      return;
+    event.preventDefault();
+    if (!event.repeat) toggle();
+  };
+  root.addEventListener("keydown", keydown);
+  return () => root.removeEventListener("keydown", keydown);
+}
+
 export type PlaybackStatus =
   | "idle"
   | "loading"
@@ -17,6 +45,7 @@ export interface PlaybackEngineOptions {
   tracks: Pick<TrackEngine, "getSource" | "cache" | "releaseSource">;
   covers: Pick<CoverEngine, "getCover" | "subscribe">;
   mediaSession?: MediaSession;
+  createAudio?: () => HTMLAudioElement;
 }
 
 export class PlaybackEngine {
@@ -26,6 +55,7 @@ export class PlaybackEngine {
   #nativeSession?: MediaSession;
   #media?: PlayerMediaSession;
   #audio?: HTMLAudioElement;
+  #createAudio: () => HTMLAudioElement;
   #cleanup?: () => void;
   #duration = 0;
   #playing = false;
@@ -52,6 +82,7 @@ export class PlaybackEngine {
     this.#tracks = options.tracks;
     this.#covers = options.covers;
     this.#nativeSession = options.mediaSession;
+    this.#createAudio = options.createAudio ?? (() => new Audio());
   }
 
   get track() {
@@ -146,8 +177,10 @@ export class PlaybackEngine {
     this.#publish();
   };
 
-  bind(audio: HTMLAudioElement) {
+  mount() {
     this.#cleanup?.();
+    const audio = this.#createAudio();
+    audio.preload = "metadata";
     this.#audio = audio;
     this.#metadataKey = "";
     this.#media = new PlayerMediaSession(
@@ -225,6 +258,9 @@ export class PlaybackEngine {
       },
     };
     for (const [event, handler] of Object.entries(events)) audio.addEventListener(event, handler);
+    const removeShortcuts = installPlaybackShortcuts(() => {
+      void this.toggle();
+    });
     const unsubscribeQueue = this.#queue.subscribe(this.#queueChanged);
     const unsubscribeCovers = this.#covers.subscribe(this.#artwork);
     const hidden = () => {
@@ -236,6 +272,7 @@ export class PlaybackEngine {
     const cleanup = () => {
       if (disposed) return;
       disposed = true;
+      removeShortcuts();
       unsubscribeQueue();
       unsubscribeCovers();
       document.removeEventListener("visibilitychange", hidden);

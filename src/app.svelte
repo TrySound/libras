@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
-  import type { Attachment } from "svelte/attachments";
   import { PlaybackEngine } from "./playback-engine";
   import PwaUpdate from "./pwa-update.svelte";
   import { AuthStore } from "./auth";
@@ -48,8 +47,6 @@
     tracks: trackEngine,
     covers: coverEngine,
   });
-  const attachAudio: Attachment<HTMLAudioElement> = (element) =>
-    untrack(() => playback.bind(element));
   let currentIndex = $derived(playback.currentIndex);
   let currentTime = $derived(playback.position);
   let duration = $derived(playback.duration);
@@ -85,6 +82,7 @@
   });
 
   onMount(() => installLongPress());
+  onMount(() => playback.mount());
 
   onDestroy(() => {
     playback.destroy();
@@ -515,7 +513,6 @@
 {/snippet}
 
 <main class="app-shell">
-  <audio {@attach attachAudio} preload="metadata"></audio>
 
   {#snippet settingsRoute(_params: RouteParams, router: RouteControls)}
     <header class="topbar track-list">

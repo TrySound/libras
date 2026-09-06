@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlaybackEngine } from "./playback-engine";
-import { flushSync, untrack } from "svelte";
+import { flushSync } from "svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
 import { QueueEngine, type QueueTrack } from "./queue-engine";
 
 class AudioStub extends EventTarget {
+  preload = "";
   src = "";
   get currentSrc() {
     return this.src;
@@ -39,7 +40,7 @@ const song = (id: string): QueueTrack => ({
   coverArt: id,
 });
 const cleanups: (() => void)[] = [];
-function setup() {
+function setup(mount = true) {
   vi.useFakeTimers();
   const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
   vi.stubGlobal("document", doc);
@@ -83,20 +84,23 @@ function setup() {
     ),
     setPositionState: vi.fn(),
   };
+  const createAudio = vi.fn(() => audio as unknown as HTMLAudioElement);
   const player = new PlaybackEngine({
+    createAudio,
     queue,
     tracks,
     covers,
     mediaSession: session as unknown as MediaSession,
   });
   queue.update({ tracks: [song("a"), song("b")], current: "a", position: 0 });
-  const detach = player.bind(audio as unknown as HTMLAudioElement);
+  const detach = mount ? player.mount() : () => {};
   cleanups.push(() => {
     player.destroy();
     queue.destroy();
   });
   return {
     player,
+    createAudio,
     queue,
     audio,
     tracks,
@@ -118,16 +122,136 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+class TestElement {
+  constructor(readonly control?: string) {}
+  closest(selector: string) {
+    return this.control && selector.split(", ").includes(this.control) ? this : null;
+  }
+}
+
+function setupShortcuts() {
+  const { player, doc, detach } = setup();
+  vi.stubGlobal("Element", TestElement);
+  const toggle = vi.spyOn(player, "toggle").mockResolvedValue(undefined);
+  const dispatch = (
+    { handled = false, ...options }: Partial<KeyboardEvent> & { handled?: boolean } = {},
+    target = new TestElement(),
+  ) => {
+    const event = new Event("keydown", { cancelable: true });
+    Object.assign(event, { key: " ", composedPath: () => [target, doc] }, options);
+    if (handled) event.preventDefault();
+    doc.dispatchEvent(event);
+    return event;
+  };
+  return { toggle, dispatch, cleanup: detach };
+}
+
 describe("playback engine", () => {
-  it("supports untracked attachment setup while UI observers receive updates", async () => {
-    const { player, audio, queue, detach } = setup();
-    detach();
-    const bind = vi.fn(() => untrack(() => player.bind(audio as unknown as HTMLAudioElement)));
+  describe("keyboard shortcuts", () => {
+    it("toggles playback with Space and prevents scrolling", () => {
+      const { toggle, dispatch } = setupShortcuts();
+      expect(dispatch().defaultPrevented).toBe(true);
+      expect(toggle).toHaveBeenCalledOnce();
+    });
+
+    it("suppresses scrolling without toggling again on key repeat", () => {
+      const { toggle, dispatch } = setupShortcuts();
+      dispatch();
+      expect(dispatch({ repeat: true }).defaultPrevented).toBe(true);
+      expect(toggle).toHaveBeenCalledOnce();
+    });
+
+    it.each(["button", "a[href]", '[role="button"]'])(
+      "uses Space for playback on %s but leaves Enter alone",
+      (control) => {
+        const { toggle, dispatch } = setupShortcuts();
+        const target = new TestElement(control);
+        expect(dispatch({}, target).defaultPrevented).toBe(true);
+        expect(toggle).toHaveBeenCalledOnce();
+        expect(dispatch({ key: "Enter" }, target).defaultPrevented).toBe(false);
+        expect(toggle).toHaveBeenCalledOnce();
+      },
+    );
+
+    it.each([
+      "input",
+      "textarea",
+      "select",
+      "summary",
+      "audio",
+      "video",
+      '[contenteditable]:not([contenteditable="false"])',
+      '[role="slider"]',
+      '[role="textbox"]',
+    ])("preserves keyboard interaction on %s", (control) => {
+      const { toggle, dispatch } = setupShortcuts();
+      expect(dispatch({}, new TestElement(control)).defaultPrevented).toBe(false);
+      expect(toggle).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { key: "Enter" },
+      { ctrlKey: true },
+      { altKey: true },
+      { metaKey: true },
+      { shiftKey: true },
+      { isComposing: true },
+    ])("ignores other keys, modified shortcuts, and composition: %j", (options) => {
+      const { toggle, dispatch } = setupShortcuts();
+      expect(dispatch(options).defaultPrevented).toBe(false);
+      expect(toggle).not.toHaveBeenCalled();
+    });
+
+    it("respects already handled events and removes its listener on cleanup", () => {
+      const { toggle, dispatch, cleanup } = setupShortcuts();
+      dispatch({ handled: true });
+      expect(toggle).not.toHaveBeenCalled();
+      cleanup();
+      expect(dispatch().defaultPrevented).toBe(false);
+      expect(toggle).not.toHaveBeenCalled();
+    });
+  });
+
+  it("creates audio only when mounted and configures metadata preloading", () => {
+    const { player, createAudio, audio } = setup(false);
+    expect(createAudio).not.toHaveBeenCalled();
+    player.mount();
+    expect(createAudio).toHaveBeenCalledOnce();
+    expect(audio.preload).toBe("metadata");
+    expect(audio.play).not.toHaveBeenCalled();
+  });
+
+  it("owns the Space shortcut and removes it along with audio listeners", async () => {
+    const { player, audio, doc, queue } = setup();
+    const toggle = vi.spyOn(player, "toggle");
+    const space = () => {
+      const event = new Event("keydown", { cancelable: true });
+      Object.assign(event, { key: " ", composedPath: () => [] });
+      doc.dispatchEvent(event);
+      return event;
+    };
+    expect(space().defaultPrevented).toBe(true);
+    expect(toggle).toHaveBeenCalledOnce();
+    await toggle.mock.results[0].value;
+    expect(audio.paused).toBe(false);
+    player.destroy();
+    expect(audio.paused).toBe(true);
+    expect(audio.src).toBe("");
+    expect(space().defaultPrevented).toBe(false);
+    expect(toggle).toHaveBeenCalledOnce();
+    audio.currentTime = 40;
+    audio.src = "blob:stale";
+    audio.dispatchEvent(new Event("timeupdate"));
+    expect(queue.position).toBe(0);
+  });
+
+  it("updates UI observers without recreating the mounted audio", async () => {
+    const { player, audio, queue, createAudio } = setup();
     const observe = vi.fn(() => {
       void player.position;
       void player.playing;
     });
-    const destroy = observePlayback(bind, observe);
+    const destroy = observePlayback(observe);
     try {
       flushSync();
       await player.play();
@@ -136,7 +260,7 @@ describe("playback engine", () => {
       flushSync();
       queue.update({ tracks: [song("a"), song("b"), song("c")], current: "a", position: 12 });
       flushSync();
-      expect(bind).toHaveBeenCalledOnce();
+      expect(createAudio).toHaveBeenCalledOnce();
       expect(observe.mock.calls.length).toBeGreaterThan(1);
       expect(player.position).toBe(12);
     } finally {
@@ -250,14 +374,15 @@ describe("playback engine", () => {
     expect(audio.src).toBe("");
   });
 
-  it("cleans up metadata waits and ignores old attachment cleanup", async () => {
-    const { player, audio, queue, detach } = setup();
+  it("cleans up metadata waits and ignores old mount cleanup", async () => {
+    const { player, audio, queue, detach, createAudio } = setup();
     queue.setPosition(20);
     audio.readyState = 0;
     const pending = player.play();
     await Promise.resolve();
     const replacement = new AudioStub();
-    player.bind(replacement as unknown as HTMLAudioElement);
+    createAudio.mockReturnValueOnce(replacement as unknown as HTMLAudioElement);
+    player.mount();
     detach();
     await pending;
     await player.play();
