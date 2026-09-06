@@ -301,18 +301,7 @@
   }
 
   async function downloadTracks(items: QueueItem[]) {
-    let nextTrack = 0;
-
-    async function worker() {
-      while (nextTrack < items.length) {
-        const track = items[nextTrack++];
-        await downloadQueueTrack(track);
-      }
-    }
-
-    await Promise.all(
-      Array.from({ length: Math.min(3, items.length) }, () => worker()),
-    );
+    await Promise.all(items.map(downloadQueueTrack));
   }
 
   async function downloadAlbum(artist: Artist, album: Album) {
@@ -661,6 +650,7 @@
             {offlineScanning
               ? "Checking downloaded tracks…"
               : "Show only music downloaded to this device."}
+            <a class="text-link" href={router.href("/downloads")}>View downloads</a>
           </small>
         </div>
         <label class="switch">
@@ -674,6 +664,57 @@
           <span></span>
         </label>
       </div>
+    </section>
+    {@render miniPlayer()}
+  {/snippet}
+
+  {#snippet downloadsRoute(_params: RouteParams, router: RouteControls)}
+    <header class="topbar track-list">
+      <a class="icon-button" data-size="md" data-variant="neutral" href={router.href("/settings")} title="Settings">
+        {@render icon("back")}
+      </a>
+      <strong class="type-title">Downloads</strong>
+      <span class="topbar-spacer"></span>
+    </header>
+    <section class="view stack-md">
+      <h2 class="type-heading">Downloads</h2>
+      <p class="type-small muted">Downloading first, then queued tracks and saved files, newest first.</p>
+      {#if trackEngine.error}
+        <p class="error type-small" role="status">
+          {trackEngine.error instanceof Error ? trackEngine.error.message : String(trackEngine.error)}
+        </p>
+      {/if}
+      {#if trackEngine.downloadsLoading}
+        <p class="type-body muted" role="status">Reading downloaded files…</p>
+      {/if}
+      {#if trackEngine.downloads.length}
+        <div class="track-list">
+          {#each trackEngine.downloads as entry (entry.key)}
+            <div class="track-item">
+              <span class="track-leading" role="img" aria-label={entry.status === "downloading" ? "Downloading" : entry.status === "queued" ? "Queued" : "Downloaded"}>
+                {@render icon(entry.status === "downloading" ? "loading" : entry.status === "queued" ? "clock" : "check")}
+              </span>
+              <div class="track-details stack-xs">
+                <strong class="type-small">{entry.track.title}</strong>
+                <p class="type-caption muted">{entry.track.artist} — {entry.track.album}</p>
+                {#if entry.status === "downloaded"}
+                  <p class="type-caption muted">
+                    <time datetime={new Date(entry.downloadedAt).toISOString()}>{new Date(entry.downloadedAt).toLocaleString()}</time>
+                    · {entry.format === "mp3" ? "MP3" : entry.contentType}
+                  </p>
+                {/if}
+              </div>
+              <span class="type-caption muted">
+                {entry.status === "downloaded"
+                  ? new Intl.NumberFormat(undefined, { style: "unit", unit: "megabyte", maximumFractionDigits: 1 }).format(entry.size / 1_000_000)
+                  : entry.status === "downloading" ? "Downloading…" : "Queued"}
+              </span>
+            </div>
+          {/each}
+        </div>
+      {:else if !trackEngine.downloadsLoading}
+        <p class="type-body muted">No downloaded files yet.</p>
+      {/if}
     </section>
     {@render miniPlayer()}
   {/snippet}
@@ -1603,6 +1644,7 @@
       },
       { pattern: "/library/artist/:artistId", render: artistRoute },
       { pattern: "/settings", render: settingsRoute },
+      { pattern: "/downloads", render: downloadsRoute },
     ]}
     bind:navigate
   />

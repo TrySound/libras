@@ -345,12 +345,12 @@ export class PlaybackEngine {
     const valid = () => generation === this.#generation && this.#audio === audio;
     const prepare = async (transcode: boolean) => {
       let source;
-      if (seeking) await this.#tracks.cache(track, { forceTranscode: true });
+      if (seeking) await this.#tracks.cache(track, { forceTranscode: true, priority: "playback" });
       if (!valid()) return;
       source = await this.#tracks.getSource(track, { forceTranscode: transcode });
       if (!valid()) return;
       if (!source.cached && position > 0) {
-        await this.#tracks.cache(track, { forceTranscode: true });
+        await this.#tracks.cache(track, { forceTranscode: true, priority: "playback" });
         if (!valid()) return;
         source = await this.#tracks.getSource(track, { forceTranscode: true });
         transcode = true;

@@ -351,7 +351,10 @@ describe("playback engine", () => {
     await player.play();
     player.pause();
     await player.seek(45);
-    expect(tracks.cache).toHaveBeenCalledWith(song("a"), { forceTranscode: true });
+    expect(tracks.cache).toHaveBeenCalledWith(song("a"), {
+      forceTranscode: true,
+      priority: "playback",
+    });
     expect(audio.currentTime).toBe(45);
     expect(audio.paused).toBe(true);
     expect(audio.play).toHaveBeenCalledTimes(1);

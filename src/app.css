@@ -996,6 +996,12 @@ a {
   color: var(--color-accent-text);
 }
 
+.track-details {
+  min-width: 0;
+  padding-block: 0.65rem;
+  overflow-wrap: anywhere;
+}
+
 .track-content {
   -webkit-tap-highlight-color: transparent;
   transition: background-color 160ms ease-out;

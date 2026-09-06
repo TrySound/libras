@@ -36,6 +36,9 @@ The Navidrome server must be reachable **from the phone** and permit the fronten
 
 - The service worker precaches only the production app shell, manifest, and install icons. The style guide is not available offline.
 - Subsonic API requests, artwork, and audio streams are not runtime-cached by the service worker. Metadata, artwork, and downloads remain owned by the existing engines.
+- **Settings → Downloads** lists active downloads, queued tracks, and completed files newest-first. Downloads run with up to three concurrent transfers; playback seeks take priority over queued bulk downloads.
+- Audio lives in OPFS under `tracks/`. The adjacent `downloads.json` is a validated list of completed file references, track metadata, account scope, format, size, and completion date; it contains neither credentials nor active/queued jobs. The engine loads it into a map, serializes catalog writes, and uses Web Locks where available to coordinate tabs.
+- Existing hashed audio files are adopted into the catalog when matched against library metadata, retaining their file modification dates. Files that cannot be matched remain untouched. The saved catalog can be listed without reloading the music library; missing file references are removed when the catalog opens.
 - First visit online so installation and shell caching can complete. Download music in the app before testing Offline Library mode.
 - A new version shows **Update now / Later**. Nothing reloads automatically during playback; choosing Update now explicitly reloads the app and interrupts playback.
 - Updates are checked when the app becomes visible and hourly while visible and online.
