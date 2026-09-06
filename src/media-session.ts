@@ -13,6 +13,7 @@ export class PlayerMediaSession {
   #duration = 0;
   #controls: MediaSessionControls;
   #navigation = "";
+  #metadataGeneration = 0;
 
   constructor(controls: MediaSessionControls, session = navigator.mediaSession) {
     this.#controls = controls;
@@ -63,19 +64,32 @@ export class PlayerMediaSession {
     }
   }
 
-  setMetadata(track?: { title: string; artist: string; album: string }, artwork?: string) {
-    if (!this.#session) return;
+  async setMetadata(track?: { title: string; artist: string; album: string }, artwork?: string) {
+    const generation = ++this.#metadataGeneration;
+    const session = this.#session;
+    if (!session) return;
     try {
-      this.#session.metadata = track
-        ? new MediaMetadata({
-            title: track.title,
-            artist: track.artist,
-            album: track.album,
-            artwork: artwork ? [{ src: artwork }] : [],
-          })
+      const local = artwork?.startsWith("blob:");
+      session.metadata = track
+        ? new MediaMetadata({ ...track, artwork: artwork && !local ? [{ src: artwork }] : [] })
         : null;
+      if (!track || !local || !artwork) return;
+
+      // OS artwork loading can outlive a document-owned object URL. Give it
+      // self-contained bytes instead, reading only the already-cached blob.
+      const response = await fetch(artwork);
+      if (!response.ok) return;
+      const blob = await response.blob();
+      if (!blob.size) return;
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const encoded = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
+      if (generation !== this.#metadataGeneration) return;
+      session.metadata = new MediaMetadata({
+        ...track,
+        artwork: [{ src: `data:${blob.type || "image/jpeg"};base64,${encoded}` }],
+      });
     } catch {
-      // Metadata support must not affect audio playback.
+      // Metadata support or unavailable artwork must not affect audio playback.
     }
   }
 

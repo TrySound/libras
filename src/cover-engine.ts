@@ -24,6 +24,8 @@ interface CacheResult {
 }
 
 interface CoverEntry {
+  candidates: string[];
+  id?: string;
   cover: Cover;
   generation: number;
   network?: { cacheKey: string; url: string };
@@ -31,6 +33,7 @@ interface CoverEntry {
 }
 
 interface ResolvedCover {
+  id?: string;
   network?: { cacheKey: string; url: string };
   source?: string;
 }
@@ -168,6 +171,7 @@ export class CoverEngine {
             },
         ),
       ]);
+      if (file.size === 0) return null;
       return {
         etag: metadata.etag,
         file,
@@ -180,30 +184,48 @@ export class CoverEngine {
     }
   }
 
-  #install(id: string, cached: CachedCover) {
+  async #snapshot(cached: CachedCover) {
+    const bytes = await cached.file.arrayBuffer();
+    if (bytes.byteLength === 0) throw new Error("The cached cover is empty.");
+    return new Blob([bytes], { type: cached.type });
+  }
+
+  async #install(id: string, cached: CachedCover) {
+    const generation = this.#generation;
     const existing = this.#objectUrls.get(id);
     if (existing) return existing;
-
-    const url = URL.createObjectURL(new Blob([cached.file], { type: cached.type }));
+    const blob = await this.#snapshot(cached);
+    if (generation !== this.#generation) return;
+    const installed = this.#objectUrls.get(id);
+    if (installed) return installed;
+    const url = URL.createObjectURL(blob);
     this.#objectUrls.set(id, url);
     return url;
+  }
+
+  #publishCached(id: string, source: string) {
+    for (const entry of this.#covers.values()) {
+      const candidate = entry.candidates.indexOf(id);
+      const selected = entry.id ? entry.candidates.indexOf(entry.id) : Infinity;
+      if (candidate < 0 || candidate > selected) continue;
+      entry.id = id;
+      entry.source = source;
+      entry.network = undefined;
+    }
+    this.#notify();
   }
 
   #revalidate(id: string, cachedUrl: string, client: SubsonicClient) {
     const generation = this.#generation;
     this.#cache(this.#cacheKey(id, client), this.#coverUrl(id, client))
-      .then((result) => {
+      .then(async (result) => {
         if (!result.changed || generation !== this.#generation) return;
-
-        const updatedUrl = URL.createObjectURL(
-          new Blob([result.cover.file], { type: result.cover.type }),
-        );
+        const blob = await this.#snapshot(result.cover);
+        if (generation !== this.#generation) return;
+        const updatedUrl = URL.createObjectURL(blob);
         this.#objectUrls.set(id, updatedUrl);
-        for (const entry of this.#covers.values()) {
-          if (entry.source === cachedUrl) entry.source = updatedUrl;
-        }
+        this.#publishCached(id, updatedUrl);
         URL.revokeObjectURL(cachedUrl);
-        this.#notify();
       })
       .catch(() => {});
   }
@@ -213,21 +235,25 @@ export class CoverEngine {
     allowNetwork: boolean,
     client: SubsonicClient,
   ): Promise<ResolvedCover> {
+    const generation = this.#generation;
     for (const id of candidates) {
       const objectUrl = this.#objectUrls.get(id);
-      if (objectUrl) return { source: objectUrl };
+      if (objectUrl) return { id, source: objectUrl };
 
       const cached = await this.#getCached(this.#cacheKey(id, client)).catch(() => null);
+      if (generation !== this.#generation) return {};
       if (cached) {
-        const cachedUrl = this.#install(id, cached);
+        const cachedUrl = await this.#install(id, cached);
+        if (!cachedUrl) return {};
         if (allowNetwork) this.#revalidate(id, cachedUrl, client);
-        return { source: cachedUrl };
+        return { id, source: cachedUrl };
       }
     }
 
     if (allowNetwork && candidates[0]) {
       const url = this.#coverUrl(candidates[0], client);
       return {
+        id: candidates[0],
         network: { cacheKey: this.#cacheKey(candidates[0], client), url },
         source: url,
       };
@@ -245,8 +271,11 @@ export class CoverEngine {
     if (!network || entry.generation !== this.#generation) return;
 
     this.#cache(network.cacheKey, network.url)
-      .then(() => {
-        if (entry.network === network) entry.network = undefined;
+      .then(async (result) => {
+        if (entry.generation !== this.#generation || !entry.id) return;
+        const source = await this.#install(entry.id, result.cover);
+        if (entry.generation !== this.#generation || !source) return;
+        this.#publishCached(entry.id, source);
       })
       .catch(() => {});
   }
@@ -267,14 +296,20 @@ export class CoverEngine {
       },
       cache: () => this.#cacheEntry(entry),
     };
-    entry = { cover, generation: this.#generation };
+    entry = { candidates, cover, generation: this.#generation };
     this.#covers.set(key, entry);
 
     const client = this.#client;
     if (client) {
       this.#resolve(candidates, request.allowNetwork, client)
         .then((resolved) => {
-          if (entry.generation !== this.#generation || resolved.source === undefined) return;
+          if (
+            entry.generation !== this.#generation ||
+            resolved.source === undefined ||
+            entry.source !== undefined
+          )
+            return;
+          entry.id = resolved.id;
           entry.network = resolved.network;
           entry.source = resolved.source;
           this.#notify();

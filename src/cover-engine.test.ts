@@ -165,6 +165,36 @@ describe("cover engine", () => {
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
   });
 
+  it("updates existing cache-only handles when a UI cover finishes caching", async () => {
+    installOpfs();
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:new-cover");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("image", { headers: { "Content-Type": "image/jpeg" } })),
+    );
+    const engine = new CoverEngine();
+    engine.setClient(new SubsonicClient(auth));
+    const cached = engine.getCover({ candidates: ["cover-1"], allowNetwork: false });
+    const online = engine.getCover({ candidates: ["cover-1"], allowNetwork: true });
+    await vi.waitFor(() => expect(online.source).toContain("/rest/getCoverArt.view?"));
+    expect(cached.source).toBeUndefined();
+    online.cache();
+    await vi.waitFor(() => expect(cached.source).toBe("blob:new-cover"));
+    engine.destroy();
+  });
+
+  it("builds cached URLs from a memory snapshot rather than an OPFS file", async () => {
+    installOpfs(true);
+    const arrayBuffer = vi.spyOn(File.prototype, "arrayBuffer");
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:snapshot");
+    const engine = new CoverEngine();
+    engine.setClient(new SubsonicClient(auth));
+    const cover = engine.getCover({ candidates: ["cover-1"], allowNetwork: false });
+    await vi.waitFor(() => expect(cover.source).toBe("blob:snapshot"));
+    expect(arrayBuffer).toHaveBeenCalled();
+    engine.destroy();
+  });
+
   it("does not resolve a server URL when network access is disabled", async () => {
     installOpfs();
     const fetcher = vi.fn();

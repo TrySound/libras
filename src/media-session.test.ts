@@ -34,15 +34,67 @@ function setup(unsupported = false) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("player media session", () => {
-  it("publishes track metadata and replaces artwork", () => {
+  it("publishes track metadata and replaces artwork", async () => {
     const { player, session } = setup();
     const track = { title: "Song", artist: "Artist", album: "Album" };
-    player.setMetadata(track, "blob:cached-cover");
-    expect(session.metadata).toMatchObject({ ...track, artwork: [{ src: "blob:cached-cover" }] });
+    const url = URL.createObjectURL(new Blob(["image"], { type: "image/jpeg" }));
+    try {
+      await player.setMetadata(track, url);
+      expect(session.metadata).toMatchObject({
+        ...track,
+        artwork: [{ src: "data:image/jpeg;base64,aW1hZ2U=" }],
+      });
+    } finally {
+      URL.revokeObjectURL(url);
+    }
     player.setMetadata({ ...track, title: "Next song" });
     expect(session.metadata).toMatchObject({ title: "Next song", artwork: [] });
     player.setPlaybackState("playing");
     expect(session.playbackState).toBe("playing");
+  });
+
+  it("does not publish stale artwork after a track change or destruction", async () => {
+    const { player, session } = setup();
+    let resolve!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((done) => {
+            resolve = done;
+          }),
+      ),
+    );
+    const pending = player.setMetadata(
+      { title: "Old", artist: "Artist", album: "Album" },
+      "blob:old",
+    );
+    player.setMetadata({ title: "New", artist: "Artist", album: "Album" });
+    resolve(new Response("image", { headers: { "Content-Type": "image/jpeg" } }));
+    await pending;
+    expect(session.metadata).toMatchObject({ title: "New", artwork: [] });
+    const late = player.setMetadata(
+      { title: "Late", artist: "Artist", album: "Album" },
+      "blob:late",
+    );
+    player.destroy();
+    resolve(new Response("image", { headers: { "Content-Type": "image/jpeg" } }));
+    await late;
+    expect(session.metadata).toBeNull();
+  });
+
+  it("keeps text metadata when artwork cannot be read", async () => {
+    const { player, session } = setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("Revoked blob");
+      }),
+    );
+    await expect(
+      player.setMetadata({ title: "Song", artist: "Artist", album: "Album" }, "blob:missing"),
+    ).resolves.toBeUndefined();
+    expect(session.metadata).toMatchObject({ title: "Song", artwork: [] });
   });
 
   it("routes transport controls and clamps seeking", () => {

@@ -62,7 +62,7 @@ function setup() {
     releaseSource: vi.fn(),
   };
   const coverListeners = new Set<() => void>();
-  let artwork = "blob:cover";
+  let artwork = "data:image/jpeg;base64,aW1hZ2U=";
   const covers = {
     getCover: vi.fn(() => ({ source: artwork, cache: () => {} })),
     subscribe: (listener: () => void) => {
@@ -180,8 +180,11 @@ describe("playback engine", () => {
 
   it("uses cached artwork and updates without a UI subscription", () => {
     const { artwork, session, covers } = setup();
-    artwork("blob:new-cover");
-    expect(session.metadata).toMatchObject({ title: "a", artwork: [{ src: "blob:new-cover" }] });
+    artwork("data:image/jpeg;base64,bmV3");
+    expect(session.metadata).toMatchObject({
+      title: "a",
+      artwork: [{ src: "data:image/jpeg;base64,bmV3" }],
+    });
     expect(covers.getCover).toHaveBeenLastCalledWith({ candidates: ["a"], allowNetwork: false });
   });
 
