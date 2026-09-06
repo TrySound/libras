@@ -11,8 +11,11 @@ export class PlayerMediaSession {
   #actions: MediaSessionAction[] = [];
   #position = 0;
   #duration = 0;
+  #controls: MediaSessionControls;
+  #navigation = "";
 
   constructor(controls: MediaSessionControls, session = navigator.mediaSession) {
+    this.#controls = controls;
     this.#session = session;
     if (!session) return;
     const seek = (position: number) => {
@@ -38,6 +41,25 @@ export class PlayerMediaSession {
       } catch {
         // Not every browser supports every media-session action.
       }
+    }
+  }
+
+  setNavigation(hasNext: boolean, hasPrevious: boolean) {
+    const key = `${hasNext}:${hasPrevious}`;
+    if (key === this.#navigation) return;
+    this.#navigation = key;
+    try {
+      this.#session?.setActionHandler("nexttrack", hasNext ? this.#controls.next : null);
+    } catch {
+      /* Optional action. */
+    }
+    try {
+      this.#session?.setActionHandler(
+        "previoustrack",
+        hasPrevious ? this.#controls.previous : null,
+      );
+    } catch {
+      /* Optional action. */
     }
   }
 

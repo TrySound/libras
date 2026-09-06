@@ -41,6 +41,20 @@ export class CoverEngine {
   #downloads = new Map<string, Promise<CacheResult>>();
   #generation = 0;
   #objectUrls = new Map<string, string>();
+  #listeners = new Set<() => void>();
+
+  subscribe(listener: () => void) {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  }
+
+  #notify() {
+    this.#update();
+    for (const listener of this.#listeners) listener();
+  }
+
   #update = () => {};
   #subscribe = createSubscriber((update) => {
     this.#update = update;
@@ -189,7 +203,7 @@ export class CoverEngine {
           if (entry.source === cachedUrl) entry.source = updatedUrl;
         }
         URL.revokeObjectURL(cachedUrl);
-        this.#update();
+        this.#notify();
       })
       .catch(() => {});
   }
@@ -263,7 +277,7 @@ export class CoverEngine {
           if (entry.generation !== this.#generation || resolved.source === undefined) return;
           entry.network = resolved.network;
           entry.source = resolved.source;
-          this.#update();
+          this.#notify();
         })
         .catch(() => {});
     }
@@ -278,7 +292,7 @@ export class CoverEngine {
     this.#client = client;
     this.#generation += 1;
     this.#covers.clear();
-    this.#update();
+    this.#notify();
   }
 
   destroy() {

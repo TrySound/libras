@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
-  import { PlayerMediaSession } from "./media-session";
+  import type { Attachment } from "svelte/attachments";
+  import { PlaybackEngine } from "./playback-engine";
   import PwaUpdate from "./pwa-update.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
@@ -40,23 +41,30 @@
   let queue = $derived(queueEngine.tracks);
   let activeAuth = $state<SavedAuth | null>(null);
   let activeClient = $state<SubsonicClient>();
-  let currentIndex = $derived(
-    queueEngine.current
-      ? queue.findIndex((track) => track.id === queueEngine.current)
-      : -1,
-  );
-  let currentTime = $derived(queueEngine.position);
-  let duration = $state(0);
-  let isPlaying = $state(false);
-  let playbackLoading = $state(false);
-  let playbackError = $state("");
-  let audio: HTMLAudioElement;
-  let mediaSession = $state<PlayerMediaSession>();
   const coverEngine = new CoverEngine();
   const trackEngine = new TrackEngine();
-  let lastPositionSync = 0;
-  let playbackRequest = 0;
-  let playbackSourceCached = false;
+  const playback = new PlaybackEngine({
+    queue: queueEngine,
+    tracks: trackEngine,
+    covers: coverEngine,
+  });
+  const attachAudio: Attachment<HTMLAudioElement> = (element) =>
+    untrack(() => playback.bind(element));
+  let currentIndex = $derived(playback.currentIndex);
+  let currentTime = $derived(playback.position);
+  let duration = $derived(playback.duration);
+  let isPlaying = $derived(playback.playing);
+  let playbackLoading = $derived(
+    ["loading", "buffering", "seeking"].includes(playback.status),
+  );
+  let downloadError = $state("");
+  let playbackError = $derived(
+    playback.error instanceof Error
+      ? playback.error.message
+      : playback.error
+        ? String(playback.error)
+        : "",
+  );
   let downloadingCollection = $state("");
   let offlineMode = $state(false);
   let offlineScanning = $state(false);
@@ -78,35 +86,8 @@
 
   onMount(() => installLongPress());
 
-  onMount(() => {
-    const session = new PlayerMediaSession({
-      play: () => { if (audio.paused && queue.length) togglePlayback(); },
-      pause: () => { if (!audio.paused) togglePlayback(); },
-      previous: () => { if (currentIndex >= 0) previousTrack(); },
-      next: () => { if (currentIndex >= 0) nextTrack(); },
-      seek,
-    });
-    mediaSession = session;
-    return () => session.destroy();
-  });
-
-  $effect(() => {
-    const track = queue[currentIndex];
-    const artwork = track?.coverArt
-      ? coverEngine.getCover({ candidates: [track.coverArt], allowNetwork: !offlineMode }).source
-      : undefined;
-    mediaSession?.setMetadata(track, artwork);
-  });
-
-  $effect(() => {
-    mediaSession?.setPlaybackState(currentIndex < 0 ? "none" : isPlaying ? "playing" : "paused");
-  });
-
-  $effect(() => {
-    mediaSession?.setPosition(currentIndex < 0 ? 0 : duration, currentTime);
-  });
-
   onDestroy(() => {
+    playback.destroy();
     coverEngine.destroy();
     metadataEngine.destroy();
     queueEngine.destroy();
@@ -133,16 +114,6 @@
       connectionOpen = true;
       navigate("/settings", "replace");
     }
-  });
-
-  onMount(() => {
-    const saveWhenHidden = () => {
-      if (document.visibilityState === "hidden") queueEngine.flush();
-    };
-
-    document.addEventListener("visibilitychange", saveWhenHidden);
-    return () =>
-      document.removeEventListener("visibilitychange", saveWhenHidden);
   });
 
   function scanLibrarySelection(
@@ -316,7 +287,7 @@
     try {
       await trackEngine.cache(track);
     } catch (caught) {
-      playbackError =
+      downloadError =
         caught instanceof Error
           ? caught.message
           : "The track could not be downloaded.";
@@ -383,7 +354,7 @@
         ? offlineQueue.findIndex((track) => track.id === currentTrackId)
         : -1;
 
-      if (currentTrackId && offlineIndex < 0) stopPlayback();
+      if (currentTrackId && offlineIndex < 0) playback.stop();
       queueEngine.update({
         current: offlineIndex >= 0 ? currentTrackId : undefined,
         position: offlineIndex >= 0 ? currentTime : 0,
@@ -412,222 +383,20 @@
     );
   }
 
-  function updatePlaybackTime() {
-    queueEngine.setPosition(audio.currentTime);
-    if (Date.now() - lastPositionSync >= 10_000) {
-      lastPositionSync = Date.now();
-      queueEngine.flush();
-    }
-  }
-
   function replaceQueueAndPlay(items: QueueItem[], startIndex = 0) {
-    const index =
-      items.length > 0 ? Math.min(startIndex, items.length - 1) : -1;
-    queueEngine.update({
-      current: items[index]?.id,
-      position: 0,
-      tracks: items,
-    });
-    if (index >= 0) void playCurrent();
-    else stopPlayback();
-  }
-
-  function unsupportedSource(caught: unknown) {
-    return (
-      (caught instanceof DOMException && caught.name === "NotSupportedError") ||
-      (caught instanceof Error && /supported sources/i.test(caught.message))
+    if (!items.length) {
+      clearQueue();
+      return;
+    }
+    queueEngine.update({ tracks: items, position: 0 });
+    void playback.playIndex(
+      Math.max(0, Math.min(startIndex, items.length - 1)),
     );
   }
 
-  async function playCurrent(startAt = currentTime, forceTranscode = false) {
-    const track = queue[currentIndex];
-    if (!track) return;
-
-    const request = ++playbackRequest;
-    playbackError = "";
-    playbackLoading = true;
-    if (startAt <= 0) duration = 0;
-    queueEngine.save();
-
-    const playSource = async (forceTranscode: boolean) => {
-      const source = await trackEngine.getSource(track, { forceTranscode });
-      if (request !== playbackRequest) return;
-
-      playbackSourceCached = source.cached;
-      audio.src = source.url;
-      if (source.cached && startAt > 0) {
-        if (audio.readyState < HTMLMediaElement.HAVE_METADATA) {
-          await new Promise<void>((resolve, reject) => {
-            const loaded = () => {
-              audio.removeEventListener("error", failed);
-              resolve();
-            };
-            const failed = () => {
-              audio.removeEventListener("loadedmetadata", loaded);
-              reject(
-                new DOMException(
-                  "The cached track could not be played.",
-                  "NotSupportedError",
-                ),
-              );
-            };
-            audio.addEventListener("loadedmetadata", loaded, { once: true });
-            audio.addEventListener("error", failed, { once: true });
-          });
-        }
-        if (request !== playbackRequest) return;
-        audio.currentTime = Math.min(startAt, audio.duration || startAt);
-        queueEngine.setPosition(audio.currentTime);
-      }
-      await audio.play();
-      if (!source.cached && request === playbackRequest) {
-        void trackEngine.cache(track, { forceTranscode }).catch(() => {});
-      }
-    };
-
-    try {
-      try {
-        await playSource(forceTranscode);
-      } catch (caught) {
-        if (
-          forceTranscode ||
-          request !== playbackRequest ||
-          !unsupportedSource(caught)
-        )
-          throw caught;
-        playbackError = "";
-        playbackLoading = true;
-        await playSource(true);
-      }
-    } catch (caught) {
-      if (request !== playbackRequest) return;
-      playbackLoading = false;
-      playbackError =
-        caught instanceof Error ? caught.message : "Playback failed.";
-    }
-  }
-
-  function stopPlayback() {
-    playbackRequest += 1;
-    audio.pause();
-    audio.removeAttribute("src");
-    audio.load();
-    trackEngine.releaseSource();
-    playbackSourceCached = false;
-    queueEngine.update({ tracks: queue, position: 0 });
-    duration = 0;
-    isPlaying = false;
-    playbackLoading = false;
-  }
-
   function clearQueue() {
-    stopPlayback();
+    playback.stop();
     queueEngine.update({ tracks: [], position: 0 });
-  }
-
-  function togglePlayback() {
-    if (audio.paused) {
-      if (currentIndex < 0 && queue.length > 0) {
-        queueEngine.update({
-          current: queue[0].id,
-          position: 0,
-          tracks: queue,
-        });
-        void playCurrent();
-      } else if (!audio.currentSrc) {
-        void playCurrent();
-      } else {
-        void audio.play().catch((caught: unknown) => {
-          playbackError =
-            caught instanceof Error ? caught.message : "Playback failed.";
-        });
-      }
-    } else {
-      audio.pause();
-      playbackLoading = false;
-      queueEngine.flush();
-    }
-  }
-
-  function playQueueIndex(index: number) {
-    queueEngine.update({
-      current: queue[index]?.id,
-      position: 0,
-      tracks: queue,
-    });
-    void playCurrent();
-  }
-
-  function nextTrack() {
-    if (currentIndex + 1 >= queue.length) {
-      audio.pause();
-      isPlaying = false;
-      playbackLoading = false;
-      queueEngine.flush();
-      return;
-    }
-    queueEngine.update({
-      current: queue[currentIndex + 1].id,
-      position: 0,
-      tracks: queue,
-    });
-    void playCurrent();
-  }
-
-  function previousTrack() {
-    if (audio.currentTime > 3 || currentIndex <= 0) {
-      audio.currentTime = 0;
-      queueEngine.setPosition(0);
-      queueEngine.save();
-      return;
-    }
-    queueEngine.update({
-      current: queue[currentIndex - 1].id,
-      position: 0,
-      tracks: queue,
-    });
-    void playCurrent();
-  }
-
-  async function cacheAndSeek(value: number) {
-    const track = queue[currentIndex];
-    if (!track) return;
-
-    const request = ++playbackRequest;
-    audio.pause();
-    playbackError = "";
-    playbackLoading = true;
-    try {
-      await trackEngine.cache(track, { forceTranscode: true });
-      if (request !== playbackRequest) return;
-      await playCurrent(value, true);
-    } catch (caught) {
-      if (request !== playbackRequest) return;
-      playbackLoading = false;
-      playbackError =
-        caught instanceof Error
-          ? caught.message
-          : "The track could not be loaded.";
-    }
-  }
-
-  function seek(value: number) {
-    if (!Number.isFinite(value)) return;
-
-    const buffered = Array.from(
-      { length: audio.buffered.length },
-      (_, index) =>
-        value >= audio.buffered.start(index) &&
-        value <= audio.buffered.end(index),
-    ).some(Boolean);
-
-    queueEngine.setPosition(value);
-    if (playbackSourceCached || buffered) {
-      audio.currentTime = value;
-      queueEngine.save();
-    } else {
-      void cacheAndSeek(value);
-    }
   }
 
   function playbackPercent() {
@@ -735,7 +504,6 @@
       navigate("/library");
     }
   });
-
 </script>
 
 <svelte:head>
@@ -747,31 +515,7 @@
 {/snippet}
 
 <main class="app-shell">
-  <audio
-    bind:this={audio}
-    preload="metadata"
-    onplay={() => (isPlaying = true)}
-    onplaying={() => {
-      isPlaying = true;
-      playbackLoading = false;
-    }}
-    onpause={() => (isPlaying = false)}
-    onwaiting={() => (playbackLoading = true)}
-    oncanplay={() => (playbackLoading = false)}
-    onended={nextTrack}
-    ontimeupdate={updatePlaybackTime}
-    onloadedmetadata={() => {
-      duration = audio.duration;
-      if (currentTime > 0) {
-        audio.currentTime = Math.min(currentTime, duration || currentTime);
-        queueEngine.setPosition(audio.currentTime);
-      }
-    }}
-    onerror={() => {
-      playbackLoading = false;
-      if (audio.currentSrc) playbackError = "The track could not be played.";
-    }}
-  ></audio>
+  <audio {@attach attachAudio} preload="metadata"></audio>
 
   {#snippet settingsRoute(_params: RouteParams, router: RouteControls)}
     <header class="topbar track-list">
@@ -808,9 +552,9 @@
             class:failed={!offlineMode && connectionStatus === "error"}
           ></span>
           <span class="connection-summary stack-xs">
-            <strong class="type-title"
-              >{activeAuth?.host ?? "Add a server"}</strong
-            >
+            <strong class="type-title">
+              {activeAuth?.host ?? "Add a server"}
+            </strong>
             <small class="type-small muted">
               {activeAuth
                 ? `${activeAuth.username} · ${connectionStatusLabel()}`
@@ -889,9 +633,9 @@
                   : "Connect"}
             </button>
 
-            <small
-              >Authentication is saved in this browser after a successful login.</small
-            >
+            <small>
+              Authentication is saved in this browser after a successful login.
+            </small>
           </form>
         </div>
       </details>
@@ -974,8 +718,8 @@
 
           {#if currentIndex >= 0 && queue[currentIndex]}
             <p class="type-body">
-              <strong class="type-heading">{queue[currentIndex].title}</strong
-              ><br />
+              <strong class="type-heading">{queue[currentIndex].title}</strong>
+              <br />
               {queue[currentIndex].artist} — {queue[currentIndex].album}
             </p>
           {/if}
@@ -989,7 +733,8 @@
               step="0.1"
               value={currentTime}
               disabled={!duration}
-              oninput={(event) => seek(event.currentTarget.valueAsNumber)}
+              oninput={(event) =>
+                playback.seek(event.currentTarget.valueAsNumber)}
             />
             <div class="playback-time type-caption">
               <span>{formatTime(currentTime)}</span>
@@ -1003,8 +748,8 @@
               class="icon-button"
               data-size="md"
               data-variant="neutral"
-              onclick={previousTrack}
-              disabled={currentIndex <= 0}
+              onclick={() => playback.previous()}
+              disabled={!playback.hasPrevious && currentTime <= 0}
               title="Previous">{@render icon("previous")}</button
             >
             <button
@@ -1012,7 +757,7 @@
               class="icon-button"
               data-size="lg"
               data-variant="primary"
-              onclick={togglePlayback}
+              onclick={() => playback.toggle()}
               disabled={queue.length === 0}
               title={isPlaying ? "Pause" : "Play"}
             >
@@ -1029,12 +774,15 @@
               class="icon-button"
               data-size="md"
               data-variant="neutral"
-              onclick={nextTrack}
-              disabled={currentIndex < 0 || currentIndex + 1 >= queue.length}
+              onclick={() => playback.next()}
+              disabled={!playback.hasNext}
               title="Next">{@render icon("next")}</button
             >
           </div>
 
+          {#if downloadError}
+            <p class="error type-small">{downloadError}</p>
+          {/if}
           {#if playbackError}
             <p class="error type-small">{playbackError}</p>
           {/if}
@@ -1071,11 +819,17 @@
                 <div class="track-item" class:current={index === currentIndex}>
                   <span class="track-leading">
                     {#if index === currentIndex && playbackLoading}
-                      <span role="img" aria-label="Loading playback">{@render icon("loading")}</span>
+                      <span role="img" aria-label="Loading playback">
+                        {@render icon("loading")}
+                      </span>
                     {:else if index === currentIndex && isPlaying}
-                      <span role="img" aria-label="Playing">{@render icon("sound-bars")}</span>
+                      <span role="img" aria-label="Playing">
+                        {@render icon("sound-bars")}
+                      </span>
                     {:else if trackEngine.getStatus(item.id) === "downloading"}
-                      <span role="img" aria-label="Downloading">{@render icon("loading")}</span>
+                      <span role="img" aria-label="Downloading">
+                        {@render icon("loading")}
+                      </span>
                     {:else}
                       {index + 1}
                     {/if}
@@ -1083,7 +837,7 @@
                   <button
                     type="button"
                     class="track-content"
-                    onclick={() => playQueueIndex(index)}
+                    onclick={() => playback.playIndex(index)}
                   >
                     <span>{item.title}</span>
                   </button>
@@ -1193,13 +947,14 @@
                   onclick={(event) => event.currentTarget.close()}
                 >
                   <header class="action-menu-heading">
-                    <strong id={`${menuId}-title`} class="type-title">{artist.name}</strong>
+                    <strong id={`${menuId}-title`} class="type-title">
+                      {artist.name}
+                    </strong>
                   </header>
                   <div class="track-list">
                     <button
                       type="button"
                       class="track-item action-menu-item"
-
                       onclick={() => playArtist(artist)}
                     >
                       {@render icon("play")}
@@ -1208,7 +963,6 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-
                       onclick={() => playNext(artistQueueItems(artist))}
                     >
                       {@render icon("next")}
@@ -1217,7 +971,6 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-
                       onclick={() => playLast(artistQueueItems(artist))}
                     >
                       {@render icon("plus")}
@@ -1226,19 +979,15 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-
                       onclick={() => downloadArtist(artist)}
                     >
                       {@render icon("download")}
                       <span>Download</span>
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    class="button"
-                    data-variant="neutral"
-
-                  >Cancel</button>
+                  <button type="button" class="button" data-variant="neutral">
+                    Cancel
+                  </button>
                 </dialog>
               </article>
             {/each}
@@ -1315,9 +1064,11 @@
             </p>
             {#if artistGenres(artist).length > 0}
               <div class="genre-list">
-                {#each artistGenres(artist) as genre}<span class="type-caption"
-                    >{genre}</span
-                  >{/each}
+                {#each artistGenres(artist) as genre}
+                  <span class="type-caption">
+                    {genre}
+                  </span>
+                {/each}
               </div>
             {/if}
           </div>
@@ -1341,13 +1092,14 @@
             onclick={(event) => event.currentTarget.close()}
           >
             <header class="action-menu-heading">
-              <strong id="artist-page-menu-title" class="type-title">{artist.name}</strong>
+              <strong id="artist-page-menu-title" class="type-title">
+                {artist.name}
+              </strong>
             </header>
             <div class="track-list">
               <button
                 type="button"
                 class="track-item action-menu-item"
-
                 onclick={() => playArtist(artist)}
               >
                 {@render icon("play")}
@@ -1356,7 +1108,6 @@
               <button
                 type="button"
                 class="track-item action-menu-item"
-
                 onclick={() => playNext(artistQueueItems(artist))}
               >
                 {@render icon("next")}
@@ -1365,7 +1116,6 @@
               <button
                 type="button"
                 class="track-item action-menu-item"
-
                 onclick={() => playLast(artistQueueItems(artist))}
               >
                 {@render icon("plus")}
@@ -1374,19 +1124,15 @@
               <button
                 type="button"
                 class="track-item action-menu-item"
-
                 onclick={() => downloadArtist(artist)}
               >
                 {@render icon("download")}
                 <span>Download</span>
               </button>
             </div>
-            <button
-              type="button"
-              class="button"
-              data-variant="neutral"
-
-            >Cancel</button>
+            <button type="button" class="button" data-variant="neutral">
+              Cancel
+            </button>
           </dialog>
         </div>
 
@@ -1435,78 +1181,73 @@
                   href={router.href(albumPath(artist, album))}
                 >
                   <strong class="type-title">{album.name}</strong>
-                  <small class="type-small muted"
-                    >{album.year ?? "Unknown year"} · {visibleTracks.length} tracks</small
-                  >
+                  <small class="type-small muted">
+                    {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
+                  </small>
                 </a>
                 <span class="track-actions">
-                <button
-                  type="button"
-                  class="icon-button"
-                  data-size="sm"
-                  data-variant="ghost"
-                  commandfor={albumMenuId}
-                  command="show-modal"
-                  title={`Open menu for ${album.name}`}
-                >
-                  {@render icon("menu")}
-                </button>
-                <dialog
-                  id={albumMenuId}
-                  class="action-menu"
-                  aria-labelledby={`${albumMenuId}-title`}
-                  closedby="closerequest"
-                  use:swipeToDismiss
-                  onclick={(event) => event.currentTarget.close()}
-                >
-                  <header class="action-menu-heading">
-                    <strong id={`${albumMenuId}-title`} class="type-title">{album.name}</strong>
-                  </header>
-                  <div class="track-list">
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-
-                      onclick={() => playAlbum(artist, album)}
-                    >
-                      {@render icon("play")}
-                      <span>Play</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-
-                      onclick={() => playNext(albumQueueItems(artist, album))}
-                    >
-                      {@render icon("next")}
-                      <span>Play next</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-
-                      onclick={() => playLast(albumQueueItems(artist, album))}
-                    >
-                      {@render icon("plus")}
-                      <span>Play last</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-
-                      onclick={() => downloadAlbum(artist, album)}
-                    >
-                      {@render icon("download")}
-                      <span>Download</span>
-                    </button>
-                  </div>
                   <button
                     type="button"
-                    class="button"
-                    data-variant="neutral"
-
-                  >Cancel</button>
-                </dialog>
+                    class="icon-button"
+                    data-size="sm"
+                    data-variant="ghost"
+                    commandfor={albumMenuId}
+                    command="show-modal"
+                    title={`Open menu for ${album.name}`}
+                  >
+                    {@render icon("menu")}
+                  </button>
+                  <dialog
+                    id={albumMenuId}
+                    class="action-menu"
+                    aria-labelledby={`${albumMenuId}-title`}
+                    closedby="closerequest"
+                    use:swipeToDismiss
+                    onclick={(event) => event.currentTarget.close()}
+                  >
+                    <header class="action-menu-heading">
+                      <strong id={`${albumMenuId}-title`} class="type-title">
+                        {album.name}
+                      </strong>
+                    </header>
+                    <div class="track-list">
+                      <button
+                        type="button"
+                        class="track-item action-menu-item"
+                        onclick={() => playAlbum(artist, album)}
+                      >
+                        {@render icon("play")}
+                        <span>Play</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="track-item action-menu-item"
+                        onclick={() => playNext(albumQueueItems(artist, album))}
+                      >
+                        {@render icon("next")}
+                        <span>Play next</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="track-item action-menu-item"
+                        onclick={() => playLast(albumQueueItems(artist, album))}
+                      >
+                        {@render icon("plus")}
+                        <span>Play last</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="track-item action-menu-item"
+                        onclick={() => downloadAlbum(artist, album)}
+                      >
+                        {@render icon("download")}
+                        <span>Download</span>
+                      </button>
+                    </div>
+                    <button type="button" class="button" data-variant="neutral">
+                      Cancel
+                    </button>
+                  </dialog>
                 </span>
               </article>
             {:else}
@@ -1529,8 +1270,9 @@
             data-size="md"
             data-variant="neutral"
             href={router.href(connectedHost ? "/library" : "/settings")}
-            >{connectedHost ? "Open library" : "Open settings"}</a
           >
+            {connectedHost ? "Open library" : "Open settings"}
+          </a>
         </div>
       {/if}
     </section>
@@ -1599,9 +1341,11 @@
             </p>
             {#if albumGenres(album).length > 0}
               <div class="genre-list">
-                {#each albumGenres(album) as genre}<span class="type-caption"
-                    >{genre}</span
-                  >{/each}
+                {#each albumGenres(album) as genre}
+                  <span class="type-caption">
+                    {genre}
+                  </span>
+                {/each}
               </div>
             {/if}
           </div>
@@ -1625,13 +1369,14 @@
             onclick={(event) => event.currentTarget.close()}
           >
             <header class="action-menu-heading">
-              <strong id="album-page-menu-title" class="type-title">{album.name}</strong>
+              <strong id="album-page-menu-title" class="type-title">
+                {album.name}
+              </strong>
             </header>
             <div class="track-list">
               <button
                 type="button"
                 class="track-item action-menu-item"
-
                 onclick={() => playAlbum(artist, album)}
               >
                 {@render icon("play")}
@@ -1640,7 +1385,6 @@
               <button
                 type="button"
                 class="track-item action-menu-item"
-
                 onclick={() => playNext(albumQueueItems(artist, album))}
               >
                 {@render icon("next")}
@@ -1649,7 +1393,6 @@
               <button
                 type="button"
                 class="track-item action-menu-item"
-
                 onclick={() => playLast(albumQueueItems(artist, album))}
               >
                 {@render icon("plus")}
@@ -1658,19 +1401,15 @@
               <button
                 type="button"
                 class="track-item action-menu-item"
-
                 onclick={() => downloadAlbum(artist, album)}
               >
                 {@render icon("download")}
                 <span>Download</span>
               </button>
             </div>
-            <button
-              type="button"
-              class="button"
-              data-variant="neutral"
-
-            >Cancel</button>
+            <button type="button" class="button" data-variant="neutral">
+              Cancel
+            </button>
           </dialog>
         </div>
 
@@ -1686,11 +1425,17 @@
               <div class="track-item">
                 <span class="track-leading">
                   {#if queue[currentIndex]?.id === track.id && playbackLoading}
-                    <span role="img" aria-label="Loading playback">{@render icon("loading")}</span>
+                    <span role="img" aria-label="Loading playback">
+                      {@render icon("loading")}
+                    </span>
                   {:else if queue[currentIndex]?.id === track.id && isPlaying}
-                    <span role="img" aria-label="Playing">{@render icon("sound-bars")}</span>
+                    <span role="img" aria-label="Playing">
+                      {@render icon("sound-bars")}
+                    </span>
                   {:else if trackEngine.getStatus(track.id) === "downloading"}
-                    <span role="img" aria-label="Downloading">{@render icon("loading")}</span>
+                    <span role="img" aria-label="Downloading">
+                      {@render icon("loading")}
+                    </span>
                   {:else}
                     {track.track ?? index + 1}
                   {/if}
@@ -1703,73 +1448,71 @@
                   <span>{track.title}</span>
                 </button>
                 <span class="track-actions">
-                <button
-                  type="button"
-                  class="icon-button"
-                  data-size="sm"
-                  data-variant="ghost"
-                  commandfor={trackMenuId}
-                  command="show-modal"
-                  title={`Open menu for ${track.title}`}
-                >
-                  {@render icon("menu")}
-                </button>
-                <dialog
-                  id={trackMenuId}
-                  class="action-menu"
-                  aria-labelledby={`${trackMenuId}-title`}
-                  closedby="closerequest"
-                  use:swipeToDismiss
-                  onclick={(event) => event.currentTarget.close()}
-                >
-                  <header class="action-menu-heading">
-                    <strong id={`${trackMenuId}-title`} class="type-title">{track.title}</strong>
-                  </header>
-                  <div class="track-list">
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-
-                      onclick={() => playTrack(artist, album, track)}
-                    >
-                      {@render icon("play")}
-                      <span>Play</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-
-                      onclick={() => playNext([trackQueueItem(artist, album, track)])}
-                    >
-                      {@render icon("next")}
-                      <span>Play next</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-
-                      onclick={() => playLast([trackQueueItem(artist, album, track)])}
-                    >
-                      {@render icon("plus")}
-                      <span>Play last</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-
-                      onclick={() => downloadLibraryTrack(artist, album, track)}
-                    >
-                      {@render icon("download")}
-                      <span>Download</span>
-                    </button>
-                  </div>
                   <button
                     type="button"
-                    class="button"
-                    data-variant="neutral"
-
-                  >Cancel</button>
-                </dialog>
+                    class="icon-button"
+                    data-size="sm"
+                    data-variant="ghost"
+                    commandfor={trackMenuId}
+                    command="show-modal"
+                    title={`Open menu for ${track.title}`}
+                  >
+                    {@render icon("menu")}
+                  </button>
+                  <dialog
+                    id={trackMenuId}
+                    class="action-menu"
+                    aria-labelledby={`${trackMenuId}-title`}
+                    closedby="closerequest"
+                    use:swipeToDismiss
+                    onclick={(event) => event.currentTarget.close()}
+                  >
+                    <header class="action-menu-heading">
+                      <strong id={`${trackMenuId}-title`} class="type-title">
+                        {track.title}
+                      </strong>
+                    </header>
+                    <div class="track-list">
+                      <button
+                        type="button"
+                        class="track-item action-menu-item"
+                        onclick={() => playTrack(artist, album, track)}
+                      >
+                        {@render icon("play")}
+                        <span>Play</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="track-item action-menu-item"
+                        onclick={() =>
+                          playNext([trackQueueItem(artist, album, track)])}
+                      >
+                        {@render icon("next")}
+                        <span>Play next</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="track-item action-menu-item"
+                        onclick={() =>
+                          playLast([trackQueueItem(artist, album, track)])}
+                      >
+                        {@render icon("plus")}
+                        <span>Play last</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="track-item action-menu-item"
+                        onclick={() =>
+                          downloadLibraryTrack(artist, album, track)}
+                      >
+                        {@render icon("download")}
+                        <span>Download</span>
+                      </button>
+                    </div>
+                    <button type="button" class="button" data-variant="neutral">
+                      Cancel
+                    </button>
+                  </dialog>
                 </span>
               </div>
             {:else}
@@ -1792,8 +1535,9 @@
             data-size="md"
             data-variant="neutral"
             href={router.href(connectedHost ? "/library" : "/settings")}
-            >{connectedHost ? "Open library" : "Open settings"}</a
           >
+            {connectedHost ? "Open library" : "Open settings"}
+          </a>
         </div>
       {/if}
     </section>
@@ -1840,57 +1584,57 @@
             command="show-modal"
             title="Open player"
           >
-          <span class="mini-art">
-            {#if queue[currentIndex >= 0 ? currentIndex : 0].coverArt}
-              {@const cover = coverEngine.getCover({
-                candidates: [
-                  queue[currentIndex >= 0 ? currentIndex : 0].coverArt,
-                ],
-                allowNetwork: !offlineMode,
-              })}
-              {#if cover.source}
-                <img
-                  src={cover.source}
-                  alt=""
-                  loading="lazy"
-                  onload={cover.cache}
-                />
+            <span class="mini-art">
+              {#if queue[currentIndex >= 0 ? currentIndex : 0].coverArt}
+                {@const cover = coverEngine.getCover({
+                  candidates: [
+                    queue[currentIndex >= 0 ? currentIndex : 0].coverArt,
+                  ],
+                  allowNetwork: !offlineMode,
+                })}
+                {#if cover.source}
+                  <img
+                    src={cover.source}
+                    alt=""
+                    loading="lazy"
+                    onload={cover.cache}
+                  />
+                {:else}
+                  <span>{@render icon("music")}</span>
+                {/if}
               {:else}
                 <span>{@render icon("music")}</span>
               {/if}
-            {:else}
-              <span>{@render icon("music")}</span>
-            {/if}
-          </span>
-          <span class="mini-copy stack-xs">
-            <strong class="type-title"
-              >{queue[currentIndex >= 0 ? currentIndex : 0].title}</strong
-            >
-            <small class="type-small muted"
-              >{queue[currentIndex >= 0 ? currentIndex : 0].artist}</small
-            >
-          </span>
+            </span>
+            <span class="mini-copy stack-xs">
+              <strong class="type-title">
+                {queue[currentIndex >= 0 ? currentIndex : 0].title}
+              </strong>
+              <small class="type-small muted">
+                {queue[currentIndex >= 0 ? currentIndex : 0].artist}
+              </small>
+            </span>
           </button>
           <button
             type="button"
             class="icon-button"
             data-size="md"
             data-variant="primary"
-            onclick={togglePlayback}
+            onclick={() => playback.toggle()}
             title={isPlaying ? "Pause" : "Play"}
           >
-          {#if playbackLoading}
-            {@render icon("loading")}
-          {:else if isPlaying}
-            {@render icon("pause")}
-          {:else}
-            {@render icon("play")}
-          {/if}
+            {#if playbackLoading}
+              {@render icon("loading")}
+            {:else if isPlaying}
+              {@render icon("pause")}
+            {:else}
+              {@render icon("play")}
+            {/if}
           </button>
         </div>
-        <span class="mini-progress"
-          ><span style:width={`${playbackPercent()}%`}></span></span
-        >
+        <span class="mini-progress">
+          <span style:width={`${playbackPercent()}%`}></span>
+        </span>
       </div>
     {/if}
   {/snippet}

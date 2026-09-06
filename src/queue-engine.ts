@@ -29,6 +29,20 @@ export class QueueEngine {
   #saveTimer?: ReturnType<typeof setTimeout>;
   #status: QueueEngineStatus = "idle";
   #tracks: readonly QueueTrack[] = [];
+  #listeners = new Set<() => void>();
+
+  subscribe(listener: () => void) {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  }
+
+  #notify() {
+    this.#update();
+    for (const listener of this.#listeners) listener();
+  }
+
   #update = () => {};
   #subscribe = createSubscriber((update) => {
     this.#update = update;
@@ -66,7 +80,7 @@ export class QueueEngine {
     this.#current = state.current;
     this.#position = state.position;
     this.#tracks = [...state.tracks];
-    this.#update();
+    this.#notify();
   }
 
   #state(): QueueState {
@@ -84,7 +98,7 @@ export class QueueEngine {
     const generation = ++this.#generation;
     this.#error = undefined;
     this.#status = "loading";
-    this.#update();
+    this.#notify();
     client
       .getPlayQueue()
       .then((queue) => {
@@ -102,13 +116,13 @@ export class QueueEngine {
           })),
         });
         this.#status = "ready";
-        this.#update();
+        this.#notify();
       })
       .catch((error) => {
         if (generation !== this.#generation) return;
         this.#error = error;
         this.#status = "error";
-        this.#update();
+        this.#notify();
       });
   }
 
@@ -120,7 +134,7 @@ export class QueueEngine {
 
     this.#error = undefined;
     this.#status = "saving";
-    this.#update();
+    this.#notify();
     try {
       await client.savePlayQueue({
         current: state.current,
@@ -134,10 +148,11 @@ export class QueueEngine {
       this.#error = error;
       this.#status = "error";
     }
-    this.#update();
+    this.#notify();
   }
 
   update(state: QueueState) {
+    this.#generation += 1;
     this.#publish(state);
     this.save();
   }
@@ -145,7 +160,7 @@ export class QueueEngine {
   setPosition(position: number) {
     if (position === this.#position) return;
     this.#position = position;
-    this.#update();
+    this.#notify();
   }
 
   save() {
@@ -177,7 +192,7 @@ export class QueueEngine {
     else {
       this.#generation += 1;
       this.#status = "idle";
-      this.#update();
+      this.#notify();
     }
   }
 
@@ -186,6 +201,6 @@ export class QueueEngine {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
     this.#status = "idle";
-    this.#update();
+    this.#notify();
   }
 }
