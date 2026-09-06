@@ -222,13 +222,32 @@ input {
   line-height: 1.5rem;
 }
 
-.pwa-update {
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.webapp-updater:not(:popover-open) {
+  display: none;
+}
+
+.webapp-updater {
   position: fixed;
-  z-index: 40;
+  box-sizing: border-box;
   top: max(var(--space-sm), env(safe-area-inset-top));
+  bottom: auto;
   inset-inline: var(--space-sm);
+  width: auto;
   max-width: 30rem;
-  margin-inline: auto;
+  margin: 0 auto;
+  color: var(--color-text-primary);
   padding: var(--space-md);
   border: 1px solid var(--color-border-strong);
   border-radius: 0.9rem;
@@ -236,7 +255,7 @@ input {
   box-shadow: 0 0.75rem 2rem var(--color-shadow-raised);
 }
 
-.pwa-update-actions {
+.webapp-updater-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);

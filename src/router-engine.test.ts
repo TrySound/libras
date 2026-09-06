@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouterEngine } from "./router-engine";
 
 class TestURLPattern {
@@ -32,6 +32,8 @@ beforeEach(() => {
   vi.stubGlobal("URLPattern", TestURLPattern);
 });
 
+afterEach(() => vi.unstubAllGlobals());
+
 const library = { pattern: "/library", name: "library" };
 const artist = { pattern: "/library/artist/:artistId", name: "artist" };
 const album = {
@@ -42,6 +44,41 @@ const player = { pattern: "/player", name: "player" };
 const routes = [album, artist, library, player];
 
 describe("router engine", () => {
+  it.each(["reload", "push", "replace", "traverse"] as const)(
+    "leaves reloads to the browser while routing hash navigation: %s",
+    (navigationType) => {
+      const navigation = new EventTarget();
+      const location = new URL("https://app.example/#/library");
+      const scrollTo = vi.fn();
+      vi.stubGlobal("window", { navigation, location, scrollTo });
+      const router = new RouterEngine(routes, library);
+      router.start();
+      const intercept = vi.fn((options: { handler: () => void }) => options.handler());
+      const event = new Event("navigate");
+      Object.assign(event, {
+        navigationType,
+        canIntercept: true,
+        destination: {
+          url: navigationType === "reload" ? location.href : "https://app.example/#/player",
+        },
+        intercept,
+      });
+      try {
+        navigation.dispatchEvent(event);
+        if (navigationType === "reload") {
+          expect(intercept).not.toHaveBeenCalled();
+          expect(scrollTo).not.toHaveBeenCalled();
+          expect(router.match.route).toBe(library);
+        } else {
+          expect(intercept).toHaveBeenCalledOnce();
+          expect(router.match.route).toBe(player);
+        }
+      } finally {
+        router.destroy();
+      }
+    },
+  );
+
   it("resolves user-defined routes with decoded parameters", () => {
     const router = new RouterEngine(routes, library);
 

@@ -32,6 +32,7 @@ export class RouterEngine<Route extends RouteDefinition> {
     const destination = new URL(event.destination.url);
     if (
       !event.canIntercept ||
+      event.navigationType === "reload" ||
       destination.origin !== window.location.origin ||
       !destination.hash.startsWith("#/")
     )

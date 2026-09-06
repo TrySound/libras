@@ -2,7 +2,7 @@
   import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
   import { PlaybackEngine } from "./playback-engine";
-  import PwaUpdate from "./pwa-update.svelte";
+  import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
   import {
@@ -1645,4 +1645,4 @@
   {/snippet}
 </main>
 
-<PwaUpdate />
+<WebappUpdater />
