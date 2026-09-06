@@ -46,14 +46,16 @@ const routes = [album, artist, library, player];
 describe("router engine", () => {
   it.each(["reload", "push", "replace", "traverse"] as const)(
     "leaves reloads to the browser while routing hash navigation: %s",
-    (navigationType) => {
+    async (navigationType) => {
       const navigation = new EventTarget();
       const location = new URL("https://app.example/#/library");
       const scrollTo = vi.fn();
       vi.stubGlobal("window", { navigation, location, scrollTo });
       const router = new RouterEngine(routes, library);
       router.start();
-      const intercept = vi.fn((options: { handler: () => void }) => options.handler());
+      const intercept = vi.fn((options: { handler: () => void | Promise<void>; scroll?: string }) =>
+        options.handler(),
+      );
       const event = new Event("navigate");
       Object.assign(event, {
         navigationType,
@@ -71,6 +73,10 @@ describe("router engine", () => {
           expect(router.match.route).toBe(library);
         } else {
           expect(intercept).toHaveBeenCalledOnce();
+          expect(intercept.mock.calls[0][0].scroll).toBeUndefined();
+          expect(intercept.mock.results[0].value).toBeInstanceOf(Promise);
+          await intercept.mock.results[0].value;
+          expect(scrollTo).not.toHaveBeenCalled();
           expect(router.match.route).toBe(player);
         }
       } finally {

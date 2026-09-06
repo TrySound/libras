@@ -1,3 +1,4 @@
+import { tick } from "svelte";
 import { createSubscriber } from "svelte/reactivity";
 
 export type RouteParams = Record<string, string | undefined>;
@@ -39,9 +40,10 @@ export class RouterEngine<Route extends RouteDefinition> {
       return;
 
     event.intercept({
-      handler: () => {
-        window.scrollTo({ top: 0, behavior: "instant" });
+      handler: async () => {
         this.#setMatch(destination);
+        // Let the browser restore scroll after Svelte renders the destination.
+        await tick();
       },
     });
   };
