@@ -35,7 +35,10 @@
   const queueEngine = new QueueEngine();
   let navigate = $state<RouterNavigate>(() => {});
   let artists = $derived(metadataEngine.getArtists());
-  let queue = $derived(queueEngine.tracks.map((id) => metadataEngine.getTrack(id)).filter((track) => track !== undefined));
+  let queue = $derived(queueEngine.tracks.flatMap((id, index) => {
+    const track = metadataEngine.getTrack(id);
+    return track && (!offlineMode || trackEngine.getStatus(id) === "downloaded") ? [{ track, index }] : [];
+  }));
   let activeAuth = $state<SavedAuth | null>(null);
   let activeClient = $state<SubsonicClient>();
   const coverEngine = new CoverEngine(metadataEngine);
@@ -45,6 +48,7 @@
     metadata: metadataEngine,
     tracks: trackEngine,
     covers: coverEngine,
+    isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
   });
   let playbackLoading = $derived(
     ["loading", "buffering", "seeking"].includes(playback.status),
@@ -162,12 +166,12 @@
   function playNext(tracks: readonly Track[]) {
     const items = availableTracks(tracks);
     if (items.length === 0) return;
-    if (queue.length === 0) {
+    if (queueEngine.tracks.length === 0) {
       replaceQueueAndPlay(items);
       return;
     }
 
-    const insertAt = Math.max(0, playback.currentIndex + 1);
+    const insertAt = Math.max(0, queueEngine.index + 1);
     queueEngine.update({
       index: queueEngine.index,
       position: playback.position,
@@ -178,7 +182,7 @@
   function playLast(tracks: readonly Track[]) {
     const items = availableTracks(tracks);
     if (items.length === 0) return;
-    if (queue.length === 0) {
+    if (queueEngine.tracks.length === 0) {
       replaceQueueAndPlay(items);
       return;
     }
@@ -241,23 +245,9 @@
 
   async function applyOfflineLibrary() {
     await trackEngine.ready();
-    if (!activeAuth || !offlineMode) return;
-
-    const currentTrackId = playback.track?.id;
-    const offlineQueue = queue.filter(
-      (track) => trackEngine.getStatus(track.id) === "downloaded",
-    );
-    if (offlineQueue.length === queue.length) return;
-    const offlineIndex = currentTrackId && trackEngine.getStatus(currentTrackId) === "downloaded"
-      ? queue.slice(0, playback.currentIndex).filter((track) => trackEngine.getStatus(track.id) === "downloaded").length
-      : -1;
-
-    if (currentTrackId && offlineIndex < 0) playback.stop();
-    queueEngine.update({
-      index: offlineIndex,
-      position: offlineIndex >= 0 ? playback.position : 0,
-      tracks: offlineQueue.map((track) => track.id),
-    });
+    if (offlineMode && queueEngine.current && trackEngine.getStatus(queueEngine.current) !== "downloaded") {
+      playback.pause();
+    }
   }
 
   async function setOfflineMode(enabled: boolean) {
@@ -740,7 +730,7 @@
             max={Number.isFinite(playback.duration) ? playback.duration : 0}
             step="0.1"
             value={playback.position}
-            disabled={!playback.duration}
+            disabled={!playback.duration || (offlineMode && playback.track && trackEngine.getStatus(playback.track.id) !== "downloaded")}
             oninput={(event) =>
               playback.seek(event.currentTarget.valueAsNumber)}
           />
@@ -818,7 +808,7 @@
               {queue.length} track{queue.length === 1 ? "" : "s"}
             </h2>
           </div>
-          {#if queue.length > 0}
+          {#if queueEngine.tracks.length > 0}
             <button
               type="button"
               class="button"
@@ -830,13 +820,13 @@
         </div>
         {#if queue.length > 0}
           <div class="track-list">
-            {#each queue as item, index}
-              {@const downloadStatus = trackEngine.getStatus(item.id)}
+            {#each queue as { track, index }, visibleIndex}
+              {@const downloadStatus = trackEngine.getStatus(track.id)}
               <div class="track-item">
                 <button
                   type="button"
                   class="track-target"
-                  aria-label={`Play ${item.title}`}
+                  aria-label={`Play ${track.title}`}
                   onclick={() => playback.playIndex(index)}
                 ></button>
                 <span class="track-leading">
@@ -861,15 +851,17 @@
                       {@render icon("clock")}
                     </span>
                   {:else}
-                    {index + 1}
+                    {visibleIndex + 1}
                   {/if}
                 </span>
                 <span class="track-content">
-                  <span>{item.title}</span>
+                  <span>{track.title}</span>
                 </span>
               </div>
             {/each}
           </div>
+        {:else if queueEngine.tracks.length > 0}
+          <p class="type-body muted">No available tracks.</p>
         {:else}
           <p class="type-body muted">The queue is empty.</p>
         {/if}

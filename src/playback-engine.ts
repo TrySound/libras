@@ -48,6 +48,7 @@ export interface PlaybackEngineOptions {
   covers: Pick<CoverEngine, "getTrackCover" | "subscribe">;
   mediaSession?: MediaSession;
   createAudio?: () => HTMLAudioElement;
+  isAvailable?: (id: string) => boolean;
 }
 
 export class PlaybackEngine {
@@ -59,6 +60,7 @@ export class PlaybackEngine {
   #media?: PlayerMediaSession;
   #audio?: HTMLAudioElement;
   #createAudio: () => HTMLAudioElement;
+  #isAvailable: (id: string) => boolean;
   #cleanup?: () => void;
   #duration = 0;
   #playing = false;
@@ -87,10 +89,23 @@ export class PlaybackEngine {
     this.#covers = options.covers;
     this.#nativeSession = options.mediaSession;
     this.#createAudio = options.createAudio ?? (() => new Audio());
+    this.#isAvailable = options.isAvailable ?? (() => true);
   }
 
-  get #queueTracks() {
-    return this.#queue.tracks.filter((id) => this.#library.getTrack(id));
+  #canPlay(index: number) {
+    const id = this.#queue.tracks[index];
+    return id !== undefined && !!this.#library.getTrack(id) && this.#isAvailable(id);
+  }
+
+  #nextIndex(after: number) {
+    return this.#queue.tracks.findIndex((_id, index) => index > after && this.#canPlay(index));
+  }
+
+  #previousIndex() {
+    for (let index = this.#queue.index - 1; index >= 0; index--) {
+      if (this.#canPlay(index)) return index;
+    }
+    return -1;
   }
 
   get track() {
@@ -100,9 +115,7 @@ export class PlaybackEngine {
   }
   get currentIndex() {
     this.#subscribe();
-    if (!this.track) return -1;
-    return this.#queue.tracks.slice(0, this.#queue.index).filter((id) => this.#library.getTrack(id))
-      .length;
+    return this.#queue.index;
   }
   get position() {
     this.#subscribe();
@@ -126,11 +139,11 @@ export class PlaybackEngine {
   }
   get hasNext() {
     this.#subscribe();
-    return this.currentIndex >= 0 && this.currentIndex + 1 < this.#queueTracks.length;
+    return this.#queue.index >= 0 && this.#nextIndex(this.#queue.index) >= 0;
   }
   get hasPrevious() {
     this.#subscribe();
-    return this.currentIndex > 0;
+    return this.#previousIndex() >= 0;
   }
 
   #publish() {
@@ -186,11 +199,6 @@ export class PlaybackEngine {
   }
 
   #queueChanged = () => {
-    const tracks = this.#queueTracks;
-    if (tracks.length !== this.#queue.tracks.length) {
-      this.#queue.update({ tracks, index: this.currentIndex, position: this.#queue.position });
-      return;
-    }
     const id = this.track?.id;
     if (id !== this.#id) {
       this.#id = id;
@@ -356,7 +364,9 @@ export class PlaybackEngine {
   async #load(position: number, autoplay: boolean, forceTranscode = false, seeking = false) {
     const audio = this.#audio;
     const track = this.track;
-    if (!audio || !track) return;
+    if (!audio || !track || !this.#canPlay(this.#queue.index)) return;
+    this.#id = track.id;
+    this.#artwork();
     const download = {
       id: track.id,
       title: track.title,
@@ -431,8 +441,8 @@ export class PlaybackEngine {
 
   async play() {
     if (!this.#audio) return;
-    if (!this.track && this.#queue.tracks.length) {
-      await this.playIndex(0);
+    if (!this.#canPlay(this.#queue.index)) {
+      await this.playIndex(this.#nextIndex(-1));
       return;
     }
     if (!this.track) return;
@@ -475,10 +485,9 @@ export class PlaybackEngine {
   }
 
   async playIndex(index: number) {
-    const tracks = this.#queueTracks;
-    if (!Number.isInteger(index) || !tracks[index]) return;
+    if (!Number.isInteger(index) || !this.#canPlay(index)) return;
     this.#queue.update({
-      tracks,
+      tracks: this.#queue.tracks,
       index,
       position: 0,
     });
@@ -486,16 +495,16 @@ export class PlaybackEngine {
   }
 
   async next() {
-    if (this.hasNext) await this.playIndex(this.currentIndex + 1);
+    if (this.hasNext) await this.playIndex(this.#nextIndex(this.#queue.index));
   }
   async previous() {
-    if (!this.track) return;
-    if (this.position > 3 || !this.hasPrevious) await this.seek(0);
-    else await this.playIndex(this.currentIndex - 1);
+    if (this.#canPlay(this.#queue.index) && (this.position > 3 || !this.hasPrevious))
+      await this.seek(0);
+    else if (this.hasPrevious) await this.playIndex(this.#previousIndex());
   }
 
   async seek(position: number) {
-    if (!Number.isFinite(position) || !this.#audio || !this.track) return;
+    if (!Number.isFinite(position) || !this.#audio || !this.#canPlay(this.#queue.index)) return;
     const duration = this.duration;
     position = Math.max(0, duration > 0 ? Math.min(position, duration) : position);
     const audio = this.#audio;

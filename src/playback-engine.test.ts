@@ -42,7 +42,7 @@ const song = (id: string): Track => ({
   genres: [],
 });
 const cleanups: (() => void)[] = [];
-function setup(mount = true) {
+function setup(mount = true, isAvailable: (id: string) => boolean = () => true) {
   vi.useFakeTimers();
   const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
   vi.stubGlobal("document", doc);
@@ -100,6 +100,7 @@ function setup(mount = true) {
   const createAudio = vi.fn(() => audio as unknown as HTMLAudioElement);
   const player = new PlaybackEngine({
     createAudio,
+    isAvailable,
     queue,
     metadata,
     tracks,
@@ -116,6 +117,9 @@ function setup(mount = true) {
     metadata,
     removeTrack(id: string) {
       libraryTracks.delete(id);
+    },
+    restoreTrack(id: string) {
+      libraryTracks.set(id, song(id));
     },
     renameTrack(id: string, title: string) {
       libraryTracks.set(id, { ...libraryTracks.get(id)!, title });
@@ -168,6 +172,82 @@ function setupShortcuts() {
 }
 
 describe("playback engine", () => {
+  it("does not upload deletions when a server queue arrives before fresh metadata", async () => {
+    const { player, queue, audio, restoreTrack } = setup();
+    const { SubsonicClient } = await import("./subsonic-client");
+    const fetcher = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            "subsonic-response": {
+              status: "ok",
+              playQueue: {
+                current: "fresh",
+                position: 12000,
+                entry: [{ id: "a" }, { id: "fresh" }],
+              },
+            },
+          }),
+        ),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    await queue.setClient(
+      new SubsonicClient({
+        host: "https://music.example.com",
+        username: "listener",
+        token: "token",
+        salt: "salt",
+      }),
+    );
+    await queue.flush();
+    expect(queue.tracks).toEqual(["a", "fresh"]);
+    expect(queue.index).toBe(1);
+    expect(queue.position).toBe(12);
+    expect(player.track).toBeUndefined();
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(audio.play).not.toHaveBeenCalled();
+    restoreTrack("fresh");
+    expect(player.track?.id).toBe("fresh");
+    expect(fetcher).toHaveBeenCalledOnce();
+    await player.play();
+    audio.currentTime = 13;
+    audio.dispatchEvent(new Event("timeupdate"));
+    expect(player.playing).toBe(true);
+    expect(queue.tracks).toEqual(["a", "fresh"]);
+  });
+
+  it("uses original indexes for duplicate selection and skips unavailable occurrences", async () => {
+    const { player, queue, restoreTrack } = setup();
+    queue.update({ tracks: ["missing", "a", "missing", "a"], index: 1, position: 0 });
+    await player.next();
+    expect(player.currentIndex).toBe(3);
+    expect(player.hasNext).toBe(false);
+    await player.previous();
+    expect(player.currentIndex).toBe(1);
+    restoreTrack("missing");
+    await player.next();
+    expect(player.currentIndex).toBe(2);
+    expect(player.track?.id).toBe("missing");
+    expect(queue.tracks).toEqual(["missing", "a", "missing", "a"]);
+  });
+
+  it("applies availability restrictions without changing queue membership", async () => {
+    const available = new Set(["b"]);
+    const { player, queue, tracks } = setup(true, (id) => available.has(id));
+    await player.playIndex(0);
+    await player.seek(50);
+    expect(tracks.getSource).not.toHaveBeenCalled();
+    expect(queue.index).toBe(0);
+    expect(queue.position).toBe(0);
+    await player.play();
+    expect(player.currentIndex).toBe(1);
+    expect(queue.tracks).toEqual(["a", "b"]);
+    available.add("a");
+    await player.previous();
+    expect(player.currentIndex).toBe(0);
+    expect(queue.tracks).toEqual(["a", "b"]);
+  });
+
   it("preserves a restored duplicate index and position without autoplay", async () => {
     const { player, queue, audio, metadata, session } = setup(false);
     metadata.getTrack("a")!.duration = 200;
@@ -202,7 +282,7 @@ describe("playback engine", () => {
   });
 
   it.each([false, true])(
-    "drops unknown IDs for queues received before or after mounting (mounted: %s)",
+    "preserves unknown IDs and selection before or after mounting (mounted: %s)",
     (mounted) => {
       const { player, queue, audio } = setup(mounted);
       queue.update({ tracks: ["missing", "a", "b"], index: 1, position: 12 });
@@ -210,13 +290,15 @@ describe("playback engine", () => {
         expect(queue.tracks).toEqual(["missing", "a", "b"]);
         player.mount();
       }
-      expect(queue.tracks).toEqual(["a", "b"]);
+      expect(queue.tracks).toEqual(["missing", "a", "b"]);
+      expect(player.currentIndex).toBe(1);
       expect(player.track?.id).toBe("a");
       expect(player.position).toBe(12);
       queue.update({ tracks: ["missing", "b"], index: 0, position: 30 });
-      expect(queue.tracks).toEqual(["b"]);
+      expect(queue.tracks).toEqual(["missing", "b"]);
       expect(player.track).toBeUndefined();
-      expect(player.position).toBe(0);
+      expect(player.currentIndex).toBe(0);
+      expect(player.position).toBe(30);
       expect(player.error).toBeUndefined();
       expect(audio.play).not.toHaveBeenCalled();
     },
@@ -240,18 +322,18 @@ describe("playback engine", () => {
     expect(audio.play).toHaveBeenCalledOnce();
   });
 
-  it("cleans up a missing selected track on the next queue event without autoplaying", async () => {
+  it("stops unavailable playback without deleting its saved selection or position", async () => {
     const { player, queue, removeTrack, audio } = setup();
     await player.play();
     queue.setPosition(20);
     removeTrack("a");
     expect(player.track).toBeUndefined();
-    expect(player.currentIndex).toBe(-1);
+    expect(player.currentIndex).toBe(0);
     queue.setPosition(21);
-    expect(queue.tracks).toEqual(["b"]);
+    expect(queue.tracks).toEqual(["a", "b"]);
     expect(player.track).toBeUndefined();
-    expect(player.currentIndex).toBe(-1);
-    expect(player.position).toBe(0);
+    expect(player.currentIndex).toBe(0);
+    expect(player.position).toBe(21);
     expect(player.playing).toBe(false);
     expect(player.error).toBeUndefined();
     expect(audio.src).toBe("");
@@ -296,9 +378,9 @@ describe("playback engine", () => {
     removeTrack("b");
     expect(player.hasNext).toBe(true);
     await player.next();
-    expect(queue.tracks).toEqual(["a", "c"]);
+    expect(queue.tracks).toEqual(["a", "b", "c"]);
     expect(player.track?.id).toBe("c");
-    expect(player.currentIndex).toBe(1);
+    expect(player.currentIndex).toBe(2);
   });
 
   describe("keyboard shortcuts", () => {
