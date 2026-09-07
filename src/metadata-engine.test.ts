@@ -110,6 +110,21 @@ afterEach(() => {
 });
 
 describe("metadata engine", () => {
+  it("allows callers to await connection, forced refresh, and network revalidation", async () => {
+    installMetadataStorage();
+    vi.stubGlobal("fetch", serveLibrary());
+    const engine = new MetadataEngine();
+    await engine.setClient(new SubsonicClient(auth));
+    expect(engine.status).toBe("ready");
+    expect(engine.getTrack("song")).toBeDefined();
+    await engine.refresh();
+    expect(engine.status).toBe("ready");
+    await engine.setNetwork("offline");
+    await engine.setNetwork("online");
+    expect(engine.status).toBe("ready");
+    engine.destroy();
+  });
+
   it("normalizes transport data and keeps album and track artists distinct", async () => {
     const storage = installMetadataStorage();
     vi.stubGlobal(

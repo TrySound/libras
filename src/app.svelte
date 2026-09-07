@@ -38,7 +38,7 @@
   let queue = $derived(queueEngine.tracks.map((id) => metadataEngine.getTrack(id)).filter((track) => track !== undefined));
   let activeAuth = $state<SavedAuth | null>(null);
   let activeClient = $state<SubsonicClient>();
-  const coverEngine = new CoverEngine();
+  const coverEngine = new CoverEngine(metadataEngine);
   const trackEngine = new TrackEngine();
   const playback = new PlaybackEngine({
     queue: queueEngine,
@@ -95,7 +95,9 @@
       activeAuth = savedAuth;
       host = savedAuth.host;
       username = savedAuth.username;
-      void metadataEngine.restore({ host: savedAuth.host, username: savedAuth.username }).then(() => {
+      const account = { host: savedAuth.host, username: savedAuth.username };
+      void Promise.all([metadataEngine.restore(account), coverEngine.restore(account)]).then(async () => {
+        await coverEngine.refresh();
         if (!lifetime.signal.aborted) loadArtists(savedAuth);
       });
     } catch {
@@ -112,20 +114,6 @@
 
   function albumPath(artist: Artist, album: Album) {
     return `${artistPath(artist)}/album/${encodeURIComponent(album.id)}`;
-  }
-
-  function artistCoverArts(artist: Artist) {
-    return [
-      artist.artworkId,
-      ...metadataEngine.getArtistAlbums(artist.id).flatMap((album) => [
-        album.artworkId,
-        ...metadataEngine.getAlbumTracks(album.id).map((track) => track.artworkId),
-      ]),
-    ];
-  }
-
-  function albumCoverArts(album: Album) {
-    return [album.artworkId, ...metadataEngine.getAlbumTracks(album.id).map((track) => track.artworkId)];
   }
 
   function uniqueGenres(genres: string[]) {
@@ -210,15 +198,13 @@
   async function downloadTrack(track: Track) {
     try {
       const album = metadataEngine.getAlbum(track.albumId);
-      const artist = album && metadataEngine.getArtist(album.artistId);
       await trackEngine.cache({
         id: track.id,
         title: track.title,
         artist: metadataEngine.getArtist(track.artistId)?.name,
         album: album?.title,
         contentType: track.mimeType,
-        coverArt: track.artworkId ?? album?.artworkId ?? artist?.artworkId ??
-          (artist && metadataEngine.getArtistAlbums(artist.id).find((album) => album.artworkId)?.artworkId),
+        coverArt: coverEngine.getTrackCover(track.id, { allowNetwork: false }).artworkId,
       });
     } catch (caught) {
       downloadError =
@@ -278,10 +264,12 @@
     localStorage.setItem(offlineModeStorageKey, String(enabled));
 
     const network = enabled ? "offline" : "online";
-    metadataEngine.setNetwork(network);
+    const refresh = metadataEngine.setNetwork(network);
     queueEngine.setNetwork(network);
     if (enabled) await applyOfflineLibrary();
     else if (activeAuth) loadArtists(activeAuth);
+    await refresh;
+    await coverEngine.refresh();
   }
 
   function collectionIsDownloaded(items: readonly Track[]) {
@@ -340,7 +328,7 @@
     loadArtists();
   }
 
-  function loadArtists(savedAuth?: SavedAuth, forceRefresh = false) {
+  async function loadArtists(savedAuth?: SavedAuth, forceRefresh = false) {
     connectionStatus = "connecting";
     error = "";
     refreshError = "";
@@ -360,10 +348,11 @@
 
       pendingConnection = { auth: credentials, client };
       const network = offlineMode ? "offline" : "online";
-      metadataEngine.setNetwork(network);
+      const refresh = metadataEngine.setNetwork(network);
       queueEngine.setNetwork(network);
-      metadataEngine.setClient(client);
-      if (forceRefresh) metadataEngine.refresh();
+      await Promise.all([refresh, metadataEngine.setClient(client)]);
+      if (forceRefresh) await metadataEngine.refresh();
+      await coverEngine.refresh();
     } catch (caught) {
       pendingConnection = undefined;
       connectionStatus = "error";
@@ -695,9 +684,8 @@
     <section class="view player-view">
       <div class="player-main">
         <div class="artwork">
-          {#if playback.artworkId}
-            {@const cover = coverEngine.getCover({
-              candidates: [playback.artworkId],
+          {#if playback.track}
+            {@const cover = coverEngine.getTrackCover(playback.track.id, {
               allowNetwork: !offlineMode,
             })}
             {#if cover.source}
@@ -922,6 +910,7 @@
         <div class="artist-grid">
           {#each visibleArtists as artist, index}
             {@const menuId = `artist-menu-${index}`}
+            {@const cover = coverEngine.getArtistCover(artist.id, { allowNetwork: !offlineMode })}
             <article class="artist-card">
               <a
                 class="artist-main"
@@ -932,21 +921,8 @@
                 title={`${artist.name} — hold for actions`}
               >
                 <span class="cover artist-cover">
-                  {#if artistCoverArts(artist).some(Boolean)}
-                    {@const cover = coverEngine.getCover({
-                      candidates: artistCoverArts(artist),
-                      allowNetwork: !offlineMode,
-                    })}
-                    {#if cover.source}
-                      <img
-                        src={cover.source}
-                        alt=""
-                        loading="lazy"
-                        onload={cover.cache}
-                      />
-                    {:else}
-                      <span>{@render icon("music")}</span>
-                    {/if}
+                  {#if cover.source}
+                    <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
                   {:else}
                     <span>{@render icon("music")}</span>
                   {/if}
@@ -1069,8 +1045,7 @@
 
   <section class="view library-view">
     {#if activeClient && !error && artist}
-      {@const artwork = coverEngine.getCover({
-        candidates: artistCoverArts(artist),
+      {@const artwork = coverEngine.getArtistCover(artist.id, {
         allowNetwork: !offlineMode,
       })}
       <div class="collection-art collection-art-artist" aria-hidden="true">
@@ -1175,27 +1150,15 @@
                   (track) => trackEngine.getStatus(track.id) === "downloaded",
                 )
               : metadataEngine.getAlbumTracks(album.id)}
+            {@const cover = coverEngine.getAlbumCover(album.id, { allowNetwork: !offlineMode })}
             <article class="track-item">
               <a
                 class="track-leading album-leading"
                 href={router.href(albumPath(artist, album))}
               >
                 <span class="cover album-cover">
-                  {#if albumCoverArts(album).some(Boolean)}
-                    {@const cover = coverEngine.getCover({
-                      candidates: albumCoverArts(album),
-                      allowNetwork: !offlineMode,
-                    })}
-                    {#if cover.source}
-                      <img
-                        src={cover.source}
-                        alt=""
-                        loading="lazy"
-                        onload={cover.cache}
-                      />
-                    {:else}
-                      <span>{@render icon("music")}</span>
-                    {/if}
+                  {#if cover.source}
+                    <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
                   {:else}
                     <span>{@render icon("music")}</span>
                   {/if}
@@ -1340,8 +1303,7 @@
 
   <section class="view library-view">
     {#if activeClient && !error && artist && album}
-      {@const artwork = coverEngine.getCover({
-        candidates: albumCoverArts(album),
+      {@const artwork = coverEngine.getAlbumCover(album.id, {
         allowNetwork: !offlineMode,
       })}
       <div class="collection-art collection-art-album" aria-hidden="true">
@@ -1613,9 +1575,8 @@
           title="Open player"
         >
           <span class="mini-art">
-            {#if playback.artworkId}
-              {@const cover = coverEngine.getCover({
-                candidates: [playback.artworkId],
+            {#if playback.track}
+              {@const cover = coverEngine.getTrackCover(playback.track.id, {
                 allowNetwork: !offlineMode,
               })}
               {#if cover.source}

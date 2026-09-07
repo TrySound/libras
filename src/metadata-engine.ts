@@ -319,6 +319,11 @@ export class MetadataEngine {
     };
   });
 
+  get snapshot() {
+    this.#subscribe();
+    return this.#snapshot;
+  }
+
   getArtists() {
     this.#subscribe();
     return this.#index.getArtists();
@@ -450,7 +455,7 @@ export class MetadataEngine {
     );
   }
 
-  #refresh(force: boolean) {
+  async #refresh(force: boolean) {
     const client = this.#client;
     if (!client || this.#destroyed) return;
     const generation = ++this.#generation;
@@ -468,65 +473,57 @@ export class MetadataEngine {
       !this.#destroyed && generation === this.#generation && client === this.#client;
     this.#status = existing ? "refreshing" : "loading";
     this.#update();
-    void (async () => {
-      try {
-        const modified =
-          (await client.getIndexes(existing?.lastModified ?? undefined)) ??
-          existing?.lastModified ??
-          null;
-        if (!valid()) return;
-        if (!force && existing && modified !== null && modified === existing.lastModified) {
-          this.#status = "ready";
-          this.#update();
-          return;
-        }
-        const snapshot = await this.#fetchLibrary(client, valid, modified);
-        if (!valid()) return;
-        const committed = await this.#store.save(snapshot, valid);
-        if (!valid() || !committed) return;
-        this.#publish(committed);
+    try {
+      const modified =
+        (await client.getIndexes(existing?.lastModified ?? undefined)) ??
+        existing?.lastModified ??
+        null;
+      if (!valid()) return;
+      if (!force && existing && modified !== null && modified === existing.lastModified) {
         this.#status = "ready";
         this.#update();
-      } catch (error) {
-        if (!valid()) return;
-        if (existing) {
-          this.#status = "ready";
-          this.#warning = error;
-        } else {
-          this.#status = "error";
-          this.#error = error;
-        }
-        this.#update();
+        return;
       }
-    })();
-  }
-
-  refresh() {
-    const client = this.#client;
-    if (!client) return;
-    if (this.#restoring) {
-      void this.#restoring.then(() => {
-        if (this.#client === client) this.#refresh(true);
-      });
-    } else this.#refresh(true);
-  }
-
-  setClient(client: SubsonicClient) {
-    if (client === this.#client || this.#destroyed) return;
-    this.#client = client;
-    if (this.#restored && this.#scope === `${client.host}\n${client.username}`) {
-      this.#refresh(false);
-    } else {
-      void this.restore(client).then(() => {
-        if (this.#client === client) this.#refresh(false);
-      });
+      const snapshot = await this.#fetchLibrary(client, valid, modified);
+      if (!valid()) return;
+      const committed = await this.#store.save(snapshot, valid);
+      if (!valid() || !committed) return;
+      this.#publish(committed);
+      this.#status = "ready";
+      this.#update();
+    } catch (error) {
+      if (!valid()) return;
+      if (existing) {
+        this.#status = "ready";
+        this.#warning = error;
+      } else {
+        this.#status = "error";
+        this.#error = error;
+      }
+      this.#update();
     }
   }
 
-  setNetwork(network: MetadataNetwork) {
+  async refresh() {
+    const client = this.#client;
+    if (!client) return;
+    if (this.#restoring) await this.#restoring;
+    if (this.#client === client) return this.#refresh(true);
+  }
+
+  async setClient(client: SubsonicClient) {
+    if (client === this.#client || this.#destroyed) return;
+    this.#client = client;
+    if (!this.#restored || this.#scope !== `${client.host}\n${client.username}`) {
+      await this.restore(client);
+    }
+    if (this.#client === client) return this.#refresh(false);
+  }
+
+  async setNetwork(network: MetadataNetwork) {
     if (network === this.#network || this.#destroyed) return;
     this.#network = network;
-    if (!this.#restoring) this.#refresh(false);
+    if (!this.#restoring) return this.#refresh(false);
   }
 
   destroy() {

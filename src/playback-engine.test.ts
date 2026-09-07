@@ -59,7 +59,6 @@ function setup(mount = true) {
     getTrack: (id: string) => libraryTracks.get(id),
     getArtist: (id: string) => ({ id, name: "Artist", genres: [] }),
     getAlbum: (id: string) => ({ id, title: "Album", artistId: "artist", genres: [] }),
-    getArtistAlbums: () => [],
   };
   const queue = new QueueEngine();
   const audio = new AudioStub();
@@ -74,7 +73,12 @@ function setup(mount = true) {
   const coverListeners = new Set<() => void>();
   let artwork = "data:image/jpeg;base64,aW1hZ2U=";
   const covers = {
-    getCover: vi.fn(() => ({ source: artwork, cache: () => {} })),
+    getTrackCover: vi.fn((id: string) => ({
+      source: artwork,
+      artworkId: id,
+      cached: true,
+      cache: () => {},
+    })),
     subscribe: (listener: () => void) => {
       coverListeners.add(listener);
       return () => {
@@ -426,7 +430,7 @@ describe("playback engine", () => {
       title: "a",
       artwork: [{ src: "data:image/jpeg;base64,bmV3" }],
     });
-    expect(covers.getCover).toHaveBeenLastCalledWith({ candidates: ["a"], allowNetwork: false });
+    expect(covers.getTrackCover).toHaveBeenLastCalledWith("a", { allowNetwork: false });
   });
 
   it("advances at end but retains the final queue entry", async () => {

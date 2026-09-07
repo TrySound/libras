@@ -1,63 +1,178 @@
+import * as v from "valibot";
 import { createSubscriber } from "svelte/reactivity";
 import { SubsonicClient } from "./subsonic-client";
+import type { MetadataAccount, MetadataSnapshot, MetadataEngine } from "./metadata-engine";
 
-export interface CoverRequest {
-  candidates: readonly (string | undefined)[];
+export interface CoverOptions {
   allowNetwork: boolean;
 }
-
 export interface Cover {
   readonly source: string | undefined;
+  readonly artworkId: string | undefined;
+  readonly cached: boolean;
   readonly cache: () => void;
 }
 
-interface CachedCover {
-  etag?: string;
-  file: File;
-  lastModified?: string;
-  type: string;
-}
-
-interface CacheResult {
-  cover: CachedCover;
-  changed: boolean;
-}
-
+const idSchema = v.pipe(v.string(), v.minLength(1));
+const timeSchema = v.pipe(v.number(), v.integer(), v.minValue(0));
+const referenceSchema = v.strictObject({ id: idSchema, candidates: v.array(idSchema) });
+const imageSchema = v.strictObject({
+  id: idSchema,
+  fileName: v.pipe(v.string(), v.regex(/^[a-f0-9-]+\.image$/)),
+  type: v.pipe(v.string(), v.regex(/^image\//)),
+  size: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  cachedAt: timeSchema,
+  etag: v.optional(v.string()),
+  lastModified: v.optional(v.string()),
+});
+const catalogSchema = v.strictObject({
+  account: v.strictObject({ host: idSchema, username: idSchema }),
+  metadataSavedAt: v.nullable(timeSchema),
+  artists: v.array(referenceSchema),
+  albums: v.array(referenceSchema),
+  tracks: v.array(referenceSchema),
+  images: v.array(imageSchema),
+});
+type Catalog = v.InferOutput<typeof catalogSchema>;
+type ImageRecord = v.InferOutput<typeof imageSchema>;
+type Entity = "artists" | "albums" | "tracks" | "image";
 interface CoverEntry {
+  entity: Entity;
+  id: string;
+  allowNetwork: boolean;
   candidates: string[];
-  id?: string;
   cover: Cover;
   generation: number;
-  network?: { cacheKey: string; url: string };
+  selected?: string;
   source?: string;
+  network: boolean;
 }
 
-interface ResolvedCover {
-  id?: string;
-  network?: { cacheKey: string; url: string };
-  source?: string;
+function scope(account: MetadataAccount) {
+  return `${account.host}\n${account.username}`;
+}
+function emptyCatalog(account: MetadataAccount): Catalog {
+  return {
+    account: { host: account.host, username: account.username },
+    metadataSavedAt: null,
+    artists: [],
+    albums: [],
+    tracks: [],
+    images: [],
+  };
+}
+function parseCatalog(value: unknown, account: MetadataAccount) {
+  const catalog = v.parse(catalogSchema, value);
+  if (scope(catalog.account) !== scope(account))
+    throw new Error("The cover catalog belongs to a different account.");
+  for (const records of [catalog.artists, catalog.albums, catalog.tracks, catalog.images]) {
+    if (new Set(records.map((record) => record.id)).size !== records.length)
+      throw new Error("Duplicate IDs in the cover catalog.");
+  }
+  return catalog;
+}
+function candidates(values: readonly (string | undefined)[]) {
+  return [...new Set(values.filter((id): id is string => Boolean(id)))];
+}
+function references(snapshot: MetadataSnapshot) {
+  const albums = new Map(snapshot.albums.map((album) => [album.id, album]));
+  const artists = new Map(snapshot.artists.map((artist) => [artist.id, artist]));
+  const tracksByAlbum = new Map<string, typeof snapshot.tracks>();
+  const albumsByArtist = new Map<string, typeof snapshot.albums>();
+  for (const album of snapshot.albums) {
+    const items = albumsByArtist.get(album.artistId) ?? [];
+    items.push(album);
+    albumsByArtist.set(album.artistId, items);
+  }
+  for (const track of snapshot.tracks) {
+    const items = tracksByAlbum.get(track.albumId) ?? [];
+    items.push(track);
+    tracksByAlbum.set(track.albumId, items);
+  }
+  for (const items of albumsByArtist.values())
+    items.sort(
+      (a, b) => (a.year ?? Infinity) - (b.year ?? Infinity) || a.title.localeCompare(b.title),
+    );
+  for (const items of tracksByAlbum.values())
+    items.sort(
+      (a, b) =>
+        (a.disc ?? 1) - (b.disc ?? 1) ||
+        (a.number ?? Infinity) - (b.number ?? Infinity) ||
+        a.title.localeCompare(b.title),
+    );
+  const albumCandidates = new Map(
+    snapshot.albums.map((album) => [
+      album.id,
+      candidates([
+        album.artworkId,
+        ...(tracksByAlbum.get(album.id) ?? []).map((track) => track.artworkId),
+      ]),
+    ]),
+  );
+  const artistCandidates = new Map(
+    snapshot.artists.map((artist) => [
+      artist.id,
+      candidates([
+        artist.artworkId,
+        ...(albumsByArtist.get(artist.id) ?? []).flatMap(
+          (album) => albumCandidates.get(album.id) ?? [],
+        ),
+      ]),
+    ]),
+  );
+  const artistAlbumArtwork = new Map(
+    snapshot.artists.map((artist) => [
+      artist.id,
+      albumsByArtist.get(artist.id)?.find((album) => album.artworkId)?.artworkId,
+    ]),
+  );
+  return {
+    metadataSavedAt: snapshot.savedAt,
+    artists: [...artistCandidates].map(([id, candidates]) => ({ id, candidates })),
+    albums: [...albumCandidates].map(([id, candidates]) => ({ id, candidates })),
+    tracks: snapshot.tracks.map((track) => {
+      const album = albums.get(track.albumId);
+      const artist = album && artists.get(album.artistId);
+      return {
+        id: track.id,
+        candidates: candidates([
+          track.artworkId,
+          album?.artworkId,
+          artist?.artworkId,
+          artist && artistAlbumArtwork.get(artist.id),
+        ]),
+      };
+    }),
+  };
 }
 
 export class CoverEngine {
+  #metadata: Pick<MetadataEngine, "snapshot">;
   #client?: SubsonicClient;
-  #covers = new Map<string, CoverEntry>();
-  #downloads = new Map<string, Promise<CacheResult>>();
+
+  constructor(metadata: Pick<MetadataEngine, "snapshot">) {
+    this.#metadata = metadata;
+  }
+  #catalog?: Catalog;
+  #scope = "";
+  #ready: Promise<void> = Promise.resolve();
   #generation = 0;
+  #destroyed = false;
+  #reconcileKey = "";
+  #reconciling: Promise<void> = Promise.resolve();
+  #writes: Promise<unknown> = Promise.resolve();
+  #images = new Map<string, ImageRecord>();
+  #references = {
+    artists: new Map<string, string[]>(),
+    albums: new Map<string, string[]>(),
+    tracks: new Map<string, string[]>(),
+  };
+  #covers = new Map<string, CoverEntry>();
+  #downloads = new Map<string, Promise<void>>();
+  #loads = new Map<string, Promise<string | undefined>>();
   #objectUrls = new Map<string, string>();
+  #error: unknown;
   #listeners = new Set<() => void>();
-
-  subscribe(listener: () => void) {
-    this.#listeners.add(listener);
-    return () => {
-      this.#listeners.delete(listener);
-    };
-  }
-
-  #notify() {
-    this.#update();
-    for (const listener of this.#listeners) listener();
-  }
-
   #update = () => {};
   #subscribe = createSubscriber((update) => {
     this.#update = update;
@@ -66,273 +181,430 @@ export class CoverEngine {
     };
   });
 
-  #cache(key: string, url: string) {
-    const activeDownload = this.#downloads.get(key);
-    if (activeDownload) return activeDownload;
-
-    const download = this.#download(key, url).finally(() => this.#downloads.delete(key));
-    this.#downloads.set(key, download);
-    return download;
+  subscribe(listener: () => void) {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
   }
-
-  #cacheKey(id: string, client: SubsonicClient) {
-    return `${client.host}\n${client.username}\n${id}`;
+  #notify() {
+    this.#update();
+    for (const listener of this.#listeners) listener();
   }
-
-  async #cacheFileName(key: string) {
-    const data = new TextEncoder().encode(key);
-    const digest = await crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(
-      "",
-    );
+  get error() {
+    this.#subscribe();
+    return this.#error;
   }
-
   async #directory() {
     const root = await navigator.storage.getDirectory();
     return root.getDirectoryHandle("images", { create: true });
   }
-
-  #coverUrl(id: string, client: SubsonicClient) {
-    return client.getCoverArtUrl(id, 500);
+  async #fileName(account: MetadataAccount) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(scope(account)));
+    return `${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}.json`;
   }
-
-  async #download(key: string, url: string): Promise<CacheResult> {
-    const cached = await this.#getCached(key);
-    if (cached && !cached.etag && !cached.lastModified) {
-      return { cover: cached, changed: false };
-    }
-
-    const headers = new Headers();
-    if (cached?.etag) headers.set("If-None-Match", cached.etag);
-    if (cached?.lastModified) headers.set("If-Modified-Since", cached.lastModified);
-
-    const response = await fetch(url, { headers });
-    if (response.status === 304 && cached) return { cover: cached, changed: false };
-    if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-
+  async #read(account: MetadataAccount) {
     const directory = await this.#directory();
-    const name = await this.#cacheFileName(key);
-    const type = response.headers.get("Content-Type") ?? "image/jpeg";
-    const etag = response.headers.get("ETag") ?? undefined;
-    const lastModified = response.headers.get("Last-Modified") ?? undefined;
-    const [imageHandle, metadataHandle] = await Promise.all([
-      directory.getFileHandle(`${name}.image`, { create: true }),
-      directory.getFileHandle(`${name}.json`, { create: true }),
-    ]);
-    const [imageWritable, metadataWritable] = await Promise.all([
-      imageHandle.createWritable(),
-      metadataHandle.createWritable(),
-    ]);
-
     try {
-      await Promise.all([
-        response.body
-          ? response.body.pipeTo(imageWritable)
-          : response.blob().then(async (blob) => {
-              await imageWritable.write(blob);
-              await imageWritable.close();
-            }),
-        metadataWritable
-          .write(JSON.stringify({ etag, lastModified, type }))
-          .then(() => metadataWritable.close()),
-      ]);
-      return {
-        cover: { etag, file: await imageHandle.getFile(), lastModified, type },
-        changed: true,
-      };
+      const handle = await directory.getFileHandle(await this.#fileName(account));
+      return parseCatalog(JSON.parse(await (await handle.getFile()).text()), account);
     } catch (error) {
-      await Promise.all([
-        imageWritable.abort().catch(() => {}),
-        metadataWritable.abort().catch(() => {}),
-        directory.removeEntry(`${name}.image`).catch(() => {}),
-        directory.removeEntry(`${name}.json`).catch(() => {}),
-      ]);
+      if (error instanceof DOMException && error.name === "NotFoundError")
+        return emptyCatalog(account);
       throw error;
     }
   }
-
-  async #getCached(key: string): Promise<CachedCover | null> {
-    const directory = await this.#directory();
-    const name = await this.#cacheFileName(key);
-
-    try {
-      const [imageHandle, metadataHandle] = await Promise.all([
-        directory.getFileHandle(`${name}.image`),
-        directory.getFileHandle(`${name}.json`),
-      ]);
-      const [file, metadata] = await Promise.all([
-        imageHandle.getFile(),
-        metadataHandle.getFile().then(
-          async (value) =>
-            JSON.parse(await value.text()) as {
-              etag?: string;
-              lastModified?: string;
-              type?: string;
-            },
-        ),
-      ]);
-      if (file.size === 0) return null;
-      return {
-        etag: metadata.etag,
-        file,
-        lastModified: metadata.lastModified,
-        type: metadata.type ?? "image/jpeg",
-      };
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "NotFoundError") return null;
-      throw error;
-    }
+  #commit(account: MetadataAccount, change: (catalog: Catalog) => Catalog, valid: () => boolean) {
+    const write = async () => {
+      const catalog = parseCatalog(change(await this.#read(account)), account);
+      if (!valid()) return;
+      const directory = await this.#directory();
+      const name = await this.#fileName(account);
+      const handle = await directory.getFileHandle(name, { create: true });
+      let writable: FileSystemWritableFileStream | undefined;
+      try {
+        writable = await handle.createWritable();
+        await writable.write(JSON.stringify(catalog));
+        if (!valid()) {
+          await writable.abort();
+          if ((await handle.getFile()).size === 0) await directory.removeEntry(name);
+          return;
+        }
+        await writable.close();
+        return catalog;
+      } catch (error) {
+        await writable?.abort().catch(() => {});
+        if ((await handle.getFile()).size === 0) await directory.removeEntry(name).catch(() => {});
+        throw error;
+      }
+    };
+    const result = this.#writes.then(async () => {
+      const name = await this.#fileName(account);
+      return navigator.locks ? navigator.locks.request(`music-web-covers:${name}`, write) : write();
+    });
+    this.#writes = result.catch(() => {});
+    return result;
   }
 
-  async #snapshot(cached: CachedCover) {
-    const bytes = await cached.file.arrayBuffer();
-    if (bytes.byteLength === 0) throw new Error("The cached cover is empty.");
-    return new Blob([bytes], { type: cached.type });
-  }
-
-  async #install(id: string, cached: CachedCover) {
-    const generation = this.#generation;
-    const existing = this.#objectUrls.get(id);
-    if (existing) return existing;
-    const blob = await this.#snapshot(cached);
-    if (generation !== this.#generation) return;
-    const installed = this.#objectUrls.get(id);
-    if (installed) return installed;
-    const url = URL.createObjectURL(blob);
-    this.#objectUrls.set(id, url);
-    return url;
-  }
-
-  #publishCached(id: string, source: string) {
+  restore(account: MetadataAccount): Promise<void> {
+    if (this.#destroyed) return Promise.resolve();
+    if (this.#scope === scope(account)) return this.#ready;
+    this.#scope = scope(account);
+    const generation = ++this.#generation;
+    const valid = () => generation === this.#generation && !this.#destroyed;
+    if (this.#client && scope(this.#client) !== this.#scope) this.#client = undefined;
+    this.#releaseObjectUrls();
+    this.#loads.clear();
+    this.#reconcileKey = "";
+    this.#catalog = emptyCatalog(account);
+    this.#images.clear();
+    this.#references = { artists: new Map(), albums: new Map(), tracks: new Map() };
     for (const entry of this.#covers.values()) {
-      const candidate = entry.candidates.indexOf(id);
-      const selected = entry.id ? entry.candidates.indexOf(entry.id) : Infinity;
-      if (candidate < 0 || candidate > selected) continue;
-      entry.id = id;
-      entry.source = source;
-      entry.network = undefined;
+      entry.source = undefined;
+      entry.candidates = [];
+      entry.generation++;
     }
+    this.#covers.clear();
+    this.#error = undefined;
+    this.#notify();
+    return (this.#ready = (async () => {
+      try {
+        const name = await this.#fileName(account);
+        let catalog = navigator.locks
+          ? await navigator.locks.request(`music-web-covers:${name}`, () => this.#read(account))
+          : await this.#read(account);
+        const directory = await this.#directory();
+        const missing = new Set<string>();
+        let next = 0;
+        const worker = async () => {
+          while (next < catalog.images.length && valid()) {
+            const record = catalog.images[next++];
+            try {
+              const file = await (await directory.getFileHandle(record.fileName)).getFile();
+              if (file.size !== record.size) missing.add(record.fileName);
+            } catch (error) {
+              if (!(error instanceof DOMException && error.name === "NotFoundError")) throw error;
+              missing.add(record.fileName);
+            }
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(6, catalog.images.length) }, worker));
+        if (!valid()) return;
+        if (missing.size) {
+          catalog = {
+            ...catalog,
+            images: catalog.images.filter((image) => !missing.has(image.fileName)),
+          };
+          try {
+            catalog =
+              (await this.#commit(
+                account,
+                (latest) => ({
+                  ...latest,
+                  images: latest.images.filter((image) => !missing.has(image.fileName)),
+                }),
+                valid,
+              )) ?? catalog;
+          } catch (error) {
+            if (valid()) this.#error = error;
+          }
+        }
+        if (valid()) await this.#apply(catalog);
+      } catch (error) {
+        if (valid()) {
+          this.#error = error;
+          this.#notify();
+        }
+      }
+    })());
+  }
+
+  async refresh() {
+    const snapshot = this.#metadata.snapshot;
+    if (!snapshot || this.#destroyed) return;
+    await this.restore(snapshot.account);
+    if (this.#destroyed || this.#scope !== scope(snapshot.account)) return;
+    const key = `${this.#scope}\n${snapshot.savedAt}`;
+    if (this.#reconcileKey === key) return this.#reconciling;
+    this.#reconcileKey = key;
+    if (this.#catalog?.metadataSavedAt === snapshot.savedAt) {
+      this.#reconciling = Promise.resolve();
+      return;
+    }
+    const generation = this.#generation;
+    const valid = () =>
+      !this.#destroyed && generation === this.#generation && key === this.#reconcileKey;
+    const refs = references(snapshot);
+    return (this.#reconciling = (async () => {
+      try {
+        const catalog = await this.#commit(
+          snapshot.account,
+          (latest) =>
+            (latest.metadataSavedAt ?? -1) > snapshot.savedAt ? latest : { ...latest, ...refs },
+          valid,
+        );
+        if (catalog && valid()) {
+          this.#error = undefined;
+          await this.#apply(catalog);
+        }
+      } catch (error) {
+        if (!valid()) return;
+        this.#reconcileKey = "";
+        this.#error = error;
+        this.#notify();
+      }
+    })());
+  }
+
+  async #apply(catalog: Catalog, downloaded?: { id: string; blob: Blob }) {
+    const obsolete: string[] = [];
+    const images = new Map(catalog.images.map((image) => [image.id, image]));
+    for (const [id, url] of this.#objectUrls) {
+      if (this.#images.get(id)?.fileName !== images.get(id)?.fileName) {
+        obsolete.push(url);
+        this.#objectUrls.delete(id);
+      }
+    }
+    this.#catalog = catalog;
+    this.#images = images;
+    for (const entity of ["artists", "albums", "tracks"] as const) {
+      this.#references[entity] = new Map(
+        catalog[entity].map((reference) => [reference.id, reference.candidates]),
+      );
+    }
+    if (downloaded) this.#objectUrls.set(downloaded.id, URL.createObjectURL(downloaded.blob));
+    await Promise.all([...this.#covers.values()].map((entry) => this.#resolve(entry, false)));
+    for (const url of obsolete) URL.revokeObjectURL(url);
     this.#notify();
   }
 
-  #revalidate(id: string, cachedUrl: string, client: SubsonicClient) {
+  #install(record: ImageRecord) {
+    const existing = this.#objectUrls.get(record.id);
+    if (existing) return Promise.resolve(existing);
+    const loading = this.#loads.get(record.id);
+    if (loading) return loading;
     const generation = this.#generation;
-    this.#cache(this.#cacheKey(id, client), this.#coverUrl(id, client))
-      .then(async (result) => {
-        if (!result.changed || generation !== this.#generation) return;
-        const blob = await this.#snapshot(result.cover);
-        if (generation !== this.#generation) return;
-        const updatedUrl = URL.createObjectURL(blob);
-        this.#objectUrls.set(id, updatedUrl);
-        this.#publishCached(id, updatedUrl);
-        URL.revokeObjectURL(cachedUrl);
-      })
-      .catch(() => {});
+    const load = (async () => {
+      const directory = await this.#directory();
+      const file = await (await directory.getFileHandle(record.fileName)).getFile();
+      if (file.size !== record.size)
+        throw new DOMException("The cached image is incomplete.", "DataError");
+      // Never hand mutable OPFS-backed files to the browser or Media Session.
+      const bytes = await file.arrayBuffer();
+      if (
+        generation !== this.#generation ||
+        this.#images.get(record.id)?.fileName !== record.fileName
+      )
+        return;
+      const source = URL.createObjectURL(new Blob([bytes], { type: record.type }));
+      this.#objectUrls.set(record.id, source);
+      return source;
+    })().finally(() => {
+      if (this.#loads.get(record.id) === load) this.#loads.delete(record.id);
+    });
+    this.#loads.set(record.id, load);
+    return load;
   }
 
-  async #resolve(
-    candidates: string[],
-    allowNetwork: boolean,
-    client: SubsonicClient,
-  ): Promise<ResolvedCover> {
+  async #resolve(entry: CoverEntry, revalidate: boolean) {
+    const request = ++entry.generation;
     const generation = this.#generation;
-    for (const id of candidates) {
-      const objectUrl = this.#objectUrls.get(id);
-      if (objectUrl) return { id, source: objectUrl };
-
-      const cached = await this.#getCached(this.#cacheKey(id, client)).catch(() => null);
-      if (generation !== this.#generation) return {};
-      if (cached) {
-        const cachedUrl = await this.#install(id, cached);
-        if (!cachedUrl) return {};
-        if (allowNetwork) this.#revalidate(id, cachedUrl, client);
-        return { id, source: cachedUrl };
+    const valid = () =>
+      !this.#destroyed && generation === this.#generation && request === entry.generation;
+    entry.candidates =
+      entry.entity === "image" ? [entry.id] : (this.#references[entry.entity].get(entry.id) ?? []);
+    for (const id of entry.candidates) {
+      const record = this.#images.get(id);
+      if (!record) continue;
+      try {
+        const source = await this.#install(record);
+        if (!valid()) return;
+        if (!source) continue;
+        entry.source = source;
+        entry.selected = id;
+        entry.network = false;
+        this.#notify();
+        if (revalidate && entry.allowNetwork && this.#client) this.#cache(id);
+        return;
+      } catch (error) {
+        if (!valid()) return;
+        if (
+          !(error instanceof DOMException) ||
+          (error.name !== "NotFoundError" && error.name !== "DataError")
+        ) {
+          this.#error = error;
+          continue;
+        }
+        if (this.#images.get(id)?.fileName === record.fileName) {
+          this.#images.delete(id);
+          const account = this.#catalog!.account;
+          void this.#commit(
+            account,
+            (catalog) => ({
+              ...catalog,
+              images: catalog.images.filter((image) => image.fileName !== record.fileName),
+            }),
+            () => generation === this.#generation && !this.#destroyed,
+          ).catch((error) => {
+            if (valid()) {
+              this.#error = error;
+              this.#notify();
+            }
+          });
+        }
       }
     }
-
-    if (allowNetwork && candidates[0]) {
-      const url = this.#coverUrl(candidates[0], client);
-      return {
-        id: candidates[0],
-        network: { cacheKey: this.#cacheKey(candidates[0], client), url },
-        source: url,
-      };
-    }
-    return {};
+    if (!valid()) return;
+    entry.selected = entry.candidates[0];
+    entry.network = !!(entry.selected && entry.allowNetwork && this.#client);
+    entry.source = entry.network ? this.#client!.getCoverArtUrl(entry.selected!, 500) : undefined;
+    this.#notify();
   }
 
+  #cache(id: string) {
+    const client = this.#client;
+    if (!client || this.#destroyed) return;
+    const key = `${scope(client)}\n${id}`;
+    if (this.#downloads.has(key)) return;
+    const generation = this.#generation;
+    const valid = () => generation === this.#generation && !this.#destroyed;
+    this.#error = undefined;
+    const task = this.#download(id, client, valid)
+      .catch((error) => {
+        if (valid()) {
+          this.#error = error;
+          this.#notify();
+        }
+      })
+      .finally(() => {
+        if (this.#downloads.get(key) === task) this.#downloads.delete(key);
+      });
+    this.#downloads.set(key, task);
+  }
+
+  async #download(id: string, client: SubsonicClient, valid: () => boolean) {
+    const cached = this.#images.get(id);
+    if (cached && !cached.etag && !cached.lastModified) return;
+    const headers = new Headers();
+    if (cached?.etag) headers.set("If-None-Match", cached.etag);
+    if (cached?.lastModified) headers.set("If-Modified-Since", cached.lastModified);
+    const response = await fetch(client.getCoverArtUrl(id, 500), { headers });
+    if (!valid() || (response.status === 304 && cached)) return;
+    if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
+    const blob = await response.blob();
+    const record = v.parse(imageSchema, {
+      id,
+      fileName: `${crypto.randomUUID()}.image`,
+      type: response.headers.get("Content-Type")?.split(";")[0] ?? "image/jpeg",
+      size: blob.size,
+      cachedAt: Date.now(),
+      etag: response.headers.get("ETag") ?? undefined,
+      lastModified: response.headers.get("Last-Modified") ?? undefined,
+    });
+    if (!valid()) return;
+    const directory = await this.#directory();
+    const handle = await directory.getFileHandle(record.fileName, { create: true });
+    let writable: FileSystemWritableFileStream | undefined;
+    let committed = false;
+    try {
+      writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      const catalog = await this.#commit(
+        client,
+        (latest) => {
+          const current = latest.images.find((image) => image.id === id);
+          if (current && current.fileName !== cached?.fileName) return latest;
+          return {
+            ...latest,
+            images: [...latest.images.filter((image) => image.id !== id), record],
+          };
+        },
+        valid,
+      );
+      committed = catalog?.images.some((image) => image.fileName === record.fileName) ?? false;
+      if (catalog && valid())
+        await this.#apply(
+          catalog,
+          committed ? { id, blob: new Blob([blob], { type: record.type }) } : undefined,
+        );
+    } finally {
+      if (!committed) {
+        await writable?.abort().catch(() => {});
+        await directory.removeEntry(record.fileName).catch(() => {});
+      }
+    }
+  }
+
+  #getCover(entity: Entity, id: string, options: CoverOptions): Cover {
+    this.#subscribe();
+    const key = JSON.stringify([entity, id, options.allowNetwork]);
+    const existing = this.#covers.get(key);
+    if (existing) return existing.cover;
+    const engine = this;
+    const entry: CoverEntry = {
+      entity,
+      id,
+      allowNetwork: options.allowNetwork,
+      candidates: entity === "image" ? [id] : (this.#references[entity].get(id) ?? []),
+      generation: 0,
+      network: false,
+      cover: {
+        get source() {
+          engine.#subscribe();
+          return entry.source;
+        },
+        get artworkId() {
+          engine.#subscribe();
+          return entry.candidates.find((id) => engine.#images.has(id)) ?? entry.candidates[0];
+        },
+        get cached() {
+          engine.#subscribe();
+          return entry.candidates.some((id) => engine.#images.has(id));
+        },
+        cache() {
+          if (entry.network && entry.selected && engine.#covers.get(key) === entry)
+            engine.#cache(entry.selected);
+        },
+      },
+    };
+    this.#covers.set(key, entry);
+    void this.#ready.then(() => {
+      if (this.#covers.get(key) === entry && !this.#destroyed) return this.#resolve(entry, true);
+    });
+    return entry.cover;
+  }
+  getArtistCover(id: string, options: CoverOptions) {
+    return this.#getCover("artists", id, options);
+  }
+  getAlbumCover(id: string, options: CoverOptions) {
+    return this.#getCover("albums", id, options);
+  }
+  getTrackCover(id: string, options: CoverOptions) {
+    return this.#getCover("tracks", id, options);
+  }
+  getCover(artworkId: string, options: CoverOptions) {
+    return this.#getCover("image", artworkId, options);
+  }
+
+  setClient(client: SubsonicClient) {
+    if (client === this.#client || this.#destroyed) return;
+    this.#client = client;
+    void this.restore(client).then(() => {
+      if (this.#client === client && !this.#destroyed) {
+        for (const entry of this.#covers.values()) void this.#resolve(entry, true);
+      }
+    });
+  }
   #releaseObjectUrls() {
     for (const url of this.#objectUrls.values()) URL.revokeObjectURL(url);
     this.#objectUrls.clear();
   }
-
-  #cacheEntry(entry: CoverEntry) {
-    const network = entry.network;
-    if (!network || entry.generation !== this.#generation) return;
-
-    this.#cache(network.cacheKey, network.url)
-      .then(async (result) => {
-        if (entry.generation !== this.#generation || !entry.id) return;
-        const source = await this.#install(entry.id, result.cover);
-        if (entry.generation !== this.#generation || !source) return;
-        this.#publishCached(entry.id, source);
-      })
-      .catch(() => {});
-  }
-
-  getCover(request: CoverRequest): Cover {
-    this.#subscribe();
-    const candidates = [...new Set(request.candidates.filter((id): id is string => Boolean(id)))];
-    const key = JSON.stringify([request.allowNetwork, candidates]);
-    const existing = this.#covers.get(key);
-    if (existing) return existing.cover;
-
-    const engine = this;
-    let entry: CoverEntry;
-    const cover: Cover = {
-      get source() {
-        engine.#subscribe();
-        return entry.source;
-      },
-      cache: () => this.#cacheEntry(entry),
-    };
-    entry = { candidates, cover, generation: this.#generation };
-    this.#covers.set(key, entry);
-
-    const client = this.#client;
-    if (client) {
-      this.#resolve(candidates, request.allowNetwork, client)
-        .then((resolved) => {
-          if (
-            entry.generation !== this.#generation ||
-            resolved.source === undefined ||
-            entry.source !== undefined
-          )
-            return;
-          entry.id = resolved.id;
-          entry.network = resolved.network;
-          entry.source = resolved.source;
-          this.#notify();
-        })
-        .catch(() => {});
-    }
-    return cover;
-  }
-
-  setClient(client: SubsonicClient) {
-    const accountChanged =
-      this.#client &&
-      (this.#client.host !== client.host || this.#client.username !== client.username);
-    if (accountChanged) this.#releaseObjectUrls();
-    this.#client = client;
-    this.#generation += 1;
-    this.#covers.clear();
-    this.#notify();
-  }
-
   destroy() {
-    this.#generation += 1;
+    this.#destroyed = true;
+    this.#generation++;
     this.#covers.clear();
     this.#releaseObjectUrls();
+    this.#listeners.clear();
   }
 }

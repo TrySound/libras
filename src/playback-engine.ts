@@ -43,9 +43,9 @@ export type PlaybackStatus =
   | "error";
 export interface PlaybackEngineOptions {
   queue: QueueEngine;
-  metadata: Pick<MetadataEngine, "getTrack" | "getAlbum" | "getArtist" | "getArtistAlbums">;
+  metadata: Pick<MetadataEngine, "getTrack" | "getAlbum" | "getArtist">;
   tracks: Pick<TrackEngine, "getSource" | "cache" | "releaseSource">;
-  covers: Pick<CoverEngine, "getCover" | "subscribe">;
+  covers: Pick<CoverEngine, "getTrackCover" | "subscribe">;
   mediaSession?: MediaSession;
   createAudio?: () => HTMLAudioElement;
 }
@@ -144,16 +144,7 @@ export class PlaybackEngine {
 
   get artworkId() {
     const track = this.track;
-    if (!track) return;
-    const album = this.#library.getAlbum(track.albumId);
-    const artist = album && this.#library.getArtist(album.artistId);
-    return (
-      track.artworkId ??
-      album?.artworkId ??
-      artist?.artworkId ??
-      (artist &&
-        this.#library.getArtistAlbums(artist.id).find((album) => album.artworkId)?.artworkId)
-    );
+    return track && this.#covers.getTrackCover(track.id, { allowNetwork: false }).artworkId;
   }
 
   #artwork = () => {
@@ -164,12 +155,8 @@ export class PlaybackEngine {
       artist: this.#library.getArtist(selected.artistId)?.name ?? "Unknown artist",
       album: this.#library.getAlbum(selected.albumId)?.title ?? "Unknown album",
     };
-    const artworkId = this.artworkId;
-    const source = artworkId
-      ? this.#covers.getCover({
-          candidates: [artworkId],
-          allowNetwork: false,
-        }).source
+    const source = selected
+      ? this.#covers.getTrackCover(selected.id, { allowNetwork: false }).source
       : undefined;
     const key = JSON.stringify([track?.id, track?.title, track?.artist, track?.album, source]);
     if (this.#metadataKey === key) return;
