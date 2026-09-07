@@ -98,6 +98,7 @@
       const account = { host: savedAuth.host, username: savedAuth.username };
       void Promise.all([metadataEngine.restore(account), coverEngine.restore(account)]).then(async () => {
         await coverEngine.refresh();
+        if (metadataEngine.snapshot) await queueEngine.restore(account);
         if (!lifetime.signal.aborted) loadArtists(savedAuth);
       });
     } catch {
@@ -168,7 +169,7 @@
 
     const insertAt = Math.max(0, playback.currentIndex + 1);
     queueEngine.update({
-      current: queueEngine.current,
+      index: queueEngine.index,
       position: playback.position,
       tracks: [...queueEngine.tracks.slice(0, insertAt), ...items.map((track) => track.id), ...queueEngine.tracks.slice(insertAt)],
     });
@@ -183,7 +184,7 @@
     }
 
     queueEngine.update({
-      current: queueEngine.current,
+      index: queueEngine.index,
       position: playback.position,
       tracks: [...queueEngine.tracks, ...items.map((track) => track.id)],
     });
@@ -247,13 +248,13 @@
       (track) => trackEngine.getStatus(track.id) === "downloaded",
     );
     if (offlineQueue.length === queue.length) return;
-    const offlineIndex = currentTrackId
-      ? offlineQueue.findIndex((track) => track.id === currentTrackId)
+    const offlineIndex = currentTrackId && trackEngine.getStatus(currentTrackId) === "downloaded"
+      ? queue.slice(0, playback.currentIndex).filter((track) => trackEngine.getStatus(track.id) === "downloaded").length
       : -1;
 
     if (currentTrackId && offlineIndex < 0) playback.stop();
     queueEngine.update({
-      current: offlineIndex >= 0 ? currentTrackId : undefined,
+      index: offlineIndex,
       position: offlineIndex >= 0 ? playback.position : 0,
       tracks: offlineQueue.map((track) => track.id),
     });
@@ -792,6 +793,13 @@
         {/if}
         {#if playbackError}
           <p class="error type-small">{playbackError}</p>
+        {/if}
+        {#if queueEngine.storageError}
+          <p class="error type-small" role="status">
+            Queue could not be saved or restored locally: {queueEngine.storageError instanceof Error
+              ? queueEngine.storageError.message
+              : String(queueEngine.storageError)}.
+          </p>
         {/if}
         {#if queueEngine.error}
           <p class="error type-small" role="status">

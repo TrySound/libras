@@ -106,7 +106,7 @@ function setup(mount = true) {
     covers,
     mediaSession: session as unknown as MediaSession,
   });
-  queue.update({ tracks: ["a", "b"], current: "a", position: 0 });
+  queue.update({ tracks: ["a", "b"], index: 0, position: 0 });
   const detach = mount ? player.mount() : () => {};
   cleanups.push(() => {
     player.destroy();
@@ -168,11 +168,44 @@ function setupShortcuts() {
 }
 
 describe("playback engine", () => {
+  it("preserves a restored duplicate index and position without autoplay", async () => {
+    const { player, queue, audio, metadata, session } = setup(false);
+    metadata.getTrack("a")!.duration = 200;
+    queue.update({ tracks: ["a", "b", "a"], index: 2, position: 38 });
+    player.mount();
+    expect(player.currentIndex).toBe(2);
+    expect(player.position).toBe(38);
+    expect(player.duration).toBe(200);
+    expect(player.position / player.duration).toBe(0.19);
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 200,
+      position: 38,
+      playbackRate: 1,
+    });
+    expect(player.playing).toBe(false);
+    expect(audio.play).not.toHaveBeenCalled();
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    expect(player.duration).toBe(120);
+    await player.play();
+    expect(audio.currentTime).toBe(38);
+  });
+
+  it("navigates duplicate occurrences by index instead of finding the first matching ID", async () => {
+    const { player, queue } = setup();
+    queue.update({ tracks: ["a", "b", "a"], index: 0, position: 0 });
+    await player.next();
+    expect(player.currentIndex).toBe(1);
+    await player.next();
+    expect(player.currentIndex).toBe(2);
+    expect(player.track?.id).toBe("a");
+    expect(player.hasNext).toBe(false);
+  });
+
   it.each([false, true])(
     "drops unknown IDs for queues received before or after mounting (mounted: %s)",
     (mounted) => {
       const { player, queue, audio } = setup(mounted);
-      queue.update({ tracks: ["missing", "a", "b"], current: "a", position: 12 });
+      queue.update({ tracks: ["missing", "a", "b"], index: 1, position: 12 });
       if (!mounted) {
         expect(queue.tracks).toEqual(["missing", "a", "b"]);
         player.mount();
@@ -180,7 +213,7 @@ describe("playback engine", () => {
       expect(queue.tracks).toEqual(["a", "b"]);
       expect(player.track?.id).toBe("a");
       expect(player.position).toBe(12);
-      queue.update({ tracks: ["missing", "b"], current: "missing", position: 30 });
+      queue.update({ tracks: ["missing", "b"], index: 0, position: 30 });
       expect(queue.tracks).toEqual(["b"]);
       expect(player.track).toBeUndefined();
       expect(player.position).toBe(0);
@@ -258,7 +291,7 @@ describe("playback engine", () => {
 
   it("resolves navigation against current metadata without waiting for queue events", async () => {
     const { player, queue, removeTrack } = setup();
-    queue.update({ tracks: ["a", "b", "c"], current: "a", position: 0 });
+    queue.update({ tracks: ["a", "b", "c"], index: 0, position: 0 });
     await player.play();
     removeTrack("b");
     expect(player.hasNext).toBe(true);
@@ -379,7 +412,7 @@ describe("playback engine", () => {
       audio.currentTime = 12;
       audio.dispatchEvent(new Event("timeupdate"));
       flushSync();
-      queue.update({ tracks: ["a", "b", "c"], current: "a", position: 12 });
+      queue.update({ tracks: ["a", "b", "c"], index: 0, position: 12 });
       flushSync();
       expect(createAudio).toHaveBeenCalledOnce();
       expect(observe.mock.calls.length).toBeGreaterThan(1);

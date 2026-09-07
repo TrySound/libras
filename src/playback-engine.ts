@@ -100,8 +100,9 @@ export class PlaybackEngine {
   }
   get currentIndex() {
     this.#subscribe();
-    const current = this.#queue.current;
-    return current ? this.#queueTracks.indexOf(current) : -1;
+    if (!this.track) return -1;
+    return this.#queue.tracks.slice(0, this.#queue.index).filter((id) => this.#library.getTrack(id))
+      .length;
   }
   get position() {
     this.#subscribe();
@@ -109,7 +110,7 @@ export class PlaybackEngine {
   }
   get duration() {
     this.#subscribe();
-    return this.#duration;
+    return this.#duration > 0 ? this.#duration : (this.track?.duration ?? 0);
   }
   get playing() {
     this.#subscribe();
@@ -139,7 +140,7 @@ export class PlaybackEngine {
       this.hasNext,
       this.hasPrevious || (!!this.track && this.position > 0),
     );
-    this.#media?.setPosition(this.#duration, this.position, this.#audio?.playbackRate);
+    this.#media?.setPosition(this.duration, this.position, this.#audio?.playbackRate);
   }
 
   get artworkId() {
@@ -187,7 +188,7 @@ export class PlaybackEngine {
   #queueChanged = () => {
     const tracks = this.#queueTracks;
     if (tracks.length !== this.#queue.tracks.length) {
-      this.#queue.update({ tracks, current: this.#queue.current, position: this.#queue.position });
+      this.#queue.update({ tracks, index: this.currentIndex, position: this.#queue.position });
       return;
     }
     const id = this.track?.id;
@@ -478,7 +479,7 @@ export class PlaybackEngine {
     if (!Number.isInteger(index) || !tracks[index]) return;
     this.#queue.update({
       tracks,
-      current: tracks[index],
+      index,
       position: 0,
     });
     await this.#load(0, true);
@@ -495,7 +496,8 @@ export class PlaybackEngine {
 
   async seek(position: number) {
     if (!Number.isFinite(position) || !this.#audio || !this.track) return;
-    position = Math.max(0, this.#duration > 0 ? Math.min(position, this.#duration) : position);
+    const duration = this.duration;
+    position = Math.max(0, duration > 0 ? Math.min(position, duration) : position);
     const audio = this.#audio;
     const buffered = Array.from(
       { length: audio.buffered.length },
