@@ -87,11 +87,13 @@ export class PlaybackEngine {
 
   get track() {
     this.#subscribe();
-    return this.#queue.tracks[this.currentIndex];
+    const current = this.#queue.current;
+    return this.#queue.tracks.find((track) => track.id === current);
   }
   get currentIndex() {
     this.#subscribe();
-    return this.#queue.tracks.findIndex((track) => track.id === this.#queue.current);
+    const current = this.#queue.current;
+    return this.#queue.tracks.findIndex((track) => track.id === current);
   }
   get position() {
     this.#subscribe();

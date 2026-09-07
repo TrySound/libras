@@ -47,9 +47,7 @@
     tracks: trackEngine,
     covers: coverEngine,
   });
-  let currentIndex = $derived(playback.currentIndex);
-  const currentRelease = $derived.by(() => {
-    const id = queue[currentIndex]?.id;
+  function findRelease(id: string | undefined) {
     if (!id) return;
     for (const artist of artists) {
       const album = artist.albums.find((album) =>
@@ -57,10 +55,7 @@
       );
       if (album) return { artist, album };
     }
-  });
-  let currentTime = $derived(playback.position);
-  let duration = $derived(playback.duration);
-  let isPlaying = $derived(playback.playing);
+  }
   let playbackLoading = $derived(
     ["loading", "buffering", "seeking"].includes(playback.status),
   );
@@ -79,11 +74,9 @@
   let refreshing = $derived(metadataEngine.status === "refreshing");
   let refreshError = $state("");
   let error = $state("");
-  let connectedHost = $state("");
   let connectionStatus = $state<ConnectionStatus>("disconnected");
   let connectionOpen = $state(false);
-  let pendingAuth = $state<SavedAuth | null>(null);
-  let pendingClient = $state<SubsonicClient>();
+  let pendingConnection = $state<{ auth: SavedAuth; client: SubsonicClient }>();
   let navigateAfterConnection = $state(false);
 
   onMount(() => installLongPress());
@@ -127,33 +120,25 @@
     return `${artistPath(artist)}/album/${encodeURIComponent(album.id)}`;
   }
 
-  function albumsFor(artist: Artist) {
-    return metadataEngine.getArtist(artist.id ?? artist.name)?.albums ?? [];
-  }
-
-  function tracksFor(album: Album) {
-    return metadataEngine.getAlbum(album.id)?.tracks ?? [];
-  }
-
   function artistCoverArt(artist: Artist) {
     return (
       artist.coverArt ??
-      albumsFor(artist).find((album) => album.coverArt)?.coverArt
+      artist.albums.find((album) => album.coverArt)?.coverArt
     );
   }
 
   function artistCoverArts(artist: Artist) {
     return [
       artist.coverArt,
-      ...albumsFor(artist).flatMap((album) => [
+      ...artist.albums.flatMap((album) => [
         album.coverArt,
-        ...tracksFor(album).map((track) => track.coverArt),
+        ...album.tracks.map((track) => track.coverArt),
       ]),
     ];
   }
 
   function albumCoverArts(album: Album) {
-    return [album.coverArt, ...tracksFor(album).map((track) => track.coverArt)];
+    return [album.coverArt, ...album.tracks.map((track) => track.coverArt)];
   }
 
   function directGenres(item: { genre?: string; genres?: { name: string }[] }) {
@@ -178,30 +163,23 @@
   function albumGenres(album: Album) {
     return uniqueGenres([
       ...directGenres(album),
-      ...tracksFor(album).flatMap(directGenres),
+      ...album.tracks.flatMap(directGenres),
     ]);
   }
 
   function artistGenres(artist: Artist) {
     return uniqueGenres([
       ...directGenres(artist),
-      ...albumsFor(artist).flatMap(albumGenres),
+      ...artist.albums.flatMap(albumGenres),
     ]);
   }
 
   function albumQueueItems(artist: Artist, album: Album): QueueItem[] {
-    return tracksFor(album).map((track) => ({
-      album: album.name,
-      artist: artist.name,
-      contentType: track.contentType,
-      coverArt: track.coverArt ?? album.coverArt ?? artistCoverArt(artist),
-      id: track.id,
-      title: track.title,
-    }));
+    return album.tracks.map((track) => trackQueueItem(artist, album, track));
   }
 
   function artistQueueItems(artist: Artist): QueueItem[] {
-    return albumsFor(artist).flatMap((album) => albumQueueItems(artist, album));
+    return artist.albums.flatMap((album) => albumQueueItems(artist, album));
   }
 
   function availableQueueItems(items: QueueItem[]) {
@@ -243,10 +221,10 @@
       return;
     }
 
-    const insertAt = Math.max(0, currentIndex + 1);
+    const insertAt = Math.max(0, playback.currentIndex + 1);
     queueEngine.update({
       current: queueEngine.current,
-      position: currentTime,
+      position: playback.position,
       tracks: [...queue.slice(0, insertAt), ...items, ...queue.slice(insertAt)],
     });
   }
@@ -261,7 +239,7 @@
 
     queueEngine.update({
       current: queueEngine.current,
-      position: currentTime,
+      position: playback.position,
       tracks: [...queue, ...items],
     });
   }
@@ -315,7 +293,7 @@
     await trackEngine.ready();
     if (!activeAuth || !offlineMode) return;
 
-    const currentTrackId = queue[currentIndex]?.id;
+    const currentTrackId = playback.track?.id;
     const offlineQueue = queue.filter(
       (track) => trackEngine.getStatus(track.id) === "downloaded",
     );
@@ -327,7 +305,7 @@
     if (currentTrackId && offlineIndex < 0) playback.stop();
     queueEngine.update({
       current: offlineIndex >= 0 ? currentTrackId : undefined,
-      position: offlineIndex >= 0 ? currentTime : 0,
+      position: offlineIndex >= 0 ? playback.position : 0,
       tracks: offlineQueue,
     });
   }
@@ -367,8 +345,8 @@
   }
 
   function playbackPercent() {
-    if (!Number.isFinite(duration) || duration <= 0) return 0;
-    return Math.min(100, Math.max(0, (currentTime / duration) * 100));
+    if (!Number.isFinite(playback.duration) || playback.duration <= 0) return 0;
+    return Math.min(100, Math.max(0, (playback.position / playback.duration) * 100));
   }
 
   function formatTime(value: number) {
@@ -417,35 +395,28 @@
           ? activeClient
           : new SubsonicClient(credentials);
 
-      pendingAuth = credentials;
-      pendingClient = client;
+      pendingConnection = { auth: credentials, client };
       const network = offlineMode ? "offline" : "online";
       metadataEngine.setNetwork(network);
       queueEngine.setNetwork(network);
       metadataEngine.setClient(client);
       if (forceRefresh) metadataEngine.refresh();
     } catch (caught) {
-      pendingAuth = null;
-      pendingClient = undefined;
+      pendingConnection = undefined;
       connectionStatus = "error";
       error = connectionError(caught);
     }
   }
 
   $effect(() => {
-    const credentials = pendingAuth;
-    const client = pendingClient;
+    const pending = pendingConnection;
     const status = metadataEngine.status;
-    if (
-      !credentials ||
-      !client ||
-      (status !== "refreshing" && status !== "ready" && status !== "error")
-    )
+    if (!pending || (status !== "refreshing" && status !== "ready" && status !== "error"))
       return;
+    const { auth: credentials, client } = pending;
 
     if (status === "error") {
-      pendingAuth = null;
-      pendingClient = undefined;
+      pendingConnection = undefined;
       connectionStatus = "error";
       error = connectionError(metadataEngine.error);
       return;
@@ -462,11 +433,9 @@
         trackEngine.setClient(client);
       }
     });
-    connectedHost = credentials.host;
     if (status === "refreshing") return;
 
-    pendingAuth = null;
-    pendingClient = undefined;
+    pendingConnection = undefined;
     if (metadataEngine.warning) {
       connectionStatus = "error";
       refreshError = `Background refresh failed: ${connectionError(metadataEngine.warning)}`;
@@ -700,9 +669,9 @@
               </p>
               {#if entry.status === "downloaded"}
                 <p class="type-caption muted">
-                  <time datetime={new Date(entry.downloadedAt).toISOString()}
-                    >{new Date(entry.downloadedAt).toLocaleString()}</time
-                  >
+                  <time datetime={new Date(entry.downloadedAt).toISOString()}>
+                    {new Date(entry.downloadedAt).toLocaleString()}
+                  </time>
                   · {entry.format === "mp3" ? "MP3" : entry.contentType}
                 </p>
               {/if}
@@ -741,6 +710,7 @@
 {/snippet}
 
 {#snippet playerDialog()}
+  {@const currentRelease = findRelease(playback.track?.id)}
   <dialog id="player-dialog" class="player-dialog" use:swipeToDismiss>
     <header class="topbar track-list">
       <button
@@ -760,9 +730,9 @@
     <section class="view player-view">
       <div class="player-main">
         <div class="artwork">
-          {#if currentIndex >= 0 && queue[currentIndex]?.coverArt}
+          {#if playback.track?.coverArt}
             {@const cover = coverEngine.getCover({
-              candidates: [queue[currentIndex].coverArt],
+              candidates: [playback.track.coverArt],
               allowNetwork: !offlineMode,
             })}
             {#if cover.source}
@@ -780,9 +750,9 @@
           {/if}
         </div>
 
-        {#if currentIndex >= 0 && queue[currentIndex]}
+        {#if playback.track}
           <p class="type-body">
-            <strong class="type-heading">{queue[currentIndex].title}</strong>
+            <strong class="type-heading">{playback.track.title}</strong>
             <br />
             {#if currentRelease}
               <a
@@ -790,18 +760,20 @@
                 href={`#${artistPath(currentRelease.artist)}`}
                 onclick={(event) =>
                   event.currentTarget.closest("dialog")?.close()}
-                >{queue[currentIndex].artist}</a
               >
+                {playback.track.artist}
+              </a>
               —
               <a
                 class="text-link"
                 href={`#${albumPath(currentRelease.artist, currentRelease.album)}`}
                 onclick={(event) =>
                   event.currentTarget.closest("dialog")?.close()}
-                >{queue[currentIndex].album}</a
               >
+                {playback.track.album}
+              </a>
             {:else}
-              {queue[currentIndex].artist} — {queue[currentIndex].album}
+              {playback.track.artist} — {playback.track.album}
             {/if}
           </p>
         {/if}
@@ -811,16 +783,16 @@
             class="playback-slider"
             type="range"
             min="0"
-            max={Number.isFinite(duration) ? duration : 0}
+            max={Number.isFinite(playback.duration) ? playback.duration : 0}
             step="0.1"
-            value={currentTime}
-            disabled={!duration}
+            value={playback.position}
+            disabled={!playback.duration}
             oninput={(event) =>
               playback.seek(event.currentTarget.valueAsNumber)}
           />
           <div class="playback-time type-caption">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
+            <span>{formatTime(playback.position)}</span>
+            <span>{formatTime(playback.duration)}</span>
           </div>
         </div>
 
@@ -831,7 +803,7 @@
             data-size="md"
             data-variant="neutral"
             onclick={() => playback.previous()}
-            disabled={!playback.hasPrevious && currentTime <= 0}
+            disabled={!playback.hasPrevious && playback.position <= 0}
             title="Previous">{@render icon("previous")}</button
           >
           <button
@@ -841,11 +813,11 @@
             data-variant="primary"
             onclick={() => playback.toggle()}
             disabled={queue.length === 0}
-            title={isPlaying ? "Pause" : "Play"}
+            title={playback.playing ? "Pause" : "Play"}
           >
             {#if playbackLoading}
               {@render icon("loading")}
-            {:else if isPlaying}
+            {:else if playback.playing}
               {@render icon("pause")}
             {:else}
               {@render icon("play")}
@@ -899,17 +871,17 @@
           <div class="track-list">
             {#each queue as item, index}
               {@const downloadStatus = trackEngine.getStatus(item.id)}
-              <div class="track-item" class:current={index === currentIndex}>
+              <div class="track-item" class:current={index === playback.currentIndex}>
                 <span class="track-leading">
-                  {#if index === currentIndex && playbackLoading}
+                  {#if index === playback.currentIndex && playbackLoading}
                     <span role="img" aria-label="Loading playback">
                       {@render icon("loading")}
                     </span>
-                  {:else if index === currentIndex && isPlaying}
+                  {:else if index === playback.currentIndex && playback.playing}
                     <span role="img" aria-label="Playing">
                       {@render icon("sound-bars")}
                     </span>
-                  {:else if index === currentIndex}
+                  {:else if index === playback.currentIndex}
                     <span role="img" aria-label="Current track, not playing">
                       {@render icon("pause")}
                     </span>
@@ -966,7 +938,7 @@
   {@render alerts()}
 
   <section class="view library-view">
-    {#if connectedHost && !error}
+    {#if activeClient && !error}
       <div class="section-heading">
         <div>
           <span class="type-eyebrow muted">
@@ -1103,12 +1075,12 @@
     : undefined}
   {@const visibleAlbums = artist
     ? offlineMode
-      ? albumsFor(artist).filter((album) =>
-          tracksFor(album).some(
+      ? artist.albums.filter((album) =>
+          album.tracks.some(
             (track) => trackEngine.getStatus(track.id) === "downloaded",
           ),
         )
-      : albumsFor(artist)
+      : artist.albums
     : []}
 
   <header class="topbar track-list">
@@ -1131,7 +1103,7 @@
   {@render alerts()}
 
   <section class="view library-view">
-    {#if connectedHost && !error && artist}
+    {#if activeClient && !error && artist}
       {@const artwork = coverEngine.getCover({
         candidates: artistCoverArts(artist),
         allowNetwork: !offlineMode,
@@ -1234,10 +1206,10 @@
           {#each visibleAlbums as album, index}
             {@const albumMenuId = `album-menu-${index}`}
             {@const visibleTracks = offlineMode
-              ? tracksFor(album).filter(
+              ? album.tracks.filter(
                   (track) => trackEngine.getStatus(track.id) === "downloaded",
                 )
-              : tracksFor(album)}
+              : album.tracks}
             <article class="track-item">
               <a
                 class="track-leading album-leading"
@@ -1351,15 +1323,15 @@
       <div class="empty-state">
         <span>{@render icon("music")}</span>
         <p class="type-body">
-          {connectedHost ? "Artist not found." : "Connect your library."}
+          {activeClient ? "Artist not found." : "Connect your library."}
         </p>
         <a
           class="button"
           data-size="md"
           data-variant="neutral"
-          href={router.href(connectedHost ? "/library" : "/settings")}
+          href={router.href(activeClient ? "/library" : "/settings")}
         >
-          {connectedHost ? "Open library" : "Open settings"}
+          {activeClient ? "Open library" : "Open settings"}
         </a>
       </div>
     {/if}
@@ -1376,10 +1348,10 @@
     : undefined}
   {@const visibleTracks = album
     ? offlineMode
-      ? tracksFor(album).filter(
+      ? album.tracks.filter(
           (track) => trackEngine.getStatus(track.id) === "downloaded",
         )
-      : tracksFor(album)
+      : album.tracks
     : []}
 
   <header class="topbar track-list">
@@ -1402,7 +1374,7 @@
   {@render alerts()}
 
   <section class="view library-view">
-    {#if connectedHost && !error && artist && album}
+    {#if activeClient && !error && artist && album}
       {@const artwork = coverEngine.getCover({
         candidates: albumCoverArts(album),
         allowNetwork: !offlineMode,
@@ -1511,15 +1483,15 @@
             {@const downloadStatus = trackEngine.getStatus(track.id)}
             <div class="track-item">
               <span class="track-leading">
-                {#if queue[currentIndex]?.id === track.id && playbackLoading}
+                {#if playback.track?.id === track.id && playbackLoading}
                   <span role="img" aria-label="Loading playback">
                     {@render icon("loading")}
                   </span>
-                {:else if queue[currentIndex]?.id === track.id && isPlaying}
+                {:else if playback.track?.id === track.id && playback.playing}
                   <span role="img" aria-label="Playing">
                     {@render icon("sound-bars")}
                   </span>
-                {:else if queue[currentIndex]?.id === track.id}
+                {:else if playback.track?.id === track.id}
                   <span role="img" aria-label="Current track, not playing">
                     {@render icon("pause")}
                   </span>
@@ -1634,15 +1606,15 @@
       <div class="empty-state">
         <span>{@render icon("music")}</span>
         <p class="type-body">
-          {connectedHost ? "Album not found." : "Connect your library."}
+          {activeClient ? "Album not found." : "Connect your library."}
         </p>
         <a
           class="button"
           data-size="md"
           data-variant="neutral"
-          href={router.href(connectedHost ? "/library" : "/settings")}
+          href={router.href(activeClient ? "/library" : "/settings")}
         >
-          {connectedHost ? "Open library" : "Open settings"}
+          {activeClient ? "Open library" : "Open settings"}
         </a>
       </div>
     {/if}
@@ -1665,7 +1637,7 @@
 {/snippet}
 
 {#snippet miniPlayer()}
-  {#if queue.length > 0}
+  {#if playback.track}
     <div class="mini-player track-list">
       <div class="track-item">
         <button
@@ -1676,11 +1648,9 @@
           title="Open player"
         >
           <span class="mini-art">
-            {#if queue[currentIndex >= 0 ? currentIndex : 0].coverArt}
+            {#if playback.track.coverArt}
               {@const cover = coverEngine.getCover({
-                candidates: [
-                  queue[currentIndex >= 0 ? currentIndex : 0].coverArt,
-                ],
+                candidates: [playback.track.coverArt],
                 allowNetwork: !offlineMode,
               })}
               {#if cover.source}
@@ -1699,10 +1669,10 @@
           </span>
           <span class="mini-copy stack-xs">
             <strong class="type-title">
-              {queue[currentIndex >= 0 ? currentIndex : 0].title}
+              {playback.track.title}
             </strong>
             <small class="type-small muted">
-              {queue[currentIndex >= 0 ? currentIndex : 0].artist}
+              {playback.track.artist}
             </small>
           </span>
         </button>
@@ -1712,11 +1682,11 @@
           data-size="md"
           data-variant="primary"
           onclick={() => playback.toggle()}
-          title={isPlaying ? "Pause" : "Play"}
+          title={playback.playing ? "Pause" : "Play"}
         >
           {#if playbackLoading}
             {@render icon("loading")}
-          {:else if isPlaying}
+          {:else if playback.playing}
             {@render icon("pause")}
           {:else}
             {@render icon("play")}
