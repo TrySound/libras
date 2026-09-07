@@ -47,15 +47,6 @@
     tracks: trackEngine,
     covers: coverEngine,
   });
-  function findRelease(id: string | undefined) {
-    if (!id) return;
-    for (const artist of artists) {
-      const album = artist.albums.find((album) =>
-        album.tracks.some((track) => track.id === id),
-      );
-      if (album) return { artist, album };
-    }
-  }
   let playbackLoading = $derived(
     ["loading", "buffering", "seeking"].includes(playback.status),
   );
@@ -91,6 +82,7 @@
   });
 
   onMount(() => {
+    const lifetime = new AbortController();
     offlineMode = localStorage.getItem(offlineModeStorageKey) === "true";
 
     try {
@@ -104,16 +96,19 @@
       activeAuth = savedAuth;
       host = savedAuth.host;
       username = savedAuth.username;
-      loadArtists(savedAuth);
+      void metadataEngine.restore({ host: savedAuth.host, username: savedAuth.username }).then(() => {
+        if (!lifetime.signal.aborted) loadArtists(savedAuth);
+      });
     } catch {
       authStore.clear();
       connectionOpen = true;
       navigate("/settings", "replace");
     }
+    return () => lifetime.abort();
   });
 
   function artistPath(artist: Artist) {
-    return `/library/artist/${encodeURIComponent(artist.id ?? artist.name)}`;
+    return `/library/artist/${encodeURIComponent(artist.id)}`;
   }
 
   function albumPath(artist: Artist, album: Album) {
@@ -122,34 +117,23 @@
 
   function artistCoverArt(artist: Artist) {
     return (
-      artist.coverArt ??
-      artist.albums.find((album) => album.coverArt)?.coverArt
+      artist.artworkId ??
+      metadataEngine.getArtistAlbums(artist.id).find((album) => album.artworkId)?.artworkId
     );
   }
 
   function artistCoverArts(artist: Artist) {
     return [
-      artist.coverArt,
-      ...artist.albums.flatMap((album) => [
-        album.coverArt,
-        ...album.tracks.map((track) => track.coverArt),
+      artist.artworkId,
+      ...metadataEngine.getArtistAlbums(artist.id).flatMap((album) => [
+        album.artworkId,
+        ...metadataEngine.getAlbumTracks(album.id).map((track) => track.artworkId),
       ]),
     ];
   }
 
   function albumCoverArts(album: Album) {
-    return [album.coverArt, ...album.tracks.map((track) => track.coverArt)];
-  }
-
-  function directGenres(item: { genre?: string; genres?: { name: string }[] }) {
-    const genres = [
-      ...(item.genres?.map((genre) => genre.name) ?? []),
-      ...(item.genre ? [item.genre] : []),
-    ];
-    return genres
-      .flatMap((genre) => genre.split("|"))
-      .map((genre) => genre.trim())
-      .filter(Boolean);
+    return [album.artworkId, ...metadataEngine.getAlbumTracks(album.id).map((track) => track.artworkId)];
   }
 
   function uniqueGenres(genres: string[]) {
@@ -162,24 +146,24 @@
 
   function albumGenres(album: Album) {
     return uniqueGenres([
-      ...directGenres(album),
-      ...album.tracks.flatMap(directGenres),
+      ...album.genres,
+      ...metadataEngine.getAlbumTracks(album.id).flatMap((track) => track.genres),
     ]);
   }
 
   function artistGenres(artist: Artist) {
     return uniqueGenres([
-      ...directGenres(artist),
-      ...artist.albums.flatMap(albumGenres),
+      ...artist.genres,
+      ...metadataEngine.getArtistAlbums(artist.id).flatMap(albumGenres),
     ]);
   }
 
   function albumQueueItems(artist: Artist, album: Album): QueueItem[] {
-    return album.tracks.map((track) => trackQueueItem(artist, album, track));
+    return metadataEngine.getAlbumTracks(album.id).map((track) => trackQueueItem(artist, album, track));
   }
 
   function artistQueueItems(artist: Artist): QueueItem[] {
-    return artist.albums.flatMap((album) => albumQueueItems(artist, album));
+    return metadataEngine.getArtistAlbums(artist.id).flatMap((album) => albumQueueItems(artist, album));
   }
 
   function availableQueueItems(items: QueueItem[]) {
@@ -196,10 +180,10 @@
     track: Track,
   ): QueueItem {
     return {
-      album: album.name,
-      artist: artist.name,
-      contentType: track.contentType,
-      coverArt: track.coverArt ?? album.coverArt ?? artistCoverArt(artist),
+      album: album.title,
+      artist: metadataEngine.getArtist(track.artistId)?.name ?? artist.name,
+      contentType: track.mimeType,
+      coverArt: track.artworkId ?? album.artworkId ?? artistCoverArt(artist),
       id: track.id,
       title: track.title,
     };
@@ -276,7 +260,7 @@
   }
 
   async function downloadArtist(artist: Artist) {
-    const key = `artist:${artist.id ?? artist.name}`;
+    const key = `artist:${artist.id}`;
     downloadingCollection = key;
     try {
       await downloadTracks(artistQueueItems(artist));
@@ -710,7 +694,10 @@
 {/snippet}
 
 {#snippet playerDialog()}
-  {@const currentRelease = findRelease(playback.track?.id)}
+  {@const metadata = playback.track && metadataEngine.getTrack(playback.track.id)}
+  {@const artist = metadata && metadataEngine.getArtist(metadata.artistId)}
+  {@const album = metadata && metadataEngine.getAlbum(metadata.albumId)}
+  {@const albumArtist = album && metadataEngine.getArtist(album.artistId)}
   <dialog id="player-dialog" class="player-dialog" use:swipeToDismiss>
     <header class="topbar track-list">
       <button
@@ -754,10 +741,10 @@
           <p class="type-body">
             <strong class="type-heading">{playback.track.title}</strong>
             <br />
-            {#if currentRelease}
+            {#if artist && album && albumArtist}
               <a
                 class="text-link"
-                href={`#${artistPath(currentRelease.artist)}`}
+                href={`#${artistPath(artist)}`}
                 onclick={(event) =>
                   event.currentTarget.closest("dialog")?.close()}
               >
@@ -766,7 +753,7 @@
               —
               <a
                 class="text-link"
-                href={`#${albumPath(currentRelease.artist, currentRelease.album)}`}
+                href={`#${albumPath(albumArtist, album)}`}
                 onclick={(event) =>
                   event.currentTarget.closest("dialog")?.close()}
               >
@@ -1075,12 +1062,12 @@
     : undefined}
   {@const visibleAlbums = artist
     ? offlineMode
-      ? artist.albums.filter((album) =>
-          album.tracks.some(
+      ? metadataEngine.getArtistAlbums(artist.id).filter((album) =>
+          metadataEngine.getAlbumTracks(album.id).some(
             (track) => trackEngine.getStatus(track.id) === "downloaded",
           ),
         )
-      : artist.albums
+      : metadataEngine.getArtistAlbums(artist.id)
     : []}
 
   <header class="topbar track-list">
@@ -1206,10 +1193,10 @@
           {#each visibleAlbums as album, index}
             {@const albumMenuId = `album-menu-${index}`}
             {@const visibleTracks = offlineMode
-              ? album.tracks.filter(
+              ? metadataEngine.getAlbumTracks(album.id).filter(
                   (track) => trackEngine.getStatus(track.id) === "downloaded",
                 )
-              : album.tracks}
+              : metadataEngine.getAlbumTracks(album.id)}
             <article class="track-item">
               <a
                 class="track-leading album-leading"
@@ -1240,7 +1227,7 @@
                 class="track-content stack-xs"
                 href={router.href(albumPath(artist, album))}
               >
-                <strong class="type-title">{album.name}</strong>
+                <strong class="type-title">{album.title}</strong>
                 <small class="type-small muted">
                   {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
                 </small>
@@ -1253,7 +1240,7 @@
                   data-variant="ghost"
                   commandfor={albumMenuId}
                   command="show-modal"
-                  title={`Open menu for ${album.name}`}
+                  title={`Open menu for ${album.title}`}
                 >
                   {@render icon("menu")}
                 </button>
@@ -1267,7 +1254,7 @@
                 >
                   <header class="action-menu-heading">
                     <strong id={`${albumMenuId}-title`} class="type-title">
-                      {album.name}
+                      {album.title}
                     </strong>
                   </header>
                   <div class="track-list">
@@ -1348,10 +1335,10 @@
     : undefined}
   {@const visibleTracks = album
     ? offlineMode
-      ? album.tracks.filter(
+      ? metadataEngine.getAlbumTracks(album.id).filter(
           (track) => trackEngine.getStatus(track.id) === "downloaded",
         )
-      : album.tracks
+      : metadataEngine.getAlbumTracks(album.id)
     : []}
 
   <header class="topbar track-list">
@@ -1392,7 +1379,7 @@
             class="text-link type-eyebrow muted"
             href={router.href(artistPath(artist))}>{artist.name}</a
           >
-          <h2 class="type-heading">{album.name}</h2>
+          <h2 class="type-heading">{album.title}</h2>
           <p class="library-meta type-small">
             {album.year ?? "Unknown year"} · {visibleTracks.length}
             track{visibleTracks.length === 1 ? "" : "s"}
@@ -1414,7 +1401,7 @@
           data-variant="neutral"
           commandfor="album-page-menu"
           command="show-modal"
-          title={`Open menu for ${album.name}`}
+          title={`Open menu for ${album.title}`}
         >
           {@render icon("menu")}
         </button>
@@ -1428,7 +1415,7 @@
         >
           <header class="action-menu-heading">
             <strong id="album-page-menu-title" class="type-title">
-              {album.name}
+              {album.title}
             </strong>
           </header>
           <div class="track-list">
@@ -1504,7 +1491,7 @@
                     {@render icon("clock")}
                   </span>
                 {:else}
-                  {track.track ?? index + 1}
+                  {track.number ?? index + 1}
                 {/if}
               </span>
               <button
