@@ -75,12 +75,12 @@ describe("subsonic client", () => {
     await expect(client.getPlayQueue()).resolves.toEqual({
       current: "track-1",
       position: 1.5,
-      tracks: [{ id: "track-1", title: "Track" }],
+      tracks: ["track-1"],
     });
     await client.savePlayQueue({
       current: "track-1",
       position: 2,
-      tracks: [{ id: "track-1", title: "Track" }],
+      tracks: ["track-1"],
     });
 
     const options = fetcher.mock.calls[1][1] as RequestInit;

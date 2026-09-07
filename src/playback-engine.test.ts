@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlaybackEngine } from "./playback-engine";
 import { flushSync } from "svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
-import { QueueEngine, type QueueTrack } from "./queue-engine";
+import { QueueEngine } from "./queue-engine";
+import type { Track } from "./metadata-engine";
 
 class AudioStub extends EventTarget {
   preload = "";
@@ -32,12 +33,13 @@ class AudioStub extends EventTarget {
     if (name === "src") this.src = "";
   }
 }
-const song = (id: string): QueueTrack => ({
+const song = (id: string): Track => ({
   id,
   title: id,
-  artist: "Artist",
-  album: "Album",
-  coverArt: id,
+  artistId: "artist",
+  albumId: "album",
+  artworkId: id,
+  genres: [],
 });
 const cleanups: (() => void)[] = [];
 function setup(mount = true) {
@@ -52,6 +54,13 @@ function setup(mount = true) {
       }
     },
   );
+  const libraryTracks = new Map(["a", "b", "c"].map((id) => [id, song(id)]));
+  const metadata = {
+    getTrack: (id: string) => libraryTracks.get(id),
+    getArtist: (id: string) => ({ id, name: "Artist", genres: [] }),
+    getAlbum: (id: string) => ({ id, title: "Album", artistId: "artist", genres: [] }),
+    getArtistAlbums: () => [],
+  };
   const queue = new QueueEngine();
   const audio = new AudioStub();
   const tracks = {
@@ -88,17 +97,25 @@ function setup(mount = true) {
   const player = new PlaybackEngine({
     createAudio,
     queue,
+    metadata,
     tracks,
     covers,
     mediaSession: session as unknown as MediaSession,
   });
-  queue.update({ tracks: [song("a"), song("b")], current: "a", position: 0 });
+  queue.update({ tracks: ["a", "b"], current: "a", position: 0 });
   const detach = mount ? player.mount() : () => {};
   cleanups.push(() => {
     player.destroy();
     queue.destroy();
   });
   return {
+    metadata,
+    removeTrack(id: string) {
+      libraryTracks.delete(id);
+    },
+    renameTrack(id: string, title: string) {
+      libraryTracks.set(id, { ...libraryTracks.get(id)!, title });
+    },
     player,
     createAudio,
     queue,
@@ -147,6 +164,106 @@ function setupShortcuts() {
 }
 
 describe("playback engine", () => {
+  it.each([false, true])(
+    "drops unknown IDs for queues received before or after mounting (mounted: %s)",
+    (mounted) => {
+      const { player, queue, audio } = setup(mounted);
+      queue.update({ tracks: ["missing", "a", "b"], current: "a", position: 12 });
+      if (!mounted) {
+        expect(queue.tracks).toEqual(["missing", "a", "b"]);
+        player.mount();
+      }
+      expect(queue.tracks).toEqual(["a", "b"]);
+      expect(player.track?.id).toBe("a");
+      expect(player.position).toBe(12);
+      queue.update({ tracks: ["missing", "b"], current: "missing", position: 30 });
+      expect(queue.tracks).toEqual(["b"]);
+      expect(player.track).toBeUndefined();
+      expect(player.position).toBe(0);
+      expect(player.error).toBeUndefined();
+      expect(audio.play).not.toHaveBeenCalled();
+    },
+  );
+
+  it("resolves the selected track directly from metadata and follows metadata refreshes", async () => {
+    const { player, metadata, renameTrack, audio, session, queue } = setup();
+    expect(player.track).toBe(metadata.getTrack("a"));
+    await player.play();
+    renameTrack("a", "Updated title");
+    expect(player.track).toBe(metadata.getTrack("a"));
+    expect(player.track?.title).toBe("Updated title");
+    expect(session.metadata).toMatchObject({ title: "a" });
+    queue.setPosition(1);
+    expect(session.metadata).toMatchObject({
+      title: "Updated title",
+      artist: "Artist",
+      album: "Album",
+    });
+    expect(player.playing).toBe(true);
+    expect(audio.play).toHaveBeenCalledOnce();
+  });
+
+  it("cleans up a missing selected track on the next queue event without autoplaying", async () => {
+    const { player, queue, removeTrack, audio } = setup();
+    await player.play();
+    queue.setPosition(20);
+    removeTrack("a");
+    expect(player.track).toBeUndefined();
+    expect(player.currentIndex).toBe(-1);
+    queue.setPosition(21);
+    expect(queue.tracks).toEqual(["b"]);
+    expect(player.track).toBeUndefined();
+    expect(player.currentIndex).toBe(-1);
+    expect(player.position).toBe(0);
+    expect(player.playing).toBe(false);
+    expect(player.error).toBeUndefined();
+    expect(audio.src).toBe("");
+    expect(audio.play).toHaveBeenCalledOnce();
+  });
+
+  it("keeps playing when metadata removes a different queued track", async () => {
+    const { player, queue, removeTrack, audio } = setup();
+    await player.play();
+    queue.setPosition(20);
+    removeTrack("b");
+    expect(queue.tracks).toEqual(["a", "b"]);
+    expect(player.track?.id).toBe("a");
+    expect(player.position).toBe(20);
+    expect(player.playing).toBe(true);
+    expect(player.hasNext).toBe(false);
+    expect(audio.src).toBe("blob:a");
+    expect(audio.play).toHaveBeenCalledOnce();
+  });
+
+  it("computes audio request and catalog fields from metadata at playback time", async () => {
+    const { player, metadata, tracks } = setup();
+    metadata.getTrack("a")!.mimeType = "audio/flac";
+    await player.play();
+    expect(tracks.getSource).toHaveBeenCalledWith(
+      {
+        id: "a",
+        title: "a",
+        artist: "Artist",
+        album: "Album",
+        contentType: "audio/flac",
+        coverArt: "a",
+      },
+      { forceTranscode: false },
+    );
+  });
+
+  it("resolves navigation against current metadata without waiting for queue events", async () => {
+    const { player, queue, removeTrack } = setup();
+    queue.update({ tracks: ["a", "b", "c"], current: "a", position: 0 });
+    await player.play();
+    removeTrack("b");
+    expect(player.hasNext).toBe(true);
+    await player.next();
+    expect(queue.tracks).toEqual(["a", "c"]);
+    expect(player.track?.id).toBe("c");
+    expect(player.currentIndex).toBe(1);
+  });
+
   describe("keyboard shortcuts", () => {
     it("toggles playback with Space and prevents scrolling", () => {
       const { toggle, dispatch } = setupShortcuts();
@@ -258,7 +375,7 @@ describe("playback engine", () => {
       audio.currentTime = 12;
       audio.dispatchEvent(new Event("timeupdate"));
       flushSync();
-      queue.update({ tracks: [song("a"), song("b"), song("c")], current: "a", position: 12 });
+      queue.update({ tracks: ["a", "b", "c"], current: "a", position: 12 });
       flushSync();
       expect(createAudio).toHaveBeenCalledOnce();
       expect(observe.mock.calls.length).toBeGreaterThan(1);
@@ -340,7 +457,9 @@ describe("playback engine", () => {
     const { player, audio, tracks } = setup();
     audio.play.mockRejectedValueOnce(new DOMException("unsupported", "NotSupportedError"));
     await player.play();
-    expect(tracks.getSource).toHaveBeenLastCalledWith(song("a"), { forceTranscode: true });
+    expect(tracks.getSource).toHaveBeenLastCalledWith(expect.objectContaining({ id: "a" }), {
+      forceTranscode: true,
+    });
     expect(player.error).toBeUndefined();
     expect(player.playing).toBe(true);
   });
@@ -351,7 +470,7 @@ describe("playback engine", () => {
     await player.play();
     player.pause();
     await player.seek(45);
-    expect(tracks.cache).toHaveBeenCalledWith(song("a"), {
+    expect(tracks.cache).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }), {
       forceTranscode: true,
       priority: "playback",
     });

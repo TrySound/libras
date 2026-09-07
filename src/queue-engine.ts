@@ -1,19 +1,10 @@
 import { createSubscriber } from "svelte/reactivity";
 import { SubsonicClient } from "./subsonic-client";
 
-export interface QueueTrack {
-  album: string;
-  artist: string;
-  contentType?: string;
-  coverArt?: string;
-  id: string;
-  title: string;
-}
-
 export interface QueueState {
   current?: string;
   position: number;
-  tracks: readonly QueueTrack[];
+  tracks: readonly string[];
 }
 
 export type QueueEngineStatus = "idle" | "loading" | "ready" | "saving" | "error";
@@ -28,7 +19,7 @@ export class QueueEngine {
   #position = 0;
   #saveTimer?: ReturnType<typeof setTimeout>;
   #status: QueueEngineStatus = "idle";
-  #tracks: readonly QueueTrack[] = [];
+  #tracks: readonly string[] = [];
   #listeners = new Set<() => void>();
 
   subscribe(listener: () => void) {
@@ -77,9 +68,10 @@ export class QueueEngine {
   }
 
   #publish(state: QueueState) {
-    this.#current = state.current;
-    this.#position = state.position;
     this.#tracks = [...state.tracks];
+    this.#current =
+      state.current && this.#tracks.includes(state.current) ? state.current : undefined;
+    this.#position = this.#current ? state.position : 0;
     this.#notify();
   }
 
@@ -103,18 +95,7 @@ export class QueueEngine {
       .getPlayQueue()
       .then((queue) => {
         if (generation !== this.#generation) return;
-        this.#publish({
-          current: queue.current,
-          position: queue.position,
-          tracks: queue.tracks.map((track) => ({
-            album: track.album ?? "Unknown album",
-            artist: track.artist ?? "Unknown artist",
-            contentType: track.contentType,
-            coverArt: track.coverArt,
-            id: track.id,
-            title: track.title,
-          })),
-        });
+        this.#publish(queue);
         this.#status = "ready";
         this.#notify();
       })
@@ -136,11 +117,7 @@ export class QueueEngine {
     this.#status = "saving";
     this.#notify();
     try {
-      await client.savePlayQueue({
-        current: state.current,
-        position: state.position,
-        tracks: [...state.tracks],
-      });
+      await client.savePlayQueue(state);
       if (generation !== this.#generation) return;
       this.#status = "ready";
     } catch (error) {
@@ -179,6 +156,15 @@ export class QueueEngine {
 
   setClient(client: SubsonicClient) {
     if (client === this.#client) return;
+    clearTimeout(this.#saveTimer);
+    this.#saveTimer = undefined;
+    this.#generation++;
+    if (
+      this.#client &&
+      (client.host !== this.#client.host || client.username !== this.#client.username)
+    ) {
+      this.#publish({ tracks: [], position: 0 });
+    }
     this.#client = client;
     this.#load();
   }

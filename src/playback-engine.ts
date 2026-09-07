@@ -2,6 +2,7 @@ import { createSubscriber } from "svelte/reactivity";
 import type { CoverEngine } from "./cover-engine";
 import { PlayerMediaSession } from "./media-session";
 import type { QueueEngine } from "./queue-engine";
+import type { MetadataEngine } from "./metadata-engine";
 import type { TrackEngine } from "./track-engine";
 
 const interactive =
@@ -42,6 +43,7 @@ export type PlaybackStatus =
   | "error";
 export interface PlaybackEngineOptions {
   queue: QueueEngine;
+  metadata: Pick<MetadataEngine, "getTrack" | "getAlbum" | "getArtist" | "getArtistAlbums">;
   tracks: Pick<TrackEngine, "getSource" | "cache" | "releaseSource">;
   covers: Pick<CoverEngine, "getCover" | "subscribe">;
   mediaSession?: MediaSession;
@@ -50,6 +52,7 @@ export interface PlaybackEngineOptions {
 
 export class PlaybackEngine {
   #queue: QueueEngine;
+  #library: PlaybackEngineOptions["metadata"];
   #tracks: PlaybackEngineOptions["tracks"];
   #covers: PlaybackEngineOptions["covers"];
   #nativeSession?: MediaSession;
@@ -79,21 +82,26 @@ export class PlaybackEngine {
 
   constructor(options: PlaybackEngineOptions) {
     this.#queue = options.queue;
+    this.#library = options.metadata;
     this.#tracks = options.tracks;
     this.#covers = options.covers;
     this.#nativeSession = options.mediaSession;
     this.#createAudio = options.createAudio ?? (() => new Audio());
   }
 
+  get #queueTracks() {
+    return this.#queue.tracks.filter((id) => this.#library.getTrack(id));
+  }
+
   get track() {
     this.#subscribe();
     const current = this.#queue.current;
-    return this.#queue.tracks.find((track) => track.id === current);
+    return current ? this.#library.getTrack(current) : undefined;
   }
   get currentIndex() {
     this.#subscribe();
     const current = this.#queue.current;
-    return this.#queue.tracks.findIndex((track) => track.id === current);
+    return current ? this.#queueTracks.indexOf(current) : -1;
   }
   get position() {
     this.#subscribe();
@@ -117,7 +125,7 @@ export class PlaybackEngine {
   }
   get hasNext() {
     this.#subscribe();
-    return this.currentIndex >= 0 && this.currentIndex + 1 < this.#queue.tracks.length;
+    return this.currentIndex >= 0 && this.currentIndex + 1 < this.#queueTracks.length;
   }
   get hasPrevious() {
     this.#subscribe();
@@ -134,11 +142,32 @@ export class PlaybackEngine {
     this.#media?.setPosition(this.#duration, this.position, this.#audio?.playbackRate);
   }
 
-  #artwork = () => {
+  get artworkId() {
     const track = this.track;
-    const source = track?.coverArt
+    if (!track) return;
+    const album = this.#library.getAlbum(track.albumId);
+    const artist = album && this.#library.getArtist(album.artistId);
+    return (
+      track.artworkId ??
+      album?.artworkId ??
+      artist?.artworkId ??
+      (artist &&
+        this.#library.getArtistAlbums(artist.id).find((album) => album.artworkId)?.artworkId)
+    );
+  }
+
+  #artwork = () => {
+    const selected = this.track;
+    const track = selected && {
+      id: selected.id,
+      title: selected.title,
+      artist: this.#library.getArtist(selected.artistId)?.name ?? "Unknown artist",
+      album: this.#library.getAlbum(selected.albumId)?.title ?? "Unknown album",
+    };
+    const artworkId = this.artworkId;
+    const source = artworkId
       ? this.#covers.getCover({
-          candidates: [track.coverArt],
+          candidates: [artworkId],
           allowNetwork: false,
         }).source
       : undefined;
@@ -169,6 +198,11 @@ export class PlaybackEngine {
   }
 
   #queueChanged = () => {
+    const tracks = this.#queueTracks;
+    if (tracks.length !== this.#queue.tracks.length) {
+      this.#queue.update({ tracks, current: this.#queue.current, position: this.#queue.position });
+      return;
+    }
     const id = this.track?.id;
     if (id !== this.#id) {
       this.#id = id;
@@ -335,6 +369,14 @@ export class PlaybackEngine {
     const audio = this.#audio;
     const track = this.track;
     if (!audio || !track) return;
+    const download = {
+      id: track.id,
+      title: track.title,
+      artist: this.#library.getArtist(track.artistId)?.name,
+      album: this.#library.getAlbum(track.albumId)?.title,
+      contentType: track.mimeType,
+      coverArt: this.artworkId,
+    };
     this.#invalidate();
     const generation = this.#generation;
     const abort = new AbortController();
@@ -347,14 +389,15 @@ export class PlaybackEngine {
     const valid = () => generation === this.#generation && this.#audio === audio;
     const prepare = async (transcode: boolean) => {
       let source;
-      if (seeking) await this.#tracks.cache(track, { forceTranscode: true, priority: "playback" });
+      if (seeking)
+        await this.#tracks.cache(download, { forceTranscode: true, priority: "playback" });
       if (!valid()) return;
-      source = await this.#tracks.getSource(track, { forceTranscode: transcode });
+      source = await this.#tracks.getSource(download, { forceTranscode: transcode });
       if (!valid()) return;
       if (!source.cached && position > 0) {
-        await this.#tracks.cache(track, { forceTranscode: true, priority: "playback" });
+        await this.#tracks.cache(download, { forceTranscode: true, priority: "playback" });
         if (!valid()) return;
-        source = await this.#tracks.getSource(track, { forceTranscode: true });
+        source = await this.#tracks.getSource(download, { forceTranscode: true });
         transcode = true;
         if (!valid()) return;
       }
@@ -375,7 +418,7 @@ export class PlaybackEngine {
       this.#status = "ready";
       this.#playing = !audio.paused;
       if (!source.cached)
-        void this.#tracks.cache(track, { forceTranscode: transcode }).catch(() => {});
+        void this.#tracks.cache(download, { forceTranscode: transcode }).catch(() => {});
     };
     try {
       try {
@@ -444,10 +487,11 @@ export class PlaybackEngine {
   }
 
   async playIndex(index: number) {
-    if (!Number.isInteger(index) || !this.#queue.tracks[index]) return;
+    const tracks = this.#queueTracks;
+    if (!Number.isInteger(index) || !tracks[index]) return;
     this.#queue.update({
-      tracks: this.#queue.tracks,
-      current: this.#queue.tracks[index].id,
+      tracks,
+      current: tracks[index],
       position: 0,
     });
     await this.#load(0, true);

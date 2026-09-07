@@ -58,7 +58,7 @@ const responseSchema = v.object({
     playQueue: v.optional(
       v.object({
         current: v.optional(v.string()),
-        entry: v.optional(v.array(trackSchema)),
+        entry: v.optional(v.array(v.object({ id: v.string() }))),
         position: v.optional(v.number()),
       }),
     ),
@@ -73,7 +73,7 @@ export type SubsonicTrack = v.InferOutput<typeof trackSchema>;
 export interface SubsonicPlayQueue {
   current?: string;
   position: number;
-  tracks: SubsonicTrack[];
+  tracks: readonly string[];
 }
 
 export interface SubsonicStreamOptions {
@@ -181,13 +181,13 @@ export class SubsonicClient {
     return {
       current: result.playQueue?.current,
       position: (result.playQueue?.position ?? 0) / 1000,
-      tracks: result.playQueue?.entry ?? [],
+      tracks: result.playQueue?.entry?.map((track) => track.id) ?? [],
     };
   }
 
   async savePlayQueue(state: SubsonicPlayQueue) {
     const query = this.#query();
-    for (const track of state.tracks) query.append("id", track.id);
+    for (const id of state.tracks) query.append("id", id);
     if (state.current) {
       query.set("current", state.current);
       query.set("position", String(Math.round(state.position * 1000)));

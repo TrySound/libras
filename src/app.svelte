@@ -11,7 +11,7 @@
     type Artist,
     type Track,
   } from "./metadata-engine";
-  import { QueueEngine, type QueueTrack } from "./queue-engine";
+  import { QueueEngine } from "./queue-engine";
   import { type RouteParams } from "./router-engine";
   import { SubsonicClient, type SubsonicAuth } from "./subsonic-client";
   import Router, {
@@ -24,8 +24,6 @@
   const offlineModeStorageKey = "navidrome-offline-mode";
   const authStore = new AuthStore();
 
-  type QueueItem = QueueTrack;
-
   type SavedAuth = SubsonicAuth;
 
   type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -37,13 +35,14 @@
   const queueEngine = new QueueEngine();
   let navigate = $state<RouterNavigate>(() => {});
   let artists = $derived(metadataEngine.getArtists());
-  let queue = $derived(queueEngine.tracks);
+  let queue = $derived(queueEngine.tracks.map((id) => metadataEngine.getTrack(id)).filter((track) => track !== undefined));
   let activeAuth = $state<SavedAuth | null>(null);
   let activeClient = $state<SubsonicClient>();
   const coverEngine = new CoverEngine();
   const trackEngine = new TrackEngine();
   const playback = new PlaybackEngine({
     queue: queueEngine,
+    metadata: metadataEngine,
     tracks: trackEngine,
     covers: coverEngine,
   });
@@ -115,13 +114,6 @@
     return `${artistPath(artist)}/album/${encodeURIComponent(album.id)}`;
   }
 
-  function artistCoverArt(artist: Artist) {
-    return (
-      artist.artworkId ??
-      metadataEngine.getArtistAlbums(artist.id).find((album) => album.artworkId)?.artworkId
-    );
-  }
-
   function artistCoverArts(artist: Artist) {
     return [
       artist.artworkId,
@@ -158,15 +150,11 @@
     ]);
   }
 
-  function albumQueueItems(artist: Artist, album: Album): QueueItem[] {
-    return metadataEngine.getAlbumTracks(album.id).map((track) => trackQueueItem(artist, album, track));
+  function artistTracks(artist: Artist): readonly Track[] {
+    return metadataEngine.getArtistAlbums(artist.id).flatMap((album) => metadataEngine.getAlbumTracks(album.id));
   }
 
-  function artistQueueItems(artist: Artist): QueueItem[] {
-    return metadataEngine.getArtistAlbums(artist.id).flatMap((album) => albumQueueItems(artist, album));
-  }
-
-  function availableQueueItems(items: QueueItem[]) {
+  function availableTracks(items: readonly Track[]) {
     return offlineMode
       ? items.filter(
           (track) => trackEngine.getStatus(track.id) === "downloaded",
@@ -174,31 +162,16 @@
       : items;
   }
 
-  function trackQueueItem(
-    artist: Artist,
-    album: Album,
-    track: Track,
-  ): QueueItem {
-    return {
-      album: album.title,
-      artist: metadataEngine.getArtist(track.artistId)?.name ?? artist.name,
-      contentType: track.mimeType,
-      coverArt: track.artworkId ?? album.artworkId ?? artistCoverArt(artist),
-      id: track.id,
-      title: track.title,
-    };
-  }
-
-  function playAlbum(artist: Artist, album: Album) {
-    replaceQueueAndPlay(availableQueueItems(albumQueueItems(artist, album)));
+  function playAlbum(album: Album) {
+    replaceQueueAndPlay(availableTracks(metadataEngine.getAlbumTracks(album.id)));
   }
 
   function playArtist(artist: Artist) {
-    replaceQueueAndPlay(availableQueueItems(artistQueueItems(artist)));
+    replaceQueueAndPlay(availableTracks(artistTracks(artist)));
   }
 
-  function playNext(tracks: QueueItem[]) {
-    const items = availableQueueItems(tracks);
+  function playNext(tracks: readonly Track[]) {
+    const items = availableTracks(tracks);
     if (items.length === 0) return;
     if (queue.length === 0) {
       replaceQueueAndPlay(items);
@@ -209,12 +182,12 @@
     queueEngine.update({
       current: queueEngine.current,
       position: playback.position,
-      tracks: [...queue.slice(0, insertAt), ...items, ...queue.slice(insertAt)],
+      tracks: [...queueEngine.tracks.slice(0, insertAt), ...items.map((track) => track.id), ...queueEngine.tracks.slice(insertAt)],
     });
   }
 
-  function playLast(tracks: QueueItem[]) {
-    const items = availableQueueItems(tracks);
+  function playLast(tracks: readonly Track[]) {
+    const items = availableTracks(tracks);
     if (items.length === 0) return;
     if (queue.length === 0) {
       replaceQueueAndPlay(items);
@@ -224,19 +197,29 @@
     queueEngine.update({
       current: queueEngine.current,
       position: playback.position,
-      tracks: [...queue, ...items],
+      tracks: [...queueEngine.tracks, ...items.map((track) => track.id)],
     });
   }
 
-  function playTrack(artist: Artist, album: Album, track: Track) {
-    const albumTracks = availableQueueItems(albumQueueItems(artist, album));
+  function playTrack(track: Track) {
+    const albumTracks = availableTracks(metadataEngine.getAlbumTracks(track.albumId));
     const selectedIndex = albumTracks.findIndex((item) => item.id === track.id);
     replaceQueueAndPlay(albumTracks, Math.max(0, selectedIndex));
   }
 
-  async function downloadQueueTrack(track: QueueItem) {
+  async function downloadTrack(track: Track) {
     try {
-      await trackEngine.cache(track);
+      const album = metadataEngine.getAlbum(track.albumId);
+      const artist = album && metadataEngine.getArtist(album.artistId);
+      await trackEngine.cache({
+        id: track.id,
+        title: track.title,
+        artist: metadataEngine.getArtist(track.artistId)?.name,
+        album: album?.title,
+        contentType: track.mimeType,
+        coverArt: track.artworkId ?? album?.artworkId ?? artist?.artworkId ??
+          (artist && metadataEngine.getArtistAlbums(artist.id).find((album) => album.artworkId)?.artworkId),
+      });
     } catch (caught) {
       downloadError =
         caught instanceof Error
@@ -245,15 +228,15 @@
     }
   }
 
-  async function downloadTracks(items: QueueItem[]) {
-    await Promise.all(items.map(downloadQueueTrack));
+  async function downloadTracks(items: readonly Track[]) {
+    await Promise.all(items.map(downloadTrack));
   }
 
-  async function downloadAlbum(artist: Artist, album: Album) {
+  async function downloadAlbum(album: Album) {
     const key = `album:${album.id}`;
     downloadingCollection = key;
     try {
-      await downloadTracks(albumQueueItems(artist, album));
+      await downloadTracks(metadataEngine.getAlbumTracks(album.id));
     } finally {
       if (downloadingCollection === key) downloadingCollection = "";
     }
@@ -263,14 +246,10 @@
     const key = `artist:${artist.id}`;
     downloadingCollection = key;
     try {
-      await downloadTracks(artistQueueItems(artist));
+      await downloadTracks(artistTracks(artist));
     } finally {
       if (downloadingCollection === key) downloadingCollection = "";
     }
-  }
-
-  function downloadLibraryTrack(artist: Artist, album: Album, track: Track) {
-    void downloadQueueTrack(trackQueueItem(artist, album, track));
   }
 
   async function applyOfflineLibrary() {
@@ -290,7 +269,7 @@
     queueEngine.update({
       current: offlineIndex >= 0 ? currentTrackId : undefined,
       position: offlineIndex >= 0 ? playback.position : 0,
-      tracks: offlineQueue,
+      tracks: offlineQueue.map((track) => track.id),
     });
   }
 
@@ -305,19 +284,19 @@
     else if (activeAuth) loadArtists(activeAuth);
   }
 
-  function collectionIsDownloaded(items: QueueItem[]) {
+  function collectionIsDownloaded(items: readonly Track[]) {
     return (
       items.length > 0 &&
       items.every((track) => trackEngine.getStatus(track.id) === "downloaded")
     );
   }
 
-  function replaceQueueAndPlay(items: QueueItem[], startIndex = 0) {
+  function replaceQueueAndPlay(items: readonly Track[], startIndex = 0) {
     if (!items.length) {
       clearQueue();
       return;
     }
-    queueEngine.update({ tracks: items, position: 0 });
+    queueEngine.update({ tracks: items.map((track) => track.id), position: 0 });
     void playback.playIndex(
       Math.max(0, Math.min(startIndex, items.length - 1)),
     );
@@ -694,9 +673,8 @@
 {/snippet}
 
 {#snippet playerDialog()}
-  {@const metadata = playback.track && metadataEngine.getTrack(playback.track.id)}
-  {@const artist = metadata && metadataEngine.getArtist(metadata.artistId)}
-  {@const album = metadata && metadataEngine.getAlbum(metadata.albumId)}
+  {@const artist = playback.track && metadataEngine.getArtist(playback.track.artistId)}
+  {@const album = playback.track && metadataEngine.getAlbum(playback.track.albumId)}
   {@const albumArtist = album && metadataEngine.getArtist(album.artistId)}
   <dialog id="player-dialog" class="player-dialog" use:swipeToDismiss>
     <header class="topbar track-list">
@@ -717,9 +695,9 @@
     <section class="view player-view">
       <div class="player-main">
         <div class="artwork">
-          {#if playback.track?.coverArt}
+          {#if playback.artworkId}
             {@const cover = coverEngine.getCover({
-              candidates: [playback.track.coverArt],
+              candidates: [playback.artworkId],
               allowNetwork: !offlineMode,
             })}
             {#if cover.source}
@@ -748,7 +726,7 @@
                 onclick={(event) =>
                   event.currentTarget.closest("dialog")?.close()}
               >
-                {playback.track.artist}
+                {artist.name}
               </a>
               —
               <a
@@ -757,10 +735,10 @@
                 onclick={(event) =>
                   event.currentTarget.closest("dialog")?.close()}
               >
-                {playback.track.album}
+                {album.title}
               </a>
             {:else}
-              {playback.track.artist} — {playback.track.album}
+              {artist?.name} — {album?.title}
             {/if}
           </p>
         {/if}
@@ -905,7 +883,7 @@
 {#snippet libraryRoute(_params: RouteParams, router: RouteControls)}
   {@const visibleArtists = offlineMode
     ? artists.filter((artist) =>
-        artistQueueItems(artist).some(
+        artistTracks(artist).some(
           (track) => trackEngine.getStatus(track.id) === "downloaded",
         ),
       )
@@ -1012,7 +990,7 @@
                   <button
                     type="button"
                     class="track-item action-menu-item"
-                    onclick={() => playNext(artistQueueItems(artist))}
+                    onclick={() => playNext(artistTracks(artist))}
                   >
                     {@render icon("next")}
                     <span>Play next</span>
@@ -1020,7 +998,7 @@
                   <button
                     type="button"
                     class="track-item action-menu-item"
-                    onclick={() => playLast(artistQueueItems(artist))}
+                    onclick={() => playLast(artistTracks(artist))}
                   >
                     {@render icon("plus")}
                     <span>Play last</span>
@@ -1155,7 +1133,7 @@
             <button
               type="button"
               class="track-item action-menu-item"
-              onclick={() => playNext(artistQueueItems(artist))}
+              onclick={() => playNext(artistTracks(artist))}
             >
               {@render icon("next")}
               <span>Play next</span>
@@ -1163,7 +1141,7 @@
             <button
               type="button"
               class="track-item action-menu-item"
-              onclick={() => playLast(artistQueueItems(artist))}
+              onclick={() => playLast(artistTracks(artist))}
             >
               {@render icon("plus")}
               <span>Play last</span>
@@ -1261,7 +1239,7 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-                      onclick={() => playAlbum(artist, album)}
+                      onclick={() => playAlbum(album)}
                     >
                       {@render icon("play")}
                       <span>Play</span>
@@ -1269,7 +1247,7 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-                      onclick={() => playNext(albumQueueItems(artist, album))}
+                      onclick={() => playNext(metadataEngine.getAlbumTracks(album.id))}
                     >
                       {@render icon("next")}
                       <span>Play next</span>
@@ -1277,7 +1255,7 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-                      onclick={() => playLast(albumQueueItems(artist, album))}
+                      onclick={() => playLast(metadataEngine.getAlbumTracks(album.id))}
                     >
                       {@render icon("plus")}
                       <span>Play last</span>
@@ -1285,7 +1263,7 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-                      onclick={() => downloadAlbum(artist, album)}
+                      onclick={() => downloadAlbum(album)}
                     >
                       {@render icon("download")}
                       <span>Download</span>
@@ -1422,7 +1400,7 @@
             <button
               type="button"
               class="track-item action-menu-item"
-              onclick={() => playAlbum(artist, album)}
+              onclick={() => playAlbum(album)}
             >
               {@render icon("play")}
               <span>Play</span>
@@ -1430,7 +1408,7 @@
             <button
               type="button"
               class="track-item action-menu-item"
-              onclick={() => playNext(albumQueueItems(artist, album))}
+              onclick={() => playNext(metadataEngine.getAlbumTracks(album.id))}
             >
               {@render icon("next")}
               <span>Play next</span>
@@ -1438,7 +1416,7 @@
             <button
               type="button"
               class="track-item action-menu-item"
-              onclick={() => playLast(albumQueueItems(artist, album))}
+              onclick={() => playLast(metadataEngine.getAlbumTracks(album.id))}
             >
               {@render icon("plus")}
               <span>Play last</span>
@@ -1446,7 +1424,7 @@
             <button
               type="button"
               class="track-item action-menu-item"
-              onclick={() => downloadAlbum(artist, album)}
+              onclick={() => downloadAlbum(album)}
             >
               {@render icon("download")}
               <span>Download</span>
@@ -1497,7 +1475,7 @@
               <button
                 type="button"
                 class="track-content"
-                onclick={() => playTrack(artist, album, track)}
+                onclick={() => playTrack(track)}
               >
                 <span>{track.title}</span>
               </button>
@@ -1530,7 +1508,7 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-                      onclick={() => playTrack(artist, album, track)}
+                      onclick={() => playTrack(track)}
                     >
                       {@render icon("play")}
                       <span>Play</span>
@@ -1539,7 +1517,7 @@
                       type="button"
                       class="track-item action-menu-item"
                       onclick={() =>
-                        playNext([trackQueueItem(artist, album, track)])}
+                        playNext([track])}
                     >
                       {@render icon("next")}
                       <span>Play next</span>
@@ -1548,7 +1526,7 @@
                       type="button"
                       class="track-item action-menu-item"
                       onclick={() =>
-                        playLast([trackQueueItem(artist, album, track)])}
+                        playLast([track])}
                     >
                       {@render icon("plus")}
                       <span>Play last</span>
@@ -1557,7 +1535,7 @@
                       type="button"
                       class="track-item action-menu-item"
                       disabled={downloadStatus !== "idle"}
-                      onclick={() => downloadLibraryTrack(artist, album, track)}
+                      onclick={() => downloadTrack(track)}
                     >
                       {#if downloadStatus === "downloaded"}
                         {@render icon("check")}
@@ -1635,9 +1613,9 @@
           title="Open player"
         >
           <span class="mini-art">
-            {#if playback.track.coverArt}
+            {#if playback.artworkId}
               {@const cover = coverEngine.getCover({
-                candidates: [playback.track.coverArt],
+                candidates: [playback.artworkId],
                 allowNetwork: !offlineMode,
               })}
               {#if cover.source}
@@ -1659,7 +1637,7 @@
               {playback.track.title}
             </strong>
             <small class="type-small muted">
-              {playback.track.artist}
+              {metadataEngine.getArtist(playback.track.artistId)?.name}
             </small>
           </span>
         </button>

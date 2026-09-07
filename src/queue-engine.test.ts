@@ -20,6 +20,68 @@ afterEach(() => {
 });
 
 describe("queue engine", () => {
+  it("restores ordered track IDs without consulting metadata", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          playQueue: {
+            current: "track-1",
+            position: 2500,
+            entry: [
+              { id: "missing", title: "Missing" },
+              { id: "local", title: "Old title" },
+              { id: "track-1", title: "Track" },
+            ],
+          },
+        }),
+      ),
+    );
+    const engine = new QueueEngine();
+    engine.setClient(new SubsonicClient(auth));
+    await vi.waitFor(() => expect(engine.status).toBe("ready"));
+    expect(engine.tracks).toEqual(["missing", "local", "track-1"]);
+    expect(engine.current).toBe("track-1");
+    expect(engine.position).toBe(2.5);
+    expect(engine.error).toBeUndefined();
+    engine.destroy();
+  });
+
+  it.each([{ entries: [] }, { entries: [{ id: "local", title: "Local" }] }])(
+    "clears a missing remote selection and its position",
+    async ({ entries }) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          response({
+            playQueue: {
+              current: "missing",
+              position: 9000,
+              entry: entries,
+            },
+          }),
+        ),
+      );
+      const engine = new QueueEngine();
+      engine.setClient(new SubsonicClient(auth));
+      await vi.waitFor(() => expect(engine.status).toBe("ready"));
+      expect(engine.tracks).toEqual(entries.map((track) => track.id));
+      expect(engine.current).toBeUndefined();
+      expect(engine.position).toBe(0);
+      expect(engine.error).toBeUndefined();
+      engine.destroy();
+    },
+  );
+
+  it("stores opaque track IDs independently of the library", () => {
+    const engine = new QueueEngine();
+    engine.update({ tracks: ["missing", "local", "track-1"], current: "local", position: 5 });
+    expect(engine.tracks).toEqual(["missing", "local", "track-1"]);
+    expect(engine.current).toBe("local");
+    expect(engine.position).toBe(5);
+    engine.destroy();
+  });
+
   it("notifies explicit subscribers without UI subscriptions and supports cleanup", () => {
     const engine = new QueueEngine();
     const listener = vi.fn();
@@ -48,7 +110,7 @@ describe("queue engine", () => {
     const engine = new QueueEngine();
     engine.setClient(new SubsonicClient(auth));
     engine.update({
-      tracks: [{ id: "local", title: "Local", artist: "Artist", album: "Album" }],
+      tracks: ["local"],
       current: "local",
       position: 0,
     });
@@ -79,16 +141,8 @@ describe("queue engine", () => {
 
     expect(engine.current).toBe("track-1");
     expect(engine.position).toBe(1.2);
-    expect(engine.tracks).toEqual([
-      {
-        id: "track-1",
-        title: "Track",
-        album: "Album",
-        artist: "Artist",
-        contentType: undefined,
-        coverArt: undefined,
-      },
-    ]);
+    expect(engine.tracks).toEqual(["track-1"]);
+    engine.destroy();
   });
 
   it("debounces queue and player-state synchronization", async () => {
@@ -105,12 +159,12 @@ describe("queue engine", () => {
     engine.update({
       current: "track-1",
       position: 2.5,
-      tracks: [{ id: "track-1", title: "Track", album: "Album", artist: "Artist" }],
+      tracks: ["track-1"],
     });
     engine.update({
       current: "track-1",
       position: 3,
-      tracks: [{ id: "track-1", title: "Track", album: "Album", artist: "Artist" }],
+      tracks: ["track-1"],
     });
     await vi.advanceTimersByTimeAsync(300);
 
