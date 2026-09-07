@@ -38,7 +38,6 @@
   --color-surface-input: var(--palette-gray-700);
   --color-surface-raised: var(--palette-gray-700);
   --color-surface-accent: var(--palette-crimson-700);
-  --color-surface-current: var(--palette-crimson-900);
   --color-surface-danger: var(--palette-red-900);
   --color-border-subtle: var(--palette-gray-600);
   --color-border-topbar: var(--palette-gray-600);
@@ -149,6 +148,8 @@
 }
 
 .track-item {
+  position: relative;
+  isolation: isolate;
   display: grid;
   min-width: 0;
   grid-column: 1 / -1;
@@ -1002,29 +1003,46 @@ a {
   overflow-wrap: anywhere;
 }
 
-.track-content {
+.track-target {
   -webkit-tap-highlight-color: transparent;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
   transition: background-color 160ms ease-out;
+}
+
+.track-target:active:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+  transition-duration: 50ms;
+}
+
+.track-target:focus-visible {
+  outline: 2px solid var(--color-accent-text);
+  outline-offset: -2px;
+}
+
+.track-item:has(> .track-target) :is(a, button):not(.track-target) {
+  position: relative;
+  z-index: 2;
+}
+
+.track-content {
   display: grid;
   min-width: 0;
-  min-height: 3.5rem;
-  padding-block: 0.65rem;
+  min-height: 2.75rem;
+  padding-block: 0.4rem;
   align-content: center;
-  border: 0;
   color: inherit;
-  background: var(--palette-transparent);
   font-family: inherit;
   font-size: var(--type-control-size);
   font-weight: var(--type-control-weight);
   line-height: var(--type-control-line);
   text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.track-content:active:not(:disabled) {
-  background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
-  transition-duration: 50ms;
 }
 
 .track-content > * {
@@ -1040,6 +1058,7 @@ a {
 
 .album-leading {
   padding-block: 0.65rem;
+  padding-inline-start: 0.5rem;
 }
 
 .album-cover {
@@ -1052,10 +1071,6 @@ a {
   margin-top: 1.5rem;
   padding-top: 1.25rem;
   border-top: 1px solid var(--color-border-subtle);
-}
-
-.player-queue .track-item.current {
-  background: var(--color-surface-current);
 }
 
 .empty-state {
@@ -1099,7 +1114,6 @@ a {
   left: 0.6rem;
   max-width: 30.8rem;
   margin: 0 auto;
-  padding: 0.5rem;
   border: 1px solid var(--color-border-strong);
   border-radius: 0.9rem;
   text-align: left;
@@ -1107,26 +1121,9 @@ a {
   box-shadow: 0 0.8rem 2rem var(--color-shadow-raised);
 }
 
-.mini-main {
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 160ms ease-out;
-  display: grid;
-  min-width: 0;
-  padding: 0;
-  grid-column: 1 / 3;
-  grid-template-columns: subgrid;
-  align-items: center;
-  border: 0;
-  color: inherit;
-  background: var(--palette-transparent);
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.mini-main:active:not(:disabled) {
-  background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
-  transition-duration: 50ms;
+.mini-player > .track-item {
+  padding: 0.5rem;
+  border-radius: inherit;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1150,11 +1147,7 @@ a {
     transition: none;
   }
 
-  .track-content {
-    transition: none;
-  }
-
-  .mini-main {
+  .track-target {
     transition: none;
   }
 
@@ -1193,6 +1186,7 @@ a {
 }
 
 .mini-progress {
+  pointer-events: none;
   position: absolute;
   right: 0.5rem;
   bottom: 0;

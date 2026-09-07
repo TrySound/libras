@@ -824,7 +824,13 @@
           <div class="track-list">
             {#each queue as item, index}
               {@const downloadStatus = trackEngine.getStatus(item.id)}
-              <div class="track-item" class:current={index === playback.currentIndex}>
+              <div class="track-item">
+                <button
+                  type="button"
+                  class="track-target"
+                  aria-label={`Play ${item.title}`}
+                  onclick={() => playback.playIndex(index)}
+                ></button>
                 <span class="track-leading">
                   {#if index === playback.currentIndex && playbackLoading}
                     <span role="img" aria-label="Loading playback">
@@ -850,13 +856,9 @@
                     {index + 1}
                   {/if}
                 </span>
-                <button
-                  type="button"
-                  class="track-content"
-                  onclick={() => playback.playIndex(index)}
-                >
+                <span class="track-content">
                   <span>{item.title}</span>
-                </button>
+                </span>
               </div>
             {/each}
           </div>
@@ -917,7 +919,6 @@
                 href={router.href(artistPath(artist))}
                 data-longpressfor={menuId}
                 data-longpress="show-modal"
-                aria-keyshortcuts="Shift+F10"
                 title={`${artist.name} — hold for actions`}
               >
                 <span class="cover artist-cover">
@@ -1153,9 +1154,14 @@
             {@const cover = coverEngine.getAlbumCover(album.id, { allowNetwork: !offlineMode })}
             <article class="track-item">
               <a
-                class="track-leading album-leading"
+                class="track-target"
                 href={router.href(albumPath(artist, album))}
-              >
+                aria-label={`Open ${album.title}`}
+                data-longpressfor={albumMenuId}
+                data-longpress="show-modal"
+                title={`${album.title} — hold for actions`}
+              ></a>
+              <span class="track-leading album-leading">
                 <span class="cover album-cover">
                   {#if cover.source}
                     <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
@@ -1163,16 +1169,13 @@
                     <span>{@render icon("music")}</span>
                   {/if}
                 </span>
-              </a>
-              <a
-                class="track-content stack-xs"
-                href={router.href(albumPath(artist, album))}
-              >
+              </span>
+              <span class="track-content stack-xs">
                 <strong class="type-title">{album.title}</strong>
                 <small class="type-small muted">
                   {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
                 </small>
-              </a>
+              </span>
               <span class="track-actions">
                 <button
                   type="button"
@@ -1409,6 +1412,15 @@
             {@const trackMenuId = `album-track-menu-${index}`}
             {@const downloadStatus = trackEngine.getStatus(track.id)}
             <div class="track-item">
+              <button
+                type="button"
+                class="track-target"
+                aria-label={`Play ${track.title}`}
+                onclick={() => playTrack(track)}
+                data-longpressfor={trackMenuId}
+                data-longpress="show-modal"
+                title={`${track.title} — hold for actions`}
+              ></button>
               <span class="track-leading">
                 {#if playback.track?.id === track.id && playbackLoading}
                   <span role="img" aria-label="Loading playback">
@@ -1434,13 +1446,9 @@
                   {track.number ?? index + 1}
                 {/if}
               </span>
-              <button
-                type="button"
-                class="track-content"
-                onclick={() => playTrack(track)}
-              >
+              <span class="track-content">
                 <span>{track.title}</span>
-              </button>
+              </span>
               <span class="track-actions">
                 <button
                   type="button"
@@ -1565,43 +1573,31 @@
 
 {#snippet miniPlayer()}
   {#if playback.track}
+    {@const cover = coverEngine.getTrackCover(playback.track.id, { allowNetwork: !offlineMode })}
     <div class="mini-player track-list">
       <div class="track-item">
         <button
-          class="mini-main"
+          class="track-target"
           type="button"
           commandfor="player-dialog"
           command="show-modal"
-          title="Open player"
-        >
-          <span class="mini-art">
-            {#if playback.track}
-              {@const cover = coverEngine.getTrackCover(playback.track.id, {
-                allowNetwork: !offlineMode,
-              })}
-              {#if cover.source}
-                <img
-                  src={cover.source}
-                  alt=""
-                  loading="lazy"
-                  onload={cover.cache}
-                />
-              {:else}
-                <span>{@render icon("music")}</span>
-              {/if}
-            {:else}
-              <span>{@render icon("music")}</span>
-            {/if}
-          </span>
-          <span class="mini-copy stack-xs">
-            <strong class="type-title">
-              {playback.track.title}
-            </strong>
-            <small class="type-small muted">
-              {metadataEngine.getArtist(playback.track.artistId)?.name}
-            </small>
-          </span>
-        </button>
+          aria-label="Open player"
+        ></button>
+        <span class="mini-art">
+          {#if cover.source}
+            <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
+          {:else}
+            <span>{@render icon("music")}</span>
+          {/if}
+        </span>
+        <span class="mini-copy stack-xs">
+          <strong class="type-title">
+            {playback.track.title}
+          </strong>
+          <small class="type-small muted">
+            {metadataEngine.getArtist(playback.track.artistId)?.name}
+          </small>
+        </span>
         <button
           type="button"
           class="icon-button"

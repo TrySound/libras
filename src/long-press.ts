@@ -76,14 +76,6 @@ export function installLongPress(root: Document = document) {
     const element = find(event.target);
     if (element) event.preventDefault();
   };
-  const key = (event: KeyboardEvent) => {
-    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
-    const element = find(event.target);
-    if (element && invoke(element)) {
-      cancel();
-      event.preventDefault();
-    }
-  };
 
   root.addEventListener("pointerdown", down);
   root.addEventListener("pointermove", move);
@@ -91,7 +83,6 @@ export function installLongPress(root: Document = document) {
   root.addEventListener("pointercancel", end);
   root.addEventListener("click", click, true);
   root.addEventListener("contextmenu", context);
-  root.addEventListener("keydown", key);
   root.addEventListener("scroll", cancel, true);
   root.addEventListener("visibilitychange", cancel);
 
@@ -103,7 +94,6 @@ export function installLongPress(root: Document = document) {
     root.removeEventListener("pointercancel", end);
     root.removeEventListener("click", click, true);
     root.removeEventListener("contextmenu", context);
-    root.removeEventListener("keydown", key);
     root.removeEventListener("scroll", cancel, true);
     root.removeEventListener("visibilitychange", cancel);
   };

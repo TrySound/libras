@@ -297,16 +297,20 @@
         <header class="stack-xs">
           <h2 class="type-heading" id="tracks-heading">Track lists</h2>
           <p class="type-body muted">
-            Albums, tracks, and queue items share synchronized leading, content, and action columns.
+            Albums, tracks, and queue items share synchronized columns. Empty overlay links or
+            buttons make each row clickable; secondary links and controls remain above the overlay.
           </p>
         </header>
 
         <div class="track-list track-demo">
           <article class="track-item">
+            <a class="track-target" href="#tracks-heading" aria-label="Open album item"></a>
             <span class="track-leading album-leading"><span class="guide-cover"></span></span>
             <span class="track-content stack-xs">
               <strong class="type-title">Album item</strong>
-              <small class="type-small muted">2025 · 12 tracks</small>
+              <small class="type-small muted"
+                >2025 · <a class="text-link" href="#typography-heading">12 tracks</a></small
+              >
             </span>
             <span class="track-actions">
               <button
@@ -328,10 +332,15 @@
             </span>
           </article>
           <article class="track-item">
+            <button
+              class="track-target"
+              type="button"
+              aria-label="Play a track with a longer title that truncates"
+            ></button>
             <span class="track-leading">1</span>
-            <button class="track-content">
+            <span class="track-content">
               <span>A track with a longer title that truncates</span>
-            </button>
+            </span>
             <span class="track-actions">
               <button
                 class="icon-button"
@@ -352,8 +361,9 @@
             </span>
           </article>
           <article class="track-item">
+            <button class="track-target" type="button" aria-label="Play queue item"></button>
             <span class="track-leading">12</span>
-            <button class="track-content"><span>Queue item</span></button>
+            <span class="track-content"><span>Queue item</span></span>
             <span class="track-actions">
               <button
                 class="icon-button"

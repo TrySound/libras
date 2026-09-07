@@ -81,11 +81,12 @@ describe("delegated long press", () => {
     },
   );
 
-  it("supports Shift+F10 without intercepting Enter", () => {
+  it("does not intercept keyboard events or open menus through shortcuts", () => {
     const { dialog, dispatch } = setup();
     expect(dispatch("keydown", { key: "Enter" }).defaultPrevented).toBe(false);
-    expect(dispatch("keydown", { key: "F10", shiftKey: true }).defaultPrevented).toBe(true);
-    expect(dialog.showModal).toHaveBeenCalledOnce();
+    expect(dispatch("keydown", { key: "F10", shiftKey: true }).defaultPrevented).toBe(false);
+    expect(dispatch("keydown", { key: "ContextMenu" }).defaultPrevented).toBe(false);
+    expect(dialog.showModal).not.toHaveBeenCalled();
   });
 
   it("ignores missing targets and detached triggers", () => {
