@@ -52,7 +52,9 @@
     const id = queue[currentIndex]?.id;
     if (!id) return;
     for (const artist of artists) {
-      const album = artist.albums.find((album) => album.tracks.some((track) => track.id === id));
+      const album = artist.albums.find((album) =>
+        album.tracks.some((track) => track.id === id),
+      );
       if (album) return { artist, album };
     }
   });
@@ -204,7 +206,9 @@
 
   function availableQueueItems(items: QueueItem[]) {
     return offlineMode
-      ? items.filter((track) => trackEngine.getStatus(track.id) === "downloaded")
+      ? items.filter(
+          (track) => trackEngine.getStatus(track.id) === "downloaded",
+        )
       : items;
   }
 
@@ -312,7 +316,9 @@
     if (!activeAuth || !offlineMode) return;
 
     const currentTrackId = queue[currentIndex]?.id;
-    const offlineQueue = queue.filter((track) => trackEngine.getStatus(track.id) === "downloaded");
+    const offlineQueue = queue.filter(
+      (track) => trackEngine.getStatus(track.id) === "downloaded",
+    );
     if (offlineQueue.length === queue.length) return;
     const offlineIndex = currentTrackId
       ? offlineQueue.findIndex((track) => track.id === currentTrackId)
@@ -430,7 +436,11 @@
     const credentials = pendingAuth;
     const client = pendingClient;
     const status = metadataEngine.status;
-    if (!credentials || !client || (status !== "refreshing" && status !== "ready" && status !== "error"))
+    if (
+      !credentials ||
+      !client ||
+      (status !== "refreshing" && status !== "ready" && status !== "error")
+    )
       return;
 
     if (status === "error") {
@@ -484,242 +494,1193 @@
   <svg class="icon" aria-hidden="true"><use href={`#icon-${name}`}></use></svg>
 {/snippet}
 
-<main class="app-shell">
+{#snippet settingsRoute(_params: RouteParams, router: RouteControls)}
+  <header class="topbar track-list">
+    <span class="topbar-spacer"></span>
+    <strong class="type-title">Settings</strong>
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/library")}
+      title="Home">{@render icon("home")}</a
+    >
+  </header>
+  {@render alerts()}
 
-  {#snippet settingsRoute(_params: RouteParams, router: RouteControls)}
+  <section class="view settings-view">
+    <span class="type-eyebrow muted">Settings</span>
+    <h2 class="type-heading">
+      {activeAuth ? "Music server" : "Connect to your music"}
+    </h2>
+    <p class="type-body muted">
+      {activeAuth
+        ? "Manage the server used for your library."
+        : "Enter your Navidrome server details. Authentication stays on this device."}
+    </p>
+
+    <details class="connection-card" bind:open={connectionOpen}>
+      <summary>
+        <span
+          class="connection-dot"
+          class:offline={offlineMode}
+          class:connected={!offlineMode && connectionStatus === "connected"}
+          class:connecting={!offlineMode && connectionStatus === "connecting"}
+          class:failed={!offlineMode && connectionStatus === "error"}
+        ></span>
+        <span class="connection-summary stack-xs">
+          <strong class="type-title">
+            {activeAuth?.host ?? "Add a server"}
+          </strong>
+          <small class="type-small muted">
+            {activeAuth
+              ? `${activeAuth.username} · ${connectionStatusLabel()}`
+              : "Navidrome connection"}
+          </small>
+        </span>
+        <span class="connection-chevron">{@render icon("chevron-down")}</span>
+      </summary>
+
+      <div class="connection-details">
+        {#if activeAuth}
+          <div class="connection-status type-small">
+            <span>Status</span>
+            <strong>{connectionStatusLabel()}</strong>
+          </div>
+          <button
+            type="button"
+            class="button"
+            data-size="md"
+            data-variant="neutral"
+            disabled={offlineMode || loading || refreshing}
+            onclick={() => loadArtists(activeAuth!, true)}
+          >
+            {offlineMode
+              ? "Unavailable offline"
+              : loading || refreshing
+                ? "Refreshing…"
+                : "Refresh library data"}
+          </button>
+          <h3 class="type-title">Edit connection</h3>
+        {/if}
+
+        <form class="stack-md" onsubmit={submitConnection}>
+          <label class="stack-sm">
+            Host
+            <input
+              type="text"
+              bind:value={host}
+              placeholder="https://music.example.com"
+              autocomplete="url"
+              required
+            />
+          </label>
+
+          <label class="stack-sm">
+            Username
+            <input
+              type="text"
+              bind:value={username}
+              autocomplete="username"
+              required
+            />
+          </label>
+
+          <label class="stack-sm">
+            Password
+            <input
+              type="password"
+              bind:value={password}
+              autocomplete="current-password"
+              required
+            />
+          </label>
+
+          <button
+            class="button"
+            data-size="md"
+            data-variant="neutral"
+            type="submit"
+            disabled={offlineMode || loading || refreshing}
+          >
+            {loading
+              ? "Connecting…"
+              : activeAuth
+                ? "Save connection"
+                : "Connect"}
+          </button>
+
+          <small>
+            Authentication is saved in this browser after a successful login.
+          </small>
+        </form>
+      </div>
+    </details>
+
+    <div class="settings-option">
+      <div class="stack-xs">
+        <strong class="type-title">Offline library</strong>
+        <small class="type-small muted">
+          {offlineScanning
+            ? "Reading downloads catalog…"
+            : "Show only music downloaded to this device."}
+          <a class="text-link" href={router.href("/downloads")}
+            >View downloads</a
+          >
+        </small>
+      </div>
+      <label class="switch">
+        <input
+          type="checkbox"
+          checked={offlineMode}
+          disabled={offlineScanning}
+          onchange={(event) => void setOfflineMode(event.currentTarget.checked)}
+        />
+        <span></span>
+      </label>
+    </div>
+  </section>
+  {@render miniPlayer()}
+{/snippet}
+
+{#snippet downloadsRoute(_params: RouteParams, router: RouteControls)}
+  <header class="topbar track-list">
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/settings")}
+      title="Settings"
+    >
+      {@render icon("back")}
+    </a>
+    <strong class="type-title">Downloads</strong>
+    <span class="topbar-spacer"></span>
+  </header>
+  <section class="view stack-md">
+    <h2 class="type-heading">Downloads</h2>
+    <p class="type-small muted">
+      Downloading first, then queued tracks and saved files, newest first.
+    </p>
+    {#if trackEngine.error}
+      <p class="error type-small" role="status">
+        {trackEngine.error instanceof Error
+          ? trackEngine.error.message
+          : String(trackEngine.error)}
+      </p>
+    {/if}
+    {#if trackEngine.downloadsLoading}
+      <p class="type-body muted" role="status">Reading downloaded files…</p>
+    {/if}
+    {#if trackEngine.downloads.length}
+      <div class="track-list">
+        {#each trackEngine.downloads as entry (entry.key)}
+          <div class="track-item">
+            <span
+              class="track-leading"
+              role="img"
+              aria-label={entry.status === "downloading"
+                ? "Downloading"
+                : entry.status === "queued"
+                  ? "Queued"
+                  : "Downloaded"}
+            >
+              {@render icon(
+                entry.status === "downloading"
+                  ? "loading"
+                  : entry.status === "queued"
+                    ? "clock"
+                    : "check",
+              )}
+            </span>
+            <div class="track-details stack-xs">
+              <strong class="type-small">{entry.track.title}</strong>
+              <p class="type-caption muted">
+                {entry.track.artist} — {entry.track.album}
+              </p>
+              {#if entry.status === "downloaded"}
+                <p class="type-caption muted">
+                  <time datetime={new Date(entry.downloadedAt).toISOString()}
+                    >{new Date(entry.downloadedAt).toLocaleString()}</time
+                  >
+                  · {entry.format === "mp3" ? "MP3" : entry.contentType}
+                </p>
+              {/if}
+            </div>
+            <span class="type-caption muted">
+              {entry.status === "downloaded"
+                ? new Intl.NumberFormat(undefined, {
+                    style: "unit",
+                    unit: "megabyte",
+                    maximumFractionDigits: 1,
+                  }).format(entry.size / 1_000_000)
+                : entry.status === "downloading"
+                  ? "Downloading…"
+                  : "Queued"}
+            </span>
+          </div>
+        {/each}
+      </div>
+    {:else if !trackEngine.downloadsLoading}
+      <p class="type-body muted">No downloaded files yet.</p>
+    {/if}
+  </section>
+  {@render miniPlayer()}
+{/snippet}
+
+{#snippet alerts()}
+  {#if error}
+    <p class="error type-small" role="alert">{error}</p>
+  {/if}
+
+  {#if refreshError}
+    <p class="error type-small">
+      {refreshError} Your existing library is still available.
+    </p>
+  {/if}
+{/snippet}
+
+{#snippet playerDialog()}
+  <dialog id="player-dialog" class="player-dialog" use:swipeToDismiss>
     <header class="topbar track-list">
-      <span class="topbar-spacer"></span>
-      <strong class="type-title">Settings</strong>
-      <a
+      <button
+        type="button"
         class="icon-button"
         data-size="md"
         data-variant="neutral"
-        href={router.href("/library")}
-        title="Home">{@render icon("home")}</a
+        commandfor="player-dialog"
+        command="close"
+        title="Close player">{@render icon("chevron-down")}</button
       >
+      <strong class="type-title">Now playing</strong>
+      <span class="topbar-spacer"></span>
     </header>
     {@render alerts()}
 
-    <section class="view settings-view">
-      <span class="type-eyebrow muted">Settings</span>
-      <h2 class="type-heading">
-        {activeAuth ? "Music server" : "Connect to your music"}
-      </h2>
-      <p class="type-body muted">
-        {activeAuth
-          ? "Manage the server used for your library."
-          : "Enter your Navidrome server details. Authentication stays on this device."}
-      </p>
+    <section class="view player-view">
+      <div class="player-main">
+        <div class="artwork">
+          {#if currentIndex >= 0 && queue[currentIndex]?.coverArt}
+            {@const cover = coverEngine.getCover({
+              candidates: [queue[currentIndex].coverArt],
+              allowNetwork: !offlineMode,
+            })}
+            {#if cover.source}
+              <img
+                src={cover.source}
+                alt=""
+                loading="lazy"
+                onload={cover.cache}
+              />
+            {:else}
+              <span>{@render icon("music")}</span>
+            {/if}
+          {:else}
+            <span>{@render icon("music")}</span>
+          {/if}
+        </div>
 
-      <details class="connection-card" bind:open={connectionOpen}>
-        <summary>
-          <span
-            class="connection-dot"
-            class:offline={offlineMode}
-            class:connected={!offlineMode && connectionStatus === "connected"}
-            class:connecting={!offlineMode && connectionStatus === "connecting"}
-            class:failed={!offlineMode && connectionStatus === "error"}
-          ></span>
-          <span class="connection-summary stack-xs">
-            <strong class="type-title">
-              {activeAuth?.host ?? "Add a server"}
-            </strong>
-            <small class="type-small muted">
-              {activeAuth
-                ? `${activeAuth.username} · ${connectionStatusLabel()}`
-                : "Navidrome connection"}
-            </small>
-          </span>
-          <span class="connection-chevron">{@render icon("chevron-down")}</span>
-        </summary>
+        {#if currentIndex >= 0 && queue[currentIndex]}
+          <p class="type-body">
+            <strong class="type-heading">{queue[currentIndex].title}</strong>
+            <br />
+            {#if currentRelease}
+              <a
+                class="text-link"
+                href={`#${artistPath(currentRelease.artist)}`}
+                onclick={(event) =>
+                  event.currentTarget.closest("dialog")?.close()}
+                >{queue[currentIndex].artist}</a
+              >
+              —
+              <a
+                class="text-link"
+                href={`#${albumPath(currentRelease.artist, currentRelease.album)}`}
+                onclick={(event) =>
+                  event.currentTarget.closest("dialog")?.close()}
+                >{queue[currentIndex].album}</a
+              >
+            {:else}
+              {queue[currentIndex].artist} — {queue[currentIndex].album}
+            {/if}
+          </p>
+        {/if}
 
-        <div class="connection-details">
-          {#if activeAuth}
-            <div class="connection-status type-small">
-              <span>Status</span>
-              <strong>{connectionStatusLabel()}</strong>
-            </div>
+        <div class="playback-progress">
+          <input
+            class="playback-slider"
+            type="range"
+            min="0"
+            max={Number.isFinite(duration) ? duration : 0}
+            step="0.1"
+            value={currentTime}
+            disabled={!duration}
+            oninput={(event) =>
+              playback.seek(event.currentTarget.valueAsNumber)}
+          />
+          <div class="playback-time type-caption">
+            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button
+            type="button"
+            class="icon-button"
+            data-size="md"
+            data-variant="neutral"
+            onclick={() => playback.previous()}
+            disabled={!playback.hasPrevious && currentTime <= 0}
+            title="Previous">{@render icon("previous")}</button
+          >
+          <button
+            type="button"
+            class="icon-button"
+            data-size="lg"
+            data-variant="primary"
+            onclick={() => playback.toggle()}
+            disabled={queue.length === 0}
+            title={isPlaying ? "Pause" : "Play"}
+          >
+            {#if playbackLoading}
+              {@render icon("loading")}
+            {:else if isPlaying}
+              {@render icon("pause")}
+            {:else}
+              {@render icon("play")}
+            {/if}
+          </button>
+          <button
+            type="button"
+            class="icon-button"
+            data-size="md"
+            data-variant="neutral"
+            onclick={() => playback.next()}
+            disabled={!playback.hasNext}
+            title="Next">{@render icon("next")}</button
+          >
+        </div>
+
+        {#if downloadError}
+          <p class="error type-small">{downloadError}</p>
+        {/if}
+        {#if playbackError}
+          <p class="error type-small">{playbackError}</p>
+        {/if}
+        {#if queueEngine.error}
+          <p class="error type-small" role="status">
+            Queue synchronization failed: {queueEngine.error instanceof Error
+              ? queueEngine.error.message
+              : String(queueEngine.error)}. Local playback is unaffected.
+          </p>
+        {/if}
+      </div>
+
+      <div class="player-queue">
+        <div class="section-heading">
+          <div>
+            <span class="type-eyebrow muted">Up next</span>
+            <h2 class="type-heading">
+              {queue.length} track{queue.length === 1 ? "" : "s"}
+            </h2>
+          </div>
+          {#if queue.length > 0}
             <button
               type="button"
               class="button"
-              data-size="md"
+              data-size="sm"
               data-variant="neutral"
-              disabled={offlineMode || loading || refreshing}
-              onclick={() => loadArtists(activeAuth!, true)}
+              onclick={clearQueue}>Clear</button
             >
-              {offlineMode
-                ? "Unavailable offline"
-                : loading || refreshing
-                  ? "Refreshing…"
-                  : "Refresh library data"}
-            </button>
-            <h3 class="type-title">Edit connection</h3>
           {/if}
-
-          <form class="stack-md" onsubmit={submitConnection}>
-            <label class="stack-sm">
-              Host
-              <input
-                type="text"
-                bind:value={host}
-                placeholder="https://music.example.com"
-                autocomplete="url"
-                required
-              />
-            </label>
-
-            <label class="stack-sm">
-              Username
-              <input
-                type="text"
-                bind:value={username}
-                autocomplete="username"
-                required
-              />
-            </label>
-
-            <label class="stack-sm">
-              Password
-              <input
-                type="password"
-                bind:value={password}
-                autocomplete="current-password"
-                required
-              />
-            </label>
-
-            <button
-              class="button"
-              data-size="md"
-              data-variant="neutral"
-              type="submit"
-              disabled={offlineMode || loading || refreshing}
-            >
-              {loading
-                ? "Connecting…"
-                : activeAuth
-                  ? "Save connection"
-                  : "Connect"}
-            </button>
-
-            <small>
-              Authentication is saved in this browser after a successful login.
-            </small>
-          </form>
         </div>
-      </details>
-
-      <div class="settings-option">
-        <div class="stack-xs">
-          <strong class="type-title">Offline library</strong>
-          <small class="type-small muted">
-            {offlineScanning
-              ? "Reading downloads catalog…"
-              : "Show only music downloaded to this device."}
-            <a class="text-link" href={router.href("/downloads")}>View downloads</a>
-          </small>
-        </div>
-        <label class="switch">
-          <input
-            type="checkbox"
-            checked={offlineMode}
-            disabled={offlineScanning}
-            onchange={(event) =>
-              void setOfflineMode(event.currentTarget.checked)}
-          />
-          <span></span>
-        </label>
+        {#if queue.length > 0}
+          <div class="track-list">
+            {#each queue as item, index}
+              {@const downloadStatus = trackEngine.getStatus(item.id)}
+              <div class="track-item" class:current={index === currentIndex}>
+                <span class="track-leading">
+                  {#if index === currentIndex && playbackLoading}
+                    <span role="img" aria-label="Loading playback">
+                      {@render icon("loading")}
+                    </span>
+                  {:else if index === currentIndex && isPlaying}
+                    <span role="img" aria-label="Playing">
+                      {@render icon("sound-bars")}
+                    </span>
+                  {:else if index === currentIndex}
+                    <span role="img" aria-label="Current track, not playing">
+                      {@render icon("pause")}
+                    </span>
+                  {:else if downloadStatus === "downloading"}
+                    <span role="img" aria-label="Downloading">
+                      {@render icon("loading")}
+                    </span>
+                  {:else if downloadStatus === "queued"}
+                    <span role="img" aria-label="Queued for download">
+                      {@render icon("clock")}
+                    </span>
+                  {:else}
+                    {index + 1}
+                  {/if}
+                </span>
+                <button
+                  type="button"
+                  class="track-content"
+                  onclick={() => playback.playIndex(index)}
+                >
+                  <span>{item.title}</span>
+                </button>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="type-body muted">The queue is empty.</p>
+        {/if}
       </div>
     </section>
-    {@render miniPlayer()}
-  {/snippet}
+  </dialog>
+{/snippet}
 
-  {#snippet downloadsRoute(_params: RouteParams, router: RouteControls)}
-    <header class="topbar track-list">
-      <a class="icon-button" data-size="md" data-variant="neutral" href={router.href("/settings")} title="Settings">
-        {@render icon("back")}
-      </a>
-      <strong class="type-title">Downloads</strong>
-      <span class="topbar-spacer"></span>
-    </header>
-    <section class="view stack-md">
-      <h2 class="type-heading">Downloads</h2>
-      <p class="type-small muted">Downloading first, then queued tracks and saved files, newest first.</p>
-      {#if trackEngine.error}
-        <p class="error type-small" role="status">
-          {trackEngine.error instanceof Error ? trackEngine.error.message : String(trackEngine.error)}
-        </p>
-      {/if}
-      {#if trackEngine.downloadsLoading}
-        <p class="type-body muted" role="status">Reading downloaded files…</p>
-      {/if}
-      {#if trackEngine.downloads.length}
-        <div class="track-list">
-          {#each trackEngine.downloads as entry (entry.key)}
-            <div class="track-item">
-              <span class="track-leading" role="img" aria-label={entry.status === "downloading" ? "Downloading" : entry.status === "queued" ? "Queued" : "Downloaded"}>
-                {@render icon(entry.status === "downloading" ? "loading" : entry.status === "queued" ? "clock" : "check")}
-              </span>
-              <div class="track-details stack-xs">
-                <strong class="type-small">{entry.track.title}</strong>
-                <p class="type-caption muted">{entry.track.artist} — {entry.track.album}</p>
-                {#if entry.status === "downloaded"}
-                  <p class="type-caption muted">
-                    <time datetime={new Date(entry.downloadedAt).toISOString()}>{new Date(entry.downloadedAt).toLocaleString()}</time>
-                    · {entry.format === "mp3" ? "MP3" : entry.contentType}
-                  </p>
-                {/if}
-              </div>
-              <span class="type-caption muted">
-                {entry.status === "downloaded"
-                  ? new Intl.NumberFormat(undefined, { style: "unit", unit: "megabyte", maximumFractionDigits: 1 }).format(entry.size / 1_000_000)
-                  : entry.status === "downloading" ? "Downloading…" : "Queued"}
-              </span>
-            </div>
+{#snippet libraryRoute(_params: RouteParams, router: RouteControls)}
+  {@const visibleArtists = offlineMode
+    ? artists.filter((artist) =>
+        artistQueueItems(artist).some(
+          (track) => trackEngine.getStatus(track.id) === "downloaded",
+        ),
+      )
+    : artists}
+
+  <header class="topbar track-list">
+    <span class="topbar-spacer"></span>
+    <strong class="type-title">Library</strong>
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/settings")}
+      title="Settings">{@render icon("settings")}</a
+    >
+  </header>
+  {@render alerts()}
+
+  <section class="view library-view">
+    {#if connectedHost && !error}
+      <div class="section-heading">
+        <div>
+          <span class="type-eyebrow muted">
+            {offlineMode ? "Downloaded music" : "Your music"}
+          </span>
+          <h2 class="type-heading">{visibleArtists.length} artists</h2>
+        </div>
+      </div>
+
+      {#if offlineScanning}
+        <div class="empty-state">
+          <div class="scan-spinner">{@render icon("loading")}</div>
+          <p class="type-body">Checking downloaded music…</p>
+        </div>
+      {:else if visibleArtists.length > 0}
+        <div class="artist-grid">
+          {#each visibleArtists as artist, index}
+            {@const menuId = `artist-menu-${index}`}
+            <article class="artist-card">
+              <a
+                class="artist-main"
+                href={router.href(artistPath(artist))}
+                data-longpressfor={menuId}
+                data-longpress="show-modal"
+                aria-keyshortcuts="Shift+F10"
+                title={`${artist.name} — hold for actions`}
+              >
+                <span class="cover artist-cover">
+                  {#if artistCoverArts(artist).some(Boolean)}
+                    {@const cover = coverEngine.getCover({
+                      candidates: artistCoverArts(artist),
+                      allowNetwork: !offlineMode,
+                    })}
+                    {#if cover.source}
+                      <img
+                        src={cover.source}
+                        alt=""
+                        loading="lazy"
+                        onload={cover.cache}
+                      />
+                    {:else}
+                      <span>{@render icon("music")}</span>
+                    {/if}
+                  {:else}
+                    <span>{@render icon("music")}</span>
+                  {/if}
+                  <strong class="artist-name type-small">{artist.name}</strong>
+                </span>
+              </a>
+              <button
+                type="button"
+                class="icon-button artist-menu-trigger"
+                hidden
+                data-size="sm"
+                data-variant="overlay"
+                commandfor={menuId}
+                command="show-modal"
+                title={`Open menu for ${artist.name}`}
+              >
+                {@render icon("menu")}
+              </button>
+              <dialog
+                id={menuId}
+                class="action-menu"
+                aria-labelledby={`${menuId}-title`}
+                closedby="closerequest"
+                use:swipeToDismiss
+                onclick={(event) => event.currentTarget.close()}
+              >
+                <header class="action-menu-heading">
+                  <strong id={`${menuId}-title`} class="type-title">
+                    {artist.name}
+                  </strong>
+                </header>
+                <div class="track-list">
+                  <button
+                    type="button"
+                    class="track-item action-menu-item"
+                    onclick={() => playArtist(artist)}
+                  >
+                    {@render icon("play")}
+                    <span>Play</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="track-item action-menu-item"
+                    onclick={() => playNext(artistQueueItems(artist))}
+                  >
+                    {@render icon("next")}
+                    <span>Play next</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="track-item action-menu-item"
+                    onclick={() => playLast(artistQueueItems(artist))}
+                  >
+                    {@render icon("plus")}
+                    <span>Play last</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="track-item action-menu-item"
+                    onclick={() => downloadArtist(artist)}
+                  >
+                    {@render icon("download")}
+                    <span>Download</span>
+                  </button>
+                </div>
+                <button type="button" class="button" data-variant="neutral">
+                  Cancel
+                </button>
+              </dialog>
+            </article>
           {/each}
         </div>
-      {:else if !trackEngine.downloadsLoading}
-        <p class="type-body muted">No downloaded files yet.</p>
+      {:else}
+        <div class="empty-state">
+          <span>{@render icon("music")}</span>
+          <p class="type-body">
+            {offlineMode ? "No downloaded artists." : "No artists found."}
+          </p>
+        </div>
       {/if}
-    </section>
-    {@render miniPlayer()}
-  {/snippet}
-
-  {#snippet alerts()}
-    {#if error}
-      <p class="error type-small" role="alert">{error}</p>
+    {:else if !loading}
+      {@render connectLibrary(router)}
     {/if}
+  </section>
+  {@render miniPlayer()}
+{/snippet}
 
-    {#if refreshError}
-      <p class="error type-small">
-        {refreshError} Your existing library is still available.
-      </p>
-    {/if}
-  {/snippet}
+{#snippet artistRoute(params: RouteParams, router: RouteControls)}
+  {@const artist = params.artistId
+    ? metadataEngine.getArtist(params.artistId)
+    : undefined}
+  {@const visibleAlbums = artist
+    ? offlineMode
+      ? albumsFor(artist).filter((album) =>
+          tracksFor(album).some(
+            (track) => trackEngine.getStatus(track.id) === "downloaded",
+          ),
+        )
+      : albumsFor(artist)
+    : []}
 
-  {#snippet playerDialog()}
-    <dialog id="player-dialog" class="player-dialog" use:swipeToDismiss>
-      <header class="topbar track-list">
+  <header class="topbar track-list">
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/library")}
+      title="Back">{@render icon("back")}</a
+    >
+    <strong class="type-title">Library</strong>
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/library")}
+      title="Home">{@render icon("home")}</a
+    >
+  </header>
+  {@render alerts()}
+
+  <section class="view library-view">
+    {#if connectedHost && !error && artist}
+      {@const artwork = coverEngine.getCover({
+        candidates: artistCoverArts(artist),
+        allowNetwork: !offlineMode,
+      })}
+      <div class="collection-art collection-art-artist" aria-hidden="true">
+        {#if artwork.source}
+          <img src={artwork.source} alt="" onload={artwork.cache} />
+        {:else}
+          {@render icon("music")}
+        {/if}
+      </div>
+      <div class="section-heading collection-heading">
+        <div>
+          <span class="type-eyebrow muted">Albums</span>
+          <h2 class="type-heading">{artist.name}</h2>
+          <p class="library-meta type-small">
+            {visibleAlbums.length} album{visibleAlbums.length === 1 ? "" : "s"}
+          </p>
+          {#if artistGenres(artist).length > 0}
+            <div class="genre-list">
+              {#each artistGenres(artist) as genre}
+                <span class="type-caption">
+                  {genre}
+                </span>
+              {/each}
+            </div>
+          {/if}
+        </div>
         <button
           type="button"
           class="icon-button"
           data-size="md"
           data-variant="neutral"
-          commandfor="player-dialog"
-          command="close"
-          title="Close player">{@render icon("chevron-down")}</button
+          commandfor="artist-page-menu"
+          command="show-modal"
+          title={`Open menu for ${artist.name}`}
         >
-        <strong class="type-title">Now playing</strong>
-        <span class="topbar-spacer"></span>
-      </header>
-      {@render alerts()}
+          {@render icon("menu")}
+        </button>
+        <dialog
+          id="artist-page-menu"
+          class="action-menu"
+          aria-labelledby="artist-page-menu-title"
+          closedby="closerequest"
+          use:swipeToDismiss
+          onclick={(event) => event.currentTarget.close()}
+        >
+          <header class="action-menu-heading">
+            <strong id="artist-page-menu-title" class="type-title">
+              {artist.name}
+            </strong>
+          </header>
+          <div class="track-list">
+            <button
+              type="button"
+              class="track-item action-menu-item"
+              onclick={() => playArtist(artist)}
+            >
+              {@render icon("play")}
+              <span>Play</span>
+            </button>
+            <button
+              type="button"
+              class="track-item action-menu-item"
+              onclick={() => playNext(artistQueueItems(artist))}
+            >
+              {@render icon("next")}
+              <span>Play next</span>
+            </button>
+            <button
+              type="button"
+              class="track-item action-menu-item"
+              onclick={() => playLast(artistQueueItems(artist))}
+            >
+              {@render icon("plus")}
+              <span>Play last</span>
+            </button>
+            <button
+              type="button"
+              class="track-item action-menu-item"
+              onclick={() => downloadArtist(artist)}
+            >
+              {@render icon("download")}
+              <span>Download</span>
+            </button>
+          </div>
+          <button type="button" class="button" data-variant="neutral">
+            Cancel
+          </button>
+        </dialog>
+      </div>
 
-      <section class="view player-view">
-        <div class="player-main">
-          <div class="artwork">
-            {#if currentIndex >= 0 && queue[currentIndex]?.coverArt}
+      {#if offlineScanning}
+        <div class="empty-state">
+          <div class="scan-spinner">{@render icon("loading")}</div>
+          <p class="type-body">Checking downloaded music…</p>
+        </div>
+      {:else}
+        <div class="track-list">
+          {#each visibleAlbums as album, index}
+            {@const albumMenuId = `album-menu-${index}`}
+            {@const visibleTracks = offlineMode
+              ? tracksFor(album).filter(
+                  (track) => trackEngine.getStatus(track.id) === "downloaded",
+                )
+              : tracksFor(album)}
+            <article class="track-item">
+              <a
+                class="track-leading album-leading"
+                href={router.href(albumPath(artist, album))}
+              >
+                <span class="cover album-cover">
+                  {#if albumCoverArts(album).some(Boolean)}
+                    {@const cover = coverEngine.getCover({
+                      candidates: albumCoverArts(album),
+                      allowNetwork: !offlineMode,
+                    })}
+                    {#if cover.source}
+                      <img
+                        src={cover.source}
+                        alt=""
+                        loading="lazy"
+                        onload={cover.cache}
+                      />
+                    {:else}
+                      <span>{@render icon("music")}</span>
+                    {/if}
+                  {:else}
+                    <span>{@render icon("music")}</span>
+                  {/if}
+                </span>
+              </a>
+              <a
+                class="track-content stack-xs"
+                href={router.href(albumPath(artist, album))}
+              >
+                <strong class="type-title">{album.name}</strong>
+                <small class="type-small muted">
+                  {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
+                </small>
+              </a>
+              <span class="track-actions">
+                <button
+                  type="button"
+                  class="icon-button"
+                  data-size="sm"
+                  data-variant="ghost"
+                  commandfor={albumMenuId}
+                  command="show-modal"
+                  title={`Open menu for ${album.name}`}
+                >
+                  {@render icon("menu")}
+                </button>
+                <dialog
+                  id={albumMenuId}
+                  class="action-menu"
+                  aria-labelledby={`${albumMenuId}-title`}
+                  closedby="closerequest"
+                  use:swipeToDismiss
+                  onclick={(event) => event.currentTarget.close()}
+                >
+                  <header class="action-menu-heading">
+                    <strong id={`${albumMenuId}-title`} class="type-title">
+                      {album.name}
+                    </strong>
+                  </header>
+                  <div class="track-list">
+                    <button
+                      type="button"
+                      class="track-item action-menu-item"
+                      onclick={() => playAlbum(artist, album)}
+                    >
+                      {@render icon("play")}
+                      <span>Play</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="track-item action-menu-item"
+                      onclick={() => playNext(albumQueueItems(artist, album))}
+                    >
+                      {@render icon("next")}
+                      <span>Play next</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="track-item action-menu-item"
+                      onclick={() => playLast(albumQueueItems(artist, album))}
+                    >
+                      {@render icon("plus")}
+                      <span>Play last</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="track-item action-menu-item"
+                      onclick={() => downloadAlbum(artist, album)}
+                    >
+                      {@render icon("download")}
+                      <span>Download</span>
+                    </button>
+                  </div>
+                  <button type="button" class="button" data-variant="neutral">
+                    Cancel
+                  </button>
+                </dialog>
+              </span>
+            </article>
+          {:else}
+            <div class="empty-state">
+              <p class="type-body">
+                {offlineMode ? "No downloaded albums." : "No albums found."}
+              </p>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {:else if !loading}
+      <div class="empty-state">
+        <span>{@render icon("music")}</span>
+        <p class="type-body">
+          {connectedHost ? "Artist not found." : "Connect your library."}
+        </p>
+        <a
+          class="button"
+          data-size="md"
+          data-variant="neutral"
+          href={router.href(connectedHost ? "/library" : "/settings")}
+        >
+          {connectedHost ? "Open library" : "Open settings"}
+        </a>
+      </div>
+    {/if}
+  </section>
+  {@render miniPlayer()}
+{/snippet}
+
+{#snippet albumRoute(params: RouteParams, router: RouteControls)}
+  {@const artist = params.artistId
+    ? metadataEngine.getArtist(params.artistId)
+    : undefined}
+  {@const album = params.albumId
+    ? metadataEngine.getAlbum(params.albumId)
+    : undefined}
+  {@const visibleTracks = album
+    ? offlineMode
+      ? tracksFor(album).filter(
+          (track) => trackEngine.getStatus(track.id) === "downloaded",
+        )
+      : tracksFor(album)
+    : []}
+
+  <header class="topbar track-list">
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={artist ? router.href(artistPath(artist)) : router.href("/library")}
+      title="Back">{@render icon("back")}</a
+    >
+    <strong class="type-title">Library</strong>
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/library")}
+      title="Home">{@render icon("home")}</a
+    >
+  </header>
+  {@render alerts()}
+
+  <section class="view library-view">
+    {#if connectedHost && !error && artist && album}
+      {@const artwork = coverEngine.getCover({
+        candidates: albumCoverArts(album),
+        allowNetwork: !offlineMode,
+      })}
+      <div class="collection-art collection-art-album" aria-hidden="true">
+        {#if artwork.source}
+          <img src={artwork.source} alt="" onload={artwork.cache} />
+        {:else}
+          {@render icon("music")}
+        {/if}
+      </div>
+      <div class="section-heading collection-heading">
+        <div>
+          <a
+            class="text-link type-eyebrow muted"
+            href={router.href(artistPath(artist))}>{artist.name}</a
+          >
+          <h2 class="type-heading">{album.name}</h2>
+          <p class="library-meta type-small">
+            {album.year ?? "Unknown year"} · {visibleTracks.length}
+            track{visibleTracks.length === 1 ? "" : "s"}
+          </p>
+          {#if albumGenres(album).length > 0}
+            <div class="genre-list">
+              {#each albumGenres(album) as genre}
+                <span class="type-caption">
+                  {genre}
+                </span>
+              {/each}
+            </div>
+          {/if}
+        </div>
+        <button
+          type="button"
+          class="icon-button"
+          data-size="md"
+          data-variant="neutral"
+          commandfor="album-page-menu"
+          command="show-modal"
+          title={`Open menu for ${album.name}`}
+        >
+          {@render icon("menu")}
+        </button>
+        <dialog
+          id="album-page-menu"
+          class="action-menu"
+          aria-labelledby="album-page-menu-title"
+          closedby="closerequest"
+          use:swipeToDismiss
+          onclick={(event) => event.currentTarget.close()}
+        >
+          <header class="action-menu-heading">
+            <strong id="album-page-menu-title" class="type-title">
+              {album.name}
+            </strong>
+          </header>
+          <div class="track-list">
+            <button
+              type="button"
+              class="track-item action-menu-item"
+              onclick={() => playAlbum(artist, album)}
+            >
+              {@render icon("play")}
+              <span>Play</span>
+            </button>
+            <button
+              type="button"
+              class="track-item action-menu-item"
+              onclick={() => playNext(albumQueueItems(artist, album))}
+            >
+              {@render icon("next")}
+              <span>Play next</span>
+            </button>
+            <button
+              type="button"
+              class="track-item action-menu-item"
+              onclick={() => playLast(albumQueueItems(artist, album))}
+            >
+              {@render icon("plus")}
+              <span>Play last</span>
+            </button>
+            <button
+              type="button"
+              class="track-item action-menu-item"
+              onclick={() => downloadAlbum(artist, album)}
+            >
+              {@render icon("download")}
+              <span>Download</span>
+            </button>
+          </div>
+          <button type="button" class="button" data-variant="neutral">
+            Cancel
+          </button>
+        </dialog>
+      </div>
+
+      {#if offlineScanning}
+        <div class="empty-state">
+          <div class="scan-spinner">{@render icon("loading")}</div>
+          <p class="type-body">Checking downloaded music…</p>
+        </div>
+      {:else}
+        <div class="track-list">
+          {#each visibleTracks as track, index}
+            {@const trackMenuId = `album-track-menu-${index}`}
+            {@const downloadStatus = trackEngine.getStatus(track.id)}
+            <div class="track-item">
+              <span class="track-leading">
+                {#if queue[currentIndex]?.id === track.id && playbackLoading}
+                  <span role="img" aria-label="Loading playback">
+                    {@render icon("loading")}
+                  </span>
+                {:else if queue[currentIndex]?.id === track.id && isPlaying}
+                  <span role="img" aria-label="Playing">
+                    {@render icon("sound-bars")}
+                  </span>
+                {:else if queue[currentIndex]?.id === track.id}
+                  <span role="img" aria-label="Current track, not playing">
+                    {@render icon("pause")}
+                  </span>
+                {:else if downloadStatus === "downloading"}
+                  <span role="img" aria-label="Downloading">
+                    {@render icon("loading")}
+                  </span>
+                {:else if downloadStatus === "queued"}
+                  <span role="img" aria-label="Queued for download">
+                    {@render icon("clock")}
+                  </span>
+                {:else}
+                  {track.track ?? index + 1}
+                {/if}
+              </span>
+              <button
+                type="button"
+                class="track-content"
+                onclick={() => playTrack(artist, album, track)}
+              >
+                <span>{track.title}</span>
+              </button>
+              <span class="track-actions">
+                <button
+                  type="button"
+                  class="icon-button"
+                  data-size="sm"
+                  data-variant="ghost"
+                  commandfor={trackMenuId}
+                  command="show-modal"
+                  title={`Open menu for ${track.title}`}
+                >
+                  {@render icon("menu")}
+                </button>
+                <dialog
+                  id={trackMenuId}
+                  class="action-menu"
+                  aria-labelledby={`${trackMenuId}-title`}
+                  closedby="closerequest"
+                  use:swipeToDismiss
+                  onclick={(event) => event.currentTarget.close()}
+                >
+                  <header class="action-menu-heading">
+                    <strong id={`${trackMenuId}-title`} class="type-title">
+                      {track.title}
+                    </strong>
+                  </header>
+                  <div class="track-list">
+                    <button
+                      type="button"
+                      class="track-item action-menu-item"
+                      onclick={() => playTrack(artist, album, track)}
+                    >
+                      {@render icon("play")}
+                      <span>Play</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="track-item action-menu-item"
+                      onclick={() =>
+                        playNext([trackQueueItem(artist, album, track)])}
+                    >
+                      {@render icon("next")}
+                      <span>Play next</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="track-item action-menu-item"
+                      onclick={() =>
+                        playLast([trackQueueItem(artist, album, track)])}
+                    >
+                      {@render icon("plus")}
+                      <span>Play last</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="track-item action-menu-item"
+                      disabled={downloadStatus !== "idle"}
+                      onclick={() => downloadLibraryTrack(artist, album, track)}
+                    >
+                      {#if downloadStatus === "downloaded"}
+                        {@render icon("check")}
+                        <span>Downloaded</span>
+                      {:else if downloadStatus === "queued"}
+                        {@render icon("clock")}
+                        <span>Queued</span>
+                      {:else if downloadStatus === "downloading"}
+                        {@render icon("loading")}
+                        <span>Downloading…</span>
+                      {:else}
+                        {@render icon("download")}
+                        <span>Download</span>
+                      {/if}
+                    </button>
+                  </div>
+                  <button type="button" class="button" data-variant="neutral">
+                    Cancel
+                  </button>
+                </dialog>
+              </span>
+            </div>
+          {:else}
+            <div class="empty-state">
+              <p class="type-body">
+                {offlineMode ? "No downloaded tracks." : "No tracks found."}
+              </p>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {:else if !loading}
+      <div class="empty-state">
+        <span>{@render icon("music")}</span>
+        <p class="type-body">
+          {connectedHost ? "Album not found." : "Connect your library."}
+        </p>
+        <a
+          class="button"
+          data-size="md"
+          data-variant="neutral"
+          href={router.href(connectedHost ? "/library" : "/settings")}
+        >
+          {connectedHost ? "Open library" : "Open settings"}
+        </a>
+      </div>
+    {/if}
+  </section>
+  {@render miniPlayer()}
+{/snippet}
+
+{#snippet connectLibrary(router: RouteControls)}
+  <div class="empty-state">
+    <span>{@render icon("music")}</span>
+    <h2 class="type-heading">Connect your library</h2>
+    <p class="type-body">Add your Navidrome server to start listening.</p>
+    <a
+      class="button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/settings")}>Open settings</a
+    >
+  </div>
+{/snippet}
+
+{#snippet miniPlayer()}
+  {#if queue.length > 0}
+    <div class="mini-player track-list">
+      <div class="track-item">
+        <button
+          class="mini-main"
+          type="button"
+          commandfor="player-dialog"
+          command="show-modal"
+          title="Open player"
+        >
+          <span class="mini-art">
+            {#if queue[currentIndex >= 0 ? currentIndex : 0].coverArt}
               {@const cover = coverEngine.getCover({
-                candidates: [queue[currentIndex].coverArt],
+                candidates: [
+                  queue[currentIndex >= 0 ? currentIndex : 0].coverArt,
+                ],
                 allowNetwork: !offlineMode,
               })}
               {#if cover.source}
@@ -735,885 +1696,41 @@
             {:else}
               <span>{@render icon("music")}</span>
             {/if}
-          </div>
-
-          {#if currentIndex >= 0 && queue[currentIndex]}
-            <p class="type-body">
-              <strong class="type-heading">{queue[currentIndex].title}</strong>
-              <br />
-              {#if currentRelease}
-                <a
-                  class="text-link"
-                  href={`#${artistPath(currentRelease.artist)}`}
-                  onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-                >{queue[currentIndex].artist}</a>
-                —
-                <a
-                  class="text-link"
-                  href={`#${albumPath(currentRelease.artist, currentRelease.album)}`}
-                  onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-                >{queue[currentIndex].album}</a>
-              {:else}
-                {queue[currentIndex].artist} — {queue[currentIndex].album}
-              {/if}
-            </p>
-          {/if}
-
-          <div class="playback-progress">
-            <input
-              class="playback-slider"
-              type="range"
-              min="0"
-              max={Number.isFinite(duration) ? duration : 0}
-              step="0.1"
-              value={currentTime}
-              disabled={!duration}
-              oninput={(event) =>
-                playback.seek(event.currentTarget.valueAsNumber)}
-            />
-            <div class="playback-time type-caption">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
-          </div>
-
-          <div class="controls">
-            <button
-              type="button"
-              class="icon-button"
-              data-size="md"
-              data-variant="neutral"
-              onclick={() => playback.previous()}
-              disabled={!playback.hasPrevious && currentTime <= 0}
-              title="Previous">{@render icon("previous")}</button
-            >
-            <button
-              type="button"
-              class="icon-button"
-              data-size="lg"
-              data-variant="primary"
-              onclick={() => playback.toggle()}
-              disabled={queue.length === 0}
-              title={isPlaying ? "Pause" : "Play"}
-            >
-              {#if playbackLoading}
-                {@render icon("loading")}
-              {:else if isPlaying}
-                {@render icon("pause")}
-              {:else}
-                {@render icon("play")}
-              {/if}
-            </button>
-            <button
-              type="button"
-              class="icon-button"
-              data-size="md"
-              data-variant="neutral"
-              onclick={() => playback.next()}
-              disabled={!playback.hasNext}
-              title="Next">{@render icon("next")}</button
-            >
-          </div>
-
-          {#if downloadError}
-            <p class="error type-small">{downloadError}</p>
-          {/if}
-          {#if playbackError}
-            <p class="error type-small">{playbackError}</p>
-          {/if}
-          {#if queueEngine.error}
-            <p class="error type-small" role="status">
-              Queue synchronization failed: {queueEngine.error instanceof Error
-                ? queueEngine.error.message
-                : String(queueEngine.error)}. Local playback is unaffected.
-            </p>
-          {/if}
-        </div>
-
-        <div class="player-queue">
-          <div class="section-heading">
-            <div>
-              <span class="type-eyebrow muted">Up next</span>
-              <h2 class="type-heading">
-                {queue.length} track{queue.length === 1 ? "" : "s"}
-              </h2>
-            </div>
-            {#if queue.length > 0}
-              <button
-                type="button"
-                class="button"
-                data-size="sm"
-                data-variant="neutral"
-                onclick={clearQueue}>Clear</button
-              >
-            {/if}
-          </div>
-          {#if queue.length > 0}
-            <div class="track-list">
-              {#each queue as item, index}
-                {@const downloadStatus = trackEngine.getStatus(item.id)}
-                <div class="track-item" class:current={index === currentIndex}>
-                  <span class="track-leading">
-                    {#if index === currentIndex && playbackLoading}
-                      <span role="img" aria-label="Loading playback">
-                        {@render icon("loading")}
-                      </span>
-                    {:else if index === currentIndex && isPlaying}
-                      <span role="img" aria-label="Playing">
-                        {@render icon("sound-bars")}
-                      </span>
-                    {:else if index === currentIndex}
-                      <span role="img" aria-label="Current track, not playing">
-                        {@render icon("pause")}
-                      </span>
-                    {:else if downloadStatus === "downloading"}
-                      <span role="img" aria-label="Downloading">
-                        {@render icon("loading")}
-                      </span>
-                    {:else if downloadStatus === "queued"}
-                      <span role="img" aria-label="Queued for download">
-                        {@render icon("clock")}
-                      </span>
-                    {:else}
-                      {index + 1}
-                    {/if}
-                  </span>
-                  <button
-                    type="button"
-                    class="track-content"
-                    onclick={() => playback.playIndex(index)}
-                  >
-                    <span>{item.title}</span>
-                  </button>
-                </div>
-              {/each}
-            </div>
+          </span>
+          <span class="mini-copy stack-xs">
+            <strong class="type-title">
+              {queue[currentIndex >= 0 ? currentIndex : 0].title}
+            </strong>
+            <small class="type-small muted">
+              {queue[currentIndex >= 0 ? currentIndex : 0].artist}
+            </small>
+          </span>
+        </button>
+        <button
+          type="button"
+          class="icon-button"
+          data-size="md"
+          data-variant="primary"
+          onclick={() => playback.toggle()}
+          title={isPlaying ? "Pause" : "Play"}
+        >
+          {#if playbackLoading}
+            {@render icon("loading")}
+          {:else if isPlaying}
+            {@render icon("pause")}
           {:else}
-            <p class="type-body muted">The queue is empty.</p>
+            {@render icon("play")}
           {/if}
-        </div>
-      </section>
-    </dialog>
-  {/snippet}
-
-  {#snippet libraryRoute(_params: RouteParams, router: RouteControls)}
-    {@const visibleArtists = offlineMode
-      ? artists.filter((artist) =>
-          artistQueueItems(artist).some((track) => trackEngine.getStatus(track.id) === "downloaded"),
-        )
-      : artists}
-
-    <header class="topbar track-list">
-      <span class="topbar-spacer"></span>
-      <strong class="type-title">Library</strong>
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/settings")}
-        title="Settings">{@render icon("settings")}</a
-      >
-    </header>
-    {@render alerts()}
-
-    <section class="view library-view">
-      {#if connectedHost && !error}
-        <div class="section-heading">
-          <div>
-            <span class="type-eyebrow muted">
-              {offlineMode ? "Downloaded music" : "Your music"}
-            </span>
-            <h2 class="type-heading">{visibleArtists.length} artists</h2>
-          </div>
-        </div>
-
-        {#if offlineScanning}
-          <div class="empty-state">
-            <div class="scan-spinner">{@render icon("loading")}</div>
-            <p class="type-body">Checking downloaded music…</p>
-          </div>
-        {:else if visibleArtists.length > 0}
-          <div class="artist-grid">
-            {#each visibleArtists as artist, index}
-              {@const menuId = `artist-menu-${index}`}
-              <article class="artist-card">
-                <a
-                  class="artist-main"
-                  href={router.href(artistPath(artist))}
-                  data-longpressfor={menuId}
-                  data-longpress="show-modal"
-                  aria-keyshortcuts="Shift+F10"
-                  title={`${artist.name} — hold for actions`}
-                >
-                  <span class="cover artist-cover">
-                    {#if artistCoverArts(artist).some(Boolean)}
-                      {@const cover = coverEngine.getCover({
-                        candidates: artistCoverArts(artist),
-                        allowNetwork: !offlineMode,
-                      })}
-                      {#if cover.source}
-                        <img
-                          src={cover.source}
-                          alt=""
-                          loading="lazy"
-                          onload={cover.cache}
-                        />
-                      {:else}
-                        <span>{@render icon("music")}</span>
-                      {/if}
-                    {:else}
-                      <span>{@render icon("music")}</span>
-                    {/if}
-                    <strong class="artist-name type-small">{artist.name}</strong
-                    >
-                  </span>
-                </a>
-                <button
-                  type="button"
-                  class="icon-button artist-menu-trigger"
-                  hidden
-                  data-size="sm"
-                  data-variant="overlay"
-                  commandfor={menuId}
-                  command="show-modal"
-                  title={`Open menu for ${artist.name}`}
-                >
-                  {@render icon("menu")}
-                </button>
-                <dialog
-                  id={menuId}
-                  class="action-menu"
-                  aria-labelledby={`${menuId}-title`}
-                  closedby="closerequest"
-                  use:swipeToDismiss
-                  onclick={(event) => event.currentTarget.close()}
-                >
-                  <header class="action-menu-heading">
-                    <strong id={`${menuId}-title`} class="type-title">
-                      {artist.name}
-                    </strong>
-                  </header>
-                  <div class="track-list">
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => playArtist(artist)}
-                    >
-                      {@render icon("play")}
-                      <span>Play</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => playNext(artistQueueItems(artist))}
-                    >
-                      {@render icon("next")}
-                      <span>Play next</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => playLast(artistQueueItems(artist))}
-                    >
-                      {@render icon("plus")}
-                      <span>Play last</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => downloadArtist(artist)}
-                    >
-                      {@render icon("download")}
-                      <span>Download</span>
-                    </button>
-                  </div>
-                  <button type="button" class="button" data-variant="neutral">
-                    Cancel
-                  </button>
-                </dialog>
-              </article>
-            {/each}
-          </div>
-        {:else}
-          <div class="empty-state">
-            <span>{@render icon("music")}</span>
-            <p class="type-body">
-              {offlineMode ? "No downloaded artists." : "No artists found."}
-            </p>
-          </div>
-        {/if}
-      {:else if !loading}
-        {@render connectLibrary(router)}
-      {/if}
-    </section>
-    {@render miniPlayer()}
-  {/snippet}
-
-  {#snippet artistRoute(params: RouteParams, router: RouteControls)}
-    {@const artist = params.artistId
-      ? metadataEngine.getArtist(params.artistId)
-      : undefined}
-    {@const visibleAlbums = artist
-      ? offlineMode
-        ? albumsFor(artist).filter((album) =>
-            tracksFor(album).some((track) => trackEngine.getStatus(track.id) === "downloaded"),
-          )
-        : albumsFor(artist)
-      : []}
-
-    <header class="topbar track-list">
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/library")}
-        title="Back">{@render icon("back")}</a
-      >
-      <strong class="type-title">Library</strong>
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/library")}
-        title="Home">{@render icon("home")}</a
-      >
-    </header>
-    {@render alerts()}
-
-    <section class="view library-view">
-      {#if connectedHost && !error && artist}
-        {@const artwork = coverEngine.getCover({
-          candidates: artistCoverArts(artist),
-          allowNetwork: !offlineMode,
-        })}
-        <div class="collection-art collection-art-artist" aria-hidden="true">
-          {#if artwork.source}
-            <img src={artwork.source} alt="" onload={artwork.cache} />
-          {:else}
-            {@render icon("music")}
-          {/if}
-        </div>
-        <div class="section-heading collection-heading">
-          <div>
-            <span class="type-eyebrow muted">Albums</span>
-            <h2 class="type-heading">{artist.name}</h2>
-            <p class="library-meta type-small">
-              {visibleAlbums.length} album{visibleAlbums.length === 1
-                ? ""
-                : "s"}
-            </p>
-            {#if artistGenres(artist).length > 0}
-              <div class="genre-list">
-                {#each artistGenres(artist) as genre}
-                  <span class="type-caption">
-                    {genre}
-                  </span>
-                {/each}
-              </div>
-            {/if}
-          </div>
-          <button
-            type="button"
-            class="icon-button"
-            data-size="md"
-            data-variant="neutral"
-            commandfor="artist-page-menu"
-            command="show-modal"
-            title={`Open menu for ${artist.name}`}
-          >
-            {@render icon("menu")}
-          </button>
-          <dialog
-            id="artist-page-menu"
-            class="action-menu"
-            aria-labelledby="artist-page-menu-title"
-            closedby="closerequest"
-            use:swipeToDismiss
-            onclick={(event) => event.currentTarget.close()}
-          >
-            <header class="action-menu-heading">
-              <strong id="artist-page-menu-title" class="type-title">
-                {artist.name}
-              </strong>
-            </header>
-            <div class="track-list">
-              <button
-                type="button"
-                class="track-item action-menu-item"
-                onclick={() => playArtist(artist)}
-              >
-                {@render icon("play")}
-                <span>Play</span>
-              </button>
-              <button
-                type="button"
-                class="track-item action-menu-item"
-                onclick={() => playNext(artistQueueItems(artist))}
-              >
-                {@render icon("next")}
-                <span>Play next</span>
-              </button>
-              <button
-                type="button"
-                class="track-item action-menu-item"
-                onclick={() => playLast(artistQueueItems(artist))}
-              >
-                {@render icon("plus")}
-                <span>Play last</span>
-              </button>
-              <button
-                type="button"
-                class="track-item action-menu-item"
-                onclick={() => downloadArtist(artist)}
-              >
-                {@render icon("download")}
-                <span>Download</span>
-              </button>
-            </div>
-            <button type="button" class="button" data-variant="neutral">
-              Cancel
-            </button>
-          </dialog>
-        </div>
-
-        {#if offlineScanning}
-          <div class="empty-state">
-            <div class="scan-spinner">{@render icon("loading")}</div>
-            <p class="type-body">Checking downloaded music…</p>
-          </div>
-        {:else}
-          <div class="track-list">
-            {#each visibleAlbums as album, index}
-              {@const albumMenuId = `album-menu-${index}`}
-              {@const visibleTracks = offlineMode
-                ? tracksFor(album).filter((track) => trackEngine.getStatus(track.id) === "downloaded")
-                : tracksFor(album)}
-              <article class="track-item">
-                <a
-                  class="track-leading album-leading"
-                  href={router.href(albumPath(artist, album))}
-                >
-                  <span class="cover album-cover">
-                    {#if albumCoverArts(album).some(Boolean)}
-                      {@const cover = coverEngine.getCover({
-                        candidates: albumCoverArts(album),
-                        allowNetwork: !offlineMode,
-                      })}
-                      {#if cover.source}
-                        <img
-                          src={cover.source}
-                          alt=""
-                          loading="lazy"
-                          onload={cover.cache}
-                        />
-                      {:else}
-                        <span>{@render icon("music")}</span>
-                      {/if}
-                    {:else}
-                      <span>{@render icon("music")}</span>
-                    {/if}
-                  </span>
-                </a>
-                <a
-                  class="track-content stack-xs"
-                  href={router.href(albumPath(artist, album))}
-                >
-                  <strong class="type-title">{album.name}</strong>
-                  <small class="type-small muted">
-                    {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
-                  </small>
-                </a>
-                <span class="track-actions">
-                  <button
-                    type="button"
-                    class="icon-button"
-                    data-size="sm"
-                    data-variant="ghost"
-                    commandfor={albumMenuId}
-                    command="show-modal"
-                    title={`Open menu for ${album.name}`}
-                  >
-                    {@render icon("menu")}
-                  </button>
-                  <dialog
-                    id={albumMenuId}
-                    class="action-menu"
-                    aria-labelledby={`${albumMenuId}-title`}
-                    closedby="closerequest"
-                    use:swipeToDismiss
-                    onclick={(event) => event.currentTarget.close()}
-                  >
-                    <header class="action-menu-heading">
-                      <strong id={`${albumMenuId}-title`} class="type-title">
-                        {album.name}
-                      </strong>
-                    </header>
-                    <div class="track-list">
-                      <button
-                        type="button"
-                        class="track-item action-menu-item"
-                        onclick={() => playAlbum(artist, album)}
-                      >
-                        {@render icon("play")}
-                        <span>Play</span>
-                      </button>
-                      <button
-                        type="button"
-                        class="track-item action-menu-item"
-                        onclick={() => playNext(albumQueueItems(artist, album))}
-                      >
-                        {@render icon("next")}
-                        <span>Play next</span>
-                      </button>
-                      <button
-                        type="button"
-                        class="track-item action-menu-item"
-                        onclick={() => playLast(albumQueueItems(artist, album))}
-                      >
-                        {@render icon("plus")}
-                        <span>Play last</span>
-                      </button>
-                      <button
-                        type="button"
-                        class="track-item action-menu-item"
-                        onclick={() => downloadAlbum(artist, album)}
-                      >
-                        {@render icon("download")}
-                        <span>Download</span>
-                      </button>
-                    </div>
-                    <button type="button" class="button" data-variant="neutral">
-                      Cancel
-                    </button>
-                  </dialog>
-                </span>
-              </article>
-            {:else}
-              <div class="empty-state">
-                <p class="type-body">
-                  {offlineMode ? "No downloaded albums." : "No albums found."}
-                </p>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      {:else if !loading}
-        <div class="empty-state">
-          <span>{@render icon("music")}</span>
-          <p class="type-body">
-            {connectedHost ? "Artist not found." : "Connect your library."}
-          </p>
-          <a
-            class="button"
-            data-size="md"
-            data-variant="neutral"
-            href={router.href(connectedHost ? "/library" : "/settings")}
-          >
-            {connectedHost ? "Open library" : "Open settings"}
-          </a>
-        </div>
-      {/if}
-    </section>
-    {@render miniPlayer()}
-  {/snippet}
-
-  {#snippet albumRoute(params: RouteParams, router: RouteControls)}
-    {@const artist = params.artistId
-      ? metadataEngine.getArtist(params.artistId)
-      : undefined}
-    {@const album = params.albumId
-      ? metadataEngine.getAlbum(params.albumId)
-      : undefined}
-    {@const visibleTracks = album
-      ? offlineMode
-        ? tracksFor(album).filter((track) => trackEngine.getStatus(track.id) === "downloaded")
-        : tracksFor(album)
-      : []}
-
-    <header class="topbar track-list">
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={artist
-          ? router.href(artistPath(artist))
-          : router.href("/library")}
-        title="Back">{@render icon("back")}</a
-      >
-      <strong class="type-title">Library</strong>
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/library")}
-        title="Home">{@render icon("home")}</a
-      >
-    </header>
-    {@render alerts()}
-
-    <section
-      class="view library-view"
-    >
-      {#if connectedHost && !error && artist && album}
-        {@const artwork = coverEngine.getCover({
-          candidates: albumCoverArts(album),
-          allowNetwork: !offlineMode,
-        })}
-        <div class="collection-art collection-art-album" aria-hidden="true">
-          {#if artwork.source}
-            <img src={artwork.source} alt="" onload={artwork.cache} />
-          {:else}
-            {@render icon("music")}
-          {/if}
-        </div>
-        <div class="section-heading collection-heading">
-          <div>
-            <a class="text-link type-eyebrow muted" href={router.href(artistPath(artist))}>{artist.name}</a>
-            <h2 class="type-heading">{album.name}</h2>
-            <p class="library-meta type-small">
-              {album.year ?? "Unknown year"} · {visibleTracks.length}
-              track{visibleTracks.length === 1 ? "" : "s"}
-            </p>
-            {#if albumGenres(album).length > 0}
-              <div class="genre-list">
-                {#each albumGenres(album) as genre}
-                  <span class="type-caption">
-                    {genre}
-                  </span>
-                {/each}
-              </div>
-            {/if}
-          </div>
-          <button
-            type="button"
-            class="icon-button"
-            data-size="md"
-            data-variant="neutral"
-            commandfor="album-page-menu"
-            command="show-modal"
-            title={`Open menu for ${album.name}`}
-          >
-            {@render icon("menu")}
-          </button>
-          <dialog
-            id="album-page-menu"
-            class="action-menu"
-            aria-labelledby="album-page-menu-title"
-            closedby="closerequest"
-            use:swipeToDismiss
-            onclick={(event) => event.currentTarget.close()}
-          >
-            <header class="action-menu-heading">
-              <strong id="album-page-menu-title" class="type-title">
-                {album.name}
-              </strong>
-            </header>
-            <div class="track-list">
-              <button
-                type="button"
-                class="track-item action-menu-item"
-                onclick={() => playAlbum(artist, album)}
-              >
-                {@render icon("play")}
-                <span>Play</span>
-              </button>
-              <button
-                type="button"
-                class="track-item action-menu-item"
-                onclick={() => playNext(albumQueueItems(artist, album))}
-              >
-                {@render icon("next")}
-                <span>Play next</span>
-              </button>
-              <button
-                type="button"
-                class="track-item action-menu-item"
-                onclick={() => playLast(albumQueueItems(artist, album))}
-              >
-                {@render icon("plus")}
-                <span>Play last</span>
-              </button>
-              <button
-                type="button"
-                class="track-item action-menu-item"
-                onclick={() => downloadAlbum(artist, album)}
-              >
-                {@render icon("download")}
-                <span>Download</span>
-              </button>
-            </div>
-            <button type="button" class="button" data-variant="neutral">
-              Cancel
-            </button>
-          </dialog>
-        </div>
-
-        {#if offlineScanning}
-          <div class="empty-state">
-            <div class="scan-spinner">{@render icon("loading")}</div>
-            <p class="type-body">Checking downloaded music…</p>
-          </div>
-        {:else}
-          <div class="track-list">
-            {#each visibleTracks as track, index}
-              {@const trackMenuId = `album-track-menu-${index}`}
-              {@const downloadStatus = trackEngine.getStatus(track.id)}
-              <div class="track-item">
-                <span class="track-leading">
-                  {#if queue[currentIndex]?.id === track.id && playbackLoading}
-                    <span role="img" aria-label="Loading playback">
-                      {@render icon("loading")}
-                    </span>
-                  {:else if queue[currentIndex]?.id === track.id && isPlaying}
-                    <span role="img" aria-label="Playing">
-                      {@render icon("sound-bars")}
-                    </span>
-                  {:else if queue[currentIndex]?.id === track.id}
-                    <span role="img" aria-label="Current track, not playing">
-                      {@render icon("pause")}
-                    </span>
-                  {:else if downloadStatus === "downloading"}
-                    <span role="img" aria-label="Downloading">
-                      {@render icon("loading")}
-                    </span>
-                  {:else if downloadStatus === "queued"}
-                    <span role="img" aria-label="Queued for download">
-                      {@render icon("clock")}
-                    </span>
-                  {:else}
-                    {track.track ?? index + 1}
-                  {/if}
-                </span>
-                <button
-                  type="button"
-                  class="track-content"
-                  onclick={() => playTrack(artist, album, track)}
-                >
-                  <span>{track.title}</span>
-                </button>
-                <span class="track-actions">
-                  <button
-                    type="button"
-                    class="icon-button"
-                    data-size="sm"
-                    data-variant="ghost"
-                    commandfor={trackMenuId}
-                    command="show-modal"
-                    title={`Open menu for ${track.title}`}
-                  >
-                    {@render icon("menu")}
-                  </button>
-                  <dialog
-                    id={trackMenuId}
-                    class="action-menu"
-                    aria-labelledby={`${trackMenuId}-title`}
-                    closedby="closerequest"
-                    use:swipeToDismiss
-                    onclick={(event) => event.currentTarget.close()}
-                  >
-                    <header class="action-menu-heading">
-                      <strong id={`${trackMenuId}-title`} class="type-title">
-                        {track.title}
-                      </strong>
-                    </header>
-                    <div class="track-list">
-                      <button
-                        type="button"
-                        class="track-item action-menu-item"
-                        onclick={() => playTrack(artist, album, track)}
-                      >
-                        {@render icon("play")}
-                        <span>Play</span>
-                      </button>
-                      <button
-                        type="button"
-                        class="track-item action-menu-item"
-                        onclick={() =>
-                          playNext([trackQueueItem(artist, album, track)])}
-                      >
-                        {@render icon("next")}
-                        <span>Play next</span>
-                      </button>
-                      <button
-                        type="button"
-                        class="track-item action-menu-item"
-                        onclick={() =>
-                          playLast([trackQueueItem(artist, album, track)])}
-                      >
-                        {@render icon("plus")}
-                        <span>Play last</span>
-                      </button>
-                      <button
-                        type="button"
-                        class="track-item action-menu-item"
-                        disabled={downloadStatus !== "idle"}
-                        onclick={() =>
-                          downloadLibraryTrack(artist, album, track)}
-                      >
-                        {#if downloadStatus === "downloaded"}
-                          {@render icon("check")}
-                          <span>Downloaded</span>
-                        {:else if downloadStatus === "queued"}
-                          {@render icon("clock")}
-                          <span>Queued</span>
-                        {:else if downloadStatus === "downloading"}
-                          {@render icon("loading")}
-                          <span>Downloading…</span>
-                        {:else}
-                          {@render icon("download")}
-                          <span>Download</span>
-                        {/if}
-                      </button>
-                    </div>
-                    <button type="button" class="button" data-variant="neutral">
-                      Cancel
-                    </button>
-                  </dialog>
-                </span>
-              </div>
-            {:else}
-              <div class="empty-state">
-                <p class="type-body">
-                  {offlineMode ? "No downloaded tracks." : "No tracks found."}
-                </p>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      {:else if !loading}
-        <div class="empty-state">
-          <span>{@render icon("music")}</span>
-          <p class="type-body">
-            {connectedHost ? "Album not found." : "Connect your library."}
-          </p>
-          <a
-            class="button"
-            data-size="md"
-            data-variant="neutral"
-            href={router.href(connectedHost ? "/library" : "/settings")}
-          >
-            {connectedHost ? "Open library" : "Open settings"}
-          </a>
-        </div>
-      {/if}
-    </section>
-    {@render miniPlayer()}
-  {/snippet}
-
-  {#snippet connectLibrary(router: RouteControls)}
-    <div class="empty-state">
-      <span>{@render icon("music")}</span>
-      <h2 class="type-heading">Connect your library</h2>
-      <p class="type-body">Add your Navidrome server to start listening.</p>
-      <a
-        class="button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/settings")}>Open settings</a
-      >
+        </button>
+      </div>
+      <span class="mini-progress">
+        <span style:width={`${playbackPercent()}%`}></span>
+      </span>
     </div>
-  {/snippet}
+  {/if}
+{/snippet}
 
+<main class="app-shell">
   <Router
     routes={[
       { pattern: "/library", render: libraryRoute },
@@ -1629,72 +1746,6 @@
   />
 
   {@render playerDialog()}
-
-  {#snippet miniPlayer()}
-    {#if queue.length > 0}
-      <div class="mini-player track-list">
-        <div class="track-item">
-          <button
-            class="mini-main"
-            type="button"
-            commandfor="player-dialog"
-            command="show-modal"
-            title="Open player"
-          >
-            <span class="mini-art">
-              {#if queue[currentIndex >= 0 ? currentIndex : 0].coverArt}
-                {@const cover = coverEngine.getCover({
-                  candidates: [
-                    queue[currentIndex >= 0 ? currentIndex : 0].coverArt,
-                  ],
-                  allowNetwork: !offlineMode,
-                })}
-                {#if cover.source}
-                  <img
-                    src={cover.source}
-                    alt=""
-                    loading="lazy"
-                    onload={cover.cache}
-                  />
-                {:else}
-                  <span>{@render icon("music")}</span>
-                {/if}
-              {:else}
-                <span>{@render icon("music")}</span>
-              {/if}
-            </span>
-            <span class="mini-copy stack-xs">
-              <strong class="type-title">
-                {queue[currentIndex >= 0 ? currentIndex : 0].title}
-              </strong>
-              <small class="type-small muted">
-                {queue[currentIndex >= 0 ? currentIndex : 0].artist}
-              </small>
-            </span>
-          </button>
-          <button
-            type="button"
-            class="icon-button"
-            data-size="md"
-            data-variant="primary"
-            onclick={() => playback.toggle()}
-            title={isPlaying ? "Pause" : "Play"}
-          >
-            {#if playbackLoading}
-              {@render icon("loading")}
-            {:else if isPlaying}
-              {@render icon("pause")}
-            {:else}
-              {@render icon("play")}
-            {/if}
-          </button>
-        </div>
-        <span class="mini-progress">
-          <span style:width={`${playbackPercent()}%`}></span>
-        </span>
-      </div>
-    {/if}
-  {/snippet}
 </main>
 
 <WebappUpdater />
