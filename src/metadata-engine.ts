@@ -1,4 +1,14 @@
 import * as v from "valibot";
+import {
+  accountSchema,
+  artistSchema,
+  albumSchema,
+  trackSchema,
+  type Artist,
+  type Album,
+  type Track,
+  type MetadataAccount,
+} from "./schema";
 import { OpfsJsonStore, jsonFileName } from "./json-store";
 import { createSubscriber } from "svelte/reactivity";
 import {
@@ -8,48 +18,16 @@ import {
   type SubsonicTrack,
 } from "./subsonic-client";
 
-const id = v.pipe(v.string(), v.minLength(1));
 const timestamp = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000));
-const ordinal = v.optional(v.pipe(v.number(), v.integer(), v.minValue(1)));
-const artistSchema = v.strictObject({
-  id,
-  name: v.string(),
-  artworkId: v.optional(id),
-  genres: v.array(v.string()),
-});
-const albumSchema = v.strictObject({
-  id,
-  title: v.string(),
-  artistId: id,
-  artworkId: v.optional(id),
-  year: ordinal,
-  genres: v.array(v.string()),
-});
-const trackSchema = v.strictObject({
-  id,
-  title: v.string(),
-  albumId: id,
-  artistId: id,
-  artworkId: v.optional(id),
-  number: ordinal,
-  disc: ordinal,
-  duration: v.optional(v.pipe(v.number(), v.finite(), v.minValue(0))),
-  mimeType: v.optional(v.string()),
-  genres: v.array(v.string()),
-});
 const snapshotSchema = v.strictObject({
-  account: v.strictObject({ host: id, username: id }),
+  account: accountSchema,
   lastModified: v.nullable(timestamp),
   savedAt: timestamp,
   artists: v.array(artistSchema),
   albums: v.array(albumSchema),
   tracks: v.array(trackSchema),
 });
-export type Artist = v.InferOutput<typeof artistSchema>;
-export type Album = v.InferOutput<typeof albumSchema>;
-export type Track = v.InferOutput<typeof trackSchema>;
 export type MetadataSnapshot = v.InferOutput<typeof snapshotSchema>;
-export type MetadataAccount = MetadataSnapshot["account"];
 
 function entityMap<T extends { id: string }>(items: readonly T[]) {
   const map = new Map<string, T>();
@@ -159,6 +137,7 @@ function normalizeLibrary(
   });
 }
 
+// Transitional engine-owned index until metadata ownership migrates to Memory.
 class MetadataIndex {
   #artists = new Map<string, Artist>();
   #albums = new Map<string, Album>();
@@ -166,6 +145,9 @@ class MetadataIndex {
   #artistAlbums = new Map<string, Album[]>();
   #albumTracks = new Map<string, Track[]>();
   #artistList: readonly Artist[] = [];
+  #noAlbums: readonly Album[] = [];
+  #noTracks: readonly Track[] = [];
+
   constructor(snapshot?: MetadataSnapshot) {
     if (!snapshot) return;
     this.#artists = entityMap(snapshot.artists);
@@ -209,10 +191,10 @@ class MetadataIndex {
     return this.#tracks.get(id);
   }
   getArtistAlbums(id: string): readonly Album[] {
-    return this.#artistAlbums.get(id) ?? [];
+    return this.#artistAlbums.get(id) ?? this.#noAlbums;
   }
   getAlbumTracks(id: string): readonly Track[] {
-    return this.#albumTracks.get(id) ?? [];
+    return this.#albumTracks.get(id) ?? this.#noTracks;
   }
 }
 

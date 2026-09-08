@@ -5,7 +5,8 @@
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
-  import { MetadataEngine, type Album, type Artist, type Track } from "./metadata-engine";
+  import { MetadataEngine } from "./metadata-engine";
+  import type { Album, Artist, Track } from "./schema";
   import { QueueEngine } from "./queue-engine";
   import { type RouteParams } from "./router-engine";
   import { SubsonicClient, type SubsonicAuth } from "./subsonic-client";

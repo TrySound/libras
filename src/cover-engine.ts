@@ -2,7 +2,8 @@ import * as v from "valibot";
 import { OpfsJsonStore, jsonFileName } from "./json-store";
 import { createSubscriber } from "svelte/reactivity";
 import { SubsonicClient } from "./subsonic-client";
-import type { MetadataAccount, MetadataSnapshot, MetadataEngine } from "./metadata-engine";
+import type { MetadataSnapshot, MetadataEngine } from "./metadata-engine";
+import type { MetadataAccount } from "./schema";
 
 export interface CoverOptions {
   allowNetwork: boolean;

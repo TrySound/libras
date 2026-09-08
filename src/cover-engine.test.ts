@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoverEngine } from "./cover-engine";
-import type { MetadataAccount, MetadataSnapshot } from "./metadata-engine";
+import type { MetadataSnapshot } from "./metadata-engine";
+import type { MetadataAccount } from "./schema";
 import { SubsonicClient } from "./subsonic-client";
 
 const account = { host: "https://music.example.com", username: "listener" };

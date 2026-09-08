@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MetadataEngine, type MetadataAccount, type MetadataSnapshot } from "./metadata-engine";
+import { MetadataEngine, type MetadataSnapshot } from "./metadata-engine";
+import type { MetadataAccount } from "./schema";
 import { SubsonicClient } from "./subsonic-client";
 
 const account = { host: "https://music.example.com", username: "listener" };
@@ -183,6 +184,38 @@ describe("metadata engine", () => {
     expect(persisted.artists[0]).not.toHaveProperty("albums");
     expect(persisted.albums[0]).not.toHaveProperty("tracks");
     expect(JSON.stringify(persisted)).not.toMatch(/contentType|coverArt|discNumber/);
+    engine.destroy();
+  });
+
+  it("restores sorted stable indexes without changing stored entity order", async () => {
+    const storage = installMetadataStorage();
+    const data = snapshot();
+    data.artists = [
+      { id: "b", name: "Beta", genres: [] },
+      { id: "a", name: "Alpha", genres: [] },
+    ];
+    data.albums = [
+      { id: "later", artistId: "a", title: "Later", year: 2020, genres: [] },
+      { id: "earlier", artistId: "a", title: "Earlier", year: 2000, genres: [] },
+    ];
+    data.tracks = [
+      { id: "second", albumId: "earlier", artistId: "a", title: "Second", number: 2, genres: [] },
+      { id: "first", albumId: "earlier", artistId: "a", title: "First", number: 1, genres: [] },
+    ];
+    await storage.seed(account, data);
+    const engine = new MetadataEngine();
+    await engine.restore(account);
+    expect(engine.getArtists().map((item) => item.id)).toEqual(["a", "b"]);
+    expect(engine.getArtistAlbums("a").map((item) => item.id)).toEqual(["earlier", "later"]);
+    expect(engine.getAlbumTracks("earlier").map((item) => item.id)).toEqual(["first", "second"]);
+    expect(engine.getArtists()).toBe(engine.getArtists());
+    expect(engine.getArtistAlbums("a")).toBe(engine.getArtistAlbums("a"));
+    expect(engine.getAlbumTracks("earlier")).toBe(engine.getAlbumTracks("earlier"));
+    expect(engine.getArtistAlbums("missing")).toBe(engine.getArtistAlbums("missing"));
+    expect(engine.getAlbumTracks("missing")).toBe(engine.getAlbumTracks("missing"));
+    expect(engine.getAlbumTracks("earlier")[0]).toBe(engine.getTrack("first"));
+    expect(engine.snapshot).toEqual(data);
+    expect(storage.writes).toBe(0);
     engine.destroy();
   });
 

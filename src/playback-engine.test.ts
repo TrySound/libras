@@ -3,7 +3,7 @@ import { PlaybackEngine } from "./playback-engine";
 import { flushSync } from "svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
 import { QueueEngine } from "./queue-engine";
-import type { Track } from "./metadata-engine";
+import type { Track } from "./schema";
 import type { TrackSource } from "./track-engine";
 
 class AudioStub extends EventTarget {
