@@ -15,6 +15,21 @@ pnpm dev
 
 The Navidrome server must allow browser requests from the app's origin (CORS), and HTTPS should be used outside local development.
 
+## CI and GitHub Pages
+
+The CI workflow (`.github/workflows/ci.yml`) runs type checks, tests, and a production build for pull requests and pushes to `main`. A separate Pages workflow (`.github/workflows/pages.yml`) builds and deploys `main` to https://trysound.github.io/libras/ using a Pages artifact, without a separate branch. Both workflows can also be run manually; Pages deployment runs independently of CI.
+
+In the repository's **Settings → Pages → Build and deployment**, select **GitHub Actions** as the source.
+
+To preview the Pages build locally:
+
+```sh
+BASE_PATH=/libras/ pnpm build
+pnpm preview
+```
+
+Open `/libras/` on the preview server. Normal local builds default to `/`. The Navidrome server must allow `https://trysound.github.io` through CORS and use HTTPS.
+
 ## Install on Android
 
 The production app is installable as a standalone PWA. It includes regular and maskable icons and an offline app shell. Service workers are disabled in development to avoid interfering with hot reload.
