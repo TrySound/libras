@@ -269,7 +269,12 @@ export class MetadataEngine {
     };
   });
 
-  // Compatibility boundary for artwork reconciliation; no retained entity snapshot.
+  get savedAt() {
+    this.#subscribe();
+    return this.#snapshotInfo?.savedAt;
+  }
+
+  // Compatibility view for tests; no retained entity snapshot.
   get snapshot(): Immutable<MetadataSnapshot> | undefined {
     this.#subscribe();
     if (!this.#snapshotInfo || !this.#memory.account) return undefined;

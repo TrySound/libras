@@ -3,6 +3,7 @@ import { CoverEngine } from "./cover-engine";
 import type { MetadataSnapshot } from "./metadata-engine";
 import type { MetadataAccount } from "./schema";
 import { SubsonicClient } from "./subsonic-client";
+import { Memory } from "./memory.svelte";
 
 const account = { host: "https://music.example.com", username: "listener" };
 const auth = { ...account, token: "token", salt: "salt" };
@@ -123,8 +124,50 @@ function installOpfs() {
   return storage;
 }
 const engines: CoverEngine[] = [];
-function engine(metadata: { snapshot: MetadataSnapshot | undefined } = { snapshot: snapshot() }) {
-  const result = new CoverEngine(metadata);
+function library(data?: MetadataSnapshot) {
+  const memory = new Memory();
+  let savedAt: number | undefined;
+  const publish = (data: MetadataSnapshot) => {
+    memory.account = data.account;
+    memory.artists = new Map(data.artists.map((artist) => [artist.id, artist]));
+    memory.albums = new Map(data.albums.map((album) => [album.id, album]));
+    memory.tracks = new Map(data.tracks.map((track) => [track.id, track]));
+    memory.artistAlbums = new Map(
+      data.artists.map((artist) => [
+        artist.id,
+        data.albums
+          .filter((album) => album.artistId === artist.id)
+          .sort(
+            (a, b) => (a.year ?? Infinity) - (b.year ?? Infinity) || a.title.localeCompare(b.title),
+          ),
+      ]),
+    );
+    memory.albumTracks = new Map(
+      data.albums.map((album) => [
+        album.id,
+        data.tracks
+          .filter((track) => track.albumId === album.id)
+          .sort(
+            (a, b) =>
+              (a.disc ?? 1) - (b.disc ?? 1) ||
+              (a.number ?? Infinity) - (b.number ?? Infinity) ||
+              a.title.localeCompare(b.title),
+          ),
+      ]),
+    );
+    savedAt = data.savedAt;
+  };
+  if (data) publish(data);
+  return {
+    memory,
+    get savedAt() {
+      return savedAt;
+    },
+    publish,
+  };
+}
+function engine(metadata = library(snapshot())) {
+  const result = new CoverEngine(metadata.memory, metadata);
   engines.push(result);
   return result;
 }
@@ -137,15 +180,20 @@ afterEach(() => {
 describe("cover engine", () => {
   it("reads metadata on explicit refresh without effects or metadata listeners", async () => {
     const storage = installOpfs();
-    const metadata: { snapshot: MetadataSnapshot | undefined } = { snapshot: undefined };
+    const metadata = library();
+    Object.defineProperty(metadata, "snapshot", {
+      get() {
+        throw new Error("Snapshot adapter must not be read");
+      },
+    });
     const covers = engine(metadata);
     await covers.refresh();
     expect(storage.files.size).toBe(0);
-    metadata.snapshot = snapshot();
+    metadata.publish(snapshot());
     expect(storage.files.size).toBe(0);
     await covers.refresh();
     expect((await storage.json()).metadataSavedAt).toBe(100);
-    metadata.snapshot = { ...snapshot(), savedAt: 200, albums: [], tracks: [] };
+    metadata.publish({ ...snapshot(), savedAt: 200, albums: [], tracks: [] });
     expect((await storage.json()).metadataSavedAt).toBe(100);
     await covers.refresh();
     expect((await storage.json()).metadataSavedAt).toBe(200);
@@ -174,16 +222,30 @@ describe("cover engine", () => {
     const bytes = vi.spyOn(File.prototype, "arrayBuffer");
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const covers = engine({ snapshot: undefined });
+    const metadata = library();
+    const covers = engine(metadata);
     await covers.restore(account);
+    expect([...metadata.memory.artistArtwork]).toEqual([
+      ["artist", catalog().artists[0].candidates],
+    ]);
+    expect([...metadata.memory.albumArtwork]).toEqual([["album", catalog().albums[0].candidates]]);
+    expect(metadata.memory.trackArtwork.get("one")).toEqual(catalog().tracks[0].candidates);
+    expect([...metadata.memory.images.values()]).toEqual(catalog().images);
+    storage.reads.mockClear();
+    for (let i = 0; i < 20; i++) {
+      expect(metadata.memory.images.has("album-cover")).toBe(true);
+      expect(metadata.memory.trackArtwork.get("one")?.[0]).toBe("track-cover");
+    }
+    expect(storage.reads).not.toHaveBeenCalled();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(bytes).not.toHaveBeenCalled();
-    const artist = covers.getArtistCover("artist", offline);
-    const album = covers.getAlbumCover("album", offline);
-    const track = covers.getTrackCover("one", offline);
+    const artist = covers.ensureArtistCover("artist", offline);
+    const album = covers.ensureAlbumCover("album", offline);
+    const track = covers.ensureTrackCover("one", offline);
     expect(artist.cached).toBe(true);
     expect(album.cached).toBe(true);
     expect(track.artworkId).toBe("album-cover");
-    expect(covers.getTrackCover("one", offline)).toBe(track);
+    expect(covers.ensureTrackCover("one", offline)).toBe(track);
     await vi.waitFor(() => expect(track.source).toBe("blob:cover-1"));
     expect(artist.source).toBe(track.source);
     expect(album.source).toBe(track.source);
@@ -191,9 +253,36 @@ describe("cover engine", () => {
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
     expect(vi.mocked(URL.createObjectURL).mock.calls[0][0]).not.toBeInstanceOf(File);
     storage.reads.mockClear();
-    for (let i = 0; i < 20; i++) expect(covers.getArtistCover("artist", offline).cached).toBe(true);
+    for (let i = 0; i < 20; i++)
+      expect(covers.ensureArtistCover("artist", offline).cached).toBe(true);
     expect(storage.reads).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("does not install late image bytes after the selected account changes", async () => {
+    const storage = installOpfs();
+    await storage.seed();
+    storage.image();
+    const metadata = library(snapshot());
+    const covers = engine(metadata);
+    await covers.restore(account);
+    let resolve!: (bytes: ArrayBuffer) => void;
+    vi.spyOn(File.prototype, "arrayBuffer").mockImplementationOnce(
+      () =>
+        new Promise<ArrayBuffer>((done) => {
+          resolve = done;
+        }),
+    );
+    const cover = covers.ensureCover("album-cover", offline);
+    await vi.waitFor(() => expect(resolve).toBeDefined());
+    metadata.memory.account = { ...account, username: "other" };
+    resolve(new TextEncoder().encode("image").buffer);
+    await new Promise((done) => setTimeout(done, 0));
+    expect(cover.source).toBeUndefined();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    await covers.restore(metadata.memory.account);
+    expect(metadata.memory.images.size).toBe(0);
+    expect(metadata.memory.trackArtwork.size).toBe(0);
   });
 
   it("waits for catalog restoration before choosing an online URL", async () => {
@@ -204,7 +293,7 @@ describe("cover engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const covers = engine();
     covers.setClient(new SubsonicClient(auth));
-    const cover = covers.getCover("album-cover", online);
+    const cover = covers.ensureCover("album-cover", online);
     expect(cover.source).toBeUndefined();
     await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
     expect(fetcher).not.toHaveBeenCalled();
@@ -218,7 +307,7 @@ describe("cover engine", () => {
       id: String(index),
       artworkId: `cover-${index}`,
     }));
-    await engine({ snapshot: data }).refresh();
+    await engine(library(data)).refresh();
     expect(
       (await storage.json()).tracks.every(
         (track: { candidates: string[] }) => track.candidates.length <= 4,
@@ -228,12 +317,12 @@ describe("cover engine", () => {
 
   it("discards superseded reference writes without leaving an empty catalog", async () => {
     const storage = installOpfs();
-    const metadata = { snapshot: snapshot() };
+    const metadata = library(snapshot());
     const covers = engine(metadata);
     let replacement: Promise<void> | undefined;
     storage.beforeCatalogWrite = () => {
       storage.beforeCatalogWrite = undefined;
-      metadata.snapshot = { ...snapshot(), savedAt: 200, albums: [], tracks: [] };
+      metadata.publish({ ...snapshot(), savedAt: 200, albums: [], tracks: [] });
       replacement = covers.refresh();
     };
     await covers.refresh();
@@ -254,7 +343,7 @@ describe("cover engine", () => {
       artworkId: "earlier-cover",
       genres: [],
     });
-    await engine({ snapshot: data }).refresh();
+    await engine(library(data)).refresh();
     expect((await storage.json()).artists[0].candidates).toEqual([
       "artist-cover",
       "earlier-cover",
@@ -268,11 +357,11 @@ describe("cover engine", () => {
     await storage.seed();
     const covers = engine();
     await covers.restore(account);
-    expect(covers.getAlbumCover("album", offline).cached).toBe(false);
-    expect(covers.getAlbumCover("album", offline).artworkId).toBe("album-cover");
+    expect(covers.ensureAlbumCover("album", offline).cached).toBe(false);
+    expect(covers.ensureAlbumCover("album", offline).artworkId).toBe("album-cover");
     expect((await storage.json()).images).toEqual([]);
     storage.reads.mockClear();
-    expect(covers.getTrackCover("one", offline).source).toBeUndefined();
+    expect(covers.ensureTrackCover("one", offline).source).toBeUndefined();
     expect(storage.reads).not.toHaveBeenCalled();
   });
 
@@ -280,29 +369,36 @@ describe("cover engine", () => {
     const storage = installOpfs();
     await storage.seed();
     storage.image();
-    const metadata = { snapshot: snapshot() };
+    const metadata = library(snapshot());
     const covers = engine(metadata);
     await covers.restore(account);
-    const old = covers.getTrackCover("one", offline);
+    const old = covers.ensureTrackCover("one", offline);
     await vi.waitFor(() => expect(old.source).toBeDefined());
-    metadata.snapshot = { ...snapshot(), savedAt: 200, albums: [], tracks: [] };
+    const previousReferences = metadata.memory.trackArtwork;
+    const previousImages = metadata.memory.images;
+    metadata.publish({ ...snapshot(), savedAt: 200, albums: [], tracks: [] });
     await covers.refresh();
     expect(old.source).toBeUndefined();
     expect(old.cached).toBe(false);
+    expect(metadata.memory.trackArtwork.size).toBe(0);
+    expect(previousReferences.has("one")).toBe(true);
+    expect(metadata.memory.images).not.toBe(previousImages);
+    expect([...metadata.memory.images.values()]).toEqual([...previousImages.values()]);
     expect((await storage.json()).tracks).toEqual([]);
     expect((await storage.json()).images).toEqual(catalog().images);
-    expect(covers.getCover("album-cover", offline).cached).toBe(true);
+    expect(covers.ensureCover("album-cover", offline).cached).toBe(true);
   });
 
   it("resolves online URLs and shares one download across entity and cache-only handles", async () => {
     const storage = installOpfs();
-    const covers = engine();
+    const metadata = library(snapshot());
+    const covers = engine(metadata);
     await covers.refresh();
     covers.setClient(new SubsonicClient(auth));
-    const album = covers.getAlbumCover("album", online);
-    const track = covers.getTrackCover("two", online);
-    const cached = covers.getTrackCover("two", offline);
-    const artist = covers.getArtistCover("artist", offline);
+    const album = covers.ensureAlbumCover("album", online);
+    const track = covers.ensureTrackCover("two", online);
+    const cached = covers.ensureTrackCover("two", offline);
+    const artist = covers.ensureArtistCover("artist", offline);
     const notify = vi.fn();
     const unsubscribe = covers.subscribe(notify);
     const fetcher = vi.fn(
@@ -322,13 +418,19 @@ describe("cover engine", () => {
     unsubscribe();
     const saved = await storage.json();
     expect(saved.images).toHaveLength(1);
+    expect([...metadata.memory.images.values()]).toEqual(saved.images);
+    const published = JSON.stringify([...metadata.memory.images.values()]);
+    expect(published).not.toContain("blob:");
+    expect(published).not.toContain(auth.token);
+    expect(published).not.toContain(auth.salt);
+    expect(published).not.toContain("getCoverArt");
     expect(storage.files.get(saved.images[0].fileName)?.size).toBe(5);
     expect(JSON.stringify(saved)).not.toContain(auth.token);
     expect(JSON.stringify(saved)).not.toContain(auth.salt);
     expect(JSON.stringify(saved)).not.toContain("getCoverArt");
     const restored = engine();
     await restored.restore(account);
-    expect(restored.getTrackCover("two", offline).cached).toBe(true);
+    expect(restored.ensureTrackCover("two", offline).cached).toBe(true);
   });
 
   it.each([200, 304])(
@@ -350,10 +452,10 @@ describe("cover engine", () => {
       vi.stubGlobal("fetch", fetcher);
       const covers = engine();
       await covers.restore(account);
-      const cached = covers.getAlbumCover("album", offline);
+      const cached = covers.ensureAlbumCover("album", offline);
       await vi.waitFor(() => expect(cached.source).toBe("blob:cover-1"));
       covers.setClient(new SubsonicClient(auth));
-      const onlineCover = covers.getAlbumCover("album", online);
+      const onlineCover = covers.ensureAlbumCover("album", online);
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
       const headers = new Headers(fetcher.mock.calls[0][1]?.headers);
       expect(headers.get("If-None-Match")).toBe('"old"');
@@ -384,7 +486,7 @@ describe("cover engine", () => {
     await covers.restore(account);
     storage.failCatalogWrites = true;
     covers.setClient(new SubsonicClient(auth));
-    const cover = covers.getAlbumCover("album", online);
+    const cover = covers.ensureAlbumCover("album", online);
     await vi.waitFor(() => expect(covers.error).toBeInstanceOf(Error));
     expect(cover.source).toBe("blob:cover-1");
     expect(await storage.json()).toEqual(original);
@@ -410,7 +512,7 @@ describe("cover engine", () => {
     storage.files.set("old.json", new File(['{"type":"image/jpeg"}'], "old.json"));
     const covers = engine();
     await covers.refresh();
-    expect(covers.getAlbumCover("album", offline).cached).toBe(false);
+    expect(covers.ensureAlbumCover("album", offline).cached).toBe(false);
     expect(storage.files.has("old.image")).toBe(true);
     expect(storage.files.has("old.json")).toBe(true);
     expect((await storage.json()).images).toEqual([]);
@@ -418,7 +520,7 @@ describe("cover engine", () => {
 
   it("does not publish or persist stale downloads after switching accounts", async () => {
     const storage = installOpfs();
-    const metadata = { snapshot: snapshot() };
+    const metadata = library(snapshot());
     const covers = engine(metadata);
     await covers.refresh();
     covers.setClient(new SubsonicClient(auth));
@@ -432,11 +534,11 @@ describe("cover engine", () => {
           }),
       ),
     );
-    const old = covers.getAlbumCover("album", online);
+    const old = covers.ensureAlbumCover("album", online);
     await vi.waitFor(() => expect(old.source).toBeDefined());
     old.cache();
     const other: MetadataAccount = { ...account, username: "other" };
-    metadata.snapshot = { ...snapshot(), account: other };
+    metadata.publish({ ...snapshot(), account: other });
     await covers.refresh();
     resolve(new Response("image", { headers: { "Content-Type": "image/jpeg" } }));
     await Promise.resolve();
@@ -465,8 +567,8 @@ describe("cover engine", () => {
     await Promise.all([first.refresh(), second.refresh()]);
     first.setClient(new SubsonicClient(auth));
     second.setClient(new SubsonicClient(auth));
-    const one = first.getCover("one-cover", online);
-    const two = second.getCover("two-cover", online);
+    const one = first.ensureCover("one-cover", online);
+    const two = second.ensureCover("two-cover", online);
     await vi.waitFor(() => {
       expect(one.source).toBeDefined();
       expect(two.source).toBeDefined();

@@ -50,7 +50,7 @@
   );
   let activeAuth = $state<SavedAuth | null>(null);
   let activeClient = $state<SubsonicClient>();
-  const coverEngine = new CoverEngine(metadataEngine);
+  const coverEngine = new CoverEngine(memory, metadataEngine);
   const trackEngine = new TrackEngine({ memory });
   const downloads = $derived.by((): readonly DownloadItem[] => {
     const jobs = trackEngine.downloadJobs;
@@ -119,7 +119,7 @@
       void Promise.all([metadataEngine.restore(account), coverEngine.restore(account)]).then(
         async () => {
           await coverEngine.refresh();
-          if (metadataEngine.snapshot) await queueEngine.restore(account);
+          if (metadataEngine.savedAt !== undefined) await queueEngine.restore(account);
           if (!lifetime.signal.aborted) loadArtists(savedAuth);
         },
       );
@@ -223,13 +223,14 @@
   async function downloadTrack(track: Track) {
     try {
       const album = memory.albums.get(track.albumId);
+      const artwork = memory.trackArtwork.get(track.id) ?? [];
       await trackEngine.cache({
         id: track.id,
         title: track.title,
         artist: memory.artists.get(track.artistId)?.name,
         album: album?.title,
         contentType: track.mimeType,
-        coverArt: coverEngine.getTrackCover(track.id, { allowNetwork: false }).artworkId,
+        coverArt: artwork.find((id) => memory.images.has(id)) ?? artwork[0],
       });
     } catch (caught) {
       downloadError =
@@ -696,7 +697,7 @@
       <div class="player-main">
         <div class="artwork">
           {#if playback.track}
-            {@const cover = coverEngine.getTrackCover(playback.track.id, {
+            {@const cover = coverEngine.ensureTrackCover(playback.track.id, {
               allowNetwork: !offlineMode,
             })}
             {#if cover.source}
@@ -933,7 +934,7 @@
         <div class="artist-grid">
           {#each visibleArtists as artist, index}
             {@const menuId = `artist-menu-${index}`}
-            {@const cover = coverEngine.getArtistCover(artist.id, {
+            {@const cover = coverEngine.ensureArtistCover(artist.id, {
               allowNetwork: !offlineMode,
             })}
             <article class="artist-card">
@@ -1067,7 +1068,7 @@
 
   <section class="view library-view">
     {#if activeClient && !error && artist}
-      {@const artwork = coverEngine.getArtistCover(artist.id, {
+      {@const artwork = coverEngine.ensureArtistCover(artist.id, {
         allowNetwork: !offlineMode,
       })}
       <div class="collection-art collection-art-artist" aria-hidden="true">
@@ -1170,7 +1171,7 @@
                   (track) => trackEngine.getStatus(track.id) === "downloaded",
                 )
               : (memory.albumTracks.get(album.id) ?? [])}
-            {@const cover = coverEngine.getAlbumCover(album.id, {
+            {@const cover = coverEngine.ensureAlbumCover(album.id, {
               allowNetwork: !offlineMode,
             })}
             <article class="track-item">
@@ -1323,7 +1324,7 @@
 
   <section class="view library-view">
     {#if activeClient && !error && artist && album}
-      {@const artwork = coverEngine.getAlbumCover(album.id, {
+      {@const artwork = coverEngine.ensureAlbumCover(album.id, {
         allowNetwork: !offlineMode,
       })}
       <div class="collection-art collection-art-album" aria-hidden="true">
@@ -1580,7 +1581,7 @@
 
 {#snippet miniPlayer()}
   {#if playback.track}
-    {@const cover = coverEngine.getTrackCover(playback.track.id, {
+    {@const cover = coverEngine.ensureTrackCover(playback.track.id, {
       allowNetwork: !offlineMode,
     })}
     <div class="mini-player track-list">

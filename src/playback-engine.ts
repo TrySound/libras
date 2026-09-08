@@ -45,10 +45,17 @@ export interface PlaybackEngineOptions {
   queue: Pick<QueueEngine, "update" | "setPosition" | "save" | "flush" | "subscribe">;
   memory: Pick<
     MemoryView,
-    "tracks" | "albums" | "artists" | "queueTracks" | "queueIndex" | "queuePosition"
+    | "tracks"
+    | "albums"
+    | "artists"
+    | "queueTracks"
+    | "queueIndex"
+    | "queuePosition"
+    | "trackArtwork"
+    | "images"
   >;
   tracks: Pick<TrackEngine, "getSource" | "releaseSource">;
-  covers: Pick<CoverEngine, "getTrackCover" | "subscribe">;
+  covers: Pick<CoverEngine, "ensureTrackCover" | "subscribe">;
   mediaSession?: MediaSession;
   createAudio?: () => HTMLAudioElement;
   isAvailable?: (id: string) => boolean;
@@ -165,7 +172,9 @@ export class PlaybackEngine {
 
   get artworkId() {
     const track = this.track;
-    return track && this.#covers.getTrackCover(track.id, { allowNetwork: false }).artworkId;
+    if (!track) return undefined;
+    const candidates = this.#memory.trackArtwork.get(track.id) ?? [];
+    return candidates.find((id) => this.#memory.images.has(id)) ?? candidates[0];
   }
 
   #artwork = () => {
@@ -177,7 +186,7 @@ export class PlaybackEngine {
       album: this.#memory.albums.get(selected.albumId)?.title ?? "Unknown album",
     };
     const source = selected
-      ? this.#covers.getTrackCover(selected.id, { allowNetwork: false }).source
+      ? this.#covers.ensureTrackCover(selected.id, { allowNetwork: false }).source
       : undefined;
     const key = JSON.stringify([track?.id, track?.title, track?.artist, track?.album, source]);
     if (this.#metadataKey === key) return;

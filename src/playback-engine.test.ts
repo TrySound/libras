@@ -59,6 +59,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
   );
   const memory = new Memory();
   memory.tracks = new Map(["a", "b", "c"].map((id) => [id, song(id)]));
+  memory.trackArtwork = new Map(["a", "b", "c"].map((id) => [id, [id]]));
   memory.artists = new Map([["artist", { id: "artist", name: "Artist", genres: [] }]]);
   memory.albums = new Map([
     ["album", { id: "album", title: "Album", artistId: "artist", genres: [] }],
@@ -85,7 +86,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
   const coverListeners = new Set<() => void>();
   let artwork = "data:image/jpeg;base64,aW1hZ2U=";
   const covers = {
-    getTrackCover: vi.fn((id: string) => ({
+    ensureTrackCover: vi.fn((id: string) => ({
       source: artwork,
       artworkId: id,
       cached: true,
@@ -135,6 +136,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     },
     restoreTrack(id: string) {
       memory.tracks = new Map(memory.tracks).set(id, song(id));
+      memory.trackArtwork = new Map(memory.trackArtwork).set(id, [id]);
     },
     renameTrack(id: string, title: string) {
       updateTrack(id, { title });
@@ -590,7 +592,7 @@ describe("playback engine", () => {
       title: "a",
       artwork: [{ src: "data:image/jpeg;base64,bmV3" }],
     });
-    expect(covers.getTrackCover).toHaveBeenLastCalledWith("a", { allowNetwork: false });
+    expect(covers.ensureTrackCover).toHaveBeenLastCalledWith("a", { allowNetwork: false });
   });
 
   it("advances at end but retains the final queue entry", async () => {

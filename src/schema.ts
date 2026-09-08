@@ -56,6 +56,18 @@ export const downloadSchema = v.object({
   downloadedAt: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000)),
 });
 
+export const imageSchema = v.strictObject({
+  id,
+  fileName: v.pipe(v.string(), v.regex(/^[a-f0-9-]+\.image$/)),
+  type: v.pipe(v.string(), v.regex(/^image\//)),
+  size: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  cachedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  etag: v.optional(v.string()),
+  lastModified: v.optional(v.string()),
+});
+
+export type ImageRecord = v.InferOutput<typeof imageSchema>;
+
 export type DownloadedFile = v.InferOutput<typeof downloadSchema>;
 
 export type DownloadTrack = v.InferOutput<typeof downloadTrackSchema>;
