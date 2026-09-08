@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SubsonicClient } from "./subsonic-client";
 import { TrackEngine } from "./track-engine";
 import { OpfsTrackStore } from "./track-store";
+import { Memory } from "./memory.svelte";
 
 const auth = {
   host: "https://music.example.com",
@@ -133,6 +134,123 @@ afterEach(() => {
 });
 
 describe("track engine", () => {
+  it("restores completed downloads into Memory and plays them without credentials", async () => {
+    installOpfs(null, "probably");
+    const fetcher = vi.fn(async () => new Response("audio"));
+    vi.stubGlobal("fetch", fetcher);
+    const memory = new Memory();
+    const writer = new TrackEngine({ memory, client: new SubsonicClient(auth) });
+    const track = { id: "offline", title: "Offline", contentType: "audio/flac" };
+    await writer.cache(track, { forceTranscode: true });
+    expect(memory.downloads.size).toBe(1);
+    const completed = [...memory.downloads.values()][0];
+    expect(completed).toMatchObject({ track: { id: "offline" }, format: "mp3" });
+    expect(completed).not.toHaveProperty("url");
+    expect(completed).not.toHaveProperty("status");
+    writer.setClient(undefined);
+    expect(memory.account).toEqual({ host: auth.host, username: auth.username });
+    expect(memory.downloads.size).toBe(1);
+    fetcher.mockClear();
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:offline");
+    expect(await writer.getSource(track)).toEqual({ cached: true, url: "blob:offline" });
+    writer.destroy();
+    const restoredMemory = new Memory();
+    restoredMemory.account = { host: auth.host, username: auth.username };
+    const reader = new TrackEngine({ memory: restoredMemory });
+    await reader.ready();
+    expect([...restoredMemory.downloads.values()]).toEqual([completed]);
+    expect(reader.getStatus(track.id)).toBe("downloaded");
+    await reader.scanCached([track]);
+    expect(await reader.getSource(track, { position: 120 })).toEqual({
+      cached: true,
+      url: "blob:offline",
+    });
+    expect(reader.downloadJobs).toEqual([]);
+    expect(fetcher).not.toHaveBeenCalled();
+    reader.destroy();
+  });
+
+  it("keeps completed records out of job state and pending jobs out of Memory", async () => {
+    installOpfs();
+    let resolve!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((done) => {
+            resolve = done;
+          }),
+      ),
+    );
+    const memory = new Memory();
+    const engine = new TrackEngine({ memory, client: new SubsonicClient(auth) });
+    await engine.ready();
+    const emptyCatalog = memory.downloads;
+    const pending = engine.cache({ id: "pending" });
+    await vi.waitFor(() => expect(resolve).toBeDefined());
+    expect(memory.downloads).toBe(emptyCatalog);
+    expect(memory.downloads.size).toBe(0);
+    expect(engine.downloadJobs[0]).toMatchObject({
+      track: { id: "pending" },
+      status: "downloading",
+    });
+    expect(engine.downloadJobs[0]).not.toHaveProperty("url");
+    resolve(new Response("audio"));
+    await pending;
+    expect(memory.downloads).not.toBe(emptyCatalog);
+    expect(emptyCatalog.size).toBe(0);
+    expect(memory.downloads.size).toBe(1);
+    expect(engine.downloadJobs).toEqual([]);
+    engine.destroy();
+  });
+
+  it("does not play another account's files or stream with mismatched credentials", async () => {
+    installOpfs();
+    const fetcher = vi.fn(async () => new Response("audio"));
+    vi.stubGlobal("fetch", fetcher);
+    const memory = new Memory();
+    const engine = new TrackEngine({ memory, client: new SubsonicClient(auth) });
+    await engine.cache({ id: "same-id" });
+    fetcher.mockClear();
+    memory.account = { host: auth.host, username: "other" };
+    expect(engine.getStatus("same-id")).toBe("idle");
+    await expect(engine.getSource({ id: "same-id" })).rejects.toThrow(
+      "Connect to its music server",
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(memory.downloads.size).toBe(1);
+    memory.account = { host: auth.host, username: auth.username };
+    engine.setClient(undefined);
+    await expect(engine.getSource({ id: "missing" })).rejects.toThrow(
+      "Connect to its music server",
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+    engine.destroy();
+  });
+
+  it("rejects a cached source resolved after the selected account changes", async () => {
+    installOpfs();
+    const memory = new Memory();
+    memory.account = { host: auth.host, username: auth.username };
+    const engine = new TrackEngine({ memory });
+    await engine.ready();
+    let resolve!: (file: File) => void;
+    vi.spyOn(OpfsTrackStore.prototype, "get").mockImplementationOnce(
+      () =>
+        new Promise<File>((done) => {
+          resolve = done;
+        }),
+    );
+    const createUrl = vi.spyOn(URL, "createObjectURL");
+    const pending = engine.getSource({ id: "old" });
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    memory.account = { host: auth.host, username: "other" };
+    resolve(new File(["audio"], "cached.audio"));
+    await rejected;
+    expect(createUrl).not.toHaveBeenCalled();
+    engine.destroy();
+  });
+
   it("reuses another writer's completed file even when the later response has failed", async () => {
     const files = installOpfs();
     installTrackLocks();

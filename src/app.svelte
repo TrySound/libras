@@ -20,7 +20,7 @@
   import { type RouteParams } from "./router-engine";
   import { SubsonicClient, type SubsonicAuth } from "./subsonic-client";
   import Router, { type RouteControls, type RouterNavigate } from "./router.svelte";
-  import { TrackEngine } from "./track-engine";
+  import { TrackEngine, type DownloadItem } from "./track-engine";
   import { swipeToDismiss } from "./swipe-to-dismiss";
 
   const offlineModeStorageKey = "navidrome-offline-mode";
@@ -51,7 +51,16 @@
   let activeAuth = $state<SavedAuth | null>(null);
   let activeClient = $state<SubsonicClient>();
   const coverEngine = new CoverEngine(metadataEngine);
-  const trackEngine = new TrackEngine();
+  const trackEngine = new TrackEngine({ memory });
+  const downloads = $derived.by((): readonly DownloadItem[] => {
+    const jobs = trackEngine.downloadJobs;
+    const activeKeys = new Set(jobs.map((job) => job.key));
+    const completed = [...memory.downloads.values()]
+      .filter((file) => !activeKeys.has(file.key))
+      .sort((a, b) => b.downloadedAt - a.downloadedAt || a.key.localeCompare(b.key))
+      .map((file) => ({ ...file, status: "downloaded" as const }));
+    return [...jobs, ...completed];
+  });
   const playback = new PlaybackEngine({
     queue: queueEngine,
     memory,
@@ -593,9 +602,9 @@
     {#if trackEngine.downloadsLoading}
       <p class="type-body muted" role="status">Reading downloaded files…</p>
     {/if}
-    {#if trackEngine.downloads.length}
+    {#if downloads.length}
       <div class="track-list">
-        {#each trackEngine.downloads as entry (entry.key)}
+        {#each downloads as entry (entry.key)}
           <div class="track-item">
             <span
               class="track-leading"

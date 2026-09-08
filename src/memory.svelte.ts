@@ -1,4 +1,4 @@
-import type { Artist, Album, Track, MetadataAccount } from "./schema";
+import type { Artist, Album, Track, MetadataAccount, DownloadedFile } from "./schema";
 
 /** Consumer-facing records are immutable; engines publish replacements. */
 export type Immutable<T> = T extends object ? { readonly [Key in keyof T]: Immutable<T[Key]> } : T;
@@ -15,6 +15,8 @@ export class Memory {
   tracks = $state.raw<ReadonlyMap<string, Immutable<Track>>>(new Map());
   artistAlbums = $state.raw<ReadonlyMap<string, readonly Immutable<Album>[]>>(new Map());
   albumTracks = $state.raw<ReadonlyMap<string, readonly Immutable<Track>[]>>(new Map());
+
+  downloads = $state.raw<ReadonlyMap<string, Immutable<DownloadedFile>>>(new Map());
 
   queueTracks = $state.raw<readonly string[]>([]);
   queueIndex = $state(-1);

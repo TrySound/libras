@@ -35,6 +35,36 @@ export const trackSchema = v.strictObject({
   genres: v.array(v.string()),
 });
 
+export const downloadTrackSchema = v.object({
+  id: v.string(),
+  title: v.string(),
+  artist: v.string(),
+  album: v.string(),
+  contentType: v.optional(v.string()),
+  coverArt: v.optional(v.string()),
+});
+
+export const downloadSchema = v.object({
+  key: v.string(),
+  fileName: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}\.audio$/)),
+  host: v.string(),
+  username: v.string(),
+  track: downloadTrackSchema,
+  format: v.picklist(["raw", "mp3"]),
+  contentType: v.string(),
+  size: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  downloadedAt: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000)),
+});
+
+export type DownloadedFile = v.InferOutput<typeof downloadSchema>;
+
+export type DownloadTrack = v.InferOutput<typeof downloadTrackSchema>;
+
+export type TrackFileDescriptor = Pick<
+  DownloadedFile,
+  "key" | "host" | "username" | "format" | "contentType"
+>;
+
 export type MetadataAccount = v.InferOutput<typeof accountSchema>;
 
 export type Artist = v.InferOutput<typeof artistSchema>;

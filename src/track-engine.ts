@@ -1,11 +1,10 @@
 import { createSubscriber } from "svelte/reactivity";
 import { SubsonicClient } from "./subsonic-client";
-import {
-  OpfsTrackStore,
-  type DownloadedFile,
-  type DownloadTrack,
-  type TrackFileDescriptor,
-} from "./track-store";
+import { OpfsTrackStore } from "./track-store";
+import type { DownloadedFile, DownloadTrack, TrackFileDescriptor } from "./schema";
+import { Memory } from "./memory.svelte";
+
+type DownloadMemory = Pick<Memory, "account" | "downloads">;
 
 export interface EngineTrack {
   id: string;
@@ -27,6 +26,7 @@ export interface TrackSourceOptions {
 }
 export type TrackStatus = "idle" | "queued" | "downloading" | "downloaded";
 export interface TrackEngineOptions {
+  memory?: DownloadMemory;
   client?: SubsonicClient;
   concurrency?: number;
 }
@@ -49,7 +49,7 @@ export class TrackEngine {
   #activeObjectUrl = "";
   #client?: SubsonicClient;
   #jobs = new Map<string, DownloadJob>();
-  #files = new Map<string, DownloadedFile>();
+  #memory: DownloadMemory;
   #ready: Promise<void>;
   #concurrency: number;
   #active = 0;
@@ -69,7 +69,8 @@ export class TrackEngine {
   });
 
   constructor(options: TrackEngineOptions = {}) {
-    this.#client = options.client;
+    this.#memory = options.memory ?? new Memory();
+    if (options.client) this.setClient(options.client);
     this.#concurrency = options.concurrency ?? 3;
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1)
       throw new Error("Download concurrency must be a positive integer.");
@@ -80,28 +81,31 @@ export class TrackEngine {
     return this.#ready;
   }
 
-  get downloads(): readonly DownloadItem[] {
+  get downloadJobs(): readonly Extract<DownloadItem, { status: "queued" | "downloading" }>[] {
     this.#subscribe();
     const jobs = [...this.#jobs.values()];
     return [
       ...jobs.filter((job) => job.status === "downloading"),
       ...jobs.filter((job) => job.status === "queued").sort((a, b) => b.priority - a.priority),
-    ]
-      .map((job): DownloadItem => ({
-        key: job.descriptor.key,
-        host: job.descriptor.host,
-        username: job.descriptor.username,
-        format: job.descriptor.format,
-        contentType: job.descriptor.contentType,
-        track: job.track,
-        status: job.status,
-      }))
-      .concat(
-        [...this.#files.values()]
-          .filter((file) => !this.#jobs.has(file.key))
-          .sort((a, b) => b.downloadedAt - a.downloadedAt || a.key.localeCompare(b.key))
-          .map((file) => ({ ...file, status: "downloaded" as const })),
-      );
+    ].map((job) => ({
+      key: job.descriptor.key,
+      host: job.descriptor.host,
+      username: job.descriptor.username,
+      format: job.descriptor.format,
+      contentType: job.descriptor.contentType,
+      track: job.track,
+      status: job.status,
+    }));
+  }
+  // Compatibility view; completed records are owned only by Memory.
+  get downloads(): readonly DownloadItem[] {
+    return [
+      ...this.downloadJobs,
+      ...[...this.#memory.downloads.values()]
+        .filter((file) => !this.#jobs.has(file.key))
+        .sort((a, b) => b.downloadedAt - a.downloadedAt || a.key.localeCompare(b.key))
+        .map((file) => ({ ...file, status: "downloaded" as const })),
+    ];
   }
   get downloadsLoading() {
     this.#subscribe();
@@ -117,7 +121,7 @@ export class TrackEngine {
     try {
       const entries = await (validate ? this.#store.list() : this.#store.entries());
       if (this.#destroyed || request !== this.#catalogRequest) return;
-      this.#files = new Map(entries.map((entry) => [entry.key, entry]));
+      this.#memory.downloads = new Map(entries.map((entry) => [entry.key, entry]));
     } catch (error) {
       if (this.#destroyed || request !== this.#catalogRequest) return;
       this.#error = error;
@@ -139,11 +143,11 @@ export class TrackEngine {
     };
   }
   #key(id: string, format: "raw" | "mp3") {
-    return `${this.#client?.host}\n${this.#client?.username}\n${id}\n${format}-v1`;
+    return `${this.#memory.account?.host}\n${this.#memory.account?.username}\n${id}\n${format}-v1`;
   }
-  #describe(track: EngineTrack, options: TrackSourceOptions = {}): StreamDescriptor {
-    const client = this.#client;
-    if (!client) throw new Error("No active Subsonic connection.");
+  #describe(track: EngineTrack, options: TrackSourceOptions = {}): TrackFileDescriptor {
+    const account = this.#memory.account;
+    if (!account) throw new Error("No music account selected.");
     const format =
       !options.forceTranscode &&
       track.contentType &&
@@ -152,12 +156,35 @@ export class TrackEngine {
         : "mp3";
     return {
       key: this.#key(track.id, format),
-      host: client.host,
-      username: client.username,
+      host: account.host,
+      username: account.username,
       format,
       contentType: format === "raw" && track.contentType ? track.contentType : "audio/mpeg",
-      url: client.getStreamUrl(track.id, { format, estimateContentLength: true }),
     };
+  }
+
+  #matchesAccount(descriptor: TrackFileDescriptor) {
+    return (
+      descriptor.host === this.#memory.account?.host &&
+      descriptor.username === this.#memory.account?.username
+    );
+  }
+
+  #streamUrl(trackId: string, descriptor: TrackFileDescriptor, timeOffset?: number) {
+    const client = this.#client;
+    if (
+      !client ||
+      client.host !== descriptor.host ||
+      client.username !== descriptor.username ||
+      !this.#matchesAccount(descriptor)
+    ) {
+      throw new Error("This track is not downloaded. Connect to its music server to stream it.");
+    }
+    return client.getStreamUrl(trackId, {
+      format: descriptor.format,
+      estimateContentLength: true,
+      timeOffset,
+    });
   }
 
   #drain() {
@@ -213,7 +240,8 @@ export class TrackEngine {
   cache(track: EngineTrack, options: TrackSourceOptions = {}) {
     if (this.#destroyed)
       return Promise.reject(new DOMException("Downloads stopped.", "AbortError"));
-    const descriptor = this.#describe(track, options);
+    const file = this.#describe(track, options);
+    const descriptor: StreamDescriptor = { ...file, url: this.#streamUrl(track.id, file) };
     const existing = this.#jobs.get(descriptor.key);
     if (existing) {
       if (options.priority === "playback") {
@@ -243,7 +271,7 @@ export class TrackEngine {
     return promise;
   }
 
-  async #cached(track: EngineTrack, descriptor: StreamDescriptor) {
+  async #cached(track: EngineTrack, descriptor: TrackFileDescriptor) {
     const metadata = this.#track(track);
     const file = await this.#store.get(descriptor, metadata);
     if (file) return { file, contentType: descriptor.contentType };
@@ -263,9 +291,9 @@ export class TrackEngine {
 
   async scanCached(tracks: EngineTrack[]) {
     let next = 0;
-    const client = this.#client;
+    const account = this.#memory.account;
     const worker = async () => {
-      while (next < tracks.length && !this.#destroyed && this.#client === client) {
+      while (next < tracks.length && !this.#destroyed && this.#memory.account === account) {
         const track = tracks[next++];
         await this.#cached(track, this.#describe(track));
       }
@@ -276,22 +304,30 @@ export class TrackEngine {
 
   getStatus(trackId: string): TrackStatus {
     this.#subscribe();
+    if (!this.#memory.account) return "idle";
     const keys = [this.#key(trackId, "raw"), this.#key(trackId, "mp3")];
     const jobs = keys.map((key) => this.#jobs.get(key));
     if (jobs.some((job) => job?.status === "downloading")) return "downloading";
     if (jobs.some((job) => job?.status === "queued")) return "queued";
-    return keys.some((key) => this.#files.has(key)) ? "downloaded" : "idle";
+    return keys.some((key) => this.#memory.downloads.has(key)) ? "downloaded" : "idle";
   }
 
   async getSource(
     track: EngineTrack,
     options: TrackSourceOptions & { position?: number } = {},
   ): Promise<TrackSource> {
+    if (this.#destroyed) throw new DOMException("Playback stopped.", "AbortError");
     const request = ++this.#sourceRequest;
+    const account = this.#memory.account;
     const descriptor = this.#describe(track, options);
     const cached = await this.#cached(track, descriptor);
     await this.#refreshCatalog();
-    if (request !== this.#sourceRequest)
+    if (
+      request !== this.#sourceRequest ||
+      this.#destroyed ||
+      this.#memory.account !== account ||
+      !this.#matchesAccount(descriptor)
+    )
       throw new DOMException("Source request superseded.", "AbortError");
     this.#clearObjectUrl();
     if (!cached) {
@@ -300,14 +336,14 @@ export class TrackEngine {
         return {
           cached: false,
           offset,
-          url: this.#client!.getStreamUrl(track.id, {
-            format: "mp3",
-            timeOffset: offset,
-            estimateContentLength: true,
-          }),
+          url: this.#streamUrl(track.id, { ...descriptor, format: "mp3" }, offset),
         };
       }
-      return { cached: false, url: descriptor.url, nativeSeeking: descriptor.format === "raw" };
+      return {
+        cached: false,
+        url: this.#streamUrl(track.id, descriptor),
+        nativeSeeking: descriptor.format === "raw",
+      };
     }
     this.#activeObjectUrl = URL.createObjectURL(
       new Blob([cached.file], { type: cached.contentType }),
@@ -323,8 +359,20 @@ export class TrackEngine {
     this.#sourceRequest++;
     this.#clearObjectUrl();
   }
-  setClient(client: SubsonicClient) {
+  setClient(client?: SubsonicClient) {
+    if (this.#client === client) return;
+    this.#sourceRequest++;
     this.#client = client;
+    if (client) {
+      if (
+        this.#memory.account?.host !== client.host ||
+        this.#memory.account?.username !== client.username
+      ) {
+        this.#clearObjectUrl();
+        this.#memory.account = { host: client.host, username: client.username };
+      }
+    }
+    // Detaching credentials preserves account identity and completed downloads.
     this.#update();
   }
   destroy() {

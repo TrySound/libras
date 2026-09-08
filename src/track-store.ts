@@ -1,32 +1,14 @@
 import * as v from "valibot";
 import { OpfsJsonStore } from "./json-store";
 
-const trackSchema = v.object({
-  id: v.string(),
-  title: v.string(),
-  artist: v.string(),
-  album: v.string(),
-  contentType: v.optional(v.string()),
-  coverArt: v.optional(v.string()),
-});
-const downloadSchema = v.object({
-  key: v.string(),
-  fileName: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}\.audio$/)),
-  host: v.string(),
-  username: v.string(),
-  track: trackSchema,
-  format: v.picklist(["raw", "mp3"]),
-  contentType: v.string(),
-  size: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  downloadedAt: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000)),
-});
+import {
+  downloadSchema,
+  type DownloadedFile,
+  type DownloadTrack,
+  type TrackFileDescriptor,
+} from "./schema";
+
 const catalogSchema = v.array(downloadSchema);
-export type DownloadedFile = v.InferOutput<typeof downloadSchema>;
-export type DownloadTrack = DownloadedFile["track"];
-export type TrackFileDescriptor = Pick<
-  DownloadedFile,
-  "key" | "host" | "username" | "format" | "contentType"
->;
 
 // Audio files keep their original hashed names. The catalog contains no credentials
 // and only publishes files after their writable stream has closed successfully.
