@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SubsonicClient } from "./subsonic-client";
 import { TrackEngine } from "./track-engine";
+import { OpfsTrackStore } from "./track-store";
 
 const auth = {
   host: "https://music.example.com",
@@ -13,6 +14,7 @@ function installOpfs(
   initialFile: File | null = null,
   canPlayType: CanPlayTypeResult = "",
   failCatalogWrite = false,
+  audioWrite?: () => void,
 ) {
   const files = new Map<string, File>();
   const directory = {
@@ -38,6 +40,7 @@ function installOpfs(
           return Object.assign(
             new WritableStream<Uint8Array>({
               write(chunk) {
+                if (name.endsWith(".audio")) audioWrite?.();
                 chunks.push(chunk.slice().buffer as ArrayBuffer);
               },
               close,
@@ -77,12 +80,190 @@ function installOpfs(
   return files;
 }
 
+function installTrackLocks() {
+  const tails = new Map<string, Promise<unknown>>();
+  const request = vi.fn(
+    (
+      name: string,
+      options: LockOptions | (() => Promise<unknown>),
+      callback?: () => Promise<unknown>,
+    ) => {
+      const action = typeof options === "function" ? options : callback!;
+      const signal = typeof options === "function" ? undefined : options.signal;
+      const result = (tails.get(name) ?? Promise.resolve()).then(() => {
+        signal?.throwIfAborted();
+        return action();
+      });
+      tails.set(
+        name,
+        result.catch(() => {}),
+      );
+      if (!signal) return result;
+      let abort: () => void;
+      const cancelled = new Promise<never>((_resolve, reject) => {
+        abort = () => reject(signal.reason);
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+      });
+      return Promise.race([result, cancelled]).finally(() =>
+        signal.removeEventListener("abort", abort),
+      );
+    },
+  );
+  Object.assign(navigator, { locks: { request } });
+  return request;
+}
+
+function download() {
+  return {
+    descriptor: {
+      host: auth.host,
+      username: auth.username,
+      key: `${auth.host}\n${auth.username}\none\nmp3-v1`,
+      format: "mp3" as const,
+      contentType: "audio/mpeg",
+    },
+    track: { id: "one", title: "One", artist: "Artist", album: "Album" },
+  };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe("track engine", () => {
+  it("reuses another writer's completed file even when the later response has failed", async () => {
+    const files = installOpfs();
+    installTrackLocks();
+    const first = new OpfsTrackStore();
+    const second = new OpfsTrackStore();
+    const { descriptor, track } = download();
+    const signal = new AbortController().signal;
+    expect(await first.get(descriptor, track)).toBeNull();
+    expect(await second.get(descriptor, track)).toBeNull();
+    await first.put(descriptor, track, new Response("complete"), signal);
+    const failed = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.error(new Error("Network failed"));
+        },
+      }),
+    );
+    expect(await (await second.put(descriptor, track, failed, signal)).text()).toBe("complete");
+    const records = JSON.parse(await files.get("downloads.json")!.text());
+    expect(records).toHaveLength(1);
+    expect(await files.get(records[0].fileName)!.text()).toBe("complete");
+  });
+
+  it.each([false, true])(
+    "keeps a complete orphan when a later writer fails (locks: %s)",
+    async (locks) => {
+      const files = installOpfs(null, "", true);
+      if (locks) installTrackLocks();
+      const first = new OpfsTrackStore();
+      const second = new OpfsTrackStore();
+      const { descriptor, track } = download();
+      const signal = new AbortController().signal;
+      await expect(first.put(descriptor, track, new Response("complete"), signal)).rejects.toThrow(
+        "Catalog write failed",
+      );
+      const failed = new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new Error("Network failed"));
+          },
+        }),
+      );
+      await expect(second.put(descriptor, track, failed, signal)).rejects.toThrow("Network failed");
+      const fileName = [...files.keys()].find((name) => name.endsWith(".audio"))!;
+      expect(await files.get(fileName)!.text()).toBe("complete");
+      expect(await (await second.get(descriptor, track))!.text()).toBe("complete");
+      expect(JSON.parse(await files.get("downloads.json")!.text())).toHaveLength(1);
+    },
+  );
+
+  it("does not mistake a rejected truncated file for a completed concurrent download", async () => {
+    const files = installOpfs();
+    installTrackLocks();
+    const store = new OpfsTrackStore();
+    const { descriptor, track } = download();
+    const signal = new AbortController().signal;
+    await store.put(descriptor, track, new Response("complete"), signal);
+    const [record] = JSON.parse(await files.get("downloads.json")!.text());
+    files.set(record.fileName, new File(["x"], record.fileName));
+    expect(await store.get(descriptor, track)).toBeNull();
+    expect(
+      await (await store.put(descriptor, track, new Response("repaired"), signal)).text(),
+    ).toBe("repaired");
+    expect(await files.get(record.fileName)!.text()).toBe("repaired");
+  });
+
+  it.each(["complete", "fail", "cancel waiter"])(
+    "coordinates simultaneous audio writers when the first writer will %s",
+    async (outcome) => {
+      const audioWrite = vi.fn();
+      const files = installOpfs(null, "", false, audioWrite);
+      const request = installTrackLocks();
+      const first = new OpfsTrackStore();
+      const second = new OpfsTrackStore();
+      const { descriptor, track } = download();
+      const signal = new AbortController().signal;
+      let controller!: ReadableStreamDefaultController<Uint8Array>;
+      const source = new Response(
+        new ReadableStream<Uint8Array>({
+          start(value) {
+            controller = value;
+            controller.enqueue(new TextEncoder().encode("first"));
+          },
+        }),
+      );
+      const writing = first.put(descriptor, track, source, signal);
+      const firstResult =
+        outcome === "fail" ? expect(writing).rejects.toThrow("Network failed") : writing;
+      await vi.waitFor(() => expect(audioWrite).toHaveBeenCalledOnce());
+      const cancel = vi.fn();
+      const unused = new Response(
+        new ReadableStream({
+          start(value) {
+            value.enqueue(new TextEncoder().encode("second"));
+            value.close();
+          },
+          cancel,
+        }),
+      );
+      const abort = new AbortController();
+      const waiting = second.put(descriptor, track, unused, abort.signal);
+      const cancelled =
+        outcome === "cancel waiter"
+          ? expect(waiting).rejects.toMatchObject({ name: "AbortError" })
+          : undefined;
+      await vi.waitFor(() =>
+        expect(
+          request.mock.calls.filter(([name]) => name.startsWith("music-web-audio:")).length,
+        ).toBeGreaterThanOrEqual(2),
+      );
+      expect(audioWrite).toHaveBeenCalledOnce();
+      if (outcome === "cancel waiter") {
+        abort.abort();
+        await cancelled;
+        expect(cancel).toHaveBeenCalledOnce();
+      }
+      if (outcome === "fail") controller.error(new Error("Network failed"));
+      else controller.close();
+      await firstResult;
+      if (outcome !== "cancel waiter") {
+        expect(await (await waiting).text()).toBe(outcome === "complete" ? "first" : "second");
+        if (outcome === "complete") expect(cancel).toHaveBeenCalledOnce();
+      }
+      const records = JSON.parse(await files.get("downloads.json")!.text());
+      expect(records).toHaveLength(1);
+      expect(await files.get(records[0].fileName)!.text()).toBe(
+        outcome === "fail" ? "second" : "first",
+      );
+    },
+  );
+
   it("persists completed files with track metadata, but never credentials or pending jobs", async () => {
     const files = installOpfs();
     vi.stubGlobal(
@@ -242,13 +423,7 @@ describe("track engine", () => {
 
   it("merges catalog completions across instances under the existing Web Lock", async () => {
     const files = installOpfs();
-    let tail: Promise<unknown> = Promise.resolve();
-    const request = vi.fn((_name: string, callback: () => Promise<unknown>) => {
-      const result = tail.then(callback);
-      tail = result.catch(() => {});
-      return result;
-    });
-    Object.assign(navigator, { locks: { request } });
+    const request = installTrackLocks();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("audio")),
@@ -262,7 +437,7 @@ describe("track engine", () => {
         "one",
         "two",
       ]);
-      expect(request.mock.calls.every(([name]) => name === "music-web-downloads-index")).toBe(true);
+      expect(request.mock.calls.some(([name]) => name === "music-web-downloads-index")).toBe(true);
       const restored = new TrackEngine({ client: new SubsonicClient(auth) });
       try {
         await restored.ready();

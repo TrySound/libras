@@ -158,41 +158,61 @@ export class OpfsTrackStore {
     response: Response,
     signal: AbortSignal,
   ) {
-    await this.#load();
-    const directory = await this.#directory();
-    const fileName = await this.#fileName(descriptor.key);
-    const handle = await directory.getFileHandle(fileName, { create: true });
-    let writable: FileSystemWritableFileStream | undefined;
-    let phase: "writing" | "indexing" = "writing";
     try {
-      writable = await handle.createWritable();
-      if (response.body) await response.body.pipeTo(writable, { signal });
-      else {
+      const fileName = await this.#fileName(descriptor.key);
+      const write = async () => {
         signal.throwIfAborted();
-        await writable.write(await response.blob());
-        await writable.close();
-      }
-      const file = await handle.getFile();
-      if (!file.size) throw new Error("The downloaded audio file is empty.");
-      phase = "indexing";
-      await this.#mutate((index) => {
-        index.set(
-          descriptor.key,
-          v.parse(downloadSchema, {
-            ...descriptor,
-            track,
-            fileName,
-            size: file.size,
-            downloadedAt: Date.now(),
-          }),
-        );
-      });
-      return file;
-    } catch (error) {
-      await writable?.abort().catch(() => {});
-      // Only keep a recoverable orphan if the audio write completed successfully.
-      if (phase === "writing") await directory.removeEntry(fileName).catch(() => {});
-      throw error;
+        // A different tab may have completed this file after our initial cache miss.
+        // Always acquire the audio lock before the short-lived catalog lock.
+        const records = await this.#catalog.read();
+        this.#index = new Map(records?.map((record) => [record.key, record]));
+        const directory = await this.#directory();
+        const record = this.#index.get(descriptor.key);
+        const cached = record ? await this.#readFile(directory, fileName) : null;
+        signal.throwIfAborted();
+        if (cached && cached.size === record!.size) return cached;
+        const handle = await directory.getFileHandle(fileName, { create: true });
+        let writable: FileSystemWritableFileStream | undefined;
+        try {
+          writable = await handle.createWritable();
+          if (response.body) await response.body.pipeTo(writable, { signal });
+          else {
+            signal.throwIfAborted();
+            await writable.write(await response.blob());
+            await writable.close();
+          }
+          const file = await handle.getFile();
+          if (!file.size) throw new Error("The downloaded audio file is empty.");
+          await this.#mutate((index) => {
+            index.set(
+              descriptor.key,
+              v.parse(downloadSchema, {
+                ...descriptor,
+                track,
+                fileName,
+                size: file.size,
+                downloadedAt: Date.now(),
+              }),
+            );
+          });
+          return file;
+        } catch (error) {
+          await writable?.abort().catch(() => {});
+          // An aborted atomic write leaves old bytes intact. Never delete nonempty
+          // files, including a complete orphan whose catalog commit failed.
+          const file = await handle.getFile().catch(() => null);
+          // Without a cross-tab lock even deleting an empty placeholder can race a close.
+          if (navigator.locks && file?.size === 0)
+            await directory.removeEntry(fileName).catch(() => {});
+          throw error;
+        }
+      };
+      return await (navigator.locks
+        ? navigator.locks.request(`music-web-audio:${fileName}`, { signal }, write)
+        : write());
+    } finally {
+      // Reusing a winner or cancelling a lock waiter must release its unused response.
+      if (response.body && !response.bodyUsed) await response.body.cancel().catch(() => {});
     }
   }
 
