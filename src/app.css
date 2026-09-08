@@ -235,31 +235,15 @@ input {
   border: 0;
 }
 
-.webapp-updater:not(:popover-open) {
-  display: none;
-}
-
-.webapp-updater {
-  position: fixed;
-  box-sizing: border-box;
-  top: max(var(--space-sm), env(safe-area-inset-top));
-  bottom: auto;
-  inset-inline: var(--space-sm);
-  width: auto;
-  max-width: 30rem;
-  margin: 0 auto;
-  color: var(--color-text-primary);
-  padding: var(--space-md);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 0.9rem;
-  background: var(--color-surface-raised);
-  box-shadow: 0 0.75rem 2rem var(--color-shadow-raised);
-}
-
-.webapp-updater-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
+.icon-button-notification {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  pointer-events: none;
 }
 
 .app-shell {
@@ -538,6 +522,7 @@ a {
 }
 
 .icon-button {
+  position: relative;
   -webkit-tap-highlight-color: transparent;
   transition:
     scale 160ms ease-out,

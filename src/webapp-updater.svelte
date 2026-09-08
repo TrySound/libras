@@ -9,7 +9,6 @@
     | { status: "error"; message: string; retry: boolean };
 
   let state = $state<UpdaterState>({ status: "idle" });
-  let popover: HTMLElement;
   let registration: ServiceWorkerRegistration | undefined;
   let updateServiceWorker: () => Promise<void>;
   let updateTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -18,22 +17,28 @@
   const hasUpdate = $derived(state.status === "ready" || busy || (state.status === "error" && state.retry));
   const message = $derived(state.status === "error" ? state.message : {
     idle: "",
-    ready: "An app update is ready. Updating reloads the app and interrupts playback.",
+    ready: "An app update is ready in Settings. Updating reloads the app and interrupts playback.",
     updating: "Applying the update. The app will reload when it is ready.",
   }[state.status]);
+
+  function reloadHome() {
+    const url = new URL(window.location.href);
+    url.hash = "/library";
+    window.history.replaceState(window.history.state, "", url);
+    window.location.reload();
+  }
 
   onMount(() => {
     const lifetime = new AbortController();
     const ready = () => {
       if (lifetime.signal.aborted || busy) return;
       state = { status: "ready" };
-      popover.showPopover();
     };
     updateServiceWorker = registerSW({
       onNeedRefresh: ready,
       onNeedReload() {
         if (lifetime.signal.aborted) return;
-        if (busy) window.location.reload();
+        if (busy) reloadHome();
         else ready();
       },
       onRegisteredSW(_url, value) {
@@ -46,7 +51,6 @@
           message: "Offline app setup failed. You can keep using the app online.",
           retry: false,
         };
-        popover.showPopover();
       },
     });
     const check = () => {
@@ -66,7 +70,11 @@
     };
   });
 
-  async function update() {
+  export function getStatus() {
+    return { hasUpdate, busy, message };
+  }
+
+  export async function update() {
     if (!hasUpdate || busy) return;
     state = { status: "updating" };
     const fail = (cause: unknown) => {
@@ -87,7 +95,7 @@
     try {
       // Another tab may have activated the update before this click.
       if (registration?.active?.state === "activated" && !registration.waiting && !registration.installing) {
-        window.location.reload();
+        reloadHome();
       } else {
         await updateServiceWorker();
       }
@@ -99,42 +107,3 @@
 </script>
 
 <span class="visually-hidden" role="status" aria-atomic="true">{message}</span>
-
-<section
-  bind:this={popover}
-  id="webapp-updater"
-  popover="manual"
-  ontoggle={(event) => {
-    if (event.newState === "closed" && !event.currentTarget.matches(":popover-open")) {
-      state = { status: "idle" };
-    }
-  }}
-  class="webapp-updater stack-sm"
-  aria-label="App update"
->
-  <p class="type-small">{message}</p>
-  <div class="webapp-updater-actions">
-    <button
-      class="button"
-      type="button"
-      data-size="sm"
-      data-variant="neutral"
-      hidden={!hasUpdate}
-      disabled={busy}
-      onclick={update}
-    >
-      {busy ? "Updating…" : "Update now"}
-    </button>
-    <button
-      class="button"
-      type="button"
-      data-size="sm"
-      data-variant="neutral"
-      disabled={busy}
-      commandfor="webapp-updater"
-      command="hide-popover"
-    >
-      {hasUpdate ? "Later" : "Dismiss"}
-    </button>
-  </div>
-</section>

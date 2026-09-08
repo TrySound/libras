@@ -23,6 +23,8 @@
 
   const offlineModeStorageKey = "navidrome-offline-mode";
   const authStore = new AuthStore();
+  let updater = $state<ReturnType<typeof WebappUpdater>>();
+  const appUpdate = $derived(updater?.getStatus());
 
   type SavedAuth = SubsonicAuth;
 
@@ -529,6 +531,26 @@
       </div>
     </details>
 
+    {#if appUpdate?.message}
+      <section class="settings-option" aria-label="App update">
+        <div class="stack-xs">
+          <strong class="type-title">App update</strong>
+          <small class="type-small muted">{appUpdate.message}</small>
+        </div>
+        {#if appUpdate.hasUpdate}
+          <button
+            class="button"
+            type="button"
+            data-size="sm"
+            disabled={appUpdate.busy}
+            onclick={() => void updater?.update()}
+          >
+            {appUpdate.busy ? "Updating…" : "Update now"}
+          </button>
+        {/if}
+      </section>
+    {/if}
+
     <div class="settings-option">
       <div class="stack-xs">
         <strong class="type-title">Offline library</strong>
@@ -887,7 +909,14 @@
       data-size="md"
       data-variant="neutral"
       href={router.href("/settings")}
-      title="Settings">{@render icon("settings")}</a
+      aria-label={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+      title={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+    >
+      {@render icon("settings")}
+      {#if appUpdate?.hasUpdate}
+        <span class="icon-button-notification" aria-hidden="true"></span>
+      {/if}
+    </a
     >
   </header>
   {@render alerts()}
@@ -1640,4 +1669,4 @@
   {@render playerDialog()}
 </main>
 
-<WebappUpdater />
+<WebappUpdater bind:this={updater} />

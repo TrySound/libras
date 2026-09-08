@@ -39,7 +39,7 @@ Open Libras online first and download the music you want to keep. Use **Offline 
 
 Downloads and saved app data live in your browser on that device. Clearing site data removes them, and they don't automatically transfer to another browser or app address.
 
-When an update is available, choose **Update now** or **Later**. Updating reloads the app and interrupts playback, so you can wait until you're ready.
+When an update is available, a dot appears on the settings button. Open **Settings → Update now** when you're ready. The update stays available without a popup; applying it reloads the app and interrupts playback.
 
 ## Development
 
