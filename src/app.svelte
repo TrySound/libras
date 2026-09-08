@@ -265,12 +265,6 @@
     await coverEngine.refresh();
   }
 
-  function collectionIsDownloaded(items: readonly Track[]) {
-    return (
-      items.length > 0 && items.every((track) => trackEngine.getStatus(track.id) === "downloaded")
-    );
-  }
-
   function replaceQueueAndPlay(items: readonly Track[], startIndex = 0) {
     if (!items.length) {
       clearQueue();
@@ -403,17 +397,25 @@
   <svg class="icon" aria-hidden="true"><use href={`#icon-${name}`}></use></svg>
 {/snippet}
 
+{#snippet brand()}
+  <div class="topbar-brand">
+    <strong class="type-heading">LIBRAS</strong>
+  </div>
+{/snippet}
+
 {#snippet settingsRoute(_params: RouteParams, router: RouteControls)}
   <header class="topbar track-list">
-    <span class="topbar-spacer"></span>
-    <strong class="type-title">Libras</strong>
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="neutral"
-      href={router.href("/library")}
-      title="Home">{@render icon("home")}</a
-    >
+    <div class="track-item">
+      <span class="icon-button visually-hidden" aria-hidden="true"></span>
+      {@render brand()}
+      <a
+        class="icon-button"
+        data-size="md"
+        data-variant="neutral"
+        href={router.href("/library")}
+        title="Home">{@render icon("home")}</a
+      >
+    </div>
   </header>
   {@render alerts()}
 
@@ -556,17 +558,19 @@
 
 {#snippet downloadsRoute(_params: RouteParams, router: RouteControls)}
   <header class="topbar track-list">
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="neutral"
-      href={router.href("/settings")}
-      title="Settings"
-    >
-      {@render icon("back")}
-    </a>
-    <strong class="type-title">Libras</strong>
-    <span class="topbar-spacer"></span>
+    <div class="track-item">
+      <a
+        class="icon-button"
+        data-size="md"
+        data-variant="neutral"
+        href={router.href("/settings")}
+        title="Settings"
+      >
+        {@render icon("back")}
+      </a>
+      {@render brand()}
+      <span class="icon-button visually-hidden" aria-hidden="true"></span>
+    </div>
   </header>
   <section class="view stack-md">
     <h2 class="type-heading">Downloads</h2>
@@ -655,17 +659,19 @@
   {@const albumArtist = album && metadataEngine.getArtist(album.artistId)}
   <dialog id="player-dialog" class="player-dialog" use:swipeToDismiss>
     <header class="topbar track-list">
-      <button
-        type="button"
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        commandfor="player-dialog"
-        command="close"
-        title="Close player">{@render icon("chevron-down")}</button
-      >
-      <strong class="type-title">Libras</strong>
-      <span class="topbar-spacer"></span>
+      <div class="track-item">
+        <button
+          type="button"
+          class="icon-button"
+          data-size="md"
+          data-variant="neutral"
+          commandfor="player-dialog"
+          command="close"
+          title="Close player">{@render icon("chevron-down")}</button
+        >
+        {@render brand()}
+        <span class="icon-button visually-hidden" aria-hidden="true"></span>
+      </div>
     </header>
     {@render alerts()}
 
@@ -870,21 +876,23 @@
     : artists}
 
   <header class="topbar track-list">
-    <span class="topbar-spacer"></span>
-    <strong class="type-title">Libras</strong>
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="neutral"
-      href={router.href("/settings")}
-      aria-label={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
-      title={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
-    >
-      {@render icon("settings")}
-      {#if appUpdate?.hasUpdate}
-        <span class="icon-button-notification" aria-hidden="true"></span>
-      {/if}
-    </a>
+    <div class="track-item">
+      <span class="icon-button visually-hidden" aria-hidden="true"></span>
+      {@render brand()}
+      <a
+        class="icon-button"
+        data-size="md"
+        data-variant="neutral"
+        href={router.href("/settings")}
+        aria-label={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+        title={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+      >
+        {@render icon("settings")}
+        {#if appUpdate?.hasUpdate}
+          <span class="icon-button-notification" aria-hidden="true"></span>
+        {/if}
+      </a>
+    </div>
   </header>
   {@render alerts()}
 
@@ -908,7 +916,9 @@
         <div class="artist-grid">
           {#each visibleArtists as artist, index}
             {@const menuId = `artist-menu-${index}`}
-            {@const cover = coverEngine.getArtistCover(artist.id, { allowNetwork: !offlineMode })}
+            {@const cover = coverEngine.getArtistCover(artist.id, {
+              allowNetwork: !offlineMode,
+            })}
             <article class="artist-card">
               <a
                 class="artist-main"
@@ -1020,21 +1030,23 @@
     : []}
 
   <header class="topbar track-list">
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="neutral"
-      href={router.href("/library")}
-      title="Back">{@render icon("back")}</a
-    >
-    <strong class="type-title">Libras</strong>
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="neutral"
-      href={router.href("/library")}
-      title="Home">{@render icon("home")}</a
-    >
+    <div class="track-item">
+      <a
+        class="icon-button"
+        data-size="md"
+        data-variant="neutral"
+        href={router.href("/library")}
+        title="Back">{@render icon("back")}</a
+      >
+      {@render brand()}
+      <a
+        class="icon-button"
+        data-size="md"
+        data-variant="neutral"
+        href={router.href("/library")}
+        title="Home">{@render icon("home")}</a
+      >
+    </div>
   </header>
   {@render alerts()}
 
@@ -1143,7 +1155,9 @@
                   .getAlbumTracks(album.id)
                   .filter((track) => trackEngine.getStatus(track.id) === "downloaded")
               : metadataEngine.getAlbumTracks(album.id)}
-            {@const cover = coverEngine.getAlbumCover(album.id, { allowNetwork: !offlineMode })}
+            {@const cover = coverEngine.getAlbumCover(album.id, {
+              allowNetwork: !offlineMode,
+            })}
             <article class="track-item">
               <a
                 class="track-target"
@@ -1272,21 +1286,23 @@
     : []}
 
   <header class="topbar track-list">
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="neutral"
-      href={artist ? router.href(artistPath(artist)) : router.href("/library")}
-      title="Back">{@render icon("back")}</a
-    >
-    <strong class="type-title">Libras</strong>
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="neutral"
-      href={router.href("/library")}
-      title="Home">{@render icon("home")}</a
-    >
+    <div class="track-item">
+      <a
+        class="icon-button"
+        data-size="md"
+        data-variant="neutral"
+        href={artist ? router.href(artistPath(artist)) : router.href("/library")}
+        title="Back">{@render icon("back")}</a
+      >
+      {@render brand()}
+      <a
+        class="icon-button"
+        data-size="md"
+        data-variant="neutral"
+        href={router.href("/library")}
+        title="Home">{@render icon("home")}</a
+      >
+    </div>
   </header>
   {@render alerts()}
 
@@ -1549,7 +1565,9 @@
 
 {#snippet miniPlayer()}
   {#if playback.track}
-    {@const cover = coverEngine.getTrackCover(playback.track.id, { allowNetwork: !offlineMode })}
+    {@const cover = coverEngine.getTrackCover(playback.track.id, {
+      allowNetwork: !offlineMode,
+    })}
     <div class="mini-player track-list">
       <div class="track-item">
         <button
