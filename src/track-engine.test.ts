@@ -613,6 +613,39 @@ describe("track engine", () => {
     const source = await engine.getSource({ id: "track-1", contentType: "audio/flac" });
 
     expect(new URL(source.url).searchParams.get("format")).toBe("raw");
+    expect(source.nativeSeeking).toBe(true);
+  });
+
+  it("requests an MP3 offset stream without downloading or caching a partial track", async () => {
+    installOpfs(null, "probably");
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const source = await engine.getSource(
+      { id: "track-1", contentType: "audio/flac" },
+      { position: 120.5 },
+    );
+    const query = new URL(source.url).searchParams;
+    expect(query.get("format")).toBe("mp3");
+    expect(query.get("timeOffset")).toBe("120");
+    expect(source.offset).toBe(120);
+    expect(source.nativeSeeking).not.toBe(true);
+    expect(source.cached).toBe(false);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(engine.getStatus("track-1")).toBe("idle");
+    engine.destroy();
+  });
+
+  it("prefers a complete cached original for a resumed track", async () => {
+    installOpfs(new File(["cached"], "track.audio"), "probably");
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cached-track");
+    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const source = await engine.getSource(
+      { id: "track-1", contentType: "audio/flac" },
+      { position: 120 },
+    );
+    expect(source).toEqual({ cached: true, url: "blob:cached-track" });
+    engine.destroy();
   });
 
   it("can force MP3 when a browser rejects a reportedly supported format", async () => {

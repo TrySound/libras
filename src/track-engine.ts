@@ -18,6 +18,8 @@ export interface EngineTrack {
 export interface TrackSource {
   cached: boolean;
   url: string;
+  offset?: number;
+  nativeSeeking?: boolean;
 }
 export interface TrackSourceOptions {
   forceTranscode?: boolean;
@@ -281,7 +283,10 @@ export class TrackEngine {
     return keys.some((key) => this.#files.has(key)) ? "downloaded" : "idle";
   }
 
-  async getSource(track: EngineTrack, options: TrackSourceOptions = {}): Promise<TrackSource> {
+  async getSource(
+    track: EngineTrack,
+    options: TrackSourceOptions & { position?: number } = {},
+  ): Promise<TrackSource> {
     const request = ++this.#sourceRequest;
     const descriptor = this.#describe(track, options);
     const cached = await this.#cached(track, descriptor);
@@ -289,7 +294,21 @@ export class TrackEngine {
     if (request !== this.#sourceRequest)
       throw new DOMException("Source request superseded.", "AbortError");
     this.#clearObjectUrl();
-    if (!cached) return { cached: false, url: descriptor.url };
+    if (!cached) {
+      const offset = Math.max(0, Math.floor(options.position ?? 0));
+      if (offset > 0) {
+        return {
+          cached: false,
+          offset,
+          url: this.#client!.getStreamUrl(track.id, {
+            format: "mp3",
+            timeOffset: offset,
+            estimateContentLength: true,
+          }),
+        };
+      }
+      return { cached: false, url: descriptor.url, nativeSeeking: descriptor.format === "raw" };
+    }
     this.#activeObjectUrl = URL.createObjectURL(
       new Blob([cached.file], { type: cached.contentType }),
     );

@@ -4,6 +4,7 @@ import { flushSync } from "svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
 import { QueueEngine } from "./queue-engine";
 import type { Track } from "./metadata-engine";
+import type { TrackSource } from "./track-engine";
 
 class AudioStub extends EventTarget {
   preload = "";
@@ -18,6 +19,7 @@ class AudioStub extends EventTarget {
   readyState = 1;
   error: { code: number; message: string } | null = null;
   buffered = { length: 0, start: () => 0, end: () => 120 };
+  seekable = { length: 0, start: (_i: number) => 0, end: (_i: number) => 120 };
   play = vi.fn(async () => {
     this.paused = false;
     this.dispatchEvent(new Event("playing"));
@@ -63,10 +65,12 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
   const queue = new QueueEngine();
   const audio = new AudioStub();
   const tracks = {
-    getSource: vi.fn(async (track: { id: string }, _options?: { forceTranscode?: boolean }) => ({
-      cached: true,
-      url: `blob:${track.id}`,
-    })),
+    getSource: vi.fn(
+      async (
+        track: { id: string },
+        _options?: { forceTranscode?: boolean; position?: number },
+      ): Promise<TrackSource> => ({ cached: true, url: `blob:${track.id}` }),
+    ),
     cache: vi.fn(async () => new File([], "track")),
     releaseSource: vi.fn(),
   };
@@ -367,7 +371,7 @@ describe("playback engine", () => {
         contentType: "audio/flac",
         coverArt: "a",
       },
-      { forceTranscode: false },
+      { forceTranscode: false, position: 0 },
     );
   });
 
@@ -572,30 +576,165 @@ describe("playback engine", () => {
     expect(queue.current).toBe("a");
   });
 
+  it("seeks within advertised original-file ranges without restarting the stream", async () => {
+    const { player, audio, tracks } = setup();
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      url: "https://server/raw",
+      nativeSeeking: true,
+    });
+    await player.play();
+    audio.seekable = {
+      length: 2,
+      start: (i) => (i === 0 ? 0 : 60),
+      end: (i) => (i === 0 ? 20 : 120),
+    };
+    await player.seek(90);
+    expect(audio.currentTime).toBe(90);
+    expect(player.position).toBe(90);
+    expect(tracks.getSource).toHaveBeenCalledTimes(1);
+    expect(tracks.cache).not.toHaveBeenCalled();
+    player.pause();
+    await player.seek(10);
+    expect(audio.paused).toBe(true);
+    expect(audio.play).toHaveBeenCalledTimes(1);
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      url: "https://server/offset",
+      offset: 40,
+    });
+    await player.seek(40);
+    expect(tracks.getSource).toHaveBeenCalledTimes(2);
+    expect(audio.src).toBe("https://server/offset");
+    expect(audio.currentTime).toBe(0);
+  });
+
+  it("does not trust seekable ranges on transcoded streams", async () => {
+    const { player, audio, tracks } = setup();
+    tracks.getSource.mockResolvedValueOnce({ cached: false, url: "https://server/mp3" });
+    await player.play();
+    audio.seekable.length = 1;
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      url: "https://server/offset",
+      offset: 60,
+    });
+    await player.seek(60);
+    expect(audio.src).toBe("https://server/offset");
+    expect(audio.currentTime).toBe(0);
+    expect(player.position).toBe(60);
+  });
+
+  it("falls back to an offset stream if setting native seek time throws", async () => {
+    const { player, audio, tracks } = setup();
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      url: "https://server/raw",
+      nativeSeeking: true,
+    });
+    await player.play();
+    audio.seekable.length = 1;
+    let currentTime = 0;
+    Object.defineProperty(audio, "currentTime", {
+      get: () => currentTime,
+      set: (value: number) => {
+        if (value === 60) throw new Error("Seek rejected");
+        currentTime = value;
+      },
+    });
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      url: "https://server/offset",
+      offset: 60,
+    });
+    await player.seek(60);
+    expect(audio.src).toBe("https://server/offset");
+    expect(player.position).toBe(60);
+    expect(player.playing).toBe(true);
+    expect(player.error).toBeUndefined();
+  });
+
+  it("streams from the beginning without starting an offline download", async () => {
+    const { player, audio, tracks } = setup();
+    tracks.getSource.mockResolvedValueOnce({ cached: false, url: "https://server/stream" });
+    await player.play();
+    expect(audio.src).toBe("https://server/stream");
+    expect(player.playing).toBe(true);
+    expect(tracks.cache).not.toHaveBeenCalled();
+  });
+
   it("uses MP3 fallback for unsupported formats", async () => {
     const { player, audio, tracks } = setup();
     audio.play.mockRejectedValueOnce(new DOMException("unsupported", "NotSupportedError"));
     await player.play();
     expect(tracks.getSource).toHaveBeenLastCalledWith(expect.objectContaining({ id: "a" }), {
       forceTranscode: true,
+      position: 0,
     });
     expect(player.error).toBeUndefined();
     expect(player.playing).toBe(true);
   });
 
-  it("preserves pause when seeking through a transcoded cache", async () => {
+  it("preserves pause when seeking to an offset stream without downloading", async () => {
     const { player, audio, tracks } = setup();
     tracks.getSource.mockResolvedValueOnce({ cached: false, url: "https://server/stream" });
     await player.play();
     player.pause();
-    await player.seek(45);
-    expect(tracks.cache).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }), {
-      forceTranscode: true,
-      priority: "playback",
+    tracks.cache.mockClear();
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      url: "https://server/offset",
+      offset: 45,
     });
-    expect(audio.currentTime).toBe(45);
+    await player.seek(45);
+    expect(tracks.getSource).toHaveBeenLastCalledWith(expect.objectContaining({ id: "a" }), {
+      forceTranscode: false,
+      position: 45,
+    });
+    expect(tracks.cache).not.toHaveBeenCalled();
+    expect(audio.currentTime).toBe(0);
+    expect(player.position).toBe(45);
     expect(audio.paused).toBe(true);
     expect(audio.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes an offset stream and translates time, duration, and buffered seeks", async () => {
+    const { player, audio, tracks, queue, metadata } = setup();
+    metadata.getTrack("a")!.duration = 240;
+    queue.setPosition(120.5);
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      url: "https://server/offset",
+      offset: 120,
+    });
+    await player.play();
+    expect(audio.currentTime).toBe(0.5);
+    expect(player.playing).toBe(true);
+    expect(tracks.cache).not.toHaveBeenCalled();
+    audio.duration = 120;
+    audio.dispatchEvent(new Event("durationchange"));
+    expect(player.duration).toBe(240);
+    audio.currentTime = 5;
+    audio.dispatchEvent(new Event("timeupdate"));
+    expect(queue.position).toBe(125);
+    audio.buffered = { length: 1, start: () => 0, end: () => 20 };
+    await player.seek(130);
+    expect(audio.currentTime).toBe(10);
+    expect(queue.position).toBe(130);
+    expect(tracks.getSource).toHaveBeenCalledTimes(1);
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      url: "https://server/earlier",
+      offset: 30,
+    });
+    await player.seek(30);
+    expect(audio.currentTime).toBe(0);
+    expect(queue.position).toBe(30);
+    expect(tracks.cache).not.toHaveBeenCalled();
+    await player.next();
+    audio.currentTime = 2;
+    audio.dispatchEvent(new Event("timeupdate"));
+    expect(queue.position).toBe(2);
   });
 
   it("cancels stale loading on pause", async () => {

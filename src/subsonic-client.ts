@@ -78,6 +78,7 @@ export interface SubsonicPlayQueue {
 
 export interface SubsonicStreamOptions {
   estimateContentLength?: boolean;
+  timeOffset?: number;
   format?: "raw" | "mp3";
 }
 
@@ -172,6 +173,7 @@ export class SubsonicClient {
       id,
       format: options.format,
       estimateContentLength: options.estimateContentLength,
+      timeOffset: options.timeOffset,
     });
     return this.#url("stream", query);
   }

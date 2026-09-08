@@ -47,13 +47,19 @@ describe("subsonic client", () => {
 
     const cover = new URL(client.getCoverArtUrl("cover-1", 500));
     const stream = new URL(
-      client.getStreamUrl("track-1", { format: "mp3", estimateContentLength: true }),
+      client.getStreamUrl("track-1", {
+        format: "mp3",
+        estimateContentLength: true,
+        timeOffset: 120,
+      }),
     );
 
     expect(cover.pathname).toBe("/rest/getCoverArt.view");
     expect(cover.searchParams.get("size")).toBe("500");
     expect(stream.searchParams.get("format")).toBe("mp3");
     expect(stream.searchParams.get("estimateContentLength")).toBe("true");
+    expect(stream.searchParams.get("timeOffset")).toBe("120");
+    expect(new URL(client.getStreamUrl("track-1")).searchParams.has("timeOffset")).toBe(false);
   });
 
   it("normalizes and saves play queues", async () => {

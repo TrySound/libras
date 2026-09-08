@@ -44,7 +44,7 @@ export type PlaybackStatus =
 export interface PlaybackEngineOptions {
   queue: QueueEngine;
   metadata: Pick<MetadataEngine, "getTrack" | "getAlbum" | "getArtist">;
-  tracks: Pick<TrackEngine, "getSource" | "cache" | "releaseSource">;
+  tracks: Pick<TrackEngine, "getSource" | "releaseSource">;
   covers: Pick<CoverEngine, "getTrackCover" | "subscribe">;
   mediaSession?: MediaSession;
   createAudio?: () => HTMLAudioElement;
@@ -63,12 +63,14 @@ export class PlaybackEngine {
   #isAvailable: (id: string) => boolean;
   #cleanup?: () => void;
   #duration = 0;
+  #offset = 0;
   #playing = false;
   #intent = false;
   #status: PlaybackStatus = "idle";
   #error: unknown;
   #id?: string;
   #cached = false;
+  #nativeSeeking = false;
   #forced = false;
   #generation = 0;
   #abort?: AbortController;
@@ -195,6 +197,7 @@ export class PlaybackEngine {
     this.#forced = false;
     this.#playing = false;
     this.#duration = 0;
+    this.#offset = 0;
     this.#status = "idle";
   }
 
@@ -235,14 +238,22 @@ export class PlaybackEngine {
     );
     const onTime = () => {
       if (!audio.currentSrc) return;
-      this.#queue.setPosition(Number.isFinite(audio.currentTime) ? audio.currentTime : 0);
+      this.#queue.setPosition(
+        this.#offset + (Number.isFinite(audio.currentTime) ? audio.currentTime : 0),
+      );
       if (this.#intent && Date.now() - this.#lastSave >= 10_000) {
         this.#lastSave = Date.now();
         this.#queue.flush();
       }
     };
     const onMetadata = () => {
-      this.#duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+      this.#duration =
+        this.#offset > 0
+          ? (this.track?.duration ??
+            (Number.isFinite(audio.duration) ? this.#offset + audio.duration : 0))
+          : Number.isFinite(audio.duration)
+            ? audio.duration
+            : 0;
       this.#publish();
     };
     const events: Record<string, () => void> = {
@@ -386,37 +397,30 @@ export class PlaybackEngine {
     this.#publish();
     const valid = () => generation === this.#generation && this.#audio === audio;
     const prepare = async (transcode: boolean) => {
-      let source;
-      if (seeking)
-        await this.#tracks.cache(download, { forceTranscode: true, priority: "playback" });
+      const source = await this.#tracks.getSource(download, {
+        forceTranscode: transcode,
+        position,
+      });
       if (!valid()) return;
-      source = await this.#tracks.getSource(download, { forceTranscode: transcode });
-      if (!valid()) return;
-      if (!source.cached && position > 0) {
-        await this.#tracks.cache(download, { forceTranscode: true, priority: "playback" });
-        if (!valid()) return;
-        source = await this.#tracks.getSource(download, { forceTranscode: true });
-        transcode = true;
-        if (!valid()) return;
-      }
       this.#cached = source.cached;
-      this.#forced = transcode;
+      this.#nativeSeeking = source.nativeSeeking ?? false;
+      this.#offset = source.offset ?? 0;
+      this.#duration = 0;
+      this.#forced = transcode || this.#offset > 0;
       audio.src = source.url;
       if (position > 0) {
         await this.#metadata(audio, abort.signal);
         if (!valid()) return;
         audio.currentTime = Math.min(
-          position,
+          Math.max(0, position - this.#offset),
           Number.isFinite(audio.duration) ? audio.duration : position,
         );
-        this.#queue.setPosition(audio.currentTime);
+        this.#queue.setPosition(this.#offset + audio.currentTime);
       }
       if (autoplay && this.#intent) await audio.play();
       if (!valid()) return;
       this.#status = "ready";
       this.#playing = !audio.paused;
-      if (!source.cached)
-        void this.#tracks.cache(download, { forceTranscode: transcode }).catch(() => {});
     };
     try {
       try {
@@ -508,29 +512,38 @@ export class PlaybackEngine {
     const duration = this.duration;
     position = Math.max(0, duration > 0 ? Math.min(position, duration) : position);
     const audio = this.#audio;
-    const buffered = Array.from(
-      { length: audio.buffered.length },
-      (_, i) => position >= audio.buffered.start(i) && position <= audio.buffered.end(i),
-    ).some(Boolean);
+    const contains = (ranges: TimeRanges) => {
+      const relative = position - this.#offset;
+      for (let i = 0; i < ranges.length; i++) {
+        if (relative >= ranges.start(i) && relative <= ranges.end(i)) return true;
+      }
+      return false;
+    };
+    const buffered = contains(audio.buffered);
+    const seekable = this.#nativeSeeking && contains(audio.seekable);
     if (
       audio.currentSrc &&
-      (this.#cached || buffered) &&
+      (this.#cached || buffered || seekable) &&
       this.#status !== "loading" &&
       this.#status !== "seeking"
     ) {
       try {
-        audio.currentTime = position;
+        audio.currentTime = position - this.#offset;
         this.#queue.setPosition(position);
         this.#queue.save();
         this.#publish();
+        return;
       } catch (error) {
-        this.#fail(error);
+        if (this.#cached) {
+          this.#fail(error);
+          return;
+        }
+        // A server/browser may reject a seek despite advertising a range.
       }
-    } else {
-      const resume = this.#intent;
-      this.#queue.setPosition(position);
-      await this.#load(position, resume, true, true);
     }
+    const resume = this.#intent;
+    this.#queue.setPosition(position);
+    await this.#load(position, resume, false, true);
   }
 
   stop() {
