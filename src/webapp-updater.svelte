@@ -14,12 +14,19 @@
   let updateTimeout: ReturnType<typeof setTimeout> | undefined;
 
   const busy = $derived(state.status === "updating");
-  const hasUpdate = $derived(state.status === "ready" || busy || (state.status === "error" && state.retry));
-  const message = $derived(state.status === "error" ? state.message : {
-    idle: "",
-    ready: "An app update is ready in Settings. Updating reloads the app and interrupts playback.",
-    updating: "Applying the update. The app will reload when it is ready.",
-  }[state.status]);
+  const hasUpdate = $derived(
+    state.status === "ready" || busy || (state.status === "error" && state.retry),
+  );
+  const message = $derived(
+    state.status === "error"
+      ? state.message
+      : {
+          idle: "",
+          ready:
+            "An app update is ready in Settings. Updating reloads the app and interrupts playback.",
+          updating: "Applying the update. The app will reload when it is ready.",
+        }[state.status],
+  );
 
   function reloadHome() {
     const url = new URL(window.location.href);
@@ -83,8 +90,10 @@
       updateTimeout = undefined;
       state = {
         status: "error",
-        message: cause instanceof Error
-          ? cause.message : "The update could not be applied. Please try again.",
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "The update could not be applied. Please try again.",
         retry: true,
       };
     };
@@ -94,7 +103,11 @@
     updateTimeout = timeout;
     try {
       // Another tab may have activated the update before this click.
-      if (registration?.active?.state === "activated" && !registration.waiting && !registration.installing) {
+      if (
+        registration?.active?.state === "activated" &&
+        !registration.waiting &&
+        !registration.installing
+      ) {
         reloadHome();
       } else {
         await updateServiceWorker();

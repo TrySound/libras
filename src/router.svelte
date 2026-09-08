@@ -26,11 +26,7 @@
     navigate?: RouterNavigate;
   }
 
-  let {
-    routes,
-    fallback = routes[0],
-    navigate = $bindable(),
-  }: Props = $props();
+  let { routes, fallback = routes[0], navigate = $bindable() }: Props = $props();
 
   const engine = untrack(() => new RouterEngine(routes, fallback));
   const controls: RouteControls = {

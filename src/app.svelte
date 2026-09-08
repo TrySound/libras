@@ -5,19 +5,11 @@
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
-  import {
-    MetadataEngine,
-    type Album,
-    type Artist,
-    type Track,
-  } from "./metadata-engine";
+  import { MetadataEngine, type Album, type Artist, type Track } from "./metadata-engine";
   import { QueueEngine } from "./queue-engine";
   import { type RouteParams } from "./router-engine";
   import { SubsonicClient, type SubsonicAuth } from "./subsonic-client";
-  import Router, {
-    type RouteControls,
-    type RouterNavigate,
-  } from "./router.svelte";
+  import Router, { type RouteControls, type RouterNavigate } from "./router.svelte";
   import { TrackEngine } from "./track-engine";
   import { swipeToDismiss } from "./swipe-to-dismiss";
 
@@ -37,10 +29,14 @@
   const queueEngine = new QueueEngine();
   let navigate = $state<RouterNavigate>(() => {});
   let artists = $derived(metadataEngine.getArtists());
-  let queue = $derived(queueEngine.tracks.flatMap((id, index) => {
-    const track = metadataEngine.getTrack(id);
-    return track && (!offlineMode || trackEngine.getStatus(id) === "downloaded") ? [{ track, index }] : [];
-  }));
+  let queue = $derived(
+    queueEngine.tracks.flatMap((id, index) => {
+      const track = metadataEngine.getTrack(id);
+      return track && (!offlineMode || trackEngine.getStatus(id) === "downloaded")
+        ? [{ track, index }]
+        : [];
+    }),
+  );
   let activeAuth = $state<SavedAuth | null>(null);
   let activeClient = $state<SubsonicClient>();
   const coverEngine = new CoverEngine(metadataEngine);
@@ -52,9 +48,7 @@
     covers: coverEngine,
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
   });
-  let playbackLoading = $derived(
-    ["loading", "buffering", "seeking"].includes(playback.status),
-  );
+  let playbackLoading = $derived(["loading", "buffering", "seeking"].includes(playback.status));
   let downloadError = $state("");
   let playbackError = $derived(
     playback.error instanceof Error
@@ -102,11 +96,13 @@
       host = savedAuth.host;
       username = savedAuth.username;
       const account = { host: savedAuth.host, username: savedAuth.username };
-      void Promise.all([metadataEngine.restore(account), coverEngine.restore(account)]).then(async () => {
-        await coverEngine.refresh();
-        if (metadataEngine.snapshot) await queueEngine.restore(account);
-        if (!lifetime.signal.aborted) loadArtists(savedAuth);
-      });
+      void Promise.all([metadataEngine.restore(account), coverEngine.restore(account)]).then(
+        async () => {
+          await coverEngine.refresh();
+          if (metadataEngine.snapshot) await queueEngine.restore(account);
+          if (!lifetime.signal.aborted) loadArtists(savedAuth);
+        },
+      );
     } catch {
       authStore.clear();
       connectionOpen = true;
@@ -124,11 +120,9 @@
   }
 
   function uniqueGenres(genres: string[]) {
-    return [
-      ...new Map(
-        genres.map((genre) => [genre.toLocaleLowerCase(), genre]),
-      ).values(),
-    ].sort((a, b) => a.localeCompare(b));
+    return [...new Map(genres.map((genre) => [genre.toLocaleLowerCase(), genre])).values()].sort(
+      (a, b) => a.localeCompare(b),
+    );
   }
 
   function albumGenres(album: Album) {
@@ -146,14 +140,14 @@
   }
 
   function artistTracks(artist: Artist): readonly Track[] {
-    return metadataEngine.getArtistAlbums(artist.id).flatMap((album) => metadataEngine.getAlbumTracks(album.id));
+    return metadataEngine
+      .getArtistAlbums(artist.id)
+      .flatMap((album) => metadataEngine.getAlbumTracks(album.id));
   }
 
   function availableTracks(items: readonly Track[]) {
     return offlineMode
-      ? items.filter(
-          (track) => trackEngine.getStatus(track.id) === "downloaded",
-        )
+      ? items.filter((track) => trackEngine.getStatus(track.id) === "downloaded")
       : items;
   }
 
@@ -177,7 +171,11 @@
     queueEngine.update({
       index: queueEngine.index,
       position: playback.position,
-      tracks: [...queueEngine.tracks.slice(0, insertAt), ...items.map((track) => track.id), ...queueEngine.tracks.slice(insertAt)],
+      tracks: [
+        ...queueEngine.tracks.slice(0, insertAt),
+        ...items.map((track) => track.id),
+        ...queueEngine.tracks.slice(insertAt),
+      ],
     });
   }
 
@@ -215,9 +213,7 @@
       });
     } catch (caught) {
       downloadError =
-        caught instanceof Error
-          ? caught.message
-          : "The track could not be downloaded.";
+        caught instanceof Error ? caught.message : "The track could not be downloaded.";
     }
   }
 
@@ -247,7 +243,11 @@
 
   async function applyOfflineLibrary() {
     await trackEngine.ready();
-    if (offlineMode && queueEngine.current && trackEngine.getStatus(queueEngine.current) !== "downloaded") {
+    if (
+      offlineMode &&
+      queueEngine.current &&
+      trackEngine.getStatus(queueEngine.current) !== "downloaded"
+    ) {
       playback.pause();
     }
   }
@@ -267,8 +267,7 @@
 
   function collectionIsDownloaded(items: readonly Track[]) {
     return (
-      items.length > 0 &&
-      items.every((track) => trackEngine.getStatus(track.id) === "downloaded")
+      items.length > 0 && items.every((track) => trackEngine.getStatus(track.id) === "downloaded")
     );
   }
 
@@ -278,9 +277,7 @@
       return;
     }
     queueEngine.update({ tracks: items.map((track) => track.id), position: 0 });
-    void playback.playIndex(
-      Math.max(0, Math.min(startIndex, items.length - 1)),
-    );
+    void playback.playIndex(Math.max(0, Math.min(startIndex, items.length - 1)));
   }
 
   function clearQueue() {
@@ -327,8 +324,7 @@
     refreshError = "";
 
     try {
-      const credentials =
-        savedAuth ?? authStore.create({ host, username, password });
+      const credentials = savedAuth ?? authStore.create({ host, username, password });
       const client =
         activeAuth &&
         activeClient &&
@@ -356,8 +352,7 @@
   $effect(() => {
     const pending = pendingConnection;
     const status = metadataEngine.status;
-    if (!pending || (status !== "refreshing" && status !== "ready" && status !== "error"))
-      return;
+    if (!pending || (status !== "refreshing" && status !== "ready" && status !== "error")) return;
     const { auth: credentials, client } = pending;
 
     if (status === "error") {
@@ -492,22 +487,12 @@
 
           <label class="stack-sm">
             Username
-            <input
-              type="text"
-              bind:value={username}
-              autocomplete="username"
-              required
-            />
+            <input type="text" bind:value={username} autocomplete="username" required />
           </label>
 
           <label class="stack-sm">
             Password
-            <input
-              type="password"
-              bind:value={password}
-              autocomplete="current-password"
-              required
-            />
+            <input type="password" bind:value={password} autocomplete="current-password" required />
           </label>
 
           <button
@@ -517,16 +502,10 @@
             type="submit"
             disabled={offlineMode || loading || refreshing}
           >
-            {loading
-              ? "Connecting…"
-              : activeAuth
-                ? "Save connection"
-                : "Connect"}
+            {loading ? "Connecting…" : activeAuth ? "Save connection" : "Connect"}
           </button>
 
-          <small>
-            Authentication is saved in this browser after a successful login.
-          </small>
+          <small> Authentication is saved in this browser after a successful login. </small>
         </form>
       </div>
     </details>
@@ -558,9 +537,7 @@
           {offlineScanning
             ? "Reading downloads catalog…"
             : "Show only music downloaded to this device."}
-          <a class="text-link" href={router.href("/downloads")}
-            >View downloads</a
-          >
+          <a class="text-link" href={router.href("/downloads")}>View downloads</a>
         </small>
       </div>
       <label class="switch">
@@ -598,9 +575,7 @@
     </p>
     {#if trackEngine.error}
       <p class="error type-small" role="status">
-        {trackEngine.error instanceof Error
-          ? trackEngine.error.message
-          : String(trackEngine.error)}
+        {trackEngine.error instanceof Error ? trackEngine.error.message : String(trackEngine.error)}
       </p>
     {/if}
     {#if trackEngine.downloadsLoading}
@@ -702,12 +677,7 @@
               allowNetwork: !offlineMode,
             })}
             {#if cover.source}
-              <img
-                src={cover.source}
-                alt=""
-                loading="lazy"
-                onload={cover.cache}
-              />
+              <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
             {:else}
               <span>{@render icon("music")}</span>
             {/if}
@@ -724,8 +694,7 @@
               <a
                 class="text-link"
                 href={`#${artistPath(artist)}`}
-                onclick={(event) =>
-                  event.currentTarget.closest("dialog")?.close()}
+                onclick={(event) => event.currentTarget.closest("dialog")?.close()}
               >
                 {artist.name}
               </a>
@@ -733,8 +702,7 @@
               <a
                 class="text-link"
                 href={`#${albumPath(albumArtist, album)}`}
-                onclick={(event) =>
-                  event.currentTarget.closest("dialog")?.close()}
+                onclick={(event) => event.currentTarget.closest("dialog")?.close()}
               >
                 {album.title}
               </a>
@@ -752,9 +720,11 @@
             max={Number.isFinite(playback.duration) ? playback.duration : 0}
             step="0.1"
             value={playback.position}
-            disabled={!playback.duration || (offlineMode && playback.track && trackEngine.getStatus(playback.track.id) !== "downloaded")}
-            oninput={(event) =>
-              playback.seek(event.currentTarget.valueAsNumber)}
+            disabled={!playback.duration ||
+              (offlineMode &&
+                playback.track &&
+                trackEngine.getStatus(playback.track.id) !== "downloaded")}
+            oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
           />
           <div class="playback-time type-caption">
             <span>{formatTime(playback.position)}</span>
@@ -895,9 +865,7 @@
 {#snippet libraryRoute(_params: RouteParams, router: RouteControls)}
   {@const visibleArtists = offlineMode
     ? artists.filter((artist) =>
-        artistTracks(artist).some(
-          (track) => trackEngine.getStatus(track.id) === "downloaded",
-        ),
+        artistTracks(artist).some((track) => trackEngine.getStatus(track.id) === "downloaded"),
       )
     : artists}
 
@@ -916,8 +884,7 @@
       {#if appUpdate?.hasUpdate}
         <span class="icon-button-notification" aria-hidden="true"></span>
       {/if}
-    </a
-    >
+    </a>
   </header>
   {@render alerts()}
 
@@ -1018,9 +985,7 @@
                     <span>Download</span>
                   </button>
                 </div>
-                <button type="button" class="button" data-variant="neutral">
-                  Cancel
-                </button>
+                <button type="button" class="button" data-variant="neutral"> Cancel </button>
               </dialog>
             </article>
           {/each}
@@ -1041,16 +1006,16 @@
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams, router: RouteControls)}
-  {@const artist = params.artistId
-    ? metadataEngine.getArtist(params.artistId)
-    : undefined}
+  {@const artist = params.artistId ? metadataEngine.getArtist(params.artistId) : undefined}
   {@const visibleAlbums = artist
     ? offlineMode
-      ? metadataEngine.getArtistAlbums(artist.id).filter((album) =>
-          metadataEngine.getAlbumTracks(album.id).some(
-            (track) => trackEngine.getStatus(track.id) === "downloaded",
-          ),
-        )
+      ? metadataEngine
+          .getArtistAlbums(artist.id)
+          .filter((album) =>
+            metadataEngine
+              .getAlbumTracks(album.id)
+              .some((track) => trackEngine.getStatus(track.id) === "downloaded"),
+          )
       : metadataEngine.getArtistAlbums(artist.id)
     : []}
 
@@ -1160,9 +1125,7 @@
               <span>Download</span>
             </button>
           </div>
-          <button type="button" class="button" data-variant="neutral">
-            Cancel
-          </button>
+          <button type="button" class="button" data-variant="neutral"> Cancel </button>
         </dialog>
       </div>
 
@@ -1176,9 +1139,9 @@
           {#each visibleAlbums as album, index}
             {@const albumMenuId = `album-menu-${index}`}
             {@const visibleTracks = offlineMode
-              ? metadataEngine.getAlbumTracks(album.id).filter(
-                  (track) => trackEngine.getStatus(track.id) === "downloaded",
-                )
+              ? metadataEngine
+                  .getAlbumTracks(album.id)
+                  .filter((track) => trackEngine.getStatus(track.id) === "downloaded")
               : metadataEngine.getAlbumTracks(album.id)}
             {@const cover = coverEngine.getAlbumCover(album.id, { allowNetwork: !offlineMode })}
             <article class="track-item">
@@ -1264,9 +1227,7 @@
                       <span>Download</span>
                     </button>
                   </div>
-                  <button type="button" class="button" data-variant="neutral">
-                    Cancel
-                  </button>
+                  <button type="button" class="button" data-variant="neutral"> Cancel </button>
                 </dialog>
               </span>
             </article>
@@ -1300,17 +1261,13 @@
 {/snippet}
 
 {#snippet albumRoute(params: RouteParams, router: RouteControls)}
-  {@const artist = params.artistId
-    ? metadataEngine.getArtist(params.artistId)
-    : undefined}
-  {@const album = params.albumId
-    ? metadataEngine.getAlbum(params.albumId)
-    : undefined}
+  {@const artist = params.artistId ? metadataEngine.getArtist(params.artistId) : undefined}
+  {@const album = params.albumId ? metadataEngine.getAlbum(params.albumId) : undefined}
   {@const visibleTracks = album
     ? offlineMode
-      ? metadataEngine.getAlbumTracks(album.id).filter(
-          (track) => trackEngine.getStatus(track.id) === "downloaded",
-        )
+      ? metadataEngine
+          .getAlbumTracks(album.id)
+          .filter((track) => trackEngine.getStatus(track.id) === "downloaded")
       : metadataEngine.getAlbumTracks(album.id)
     : []}
 
@@ -1347,9 +1304,8 @@
       </div>
       <div class="section-heading collection-heading">
         <div>
-          <a
-            class="text-link type-eyebrow muted"
-            href={router.href(artistPath(artist))}>{artist.name}</a
+          <a class="text-link type-eyebrow muted" href={router.href(artistPath(artist))}
+            >{artist.name}</a
           >
           <h2 class="type-heading">{album.title}</h2>
           <p class="library-meta type-small">
@@ -1424,9 +1380,7 @@
               <span>Download</span>
             </button>
           </div>
-          <button type="button" class="button" data-variant="neutral">
-            Cancel
-          </button>
+          <button type="button" class="button" data-variant="neutral"> Cancel </button>
         </dialog>
       </div>
 
@@ -1515,8 +1469,7 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-                      onclick={() =>
-                        playNext([track])}
+                      onclick={() => playNext([track])}
                     >
                       {@render icon("next")}
                       <span>Play next</span>
@@ -1524,8 +1477,7 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-                      onclick={() =>
-                        playLast([track])}
+                      onclick={() => playLast([track])}
                     >
                       {@render icon("plus")}
                       <span>Play last</span>
@@ -1551,9 +1503,7 @@
                       {/if}
                     </button>
                   </div>
-                  <button type="button" class="button" data-variant="neutral">
-                    Cancel
-                  </button>
+                  <button type="button" class="button" data-variant="neutral"> Cancel </button>
                 </dialog>
               </span>
             </div>
@@ -1591,11 +1541,8 @@
     <span>{@render icon("music")}</span>
     <h2 class="type-heading">Connect your library</h2>
     <p class="type-body">Add your Navidrome server to start listening.</p>
-    <a
-      class="button"
-      data-size="md"
-      data-variant="neutral"
-      href={router.href("/settings")}>Open settings</a
+    <a class="button" data-size="md" data-variant="neutral" href={router.href("/settings")}
+      >Open settings</a
     >
   </div>
 {/snippet}
