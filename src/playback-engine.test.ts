@@ -5,6 +5,7 @@ import { observePlayback } from "./playback-reactivity.test.svelte";
 import { QueueEngine } from "./queue-engine";
 import type { Track } from "./schema";
 import type { TrackSource } from "./track-engine";
+import { Memory } from "./memory.svelte";
 
 class AudioStub extends EventTarget {
   preload = "";
@@ -56,13 +57,20 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       }
     },
   );
-  const libraryTracks = new Map(["a", "b", "c"].map((id) => [id, song(id)]));
-  const metadata = {
-    getTrack: (id: string) => libraryTracks.get(id),
-    getArtist: (id: string) => ({ id, name: "Artist", genres: [] }),
-    getAlbum: (id: string) => ({ id, title: "Album", artistId: "artist", genres: [] }),
+  const memory = new Memory();
+  memory.tracks = new Map(["a", "b", "c"].map((id) => [id, song(id)]));
+  memory.artists = new Map([["artist", { id: "artist", name: "Artist", genres: [] }]]);
+  memory.albums = new Map([
+    ["album", { id: "album", title: "Album", artistId: "artist", genres: [] }],
+  ]);
+  const updateTrack = (id: string, patch: Partial<Track>) => {
+    memory.tracks = new Map(memory.tracks).set(id, {
+      ...song(id),
+      ...memory.tracks.get(id),
+      ...patch,
+    });
   };
-  const queue = new QueueEngine();
+  const queue = new QueueEngine(memory);
   const audio = new AudioStub();
   const tracks = {
     getSource: vi.fn(
@@ -106,7 +114,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     createAudio,
     isAvailable,
     queue,
-    metadata,
+    memory,
     tracks,
     covers,
     mediaSession: session as unknown as MediaSession,
@@ -118,15 +126,18 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     queue.destroy();
   });
   return {
-    metadata,
+    memory,
+    updateTrack,
     removeTrack(id: string) {
-      libraryTracks.delete(id);
+      const tracks = new Map(memory.tracks);
+      tracks.delete(id);
+      memory.tracks = tracks;
     },
     restoreTrack(id: string) {
-      libraryTracks.set(id, song(id));
+      memory.tracks = new Map(memory.tracks).set(id, song(id));
     },
     renameTrack(id: string, title: string) {
-      libraryTracks.set(id, { ...libraryTracks.get(id)!, title });
+      updateTrack(id, { title });
     },
     player,
     createAudio,
@@ -176,6 +187,36 @@ function setupShortcuts() {
 }
 
 describe("playback engine", () => {
+  it("reads shared memory without using queue data getters", async () => {
+    const { player, queue, memory, audio, session } = setup();
+    for (const field of ["tracks", "index", "position", "current"] as const) {
+      vi.spyOn(queue, field, "get").mockImplementation(() => {
+        throw new Error(`Unexpected queue getter: ${field}`);
+      });
+    }
+    memory.artists = new Map([["artist", { id: "artist", name: "New artist", genres: [] }]]);
+    memory.albums = new Map([
+      ["album", { id: "album", artistId: "artist", title: "New album", genres: [] }],
+    ]);
+    await player.play();
+    expect(player.track).toBe(memory.tracks.get("a"));
+    expect(session.metadata).toMatchObject({ artist: "New artist", album: "New album" });
+    audio.currentTime = 8;
+    audio.dispatchEvent(new Event("timeupdate"));
+    expect(memory.queuePosition).toBe(8);
+    expect(player.position).toBe(8);
+    await player.next();
+    expect(memory.queueIndex).toBe(1);
+    expect(player.track).toBe(memory.tracks.get("b"));
+    expect(memory.queuePosition).toBe(0);
+    await player.seek(12);
+    expect(memory.queuePosition).toBe(12);
+    player.stop();
+    expect(memory.queueTracks).toEqual(["a", "b"]);
+    expect(memory.queueIndex).toBe(-1);
+    expect(memory.queuePosition).toBe(0);
+  });
+
   it("does not upload deletions when a server queue arrives before fresh metadata", async () => {
     const { player, queue, audio, restoreTrack } = setup();
     const { SubsonicClient } = await import("./subsonic-client");
@@ -253,8 +294,8 @@ describe("playback engine", () => {
   });
 
   it("preserves a restored duplicate index and position without autoplay", async () => {
-    const { player, queue, audio, metadata, session } = setup(false);
-    metadata.getTrack("a")!.duration = 200;
+    const { player, queue, audio, updateTrack, session } = setup(false);
+    updateTrack("a", { duration: 200 });
     queue.update({ tracks: ["a", "b", "a"], index: 2, position: 38 });
     player.mount();
     expect(player.currentIndex).toBe(2);
@@ -309,11 +350,11 @@ describe("playback engine", () => {
   );
 
   it("resolves the selected track directly from metadata and follows metadata refreshes", async () => {
-    const { player, metadata, renameTrack, audio, session, queue } = setup();
-    expect(player.track).toBe(metadata.getTrack("a"));
+    const { player, memory, renameTrack, audio, session, queue } = setup();
+    expect(player.track).toBe(memory.tracks.get("a"));
     await player.play();
     renameTrack("a", "Updated title");
-    expect(player.track).toBe(metadata.getTrack("a"));
+    expect(player.track).toBe(memory.tracks.get("a"));
     expect(player.track?.title).toBe("Updated title");
     expect(session.metadata).toMatchObject({ title: "a" });
     queue.setPosition(1);
@@ -359,8 +400,8 @@ describe("playback engine", () => {
   });
 
   it("computes audio request and catalog fields from metadata at playback time", async () => {
-    const { player, metadata, tracks } = setup();
-    metadata.getTrack("a")!.mimeType = "audio/flac";
+    const { player, updateTrack, tracks } = setup();
+    updateTrack("a", { mimeType: "audio/flac" });
     await player.play();
     expect(tracks.getSource).toHaveBeenCalledWith(
       {
@@ -699,8 +740,8 @@ describe("playback engine", () => {
   });
 
   it("resumes an offset stream and translates time, duration, and buffered seeks", async () => {
-    const { player, audio, tracks, queue, metadata } = setup();
-    metadata.getTrack("a")!.duration = 240;
+    const { player, audio, tracks, queue, updateTrack } = setup();
+    updateTrack("a", { duration: 240 });
     queue.setPosition(120.5);
     tracks.getSource.mockResolvedValueOnce({
       cached: false,

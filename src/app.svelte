@@ -54,7 +54,7 @@
   const trackEngine = new TrackEngine();
   const playback = new PlaybackEngine({
     queue: queueEngine,
-    metadata: metadataEngine,
+    memory,
     tracks: trackEngine,
     covers: coverEngine,
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",

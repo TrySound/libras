@@ -2,7 +2,7 @@ import { createSubscriber } from "svelte/reactivity";
 import type { CoverEngine } from "./cover-engine";
 import { PlayerMediaSession } from "./media-session";
 import type { QueueEngine } from "./queue-engine";
-import type { MetadataEngine } from "./metadata-engine";
+import type { MemoryView } from "./memory.svelte";
 import type { TrackEngine } from "./track-engine";
 
 const interactive =
@@ -42,8 +42,11 @@ export type PlaybackStatus =
   | "ended"
   | "error";
 export interface PlaybackEngineOptions {
-  queue: QueueEngine;
-  metadata: Pick<MetadataEngine, "getTrack" | "getAlbum" | "getArtist">;
+  queue: Pick<QueueEngine, "update" | "setPosition" | "save" | "flush" | "subscribe">;
+  memory: Pick<
+    MemoryView,
+    "tracks" | "albums" | "artists" | "queueTracks" | "queueIndex" | "queuePosition"
+  >;
   tracks: Pick<TrackEngine, "getSource" | "releaseSource">;
   covers: Pick<CoverEngine, "getTrackCover" | "subscribe">;
   mediaSession?: MediaSession;
@@ -52,8 +55,8 @@ export interface PlaybackEngineOptions {
 }
 
 export class PlaybackEngine {
-  #queue: QueueEngine;
-  #library: PlaybackEngineOptions["metadata"];
+  #queue: PlaybackEngineOptions["queue"];
+  #memory: PlaybackEngineOptions["memory"];
   #tracks: PlaybackEngineOptions["tracks"];
   #covers: PlaybackEngineOptions["covers"];
   #nativeSession?: MediaSession;
@@ -86,7 +89,7 @@ export class PlaybackEngine {
 
   constructor(options: PlaybackEngineOptions) {
     this.#queue = options.queue;
-    this.#library = options.metadata;
+    this.#memory = options.memory;
     this.#tracks = options.tracks;
     this.#covers = options.covers;
     this.#nativeSession = options.mediaSession;
@@ -95,16 +98,18 @@ export class PlaybackEngine {
   }
 
   #canPlay(index: number) {
-    const id = this.#queue.tracks[index];
-    return id !== undefined && !!this.#library.getTrack(id) && this.#isAvailable(id);
+    const id = this.#memory.queueTracks[index];
+    return id !== undefined && !!this.#memory.tracks.get(id) && this.#isAvailable(id);
   }
 
   #nextIndex(after: number) {
-    return this.#queue.tracks.findIndex((_id, index) => index > after && this.#canPlay(index));
+    return this.#memory.queueTracks.findIndex(
+      (_id, index) => index > after && this.#canPlay(index),
+    );
   }
 
   #previousIndex() {
-    for (let index = this.#queue.index - 1; index >= 0; index--) {
+    for (let index = this.#memory.queueIndex - 1; index >= 0; index--) {
       if (this.#canPlay(index)) return index;
     }
     return -1;
@@ -112,16 +117,16 @@ export class PlaybackEngine {
 
   get track() {
     this.#subscribe();
-    const current = this.#queue.current;
-    return current ? this.#library.getTrack(current) : undefined;
+    const current = this.#memory.queueTracks[this.#memory.queueIndex];
+    return current ? this.#memory.tracks.get(current) : undefined;
   }
   get currentIndex() {
     this.#subscribe();
-    return this.#queue.index;
+    return this.#memory.queueIndex;
   }
   get position() {
     this.#subscribe();
-    return this.#queue.position;
+    return this.#memory.queuePosition;
   }
   get duration() {
     this.#subscribe();
@@ -141,7 +146,7 @@ export class PlaybackEngine {
   }
   get hasNext() {
     this.#subscribe();
-    return this.#queue.index >= 0 && this.#nextIndex(this.#queue.index) >= 0;
+    return this.#memory.queueIndex >= 0 && this.#nextIndex(this.#memory.queueIndex) >= 0;
   }
   get hasPrevious() {
     this.#subscribe();
@@ -168,8 +173,8 @@ export class PlaybackEngine {
     const track = selected && {
       id: selected.id,
       title: selected.title,
-      artist: this.#library.getArtist(selected.artistId)?.name ?? "Unknown artist",
-      album: this.#library.getAlbum(selected.albumId)?.title ?? "Unknown album",
+      artist: this.#memory.artists.get(selected.artistId)?.name ?? "Unknown artist",
+      album: this.#memory.albums.get(selected.albumId)?.title ?? "Unknown album",
     };
     const source = selected
       ? this.#covers.getTrackCover(selected.id, { allowNetwork: false }).source
@@ -375,14 +380,14 @@ export class PlaybackEngine {
   async #load(position: number, autoplay: boolean, forceTranscode = false, seeking = false) {
     const audio = this.#audio;
     const track = this.track;
-    if (!audio || !track || !this.#canPlay(this.#queue.index)) return;
+    if (!audio || !track || !this.#canPlay(this.#memory.queueIndex)) return;
     this.#id = track.id;
     this.#artwork();
     const download = {
       id: track.id,
       title: track.title,
-      artist: this.#library.getArtist(track.artistId)?.name,
-      album: this.#library.getAlbum(track.albumId)?.title,
+      artist: this.#memory.artists.get(track.artistId)?.name,
+      album: this.#memory.albums.get(track.albumId)?.title,
       contentType: track.mimeType,
       coverArt: this.artworkId,
     };
@@ -445,7 +450,7 @@ export class PlaybackEngine {
 
   async play() {
     if (!this.#audio) return;
-    if (!this.#canPlay(this.#queue.index)) {
+    if (!this.#canPlay(this.#memory.queueIndex)) {
       await this.playIndex(this.#nextIndex(-1));
       return;
     }
@@ -491,7 +496,7 @@ export class PlaybackEngine {
   async playIndex(index: number) {
     if (!Number.isInteger(index) || !this.#canPlay(index)) return;
     this.#queue.update({
-      tracks: this.#queue.tracks,
+      tracks: this.#memory.queueTracks,
       index,
       position: 0,
     });
@@ -499,16 +504,17 @@ export class PlaybackEngine {
   }
 
   async next() {
-    if (this.hasNext) await this.playIndex(this.#nextIndex(this.#queue.index));
+    if (this.hasNext) await this.playIndex(this.#nextIndex(this.#memory.queueIndex));
   }
   async previous() {
-    if (this.#canPlay(this.#queue.index) && (this.position > 3 || !this.hasPrevious))
+    if (this.#canPlay(this.#memory.queueIndex) && (this.position > 3 || !this.hasPrevious))
       await this.seek(0);
     else if (this.hasPrevious) await this.playIndex(this.#previousIndex());
   }
 
   async seek(position: number) {
-    if (!Number.isFinite(position) || !this.#audio || !this.#canPlay(this.#queue.index)) return;
+    if (!Number.isFinite(position) || !this.#audio || !this.#canPlay(this.#memory.queueIndex))
+      return;
     const duration = this.duration;
     position = Math.max(0, duration > 0 ? Math.min(position, duration) : position);
     const audio = this.#audio;
@@ -549,7 +555,7 @@ export class PlaybackEngine {
   stop() {
     this.#unload();
     this.#error = undefined;
-    this.#queue.update({ tracks: this.#queue.tracks, position: 0 });
+    this.#queue.update({ tracks: this.#memory.queueTracks, position: 0 });
     this.#publish();
   }
 
