@@ -20,7 +20,7 @@
   import { type RouteParams } from "./router-engine";
   import { SubsonicClient, type SubsonicAuth } from "./subsonic-client";
   import Router, { type RouteControls, type RouterNavigate } from "./router.svelte";
-  import { TrackEngine, type DownloadItem } from "./track-engine";
+  import { TrackEngine } from "./track-engine";
   import { swipeToDismiss } from "./swipe-to-dismiss";
 
   const offlineModeStorageKey = "navidrome-offline-mode";
@@ -52,7 +52,7 @@
   let activeClient = $state<SubsonicClient>();
   const coverEngine = new CoverEngine(memory, metadataEngine);
   const trackEngine = new TrackEngine({ memory });
-  const downloads = $derived.by((): readonly DownloadItem[] => {
+  const downloads = $derived.by(() => {
     const jobs = trackEngine.downloadJobs;
     const activeKeys = new Set(jobs.map((job) => job.key));
     const completed = [...memory.downloads.values()]

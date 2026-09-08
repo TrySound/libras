@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { Memory, type Immutable } from "./memory.svelte";
+import type { Memory } from "./memory.svelte";
 import {
   accountSchema,
   artistSchema,
@@ -23,9 +23,6 @@ type MetadataMemory = Pick<
   Memory,
   "account" | "artists" | "albums" | "tracks" | "artistAlbums" | "albumTracks"
 >;
-
-const noAlbums: readonly Immutable<Album>[] = Object.freeze([]);
-const noTracks: readonly Immutable<Track>[] = Object.freeze([]);
 
 const timestamp = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000));
 const snapshotSchema = v.strictObject({
@@ -247,7 +244,7 @@ export class MetadataEngine {
   #memory: MetadataMemory;
   #snapshotInfo?: Pick<MetadataSnapshot, "lastModified" | "savedAt">;
 
-  constructor(memory: MetadataMemory = new Memory()) {
+  constructor(memory: MetadataMemory) {
     this.#memory = memory;
   }
   #store = new MetadataStore();
@@ -274,37 +271,6 @@ export class MetadataEngine {
     return this.#snapshotInfo?.savedAt;
   }
 
-  // Compatibility view for tests; no retained entity snapshot.
-  get snapshot(): Immutable<MetadataSnapshot> | undefined {
-    this.#subscribe();
-    if (!this.#snapshotInfo || !this.#memory.account) return undefined;
-    return {
-      ...this.#snapshotInfo,
-      account: this.#memory.account,
-      artists: [...this.#memory.artists.values()],
-      albums: [...this.#memory.albums.values()],
-      tracks: [...this.#memory.tracks.values()],
-    };
-  }
-
-  getArtists() {
-    return [...this.#memory.artists.values()];
-  }
-  getArtist(id: string) {
-    return this.#memory.artists.get(id);
-  }
-  getAlbum(id: string) {
-    return this.#memory.albums.get(id);
-  }
-  getTrack(id: string) {
-    return this.#memory.tracks.get(id);
-  }
-  getArtistAlbums(id: string) {
-    return this.#memory.artistAlbums.get(id) ?? noAlbums;
-  }
-  getAlbumTracks(id: string) {
-    return this.#memory.albumTracks.get(id) ?? noTracks;
-  }
   get status() {
     this.#subscribe();
     return this.#status;

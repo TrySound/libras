@@ -181,11 +181,6 @@ describe("cover engine", () => {
   it("reads metadata on explicit refresh without effects or metadata listeners", async () => {
     const storage = installOpfs();
     const metadata = library();
-    Object.defineProperty(metadata, "snapshot", {
-      get() {
-        throw new Error("Snapshot adapter must not be read");
-      },
-    });
     const covers = engine(metadata);
     await covers.refresh();
     expect(storage.files.size).toBe(0);
@@ -231,12 +226,6 @@ describe("cover engine", () => {
     expect([...metadata.memory.albumArtwork]).toEqual([["album", catalog().albums[0].candidates]]);
     expect(metadata.memory.trackArtwork.get("one")).toEqual(catalog().tracks[0].candidates);
     expect([...metadata.memory.images.values()]).toEqual(catalog().images);
-    storage.reads.mockClear();
-    for (let i = 0; i < 20; i++) {
-      expect(metadata.memory.images.has("album-cover")).toBe(true);
-      expect(metadata.memory.trackArtwork.get("one")?.[0]).toBe("track-cover");
-    }
-    expect(storage.reads).not.toHaveBeenCalled();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(bytes).not.toHaveBeenCalled();
     const artist = covers.ensureArtistCover("artist", offline);
@@ -253,8 +242,7 @@ describe("cover engine", () => {
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
     expect(vi.mocked(URL.createObjectURL).mock.calls[0][0]).not.toBeInstanceOf(File);
     storage.reads.mockClear();
-    for (let i = 0; i < 20; i++)
-      expect(covers.ensureArtistCover("artist", offline).cached).toBe(true);
+    expect(covers.ensureArtistCover("artist", offline)).toBe(artist);
     expect(storage.reads).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
   });

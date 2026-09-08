@@ -80,7 +80,7 @@ function installStorage() {
 }
 let storage: ReturnType<typeof installStorage>;
 const engines: QueueEngine[] = [];
-function engine(memory = new Memory()) {
+function engine(memory: Memory) {
   const queue = new QueueEngine(memory);
   engines.push(queue);
   return queue;
@@ -98,6 +98,7 @@ afterEach(async () => {
 describe("queue engine", () => {
   it("publishes the complete normalized queue before notifying playback subscribers", () => {
     const memory = new Memory();
+
     const queue = engine(memory);
     const observed: unknown[] = [];
     queue.subscribe(() => {
@@ -106,10 +107,6 @@ describe("queue engine", () => {
         index: memory.queueIndex,
         position: memory.queuePosition,
       });
-      expect(queue.tracks).toBe(memory.queueTracks);
-      expect(queue.index).toBe(memory.queueIndex);
-      expect(queue.position).toBe(memory.queuePosition);
-      expect(queue.current).toBe(memory.queueTracks[memory.queueIndex]);
     });
     const input = ["a", "b", "a"];
     queue.update({ tracks: input, index: 2, position: 12 });
@@ -126,33 +123,6 @@ describe("queue engine", () => {
     ]);
   });
 
-  it("persists injected memory changes without replacing metadata or exposing operational state", async () => {
-    const memory = new Memory();
-    const artists = memory.artists;
-    const tracks = memory.tracks;
-    const queue = engine(memory);
-    await queue.setNetwork("offline");
-    await queue.restore(account);
-    queue.update({ tracks: ["a", "a"], index: 1, position: 7 });
-    queue.setPosition(9);
-    await queue.flush();
-    expect(await storage.json()).toMatchObject({
-      tracks: memory.queueTracks,
-      index: 1,
-      position: 9,
-      pendingSync: true,
-    });
-    expect(memory.artists).toBe(artists);
-    expect(memory.tracks).toBe(tracks);
-    expect(memory).not.toHaveProperty("status");
-    expect(memory).not.toHaveProperty("storageError");
-    const restoredMemory = new Memory();
-    await engine(restoredMemory).restore(account);
-    expect(restoredMemory.queueTracks).toEqual(["a", "a"]);
-    expect(restoredMemory.queueIndex).toBe(1);
-    expect(restoredMemory.queuePosition).toBe(9);
-  });
-
   it("reports a newer disk queue instead of acknowledging or uploading a skipped write", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);
@@ -163,14 +133,15 @@ describe("queue engine", () => {
       position: 0,
     });
     const save = vi.spyOn(client, "savePlayQueue").mockResolvedValue(undefined);
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.setClient(client);
     queue.update({ tracks: ["local"], index: 0, position: 0 });
     const newer = { ...record(), updatedAt: 5000, pendingSync: true };
     await storage.seed(newer);
     await queue.flush();
     expect(queue.storageError).toBeInstanceOf(Error);
-    expect(queue.tracks).toEqual(["local"]);
+    expect(queueMemory.queueTracks).toEqual(["local"]);
     expect(await storage.json()).toEqual(newer);
     expect(save).not.toHaveBeenCalled();
     await queue.flush();
@@ -197,7 +168,8 @@ describe("queue engine", () => {
     const save = vi.spyOn(client, "savePlayQueue").mockImplementation(async () => {
       await storage.seed(newer);
     });
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.setClient(client);
     queue.update({ tracks: ["local"], index: 0, position: 0 });
     await queue.flush();
@@ -213,23 +185,22 @@ describe("queue engine", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const memory = new Memory();
+
     const queue = engine(memory);
     await queue.restore(account);
     expect(memory.queueTracks).toEqual(["a", "b", "a"]);
     expect(memory.queueIndex).toBe(2);
     expect(memory.queuePosition).toBe(12.5);
-    expect(queue.tracks).toEqual(["a", "b", "a"]);
-    expect(queue.index).toBe(2);
-    expect(queue.current).toBe("a");
-    expect(queue.position).toBe(12.5);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("persists offline edits and empty queues without credentials or track descriptions", async () => {
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.setNetwork("offline");
-    await queue.setClient(new SubsonicClient(auth));
-    queue.update({ tracks: ["a", "b", "a"], index: 2, position: 35 });
+    await queue.restore(account);
+    queue.update({ tracks: ["a", "b", "a"], index: 2, position: 30 });
+    queue.setPosition(35);
     await queue.flush();
     const saved = await storage.json();
     expect(saved).toMatchObject({
@@ -240,18 +211,23 @@ describe("queue engine", () => {
       pendingSync: true,
     });
     expect(JSON.stringify(saved)).not.toMatch(/token|salt|title|playing|https:.*rest/);
-    const restored = engine();
+    const restoredMemory = new Memory();
+    const restored = engine(restoredMemory);
     await restored.restore(account);
-    expect(restored.index).toBe(2);
-    expect(restored.position).toBe(35);
+    expect(restoredMemory.queueTracks).toEqual(["a", "b", "a"]);
+    expect(restoredMemory.queueIndex).toBe(2);
+    expect(restoredMemory.queuePosition).toBe(35);
+    await queue.setClient(new SubsonicClient(auth));
     queue.update({ tracks: [], position: 0 });
     await queue.flush();
-    expect(await storage.json()).toMatchObject({
+    const empty = await storage.json();
+    expect(empty).toMatchObject({
       tracks: [],
       index: -1,
       position: 0,
       pendingSync: true,
     });
+    expect(JSON.stringify(empty)).not.toMatch(/token|salt|title|playing|https:.*rest/);
   });
 
   it("keeps local cache visible while loading a clean server queue and persists the result", async () => {
@@ -266,18 +242,19 @@ describe("queue engine", () => {
           }),
       ),
     );
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.restore(account);
     const connected = queue.setClient(new SubsonicClient(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
-    expect(queue.index).toBe(2);
+    expect(queueMemory.queueIndex).toBe(2);
     resolve(
       response({ playQueue: { current: "remote", position: 9000, entry: [{ id: "remote" }] } }),
     );
     await connected;
-    expect(queue.tracks).toEqual(["remote"]);
-    expect(queue.index).toBe(0);
-    expect(queue.position).toBe(9);
+    expect(queueMemory.queueTracks).toEqual(["remote"]);
+    expect(queueMemory.queueIndex).toBe(0);
+    expect(queueMemory.queuePosition).toBe(9);
     expect((await storage.json()).pendingSync).toBe(false);
   });
 
@@ -295,9 +272,10 @@ describe("queue engine", () => {
         }),
       ),
     );
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.setClient(new SubsonicClient(auth));
-    expect(queue.index).toBe(2);
+    expect(queueMemory.queueIndex).toBe(2);
     expect((await storage.json()).index).toBe(2);
   });
 
@@ -305,7 +283,8 @@ describe("queue engine", () => {
     await storage.seed({ ...record(), pendingSync: true });
     const fetcher = vi.fn(async () => response());
     vi.stubGlobal("fetch", fetcher);
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.setClient(new SubsonicClient(auth));
     expect(fetcher).toHaveBeenCalledOnce();
     const [url, options] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
@@ -314,7 +293,7 @@ describe("queue engine", () => {
     expect(body.getAll("id")).toEqual(["a", "b", "a"]);
     expect(body.get("current")).toBe("a");
     expect(body.get("position")).toBe("12500");
-    expect(queue.index).toBe(2);
+    expect(queueMemory.queueIndex).toBe(2);
     expect((await storage.json()).pendingSync).toBe(false);
   });
 
@@ -329,23 +308,25 @@ describe("queue engine", () => {
           }),
       ),
     );
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     const connected = queue.setClient(new SubsonicClient(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     queue.update({ tracks: ["local"], index: 0, position: 2 });
     resolve(response({ playQueue: { current: "remote", entry: [{ id: "remote" }] } }));
     await connected;
-    expect(queue.current).toBe("local");
-    expect(queue.position).toBe(2);
+    expect(queueMemory.queueTracks[queueMemory.queueIndex]).toBe("local");
+    expect(queueMemory.queuePosition).toBe(2);
   });
 
   it("does not overwrite edits made during initial local restoration", async () => {
     await storage.seed();
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     const restored = queue.restore(account);
     queue.update({ tracks: ["local"], index: 0, position: 3 });
     await restored;
-    expect(queue.current).toBe("local");
+    expect(queueMemory.queueTracks[queueMemory.queueIndex]).toBe("local");
     expect(await storage.json()).toMatchObject({ tracks: ["local"], pendingSync: true });
   });
 
@@ -361,7 +342,8 @@ describe("queue engine", () => {
           }),
       ),
     );
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     const connected = queue.setClient(new SubsonicClient(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     queue.setPosition(20);
@@ -379,7 +361,8 @@ describe("queue engine", () => {
         throw new Error("Offline");
       }),
     );
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.setClient(new SubsonicClient(auth));
     expect(queue.error).toBeInstanceOf(Error);
     expect((await storage.json()).pendingSync).toBe(true);
@@ -394,7 +377,8 @@ describe("queue engine", () => {
   it("checkpoints continuous position changes locally without continuous server saves", async () => {
     vi.useFakeTimers();
     await storage.seed();
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.restore(account);
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
@@ -410,7 +394,8 @@ describe("queue engine", () => {
 
   it("keeps the last complete file after write failure and exposes a separate storage error", async () => {
     await storage.seed();
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.restore(account);
     storage.failWrites = true;
     queue.update({ tracks: ["new"], index: 0, position: 2 });
@@ -418,7 +403,7 @@ describe("queue engine", () => {
     expect(queue.storageError).toBeInstanceOf(Error);
     expect(queue.error).toBeUndefined();
     expect(await storage.json()).toEqual(record());
-    expect(queue.current).toBe("new");
+    expect(queueMemory.queueTracks[queueMemory.queueIndex]).toBe("new");
   });
 
   it.each(["index", "position", "account"])("rejects invalid persisted %s", async (field) => {
@@ -427,11 +412,12 @@ describe("queue engine", () => {
     if (field === "position") invalid.position = -10;
     if (field === "account") invalid.account = { ...account, username: "other" };
     await storage.seed(invalid);
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.restore(account);
     expect(queue.storageError).toBeInstanceOf(Error);
-    expect(queue.tracks).toEqual([]);
-    expect(queue.index).toBe(-1);
+    expect(queueMemory.queueTracks).toEqual([]);
+    expect(queueMemory.queueIndex).toBe(-1);
   });
 
   it("isolates accounts and ignores late server responses from the previous account", async () => {
@@ -447,31 +433,34 @@ describe("queue engine", () => {
           }),
       ),
     );
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     const connected = queue.setClient(new SubsonicClient(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     await queue.restore(other);
     resolve(response({ playQueue: { current: "remote", entry: [{ id: "remote" }] } }));
     await connected;
-    expect(queue.current).toBe("other");
+    expect(queueMemory.queueTracks[queueMemory.queueIndex]).toBe("other");
     expect((await storage.json(other)).tracks).toEqual(["other"]);
   });
 
   it("does not invalidate local restoration when network policy changes", async () => {
     await storage.seed();
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     const restored = queue.restore(account);
     const offline = queue.setNetwork("offline");
     await Promise.all([restored, offline]);
-    expect(queue.index).toBe(2);
-    expect(queue.position).toBe(12.5);
+    expect(queueMemory.queueIndex).toBe(2);
+    expect(queueMemory.queuePosition).toBe(12.5);
     queue.setPosition(20);
     await queue.flush();
     expect((await storage.json()).position).toBe(20);
   });
 
   it("notifies explicit listeners for queue changes but not persistence bookkeeping", async () => {
-    const queue = engine();
+    const queueMemory = new Memory();
+    const queue = engine(queueMemory);
     await queue.restore(account);
     const listener = vi.fn();
     const unsubscribe = queue.subscribe(listener);

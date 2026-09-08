@@ -139,7 +139,8 @@ describe("track engine", () => {
     const fetcher = vi.fn(async () => new Response("audio"));
     vi.stubGlobal("fetch", fetcher);
     const memory = new Memory();
-    const writer = new TrackEngine({ memory, client: new SubsonicClient(auth) });
+
+    const writer = new TrackEngine({ memory: memory, client: new SubsonicClient(auth) });
     const track = { id: "offline", title: "Offline", contentType: "audio/flac" };
     await writer.cache(track, { forceTranscode: true });
     expect(memory.downloads.size).toBe(1);
@@ -156,6 +157,7 @@ describe("track engine", () => {
     writer.destroy();
     const restoredMemory = new Memory();
     restoredMemory.account = { host: auth.host, username: auth.username };
+
     const reader = new TrackEngine({ memory: restoredMemory });
     await reader.ready();
     expect([...restoredMemory.downloads.values()]).toEqual([completed]);
@@ -170,8 +172,8 @@ describe("track engine", () => {
     reader.destroy();
   });
 
-  it("keeps completed records out of job state and pending jobs out of Memory", async () => {
-    installOpfs();
+  it("publishes only completed downloads to Memory and storage", async () => {
+    const files = installOpfs();
     let resolve!: (response: Response) => void;
     vi.stubGlobal(
       "fetch",
@@ -183,13 +185,15 @@ describe("track engine", () => {
       ),
     );
     const memory = new Memory();
-    const engine = new TrackEngine({ memory, client: new SubsonicClient(auth) });
+
+    const engine = new TrackEngine({ memory: memory, client: new SubsonicClient(auth) });
     await engine.ready();
     const emptyCatalog = memory.downloads;
     const pending = engine.cache({ id: "pending" });
     await vi.waitFor(() => expect(resolve).toBeDefined());
     expect(memory.downloads).toBe(emptyCatalog);
     expect(memory.downloads.size).toBe(0);
+    expect(files.has("downloads.json")).toBe(false);
     expect(engine.downloadJobs[0]).toMatchObject({
       track: { id: "pending" },
       status: "downloading",
@@ -209,7 +213,8 @@ describe("track engine", () => {
     const fetcher = vi.fn(async () => new Response("audio"));
     vi.stubGlobal("fetch", fetcher);
     const memory = new Memory();
-    const engine = new TrackEngine({ memory, client: new SubsonicClient(auth) });
+
+    const engine = new TrackEngine({ memory: memory, client: new SubsonicClient(auth) });
     await engine.cache({ id: "same-id" });
     fetcher.mockClear();
     memory.account = { host: auth.host, username: "other" };
@@ -232,7 +237,8 @@ describe("track engine", () => {
     installOpfs();
     const memory = new Memory();
     memory.account = { host: auth.host, username: auth.username };
-    const engine = new TrackEngine({ memory });
+
+    const engine = new TrackEngine({ memory: memory });
     await engine.ready();
     let resolve!: (file: File) => void;
     vi.spyOn(OpfsTrackStore.prototype, "get").mockImplementationOnce(
@@ -388,7 +394,8 @@ describe("track engine", () => {
       "fetch",
       vi.fn(async () => new Response("audio")),
     );
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
     const track = { id: "one", title: "Song", artist: "Artist", album: "Album", coverArt: "cover" };
     await engine.cache(track);
     const json = await files.get("downloads.json")!.text();
@@ -408,53 +415,22 @@ describe("track engine", () => {
     expect(json).not.toContain(auth.token);
     expect(json).not.toContain(auth.salt);
     engine.destroy();
-    const restored = new TrackEngine({ client: new SubsonicClient(auth) });
+    const restoredMemory = new Memory();
+    const restored = new TrackEngine({ memory: restoredMemory, client: new SubsonicClient(auth) });
     await vi.waitFor(() => expect(restored.downloadsLoading).toBe(false));
-    expect(restored.downloads[0]).toMatchObject({ track, status: "downloaded" });
+    expect([...restoredMemory.downloads.values()][0]).toMatchObject({ track });
     expect(restored.getStatus(track.id)).toBe("downloaded");
     restored.destroy();
-  });
-
-  it("lists active jobs, queued jobs, and newest completed files in that order", async () => {
-    const files = installOpfs();
-    const fetcher = vi.fn(async () => new Response("audio"));
-    vi.stubGlobal("fetch", fetcher);
-    const engine = new TrackEngine({ client: new SubsonicClient(auth), concurrency: 1 });
-    vi.spyOn(Date, "now").mockReturnValueOnce(100).mockReturnValueOnce(200);
-    await engine.cache({ id: "old" });
-    await engine.cache({ id: "new" });
-    let resolve!: (value: Response) => void;
-    fetcher.mockImplementationOnce(
-      () =>
-        new Promise<Response>((done) => {
-          resolve = done;
-        }),
-    );
-    const first = engine.cache({ id: "active" });
-    const second = engine.cache({ id: "queued" });
-    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
-    expect(engine.downloads.map((entry) => [entry.track.id, entry.status])).toEqual([
-      ["active", "downloading"],
-      ["queued", "queued"],
-      ["new", "downloaded"],
-      ["old", "downloaded"],
-    ]);
-    expect(engine.getStatus("queued")).toBe("queued");
-    expect(JSON.parse(await files.get("downloads.json")!.text())).toHaveLength(2);
-    resolve(new Response("audio"));
-    await Promise.all([first, second]);
-    expect(engine.downloads).toHaveLength(4);
-    expect(engine.downloads.every((entry) => entry.status === "downloaded")).toBe(true);
-    engine.destroy();
   });
 
   it("migrates legacy cached audio and remembers its original file date", async () => {
     const files = installOpfs(new File(["legacy"], "track.audio", { lastModified: 123 }));
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
     await engine.scanCached([{ id: "legacy", title: "Old song" }]);
-    expect(engine.downloads[0]).toMatchObject({
+    expect([...engineMemory.downloads.values()][0]).toMatchObject({
       track: { id: "legacy", title: "Old song" },
       downloadedAt: 123,
     });
@@ -473,7 +449,12 @@ describe("track engine", () => {
         .mockResolvedValueOnce(new Response(""))
         .mockResolvedValueOnce(new Response("audio")),
     );
-    const engine = new TrackEngine({ client: new SubsonicClient(auth), concurrency: 1 });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({
+      memory: engineMemory,
+      client: new SubsonicClient(auth),
+      concurrency: 1,
+    });
     const results = await Promise.allSettled([
       engine.cache({ id: "failed" }),
       engine.cache({ id: "empty" }),
@@ -495,17 +476,20 @@ describe("track engine", () => {
       "fetch",
       vi.fn(async () => new Response("audio")),
     );
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
     await engine.cache({ id: "missing" });
     engine.destroy();
     for (const name of files.keys()) if (name.endsWith(".audio")) files.delete(name);
-    const restored = new TrackEngine({ client: new SubsonicClient(auth) });
+    const restoredMemory = new Memory();
+    const restored = new TrackEngine({ memory: restoredMemory, client: new SubsonicClient(auth) });
     await vi.waitFor(() => expect(restored.downloadsLoading).toBe(false));
-    expect(restored.downloads).toEqual([]);
+    expect(restoredMemory.downloads.size).toBe(0);
     expect(JSON.parse(await files.get("downloads.json")!.text())).toEqual([]);
     restored.destroy();
     files.set("downloads.json", new File(["not-json"], "downloads.json"));
-    const broken = new TrackEngine({ client: new SubsonicClient(auth) });
+    const brokenMemory = new Memory();
+    const broken = new TrackEngine({ memory: brokenMemory, client: new SubsonicClient(auth) });
     await vi.waitFor(() => expect(broken.error).toBeDefined());
     await expect(broken.cache({ id: "new" })).rejects.toThrow();
     expect(await files.get("downloads.json")!.text()).toBe("not-json");
@@ -518,7 +502,8 @@ describe("track engine", () => {
       "fetch",
       vi.fn(async () => new Response("mp3")),
     );
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
     const track = { id: "flac", contentType: "audio/flac" };
     await engine.cache(track, { forceTranscode: true });
     expect((await engine.getSource(track)).cached).toBe(true);
@@ -532,10 +517,11 @@ describe("track engine", () => {
       "fetch",
       vi.fn(async () => new Response("audio")),
     );
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
     await Promise.all(["one", "two", "three", "four"].map((id) => engine.cache({ id })));
     expect(JSON.parse(await files.get("downloads.json")!.text())).toHaveLength(4);
-    expect(engine.downloads).toHaveLength(4);
+    expect(engineMemory.downloads.size).toBe(4);
     engine.destroy();
   });
 
@@ -546,8 +532,10 @@ describe("track engine", () => {
       "fetch",
       vi.fn(async () => new Response("audio")),
     );
-    const first = new TrackEngine({ client: new SubsonicClient(auth) });
-    const second = new TrackEngine({ client: new SubsonicClient(auth) });
+    const firstMemory = new Memory();
+    const first = new TrackEngine({ memory: firstMemory, client: new SubsonicClient(auth) });
+    const secondMemory = new Memory();
+    const second = new TrackEngine({ memory: secondMemory, client: new SubsonicClient(auth) });
     try {
       await Promise.all([first.cache({ id: "one" }), second.cache({ id: "two" })]);
       const records = JSON.parse(await files.get("downloads.json")!.text());
@@ -556,10 +544,14 @@ describe("track engine", () => {
         "two",
       ]);
       expect(request.mock.calls.some(([name]) => name === "music-web-downloads-index")).toBe(true);
-      const restored = new TrackEngine({ client: new SubsonicClient(auth) });
+      const restoredMemory = new Memory();
+      const restored = new TrackEngine({
+        memory: restoredMemory,
+        client: new SubsonicClient(auth),
+      });
       try {
         await restored.ready();
-        expect(restored.downloads).toHaveLength(2);
+        expect(restoredMemory.downloads.size).toBe(2);
       } finally {
         restored.destroy();
       }
@@ -577,7 +569,8 @@ describe("track engine", () => {
         "fetch",
         vi.fn(async () => new Response("audio")),
       );
-      const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+      const engineMemory = new Memory();
+      const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
       try {
         await engine.cache({ id: "one" });
         const records = JSON.parse(await files.get("downloads.json")!.text());
@@ -597,9 +590,10 @@ describe("track engine", () => {
     const files = installOpfs(null, "", true);
     const fetcher = vi.fn(async () => new Response("audio"));
     vi.stubGlobal("fetch", fetcher);
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
     await expect(engine.cache({ id: "one" })).rejects.toThrow("Catalog write failed");
-    expect(engine.downloads).toEqual([]);
+    expect(engineMemory.downloads.size).toBe(0);
     await engine.cache({ id: "one", title: "Recovered" });
     expect(fetcher).toHaveBeenCalledOnce();
     expect(JSON.parse(await files.get("downloads.json")!.text())[0].track.title).toBe("Recovered");
@@ -612,7 +606,8 @@ describe("track engine", () => {
       "fetch",
       vi.fn(async () => new Response("audio")),
     );
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
     await engine.cache({ id: "one" });
     engine.setClient(new SubsonicClient({ ...auth, username: "other" }));
     expect(engine.getStatus("one")).toBe("idle");
@@ -623,7 +618,7 @@ describe("track engine", () => {
     engine.destroy();
   });
 
-  it("prioritizes a playback seek over bulk queued downloads", async () => {
+  it("starts queued downloads in FIFO order and reuses duplicate requests", async () => {
     installOpfs();
     let resolve!: (response: Response) => void;
     const fetcher = vi
@@ -636,18 +631,34 @@ describe("track engine", () => {
       )
       .mockImplementation(async () => new Response("audio"));
     vi.stubGlobal("fetch", fetcher);
-    const engine = new TrackEngine({ client: new SubsonicClient(auth), concurrency: 1 });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({
+      memory: engineMemory,
+      client: new SubsonicClient(auth),
+      concurrency: 1,
+    });
     const active = engine.cache({ id: "active" });
     const queued = engine.cache({ id: "queued" });
-    const seek = engine.cache({ id: "seek" }, { priority: "playback" });
+    const last = engine.cache({ id: "last" });
+    expect(engine.cache({ id: "last" })).toBe(last);
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
-    expect(engine.downloads.map((entry) => entry.track.id)).toEqual(["active", "seek", "queued"]);
+    expect(engine.cache({ id: "active" })).toBe(active);
+    expect(engine.downloadJobs.map((entry) => [entry.track.id, entry.status])).toEqual([
+      ["active", "downloading"],
+      ["queued", "queued"],
+      ["last", "queued"],
+    ]);
+    expect(engine.getStatus("active")).toBe("downloading");
+    expect(engine.getStatus("queued")).toBe("queued");
     resolve(new Response("audio"));
-    await Promise.all([active, queued, seek]);
+    await Promise.all([active, queued, last]);
+    expect(engine.getStatus("active")).toBe("downloaded");
+    expect(engineMemory.downloads.size).toBe(3);
+    expect(engine.downloadJobs).toEqual([]);
     expect(fetcher.mock.calls.map(([url]) => new URL(url).searchParams.get("id"))).toEqual([
       "active",
-      "seek",
       "queued",
+      "last",
     ]);
     engine.destroy();
   });
@@ -661,7 +672,12 @@ describe("track engine", () => {
         }),
     );
     vi.stubGlobal("fetch", fetcher);
-    const engine = new TrackEngine({ client: new SubsonicClient(auth), concurrency: 1 });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({
+      memory: engineMemory,
+      client: new SubsonicClient(auth),
+      concurrency: 1,
+    });
     const result = Promise.allSettled([
       engine.cache({ id: "active" }),
       engine.cache({ id: "queued" }),
@@ -680,10 +696,12 @@ describe("track engine", () => {
       vi.fn(async () => new Response("audio")),
     );
     const client = new SubsonicClient(auth);
-    const engine = new TrackEngine({ client });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client });
     await engine.cache({ id: "saved" });
     engine.destroy();
-    const restored = new TrackEngine({ client });
+    const restoredMemory = new Memory();
+    const restored = new TrackEngine({ memory: restoredMemory, client });
     await restored.ready();
     const storage = vi.spyOn(navigator.storage, "getDirectory");
     storage.mockClear();
@@ -705,7 +723,8 @@ describe("track engine", () => {
     installOpfs(null, "probably");
     const fetcher = vi.fn(async () => new Response("audio"));
     vi.stubGlobal("fetch", fetcher);
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
     const track = { id: "saved", contentType: "audio/flac" };
     await engine.cache(track);
     let resolve!: (value: Response) => void;
@@ -724,21 +743,35 @@ describe("track engine", () => {
     engine.destroy();
   });
 
-  it("uses the original format when the browser supports it", async () => {
-    installOpfs(null, "probably");
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
-
-    const source = await engine.getSource({ id: "track-1", contentType: "audio/flac" });
-
-    expect(new URL(source.url).searchParams.get("format")).toBe("raw");
-    expect(source.nativeSeeking).toBe(true);
-  });
+  it.each([
+    { support: "probably", forceTranscode: false, format: "raw" },
+    { support: "", forceTranscode: false, format: "mp3" },
+    { support: "probably", forceTranscode: true, format: "mp3" },
+  ] as const)(
+    "streams $format with support='$support' and forceTranscode=$forceTranscode",
+    async ({ support, forceTranscode, format }) => {
+      installOpfs(null, support);
+      const memory = new Memory();
+      const engine = new TrackEngine({ memory, client: new SubsonicClient(auth) });
+      const source = await engine.getSource(
+        { id: "track-1", contentType: "audio/flac" },
+        { forceTranscode },
+      );
+      const url = new URL(source.url);
+      expect(url.pathname).toBe("/rest/stream.view");
+      expect(url.searchParams.get("format")).toBe(format);
+      expect(source.cached).toBe(false);
+      expect(source.nativeSeeking).toBe(format === "raw");
+      engine.destroy();
+    },
+  );
 
   it("requests an MP3 offset stream without downloading or caching a partial track", async () => {
     installOpfs(null, "probably");
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
     const source = await engine.getSource(
       { id: "track-1", contentType: "audio/flac" },
       { position: 120.5 },
@@ -757,7 +790,8 @@ describe("track engine", () => {
   it("prefers a complete cached original for a resumed track", async () => {
     installOpfs(new File(["cached"], "track.audio"), "probably");
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cached-track");
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
     const source = await engine.getSource(
       { id: "track-1", contentType: "audio/flac" },
       { position: 120 },
@@ -766,73 +800,41 @@ describe("track engine", () => {
     engine.destroy();
   });
 
-  it("can force MP3 when a browser rejects a reportedly supported format", async () => {
-    installOpfs(null, "probably");
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
-
-    const source = await engine.getSource(
-      { id: "track-1", contentType: "audio/flac" },
-      { forceTranscode: true },
-    );
-
-    expect(new URL(source.url).searchParams.get("format")).toBe("mp3");
-  });
-
-  it("falls back to MP3 for unsupported formats", async () => {
-    installOpfs();
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
-
-    const source = await engine.getSource({ id: "track-1", contentType: "audio/unknown" });
-
-    expect(new URL(source.url).searchParams.get("format")).toBe("mp3");
-  });
-
-  it("returns and releases an object URL for cached tracks", async () => {
+  it("owns cached object URLs through replacement, release, and destruction", async () => {
     installOpfs(new File(["cached"], "track.audio"));
-    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cached-track");
-    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
-
-    const source = await engine.getSource({ id: "track-1", contentType: "audio/flac" });
-
-    expect(source.cached).toBe(true);
-    expect(engine.getStatus("track-1")).toBe("downloaded");
-    expect(source.url).toBe("blob:cached-track");
-    expect(createObjectURL).toHaveBeenCalledOnce();
-    engine.releaseSource();
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:cached-track");
-  });
-
-  it("releases the previous object URL when resolving another source", async () => {
-    installOpfs(new File(["cached"], "track.audio"));
-    vi.spyOn(URL, "createObjectURL")
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
       .mockReturnValueOnce("blob:first-track")
-      .mockReturnValueOnce("blob:second-track");
+      .mockReturnValueOnce("blob:second-track")
+      .mockReturnValueOnce("blob:third-track");
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const memory = new Memory();
+    const engine = new TrackEngine({ memory, client: new SubsonicClient(auth) });
 
-    await engine.getSource({ id: "track-1", contentType: "audio/flac" });
+    expect(await engine.getSource({ id: "track-1", contentType: "audio/flac" })).toEqual({
+      cached: true,
+      url: "blob:first-track",
+    });
+    expect(engine.getStatus("track-1")).toBe("downloaded");
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).not.toHaveBeenCalled();
     await engine.getSource({ id: "track-2", contentType: "audio/flac" });
-
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:first-track");
+    expect(revokeObjectURL.mock.calls).toEqual([["blob:first-track"]]);
+    engine.releaseSource();
+    expect(revokeObjectURL.mock.calls).toEqual([["blob:first-track"], ["blob:second-track"]]);
+    await engine.getSource({ id: "track-3", contentType: "audio/flac" });
     engine.destroy();
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:second-track");
-  });
-
-  it("returns the Navidrome URL when a track is not cached", async () => {
-    installOpfs();
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
-
-    const source = await engine.getSource({ id: "track-1" });
-
-    expect(source.cached).toBe(false);
-    expect(source.url).toContain("/rest/stream.view?");
-    expect(source).not.toHaveProperty("release");
+    expect(revokeObjectURL.mock.calls).toEqual([
+      ["blob:first-track"],
+      ["blob:second-track"],
+      ["blob:third-track"],
+    ]);
   });
 
   it("loads cached track state without returning storage details", async () => {
     installOpfs(new File(["cached"], "track.audio"));
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
 
     const result = await engine.scanCached([{ id: "track-1" }, { id: "track-2" }]);
 
@@ -846,27 +848,9 @@ describe("track engine", () => {
     vi.stubGlobal("navigator", {
       storage: { getDirectory: async () => Promise.reject(new Error("Storage unavailable")) },
     });
-    const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+    const engineMemory = new Memory();
+    const engine = new TrackEngine({ memory: engineMemory, client: new SubsonicClient(auth) });
 
     await expect(engine.scanCached([{ id: "track-1" }])).resolves.toBeUndefined();
-  });
-
-  it("exposes downloading and downloaded state", async () => {
-    installOpfs();
-    let statusDuringFetch = "";
-    let engine: TrackEngine;
-    const fetcher = vi.fn(async () => {
-      statusDuringFetch = engine.getStatus("track-1");
-      return new Response("audio");
-    });
-    vi.stubGlobal("fetch", fetcher);
-    engine = new TrackEngine({ client: new SubsonicClient(auth) });
-    const track = { id: "track-1" };
-
-    await Promise.all([engine.cache(track), engine.cache(track)]);
-
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(statusDuringFetch).toBe("downloading");
-    expect(engine.getStatus(track.id)).toBe("downloaded");
   });
 });

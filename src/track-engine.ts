@@ -1,8 +1,8 @@
 import { createSubscriber } from "svelte/reactivity";
 import { SubsonicClient } from "./subsonic-client";
 import { OpfsTrackStore } from "./track-store";
-import type { DownloadedFile, DownloadTrack, TrackFileDescriptor } from "./schema";
-import { Memory } from "./memory.svelte";
+import type { DownloadTrack, TrackFileDescriptor } from "./schema";
+import type { Memory } from "./memory.svelte";
 
 type DownloadMemory = Pick<Memory, "account" | "downloads">;
 
@@ -22,23 +22,22 @@ export interface TrackSource {
 }
 export interface TrackSourceOptions {
   forceTranscode?: boolean;
-  priority?: "playback";
 }
 export type TrackStatus = "idle" | "queued" | "downloading" | "downloaded";
 export interface TrackEngineOptions {
-  memory?: DownloadMemory;
+  memory: DownloadMemory;
   client?: SubsonicClient;
   concurrency?: number;
 }
 type StreamDescriptor = TrackFileDescriptor & { url: string };
-export type DownloadItem =
-  | (DownloadedFile & { status: "downloaded" })
-  | (TrackFileDescriptor & { track: DownloadTrack; status: "queued" | "downloading" });
+export type DownloadJobInfo = TrackFileDescriptor & {
+  track: DownloadTrack;
+  status: "queued" | "downloading";
+};
 interface DownloadJob {
   descriptor: StreamDescriptor;
   track: DownloadTrack;
   status: "queued" | "downloading";
-  priority: number;
   controller: AbortController;
   promise: Promise<File>;
   resolve: (file: File) => void;
@@ -68,8 +67,8 @@ export class TrackEngine {
     };
   });
 
-  constructor(options: TrackEngineOptions = {}) {
-    this.#memory = options.memory ?? new Memory();
+  constructor(options: TrackEngineOptions) {
+    this.#memory = options.memory;
     if (options.client) this.setClient(options.client);
     this.#concurrency = options.concurrency ?? 3;
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1)
@@ -81,12 +80,12 @@ export class TrackEngine {
     return this.#ready;
   }
 
-  get downloadJobs(): readonly Extract<DownloadItem, { status: "queued" | "downloading" }>[] {
+  get downloadJobs(): readonly DownloadJobInfo[] {
     this.#subscribe();
     const jobs = [...this.#jobs.values()];
     return [
       ...jobs.filter((job) => job.status === "downloading"),
-      ...jobs.filter((job) => job.status === "queued").sort((a, b) => b.priority - a.priority),
+      ...jobs.filter((job) => job.status === "queued"),
     ].map((job) => ({
       key: job.descriptor.key,
       host: job.descriptor.host,
@@ -96,16 +95,6 @@ export class TrackEngine {
       track: job.track,
       status: job.status,
     }));
-  }
-  // Compatibility view; completed records are owned only by Memory.
-  get downloads(): readonly DownloadItem[] {
-    return [
-      ...this.downloadJobs,
-      ...[...this.#memory.downloads.values()]
-        .filter((file) => !this.#jobs.has(file.key))
-        .sort((a, b) => b.downloadedAt - a.downloadedAt || a.key.localeCompare(b.key))
-        .map((file) => ({ ...file, status: "downloaded" as const })),
-    ];
   }
   get downloadsLoading() {
     this.#subscribe();
@@ -189,9 +178,7 @@ export class TrackEngine {
 
   #drain() {
     if (this.#destroyed) return;
-    const queued = [...this.#jobs.values()]
-      .filter((job) => job.status === "queued")
-      .sort((a, b) => b.priority - a.priority);
+    const queued = [...this.#jobs.values()].filter((job) => job.status === "queued");
     for (const job of queued) {
       if (this.#active >= this.#concurrency) break;
       job.status = "downloading";
@@ -243,13 +230,7 @@ export class TrackEngine {
     const file = this.#describe(track, options);
     const descriptor: StreamDescriptor = { ...file, url: this.#streamUrl(track.id, file) };
     const existing = this.#jobs.get(descriptor.key);
-    if (existing) {
-      if (options.priority === "playback") {
-        existing.priority = 1;
-        this.#update();
-      }
-      return existing.promise;
-    }
+    if (existing) return existing.promise;
     let resolve!: (file: File) => void;
     let reject!: (error: unknown) => void;
     const promise = new Promise<File>((done, fail) => {
@@ -260,7 +241,6 @@ export class TrackEngine {
       descriptor,
       track: this.#track(track),
       status: "queued",
-      priority: options.priority === "playback" ? 1 : 0,
       controller: new AbortController(),
       promise,
       resolve,

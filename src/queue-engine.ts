@@ -2,7 +2,7 @@ import * as v from "valibot";
 import { OpfsJsonStore, jsonFileName } from "./json-store";
 import { createSubscriber } from "svelte/reactivity";
 import { SubsonicClient } from "./subsonic-client";
-import { Memory } from "./memory.svelte";
+import type { Memory } from "./memory.svelte";
 
 type QueueMemory = Pick<Memory, "queueTracks" | "queueIndex" | "queuePosition">;
 
@@ -38,7 +38,7 @@ export class QueueEngine {
   #account?: Account;
   #memory: QueueMemory;
 
-  constructor(memory: QueueMemory = new Memory()) {
+  constructor(memory: QueueMemory) {
     this.#memory = memory;
   }
   #dirty = false;
@@ -80,12 +80,6 @@ export class QueueEngine {
     this.#update();
     for (const listener of this.#listeners) listener();
   }
-  get current() {
-    return this.#memory.queueTracks[this.#memory.queueIndex];
-  }
-  get index() {
-    return this.#memory.queueIndex;
-  }
   get error() {
     this.#subscribe();
     return this.#error;
@@ -94,17 +88,10 @@ export class QueueEngine {
     this.#subscribe();
     return this.#storageError;
   }
-  get position() {
-    return this.#memory.queuePosition;
-  }
   get status() {
     this.#subscribe();
     return this.#status;
   }
-  get tracks() {
-    return this.#memory.queueTracks;
-  }
-
   #publish(state: QueueState) {
     const tracks = [...state.tracks];
     const requestedIndex = state.index ?? -1;

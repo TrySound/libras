@@ -127,10 +127,6 @@ export class PlaybackEngine {
     const current = this.#memory.queueTracks[this.#memory.queueIndex];
     return current ? this.#memory.tracks.get(current) : undefined;
   }
-  get currentIndex() {
-    this.#subscribe();
-    return this.#memory.queueIndex;
-  }
   get position() {
     this.#subscribe();
     return this.#memory.queuePosition;
