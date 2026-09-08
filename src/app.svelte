@@ -399,7 +399,7 @@
 </script>
 
 <svelte:head>
-  <title>Navidrome Artists</title>
+  <title>Libras</title>
 </svelte:head>
 
 {#snippet icon(name: string)}
@@ -409,7 +409,7 @@
 {#snippet settingsRoute(_params: RouteParams, router: RouteControls)}
   <header class="topbar track-list">
     <span class="topbar-spacer"></span>
-    <strong class="type-title">Settings</strong>
+    <strong class="type-title">Libras</strong>
     <a
       class="icon-button"
       data-size="md"
@@ -566,7 +566,7 @@
     >
       {@render icon("back")}
     </a>
-    <strong class="type-title">Downloads</strong>
+    <strong class="type-title">Libras</strong>
     <span class="topbar-spacer"></span>
   </header>
   <section class="view stack-md">
@@ -667,7 +667,7 @@
         command="close"
         title="Close player">{@render icon("chevron-down")}</button
       >
-      <strong class="type-title">Now playing</strong>
+      <strong class="type-title">Libras</strong>
       <span class="topbar-spacer"></span>
     </header>
     {@render alerts()}
@@ -881,7 +881,7 @@
 
   <header class="topbar track-list">
     <span class="topbar-spacer"></span>
-    <strong class="type-title">Library</strong>
+    <strong class="type-title">Libras</strong>
     <a
       class="icon-button"
       data-size="md"
@@ -1033,7 +1033,7 @@
       href={router.href("/library")}
       title="Back">{@render icon("back")}</a
     >
-    <strong class="type-title">Library</strong>
+    <strong class="type-title">Libras</strong>
     <a
       class="icon-button"
       data-size="md"
@@ -1293,7 +1293,7 @@
       href={artist ? router.href(artistPath(artist)) : router.href("/library")}
       title="Back">{@render icon("back")}</a
     >
-    <strong class="type-title">Library</strong>
+    <strong class="type-title">Libras</strong>
     <a
       class="icon-button"
       data-size="md"

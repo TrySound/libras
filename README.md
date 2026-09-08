@@ -1,6 +1,10 @@
-# Navidrome Artists
+# Libras
 
-A small client-only Svelte + Vite app that signs in to a Navidrome server and lists its artists through the Subsonic API.
+A client-only Svelte + Vite music player for Navidrome, with offline downloads and playback through the Subsonic API.
+
+The name is inspired by “3 Libras” by A Perfect Circle.
+
+Repository: https://github.com/TrySound/libras
 
 ## Run
 

@@ -29,7 +29,7 @@ describe("subsonic client", () => {
     const url = new URL(String(fetcher.mock.calls[0][0]));
     expect(url.pathname).toBe("/rest/getArtists.view");
     expect(url.searchParams.get("u")).toBe(auth.username);
-    expect(url.searchParams.get("c")).toBe("music-web");
+    expect(url.searchParams.get("c")).toBe("libras");
   });
 
   it("rejects malformed responses", async () => {

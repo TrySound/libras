@@ -94,7 +94,7 @@ export class SubsonicClient {
   constructor(auth: SubsonicAuth, options: SubsonicClientOptions = {}) {
     this.#auth = auth;
     this.#apiVersion = options.apiVersion ?? "1.16.1";
-    this.#clientName = options.clientName ?? "music-web";
+    this.#clientName = options.clientName ?? "libras";
   }
 
   get host() {

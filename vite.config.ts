@@ -10,8 +10,8 @@ export default defineConfig({
       injectRegister: false,
       manifest: {
         id: "/",
-        name: "Music Web",
-        short_name: "Music",
+        name: "Libras",
+        short_name: "Libras",
         description: "Your Navidrome music library, online and offline.",
         start_url: "/",
         scope: "/",
