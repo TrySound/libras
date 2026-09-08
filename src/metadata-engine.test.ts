@@ -270,6 +270,9 @@ describe("metadata engine", () => {
     Object.assign(navigator, { locks: { request } });
     const first = new MetadataEngine();
     const second = new MetadataEngine();
+    await Promise.all([first.restore(account), second.restore(account)]);
+    expect(request).toHaveBeenCalledTimes(2);
+    request.mockClear();
     first.setClient(new SubsonicClient(auth));
     second.setClient(new SubsonicClient(auth));
     await vi.waitFor(() => {
@@ -281,6 +284,25 @@ describe("metadata engine", () => {
     expect(storage.files.size).toBe(1);
     first.destroy();
     second.destroy();
+  });
+
+  it("explicitly repairs an invalid metadata cache with a fresh server snapshot", async () => {
+    const storage = installMetadataStorage();
+    await storage.seed(account, { invalid: true });
+    vi.stubGlobal("fetch", serveLibrary());
+    const engine = new MetadataEngine();
+    await engine.restore(account);
+    expect(engine.status).toBe("error");
+    await engine.setClient(new SubsonicClient(auth));
+    expect(engine.status).toBe("ready");
+    expect(engine.getTrack("song")?.title).toBe("Song");
+    expect(storage.writes).toBe(1);
+    expect(JSON.parse(await storage.files.get(await snapshotPath(account))!.text())).toMatchObject({
+      account,
+      lastModified: 20,
+      tracks: [{ id: "song" }],
+    });
+    engine.destroy();
   });
 
   it("does not overwrite a newer snapshot saved by another tab during refresh", async () => {

@@ -240,6 +240,66 @@ describe("track engine", () => {
     engine.destroy();
   });
 
+  it("merges catalog completions across instances under the existing Web Lock", async () => {
+    const files = installOpfs();
+    let tail: Promise<unknown> = Promise.resolve();
+    const request = vi.fn((_name: string, callback: () => Promise<unknown>) => {
+      const result = tail.then(callback);
+      tail = result.catch(() => {});
+      return result;
+    });
+    Object.assign(navigator, { locks: { request } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("audio")),
+    );
+    const first = new TrackEngine({ client: new SubsonicClient(auth) });
+    const second = new TrackEngine({ client: new SubsonicClient(auth) });
+    try {
+      await Promise.all([first.cache({ id: "one" }), second.cache({ id: "two" })]);
+      const records = JSON.parse(await files.get("downloads.json")!.text());
+      expect(records.map((record: { track: { id: string } }) => record.track.id).sort()).toEqual([
+        "one",
+        "two",
+      ]);
+      expect(request.mock.calls.every(([name]) => name === "music-web-downloads-index")).toBe(true);
+      const restored = new TrackEngine({ client: new SubsonicClient(auth) });
+      try {
+        await restored.ready();
+        expect(restored.downloads).toHaveLength(2);
+      } finally {
+        restored.destroy();
+      }
+    } finally {
+      first.destroy();
+      second.destroy();
+    }
+  });
+
+  it.each(["file reference", "duplicate key"])(
+    "preserves a catalog with an invalid %s introduced after loading",
+    async (invalid) => {
+      const files = installOpfs();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("audio")),
+      );
+      const engine = new TrackEngine({ client: new SubsonicClient(auth) });
+      try {
+        await engine.cache({ id: "one" });
+        const records = JSON.parse(await files.get("downloads.json")!.text());
+        if (invalid === "file reference") records[0].fileName = `${"0".repeat(64)}.audio`;
+        else records.push(records[0]);
+        const invalidCatalog = JSON.stringify(records);
+        files.set("downloads.json", new File([invalidCatalog], "downloads.json"));
+        await expect(engine.cache({ id: "two" })).rejects.toThrow("invalid file reference");
+        expect(await files.get("downloads.json")!.text()).toBe(invalidCatalog);
+      } finally {
+        engine.destroy();
+      }
+    },
+  );
+
   it("recovers a complete audio file after its first catalog write failed", async () => {
     const files = installOpfs(null, "", true);
     const fetcher = vi.fn(async () => new Response("audio"));

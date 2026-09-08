@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { OpfsJsonStore, jsonFileName } from "./json-store";
 import { createSubscriber } from "svelte/reactivity";
 import {
   SubsonicClient,
@@ -216,81 +217,62 @@ class MetadataIndex {
 }
 
 class MetadataStore {
-  #writes: Promise<unknown> = Promise.resolve();
+  #files = new Map<string, Promise<OpfsJsonStore<MetadataSnapshot>>>();
 
-  async #directory() {
-    const root = await navigator.storage.getDirectory();
-    return root.getDirectoryHandle("metadata", { create: true });
-  }
-
-  async #fileName(account: MetadataAccount) {
-    const bytes = new TextEncoder().encode(`${account.host}\n${account.username}`);
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return `${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}.json`;
-  }
-
-  async load(account: MetadataAccount): Promise<MetadataSnapshot | null> {
-    const directory = await this.#directory();
-    try {
-      const handle = await directory.getFileHandle(await this.#fileName(account));
-      const snapshot = parseSnapshot(JSON.parse(await (await handle.getFile()).text()));
-      if (
-        snapshot.account.host !== account.host ||
-        snapshot.account.username !== account.username
-      ) {
-        throw new Error("The metadata snapshot belongs to a different account.");
-      }
-      return snapshot;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "NotFoundError") return null;
-      throw error;
+  #file({ host, username }: MetadataAccount) {
+    const key = `${host}\n${username}`;
+    let file = this.#files.get(key);
+    if (!file) {
+      file = jsonFileName(key)
+        .then(
+          (fileName) =>
+            new OpfsJsonStore({
+              directory: "metadata",
+              fileName,
+              lockName: `music-web-metadata:${fileName}`,
+              parse: (value) => {
+                const snapshot = parseSnapshot(value);
+                if (snapshot.account.host !== host || snapshot.account.username !== username)
+                  throw new Error("The metadata snapshot belongs to a different account.");
+                return snapshot;
+              },
+            }),
+        )
+        .catch((error) => {
+          this.#files.delete(key);
+          throw error;
+        });
+      this.#files.set(key, file);
     }
+    return file;
   }
 
-  save(value: MetadataSnapshot, current: () => boolean = () => true) {
-    const snapshot = parseSnapshot(value);
-    const write = async () => {
-      const existing = await this.load(snapshot.account).catch(() => null);
-      if (!current()) return;
-      if (
-        existing &&
-        ((existing.lastModified !== null &&
-          snapshot.lastModified !== null &&
-          existing.lastModified > snapshot.lastModified) ||
-          (existing.lastModified === snapshot.lastModified && existing.savedAt > snapshot.savedAt))
-      )
-        return existing;
-      const directory = await this.#directory();
-      const name = await this.#fileName(snapshot.account);
-      if (!current()) return;
-      const handle = await directory.getFileHandle(name, { create: true });
-      let writable: FileSystemWritableFileStream | undefined;
-      try {
-        writable = await handle.createWritable();
-        await writable.write(JSON.stringify(snapshot));
-        if (!current()) {
-          await writable.abort();
-          if ((await handle.getFile()).size === 0) await directory.removeEntry(name);
-          return;
-        }
-        // OPFS commits the replacement on close, not on write.
-        await writable.close();
+  async load(account: MetadataAccount) {
+    return (await this.#file(account)).read();
+  }
+
+  async save(snapshot: MetadataSnapshot, current: () => boolean = () => true) {
+    const file = await this.#file(snapshot.account);
+    const result = await file.update(
+      (existing) => {
+        if (
+          existing &&
+          ((existing.lastModified !== null &&
+            snapshot.lastModified !== null &&
+            existing.lastModified > snapshot.lastModified) ||
+            (existing.lastModified === snapshot.lastModified &&
+              existing.savedAt > snapshot.savedAt))
+        )
+          return undefined;
         return snapshot;
-      } catch (error) {
-        await writable?.abort().catch(() => {});
-        const file = await handle.getFile().catch(() => null);
-        if (file?.size === 0) await directory.removeEntry(name).catch(() => {});
-        throw error;
-      }
-    };
-    const result = this.#writes.then(async () => {
-      const name = await this.#fileName(snapshot.account);
-      return navigator.locks
-        ? navigator.locks.request(`music-web-metadata:${name}`, write)
-        : write();
-    });
-    this.#writes = result.catch(() => {});
-    return result;
+      },
+      {
+        valid: current,
+        // Preserve metadata's existing policy: a fresh server snapshot may repair a bad cache.
+        recoverReadError: () => null,
+      },
+    );
+    return current() ? result.value : undefined;
   }
 }
 

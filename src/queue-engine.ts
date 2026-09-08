@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { OpfsJsonStore, jsonFileName } from "./json-store";
 import { createSubscriber } from "svelte/reactivity";
 import { SubsonicClient } from "./subsonic-client";
 
@@ -37,6 +38,8 @@ export class QueueEngine {
   #tracks: readonly string[] = [];
   #dirty = false;
   #needsPersist = false;
+  #conflict = false;
+  #files = new Map<string, Promise<OpfsJsonStore<QueueRecord>>>();
   #connecting?: { epoch: number; promise: Promise<void> };
   #updatedAt = 0;
   #revision = 0;
@@ -112,22 +115,27 @@ export class QueueEngine {
   #state() {
     return { tracks: this.#tracks, index: this.#index, position: this.#position };
   }
-  async #directory() {
-    return (await navigator.storage.getDirectory()).getDirectoryHandle("queue", { create: true });
-  }
-  async #fileName(account: Account) {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(scope(account)));
-    return `${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}.json`;
-  }
-  async #read(account: Account) {
-    const directory = await this.#directory();
-    try {
-      const file = await (await directory.getFileHandle(await this.#fileName(account))).getFile();
-      return parseRecord(JSON.parse(await file.text()), account);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "NotFoundError") return null;
-      throw error;
+  #file({ host, username }: Account) {
+    const key = `${host}\n${username}`;
+    let file = this.#files.get(key);
+    if (!file) {
+      file = jsonFileName(key)
+        .then(
+          (fileName) =>
+            new OpfsJsonStore({
+              directory: "queue",
+              fileName,
+              lockName: `music-web-queue:${fileName}`,
+              parse: (value) => parseRecord(value, { host, username }),
+            }),
+        )
+        .catch((error) => {
+          this.#files.delete(key);
+          throw error;
+        });
+      this.#files.set(key, file);
     }
+    return file;
   }
 
   #persist(): Promise<void> {
@@ -143,34 +151,30 @@ export class QueueEngine {
       pendingSync: this.#dirty,
       updatedAt: this.#updatedAt,
     };
-    const write = async () => {
-      const previous = await this.#read(account).catch(() => null);
-      if (previous && previous.updatedAt > record.updatedAt) return;
-      const directory = await this.#directory();
-      const name = await this.#fileName(account);
-      const handle = await directory.getFileHandle(name, { create: true });
-      let writable: FileSystemWritableFileStream | undefined;
-      try {
-        writable = await handle.createWritable();
-        await writable.write(JSON.stringify(parseRecord(record, account)));
-        await writable.close();
-      } catch (error) {
-        await writable?.abort().catch(() => {});
-        if ((await handle.getFile()).size === 0) await directory.removeEntry(name).catch(() => {});
-        throw error;
-      }
-    };
+    // Also retain an engine-wide tail so teardown waits for writes to previous accounts.
     const result = this.#localWrites
-      .then(async () => {
-        const name = await this.#fileName(account);
-        if (navigator.locks) await navigator.locks.request(`music-web-queue:${name}`, write);
-        else await write();
-      })
-      .then(() => {
-        if (this.#account === account) {
+      .then(() => this.#file(account))
+      .then((file) =>
+        file.update(
+          (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
+          // Preserve the queue's existing repair-on-write policy.
+          { recoverReadError: () => null },
+        ),
+      )
+      .then(({ written }) => {
+        if (this.#account !== account) return;
+        if (!written) {
+          this.#conflict = true;
+          this.#dirty = true;
+          this.#storageError = new Error(
+            "A newer queue was saved in another tab. This queue has not been saved.",
+          );
+          return;
+        }
+        if (revision === this.#revision && record.pendingSync === this.#dirty) {
+          this.#conflict = false;
           this.#storageError = undefined;
-          if (revision === this.#revision && record.pendingSync === this.#dirty)
-            this.#needsPersist = false;
+          this.#needsPersist = false;
         }
       })
       .catch((error) => {
@@ -196,6 +200,7 @@ export class QueueEngine {
     this.#loaded = false;
     this.#dirty = false;
     this.#needsPersist = false;
+    this.#conflict = false;
     this.#updatedAt = 0;
     this.#error = undefined;
     this.#storageError = undefined;
@@ -204,11 +209,7 @@ export class QueueEngine {
     this.#publish({ tracks: [], position: 0 });
     return (this.#ready = (async () => {
       try {
-        const name = await this.#fileName(account);
-        const read = () => this.#read(account);
-        const record = navigator.locks
-          ? await navigator.locks.request(`music-web-queue:${name}`, read)
-          : await read();
+        const record = await (await this.#file(account)).read();
         if (generation !== this.#accountGeneration || this.#destroyed) return;
         if (record && revision === this.#revision) {
           this.#dirty = record.pendingSync;
@@ -276,6 +277,7 @@ export class QueueEngine {
         this.#network === "offline" ||
         !this.#loaded ||
         !this.#dirty ||
+        this.#conflict ||
         this.#destroyed
       )
         return;

@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { OpfsJsonStore, jsonFileName } from "./json-store";
 import { createSubscriber } from "svelte/reactivity";
 import { SubsonicClient } from "./subsonic-client";
 import type { MetadataAccount, MetadataSnapshot, MetadataEngine } from "./metadata-engine";
@@ -160,7 +161,7 @@ export class CoverEngine {
   #destroyed = false;
   #reconcileKey = "";
   #reconciling: Promise<void> = Promise.resolve();
-  #writes: Promise<unknown> = Promise.resolve();
+  #files = new Map<string, Promise<OpfsJsonStore<Catalog>>>();
   #images = new Map<string, ImageRecord>();
   #references = {
     artists: new Map<string, string[]>(),
@@ -199,51 +200,38 @@ export class CoverEngine {
     const root = await navigator.storage.getDirectory();
     return root.getDirectoryHandle("images", { create: true });
   }
-  async #fileName(account: MetadataAccount) {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(scope(account)));
-    return `${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}.json`;
-  }
-  async #read(account: MetadataAccount) {
-    const directory = await this.#directory();
-    try {
-      const handle = await directory.getFileHandle(await this.#fileName(account));
-      return parseCatalog(JSON.parse(await (await handle.getFile()).text()), account);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "NotFoundError")
-        return emptyCatalog(account);
-      throw error;
+  #file({ host, username }: MetadataAccount) {
+    const key = `${host}\n${username}`;
+    let file = this.#files.get(key);
+    if (!file) {
+      file = jsonFileName(key)
+        .then(
+          (fileName) =>
+            new OpfsJsonStore({
+              directory: "images",
+              fileName,
+              lockName: `music-web-covers:${fileName}`,
+              parse: (value) => parseCatalog(value, { host, username }),
+            }),
+        )
+        .catch((error) => {
+          this.#files.delete(key);
+          throw error;
+        });
+      this.#files.set(key, file);
     }
+    return file;
   }
-  #commit(account: MetadataAccount, change: (catalog: Catalog) => Catalog, valid: () => boolean) {
-    const write = async () => {
-      const catalog = parseCatalog(change(await this.#read(account)), account);
-      if (!valid()) return;
-      const directory = await this.#directory();
-      const name = await this.#fileName(account);
-      const handle = await directory.getFileHandle(name, { create: true });
-      let writable: FileSystemWritableFileStream | undefined;
-      try {
-        writable = await handle.createWritable();
-        await writable.write(JSON.stringify(catalog));
-        if (!valid()) {
-          await writable.abort();
-          if ((await handle.getFile()).size === 0) await directory.removeEntry(name);
-          return;
-        }
-        await writable.close();
-        return catalog;
-      } catch (error) {
-        await writable?.abort().catch(() => {});
-        if ((await handle.getFile()).size === 0) await directory.removeEntry(name).catch(() => {});
-        throw error;
-      }
-    };
-    const result = this.#writes.then(async () => {
-      const name = await this.#fileName(account);
-      return navigator.locks ? navigator.locks.request(`music-web-covers:${name}`, write) : write();
+  async #commit(
+    account: MetadataAccount,
+    change: (catalog: Catalog) => Catalog,
+    valid: () => boolean,
+  ) {
+    const file = await this.#file(account);
+    const result = await file.update((catalog) => change(catalog ?? emptyCatalog(account)), {
+      valid,
     });
-    this.#writes = result.catch(() => {});
-    return result;
+    return valid() ? (result.value ?? undefined) : undefined;
   }
 
   restore(account: MetadataAccount): Promise<void> {
@@ -269,10 +257,7 @@ export class CoverEngine {
     this.#notify();
     return (this.#ready = (async () => {
       try {
-        const name = await this.#fileName(account);
-        let catalog = navigator.locks
-          ? await navigator.locks.request(`music-web-covers:${name}`, () => this.#read(account))
-          : await this.#read(account);
+        let catalog = (await (await this.#file(account)).read()) ?? emptyCatalog(account);
         const directory = await this.#directory();
         const missing = new Set<string>();
         let next = 0;

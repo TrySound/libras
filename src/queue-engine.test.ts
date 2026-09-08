@@ -95,6 +95,61 @@ afterEach(async () => {
 });
 
 describe("queue engine", () => {
+  it("reports a newer disk queue instead of acknowledging or uploading a skipped write", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const client = new SubsonicClient(auth);
+    vi.spyOn(client, "getPlayQueue").mockResolvedValue({
+      tracks: ["a"],
+      current: "a",
+      position: 0,
+    });
+    const save = vi.spyOn(client, "savePlayQueue").mockResolvedValue(undefined);
+    const queue = engine();
+    await queue.setClient(client);
+    queue.update({ tracks: ["local"], index: 0, position: 0 });
+    const newer = { ...record(), updatedAt: 5000, pendingSync: true };
+    await storage.seed(newer);
+    await queue.flush();
+    expect(queue.storageError).toBeInstanceOf(Error);
+    expect(queue.tracks).toEqual(["local"]);
+    expect(await storage.json()).toEqual(newer);
+    expect(save).not.toHaveBeenCalled();
+    await queue.flush();
+    expect(save).not.toHaveBeenCalled();
+    expect(queue.storageError).toBeInstanceOf(Error);
+    vi.setSystemTime(6000);
+    queue.update({ tracks: ["edited"], index: 0, position: 0 });
+    await queue.flush();
+    expect(queue.storageError).toBeUndefined();
+    expect(save).toHaveBeenCalledOnce();
+    expect(await storage.json()).toMatchObject({ tracks: ["edited"], pendingSync: false });
+  });
+
+  it("preserves a newer disk queue that appears while a server save is pending", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const client = new SubsonicClient(auth);
+    vi.spyOn(client, "getPlayQueue").mockResolvedValue({
+      tracks: ["a"],
+      current: "a",
+      position: 0,
+    });
+    const newer = { ...record(), updatedAt: 5000, pendingSync: true };
+    const save = vi.spyOn(client, "savePlayQueue").mockImplementation(async () => {
+      await storage.seed(newer);
+    });
+    const queue = engine();
+    await queue.setClient(client);
+    queue.update({ tracks: ["local"], index: 0, position: 0 });
+    await queue.flush();
+    expect(queue.storageError).toBeInstanceOf(Error);
+    expect(await storage.json()).toEqual(newer);
+    await queue.flush();
+    expect(save).toHaveBeenCalledOnce();
+    expect(queue.storageError).toBeInstanceOf(Error);
+  });
+
   it("restores IDs, duplicate occurrence index and position without a client or network", async () => {
     await storage.seed();
     const fetcher = vi.fn();

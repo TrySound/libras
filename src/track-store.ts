@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { OpfsJsonStore } from "./json-store";
 
 const trackSchema = v.object({
   id: v.string(),
@@ -34,6 +35,22 @@ export class OpfsTrackStore {
   #loading?: Promise<Map<string, DownloadedFile>>;
   #writes: Promise<unknown> = Promise.resolve();
   #names = new Map<string, string>();
+  #catalog = new OpfsJsonStore({
+    directory: "tracks",
+    fileName: "downloads.json",
+    lockName: "music-web-downloads-index",
+    parse: async (value) => {
+      const records = v.parse(catalogSchema, value);
+      const keys = new Set<string>();
+      for (const record of records) {
+        const key = `${record.host}\n${record.username}\n${record.track.id}\n${record.format}-v1`;
+        if (record.key !== key || record.fileName !== (await this.#fileName(key)) || keys.has(key))
+          throw new Error("The downloads catalog contains an invalid file reference.");
+        keys.add(key);
+      }
+      return records;
+    },
+  });
 
   async #directory() {
     const root = await navigator.storage.getDirectory();
@@ -49,37 +66,13 @@ export class OpfsTrackStore {
     return name;
   }
 
-  async #readIndex(directory: FileSystemDirectoryHandle) {
-    try {
-      const handle = await directory.getFileHandle("downloads.json");
-      const records = v.parse(catalogSchema, JSON.parse(await (await handle.getFile()).text()));
-      const index = new Map<string, DownloadedFile>();
-      for (const record of records) {
-        const key = `${record.host}\n${record.username}\n${record.track.id}\n${record.format}-v1`;
-        if (
-          record.key !== key ||
-          record.fileName !== (await this.#fileName(key)) ||
-          index.has(key)
-        ) {
-          throw new Error("The downloads catalog contains an invalid file reference.");
-        }
-        index.set(key, record);
-      }
-      return index;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "NotFoundError")
-        return new Map<string, DownloadedFile>();
-      throw error;
-    }
-  }
-
   #load() {
     if (this.#index) return Promise.resolve(this.#index);
-    return (this.#loading ??= this.#directory()
-      .then((directory) => this.#readIndex(directory))
-      .then((index) => {
-        this.#index = index;
-        return index;
+    return (this.#loading ??= this.#catalog
+      .read()
+      .then((records) => {
+        this.#index = new Map(records?.map((record) => [record.key, record]));
+        return this.#index;
       })
       .finally(() => {
         this.#loading = undefined;
@@ -87,29 +80,15 @@ export class OpfsTrackStore {
   }
 
   #mutate(change: (index: Map<string, DownloadedFile>) => void) {
-    const write = async () => {
-      const directory = await this.#directory();
-      // Re-read under the lock so another tab's completed downloads aren't lost.
-      const index = await this.#readIndex(directory);
-      change(index);
-      const handle = await directory.getFileHandle("downloads.json", { create: true });
-      let writable: FileSystemWritableFileStream | undefined;
-      try {
-        writable = await handle.createWritable();
-        await writable.write(JSON.stringify([...index.values()], null, 2));
-        await writable.close();
-        this.#index = index;
-      } catch (error) {
-        await writable?.abort().catch(() => {});
-        // A failed first write must not leave an empty, unparsable catalog behind.
-        const file = await handle.getFile().catch(() => null);
-        if (file?.size === 0) await directory.removeEntry("downloads.json").catch(() => {});
-        throw error;
-      }
-    };
-    const result = this.#writes.then(() =>
-      navigator.locks ? navigator.locks.request("music-web-downloads-index", write) : write(),
-    );
+    const result = this.#catalog
+      .update((records) => {
+        const index = new Map(records?.map((record) => [record.key, record]));
+        change(index);
+        return [...index.values()];
+      })
+      .then(({ value }) => {
+        this.#index = new Map(value!.map((record) => [record.key, record]));
+      });
     this.#writes = result.catch(() => {});
     return result;
   }
