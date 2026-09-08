@@ -6,7 +6,16 @@
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
   import { MetadataEngine } from "./metadata-engine";
-  import type { Album, Artist, Track } from "./schema";
+  import type {
+    Album as AlbumRecord,
+    Artist as ArtistRecord,
+    Track as TrackRecord,
+  } from "./schema";
+  import { Memory, type Immutable } from "./memory.svelte";
+
+  type Album = Immutable<AlbumRecord>;
+  type Artist = Immutable<ArtistRecord>;
+  type Track = Immutable<TrackRecord>;
   import { QueueEngine } from "./queue-engine";
   import { type RouteParams } from "./router-engine";
   import { SubsonicClient, type SubsonicAuth } from "./subsonic-client";
@@ -26,13 +35,14 @@
   let host = $state("");
   let username = $state("");
   let password = $state("");
-  const metadataEngine = new MetadataEngine();
+  const memory = new Memory();
+  const metadataEngine = new MetadataEngine(memory);
   const queueEngine = new QueueEngine();
   let navigate = $state<RouterNavigate>(() => {});
-  let artists = $derived(metadataEngine.getArtists());
+  let artists = $derived([...memory.artists.values()]);
   let queue = $derived(
     queueEngine.tracks.flatMap((id, index) => {
-      const track = metadataEngine.getTrack(id);
+      const track = memory.tracks.get(id);
       return track && (!offlineMode || trackEngine.getStatus(id) === "downloaded")
         ? [{ track, index }]
         : [];
@@ -129,21 +139,21 @@
   function albumGenres(album: Album) {
     return uniqueGenres([
       ...album.genres,
-      ...metadataEngine.getAlbumTracks(album.id).flatMap((track) => track.genres),
+      ...(memory.albumTracks.get(album.id) ?? []).flatMap((track) => track.genres),
     ]);
   }
 
   function artistGenres(artist: Artist) {
     return uniqueGenres([
       ...artist.genres,
-      ...metadataEngine.getArtistAlbums(artist.id).flatMap(albumGenres),
+      ...(memory.artistAlbums.get(artist.id) ?? []).flatMap(albumGenres),
     ]);
   }
 
   function artistTracks(artist: Artist): readonly Track[] {
-    return metadataEngine
-      .getArtistAlbums(artist.id)
-      .flatMap((album) => metadataEngine.getAlbumTracks(album.id));
+    return (memory.artistAlbums.get(artist.id) ?? []).flatMap(
+      (album) => memory.albumTracks.get(album.id) ?? [],
+    );
   }
 
   function availableTracks(items: readonly Track[]) {
@@ -153,7 +163,7 @@
   }
 
   function playAlbum(album: Album) {
-    replaceQueueAndPlay(availableTracks(metadataEngine.getAlbumTracks(album.id)));
+    replaceQueueAndPlay(availableTracks(memory.albumTracks.get(album.id) ?? []));
   }
 
   function playArtist(artist: Artist) {
@@ -196,18 +206,18 @@
   }
 
   function playTrack(track: Track) {
-    const albumTracks = availableTracks(metadataEngine.getAlbumTracks(track.albumId));
+    const albumTracks = availableTracks(memory.albumTracks.get(track.albumId) ?? []);
     const selectedIndex = albumTracks.findIndex((item) => item.id === track.id);
     replaceQueueAndPlay(albumTracks, Math.max(0, selectedIndex));
   }
 
   async function downloadTrack(track: Track) {
     try {
-      const album = metadataEngine.getAlbum(track.albumId);
+      const album = memory.albums.get(track.albumId);
       await trackEngine.cache({
         id: track.id,
         title: track.title,
-        artist: metadataEngine.getArtist(track.artistId)?.name,
+        artist: memory.artists.get(track.artistId)?.name,
         album: album?.title,
         contentType: track.mimeType,
         coverArt: coverEngine.getTrackCover(track.id, { allowNetwork: false }).artworkId,
@@ -226,7 +236,7 @@
     const key = `album:${album.id}`;
     downloadingCollection = key;
     try {
-      await downloadTracks(metadataEngine.getAlbumTracks(album.id));
+      await downloadTracks(memory.albumTracks.get(album.id) ?? []);
     } finally {
       if (downloadingCollection === key) downloadingCollection = "";
     }
@@ -655,9 +665,9 @@
 {/snippet}
 
 {#snippet playerDialog()}
-  {@const artist = playback.track && metadataEngine.getArtist(playback.track.artistId)}
-  {@const album = playback.track && metadataEngine.getAlbum(playback.track.albumId)}
-  {@const albumArtist = album && metadataEngine.getArtist(album.artistId)}
+  {@const artist = playback.track && memory.artists.get(playback.track.artistId)}
+  {@const album = playback.track && memory.albums.get(playback.track.albumId)}
+  {@const albumArtist = album && memory.artists.get(album.artistId)}
   <dialog id="player-dialog" class="player-dialog" use:swipeToDismiss>
     <header class="topbar track-list">
       <div class="track-item">
@@ -1017,17 +1027,15 @@
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams, router: RouteControls)}
-  {@const artist = params.artistId ? metadataEngine.getArtist(params.artistId) : undefined}
+  {@const artist = params.artistId ? memory.artists.get(params.artistId) : undefined}
   {@const visibleAlbums = artist
     ? offlineMode
-      ? metadataEngine
-          .getArtistAlbums(artist.id)
-          .filter((album) =>
-            metadataEngine
-              .getAlbumTracks(album.id)
-              .some((track) => trackEngine.getStatus(track.id) === "downloaded"),
-          )
-      : metadataEngine.getArtistAlbums(artist.id)
+      ? (memory.artistAlbums.get(artist.id) ?? []).filter((album) =>
+          (memory.albumTracks.get(album.id) ?? []).some(
+            (track) => trackEngine.getStatus(track.id) === "downloaded",
+          ),
+        )
+      : (memory.artistAlbums.get(artist.id) ?? [])
     : []}
 
   <header class="topbar track-list">
@@ -1152,10 +1160,10 @@
           {#each visibleAlbums as album, index}
             {@const albumMenuId = `album-menu-${index}`}
             {@const visibleTracks = offlineMode
-              ? metadataEngine
-                  .getAlbumTracks(album.id)
-                  .filter((track) => trackEngine.getStatus(track.id) === "downloaded")
-              : metadataEngine.getAlbumTracks(album.id)}
+              ? (memory.albumTracks.get(album.id) ?? []).filter(
+                  (track) => trackEngine.getStatus(track.id) === "downloaded",
+                )
+              : (memory.albumTracks.get(album.id) ?? [])}
             {@const cover = coverEngine.getAlbumCover(album.id, {
               allowNetwork: !offlineMode,
             })}
@@ -1220,7 +1228,7 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-                      onclick={() => playNext(metadataEngine.getAlbumTracks(album.id))}
+                      onclick={() => playNext(memory.albumTracks.get(album.id) ?? [])}
                     >
                       {@render icon("next")}
                       <span>Play next</span>
@@ -1228,7 +1236,7 @@
                     <button
                       type="button"
                       class="track-item action-menu-item"
-                      onclick={() => playLast(metadataEngine.getAlbumTracks(album.id))}
+                      onclick={() => playLast(memory.albumTracks.get(album.id) ?? [])}
                     >
                       {@render icon("plus")}
                       <span>Play last</span>
@@ -1276,14 +1284,14 @@
 {/snippet}
 
 {#snippet albumRoute(params: RouteParams, router: RouteControls)}
-  {@const artist = params.artistId ? metadataEngine.getArtist(params.artistId) : undefined}
-  {@const album = params.albumId ? metadataEngine.getAlbum(params.albumId) : undefined}
+  {@const artist = params.artistId ? memory.artists.get(params.artistId) : undefined}
+  {@const album = params.albumId ? memory.albums.get(params.albumId) : undefined}
   {@const visibleTracks = album
     ? offlineMode
-      ? metadataEngine
-          .getAlbumTracks(album.id)
-          .filter((track) => trackEngine.getStatus(track.id) === "downloaded")
-      : metadataEngine.getAlbumTracks(album.id)
+      ? (memory.albumTracks.get(album.id) ?? []).filter(
+          (track) => trackEngine.getStatus(track.id) === "downloaded",
+        )
+      : (memory.albumTracks.get(album.id) ?? [])
     : []}
 
   <header class="topbar track-list">
@@ -1375,7 +1383,7 @@
             <button
               type="button"
               class="track-item action-menu-item"
-              onclick={() => playNext(metadataEngine.getAlbumTracks(album.id))}
+              onclick={() => playNext(memory.albumTracks.get(album.id) ?? [])}
             >
               {@render icon("next")}
               <span>Play next</span>
@@ -1383,7 +1391,7 @@
             <button
               type="button"
               class="track-item action-menu-item"
-              onclick={() => playLast(metadataEngine.getAlbumTracks(album.id))}
+              onclick={() => playLast(memory.albumTracks.get(album.id) ?? [])}
             >
               {@render icon("plus")}
               <span>Play last</span>
@@ -1590,7 +1598,7 @@
             {playback.track.title}
           </strong>
           <small class="type-small muted">
-            {metadataEngine.getArtist(playback.track.artistId)?.name}
+            {memory.artists.get(playback.track.artistId)?.name}
           </small>
         </span>
         <button

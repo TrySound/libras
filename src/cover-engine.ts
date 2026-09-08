@@ -4,6 +4,7 @@ import { createSubscriber } from "svelte/reactivity";
 import { SubsonicClient } from "./subsonic-client";
 import type { MetadataSnapshot, MetadataEngine } from "./metadata-engine";
 import type { MetadataAccount } from "./schema";
+import type { Immutable } from "./memory.svelte";
 
 export interface CoverOptions {
   allowNetwork: boolean;
@@ -76,11 +77,11 @@ function parseCatalog(value: unknown, account: MetadataAccount) {
 function candidates(values: readonly (string | undefined)[]) {
   return [...new Set(values.filter((id): id is string => Boolean(id)))];
 }
-function references(snapshot: MetadataSnapshot) {
+function references(snapshot: Immutable<MetadataSnapshot>) {
   const albums = new Map(snapshot.albums.map((album) => [album.id, album]));
   const artists = new Map(snapshot.artists.map((artist) => [artist.id, artist]));
-  const tracksByAlbum = new Map<string, typeof snapshot.tracks>();
-  const albumsByArtist = new Map<string, typeof snapshot.albums>();
+  const tracksByAlbum = new Map<string, (typeof snapshot.tracks)[number][]>();
+  const albumsByArtist = new Map<string, (typeof snapshot.albums)[number][]>();
   for (const album of snapshot.albums) {
     const items = albumsByArtist.get(album.artistId) ?? [];
     items.push(album);

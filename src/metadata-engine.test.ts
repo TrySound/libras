@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MetadataEngine, type MetadataSnapshot } from "./metadata-engine";
 import type { MetadataAccount } from "./schema";
 import { SubsonicClient } from "./subsonic-client";
+import { Memory } from "./memory.svelte";
 
 const account = { host: "https://music.example.com", username: "listener" };
 function snapshot(): MetadataSnapshot {
@@ -208,13 +209,12 @@ describe("metadata engine", () => {
     expect(engine.getArtists().map((item) => item.id)).toEqual(["a", "b"]);
     expect(engine.getArtistAlbums("a").map((item) => item.id)).toEqual(["earlier", "later"]);
     expect(engine.getAlbumTracks("earlier").map((item) => item.id)).toEqual(["first", "second"]);
-    expect(engine.getArtists()).toBe(engine.getArtists());
     expect(engine.getArtistAlbums("a")).toBe(engine.getArtistAlbums("a"));
     expect(engine.getAlbumTracks("earlier")).toBe(engine.getAlbumTracks("earlier"));
     expect(engine.getArtistAlbums("missing")).toBe(engine.getArtistAlbums("missing"));
     expect(engine.getAlbumTracks("missing")).toBe(engine.getAlbumTracks("missing"));
     expect(engine.getAlbumTracks("earlier")[0]).toBe(engine.getTrack("first"));
-    expect(engine.snapshot).toEqual(data);
+    expect(JSON.parse(await storage.files.get(await snapshotPath(account))!.text())).toEqual(data);
     expect(storage.writes).toBe(0);
     engine.destroy();
   });
@@ -361,6 +361,34 @@ describe("metadata engine", () => {
     engine.destroy();
   });
 
+  it("publishes restored and refreshed entities into injected memory without retaining old maps", async () => {
+    const storage = installMetadataStorage();
+    await storage.seed(account, snapshot());
+    const memory = new Memory();
+    const engine = new MetadataEngine(memory);
+    await engine.restore(account);
+    expect(memory.account).toEqual(account);
+    expect(memory.tracks.get("song")).toEqual(snapshot().tracks[0]);
+    expect(engine.getTrack("song")).toBe(memory.tracks.get("song"));
+    expect(engine.getArtist("artist")).toBe(memory.artists.get("artist"));
+    expect(engine.getAlbum("album")).toBe(memory.albums.get("album"));
+    expect(memory.albumTracks.get("album")?.[0]).toBe(memory.tracks.get("song"));
+    expect(memory.artistAlbums.get("artist")?.[0]).toBe(memory.albums.get("album"));
+    expect(engine.snapshot?.tracks[0]).toBe(memory.tracks.get("song"));
+    const oldTracks = memory.tracks;
+    vi.stubGlobal("fetch", serveLibrary());
+    await engine.setClient(new SubsonicClient(auth));
+    expect(memory.tracks).not.toBe(oldTracks);
+    expect(memory.tracks.get("song")?.title).toBe("Song");
+    expect(oldTracks.get("song")).toEqual(snapshot().tracks[0]);
+    expect(memory.albumTracks.get("album")?.[0]).toBe(memory.tracks.get("song"));
+    expect(engine.snapshot?.tracks[0]).toBe(memory.tracks.get("song"));
+    expect(memory).not.toHaveProperty("snapshot");
+    expect(memory).not.toHaveProperty("status");
+    expect(memory).not.toHaveProperty("error");
+    engine.destroy();
+  });
+
   it("restores the whole snapshot at startup without a client or network requests", async () => {
     const storage = installMetadataStorage();
     await storage.seed(account, snapshot());
@@ -432,10 +460,21 @@ describe("metadata engine", () => {
     await storage.seed(account, snapshot());
     vi.stubGlobal("fetch", serveLibrary());
     storage.failWrites = true;
-    const engine = new MetadataEngine();
+    const memory = new Memory();
+    const engine = new MetadataEngine(memory);
     await engine.restore(account);
+    const accepted = [
+      memory.artists,
+      memory.albums,
+      memory.tracks,
+      memory.artistAlbums,
+      memory.albumTracks,
+    ];
     engine.setClient(new SubsonicClient(auth));
     await vi.waitFor(() => expect(engine.warning).toBeInstanceOf(Error));
+    [memory.artists, memory.albums, memory.tracks, memory.artistAlbums, memory.albumTracks].forEach(
+      (map, i) => expect(map).toBe(accepted[i]),
+    );
     expect(engine.getTrack("song")).toEqual(snapshot().tracks[0]);
     expect(engine.status).toBe("ready");
     engine.destroy();
@@ -555,14 +594,19 @@ describe("metadata engine", () => {
           }),
       ),
     );
-    const engine = new MetadataEngine();
+    const memory = new Memory();
+    const engine = new MetadataEngine(memory);
     engine.setClient(new SubsonicClient(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     await engine.restore(other);
+    const accepted = memory.artists;
+    expect(memory.account).toEqual(other);
     resolve(response({ indexes: { lastModified: 20 } }));
     await Promise.resolve();
     await Promise.resolve();
     expect(engine.getArtist("artist")?.name).toBe("Other");
+    expect(memory.artists).toBe(accepted);
+    expect(memory.artists.get("artist")?.name).toBe("Other");
     expect(storage.files.size).toBe(1);
     expect(storage.writes).toBe(0);
     engine.destroy();

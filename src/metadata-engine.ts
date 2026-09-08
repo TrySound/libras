@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { Memory, type Immutable } from "./memory.svelte";
 import {
   accountSchema,
   artistSchema,
@@ -17,6 +18,14 @@ import {
   type SubsonicArtist,
   type SubsonicTrack,
 } from "./subsonic-client";
+
+type MetadataMemory = Pick<
+  Memory,
+  "account" | "artists" | "albums" | "tracks" | "artistAlbums" | "albumTracks"
+>;
+
+const noAlbums: readonly Immutable<Album>[] = Object.freeze([]);
+const noTracks: readonly Immutable<Track>[] = Object.freeze([]);
 
 const timestamp = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000));
 const snapshotSchema = v.strictObject({
@@ -137,65 +146,38 @@ function normalizeLibrary(
   });
 }
 
-// Transitional engine-owned index until metadata ownership migrates to Memory.
-class MetadataIndex {
-  #artists = new Map<string, Artist>();
-  #albums = new Map<string, Album>();
-  #tracks = new Map<string, Track>();
-  #artistAlbums = new Map<string, Album[]>();
-  #albumTracks = new Map<string, Track[]>();
-  #artistList: readonly Artist[] = [];
-  #noAlbums: readonly Album[] = [];
-  #noTracks: readonly Track[] = [];
-
-  constructor(snapshot?: MetadataSnapshot) {
-    if (!snapshot) return;
-    this.#artists = entityMap(snapshot.artists);
-    this.#albums = entityMap(snapshot.albums);
-    this.#tracks = entityMap(snapshot.tracks);
-    this.#artistList = [...snapshot.artists].sort((a, b) => a.name.localeCompare(b.name));
-    for (const album of snapshot.albums) {
-      const group = this.#artistAlbums.get(album.artistId) ?? [];
-      group.push(album);
-      this.#artistAlbums.set(album.artistId, group);
-    }
-    for (const track of snapshot.tracks) {
-      const group = this.#albumTracks.get(track.albumId) ?? [];
-      group.push(track);
-      this.#albumTracks.set(track.albumId, group);
-    }
-    for (const albums of this.#artistAlbums.values()) {
-      albums.sort(
-        (a, b) => (a.year ?? Infinity) - (b.year ?? Infinity) || a.title.localeCompare(b.title),
-      );
-    }
-    for (const tracks of this.#albumTracks.values()) {
-      tracks.sort(
-        (a, b) =>
-          (a.disc ?? 1) - (b.disc ?? 1) ||
-          (a.number ?? Infinity) - (b.number ?? Infinity) ||
-          a.title.localeCompare(b.title),
-      );
-    }
+function prepareMetadata(snapshot?: MetadataSnapshot) {
+  const artists = entityMap(
+    [...(snapshot?.artists ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+  );
+  const albums = entityMap(snapshot?.albums ?? []);
+  const tracks = entityMap(snapshot?.tracks ?? []);
+  const artistAlbums = new Map<string, Album[]>();
+  const albumTracks = new Map<string, Track[]>();
+  for (const album of albums.values()) {
+    const group = artistAlbums.get(album.artistId) ?? [];
+    group.push(album);
+    artistAlbums.set(album.artistId, group);
   }
-  getArtists() {
-    return this.#artistList;
+  for (const track of tracks.values()) {
+    const group = albumTracks.get(track.albumId) ?? [];
+    group.push(track);
+    albumTracks.set(track.albumId, group);
   }
-  getArtist(id: string) {
-    return this.#artists.get(id);
+  for (const group of artistAlbums.values()) {
+    group.sort(
+      (a, b) => (a.year ?? Infinity) - (b.year ?? Infinity) || a.title.localeCompare(b.title),
+    );
   }
-  getAlbum(id: string) {
-    return this.#albums.get(id);
+  for (const group of albumTracks.values()) {
+    group.sort(
+      (a, b) =>
+        (a.disc ?? 1) - (b.disc ?? 1) ||
+        (a.number ?? Infinity) - (b.number ?? Infinity) ||
+        a.title.localeCompare(b.title),
+    );
   }
-  getTrack(id: string) {
-    return this.#tracks.get(id);
-  }
-  getArtistAlbums(id: string): readonly Album[] {
-    return this.#artistAlbums.get(id) ?? this.#noAlbums;
-  }
-  getAlbumTracks(id: string): readonly Track[] {
-    return this.#albumTracks.get(id) ?? this.#noTracks;
-  }
+  return { artists, albums, tracks, artistAlbums, albumTracks };
 }
 
 class MetadataStore {
@@ -262,8 +244,12 @@ export type MetadataStatus = "idle" | "loading" | "refreshing" | "ready" | "erro
 export type MetadataNetwork = "offline" | "online";
 
 export class MetadataEngine {
-  #index = new MetadataIndex();
-  #snapshot?: MetadataSnapshot;
+  #memory: MetadataMemory;
+  #snapshotInfo?: Pick<MetadataSnapshot, "lastModified" | "savedAt">;
+
+  constructor(memory: MetadataMemory = new Memory()) {
+    this.#memory = memory;
+  }
   #store = new MetadataStore();
   #client?: SubsonicClient;
   #scope = "";
@@ -283,34 +269,36 @@ export class MetadataEngine {
     };
   });
 
-  get snapshot() {
+  // Compatibility boundary for artwork reconciliation; no retained entity snapshot.
+  get snapshot(): Immutable<MetadataSnapshot> | undefined {
     this.#subscribe();
-    return this.#snapshot;
+    if (!this.#snapshotInfo || !this.#memory.account) return undefined;
+    return {
+      ...this.#snapshotInfo,
+      account: this.#memory.account,
+      artists: [...this.#memory.artists.values()],
+      albums: [...this.#memory.albums.values()],
+      tracks: [...this.#memory.tracks.values()],
+    };
   }
 
   getArtists() {
-    this.#subscribe();
-    return this.#index.getArtists();
+    return [...this.#memory.artists.values()];
   }
   getArtist(id: string) {
-    this.#subscribe();
-    return this.#index.getArtist(id);
+    return this.#memory.artists.get(id);
   }
   getAlbum(id: string) {
-    this.#subscribe();
-    return this.#index.getAlbum(id);
+    return this.#memory.albums.get(id);
   }
   getTrack(id: string) {
-    this.#subscribe();
-    return this.#index.getTrack(id);
+    return this.#memory.tracks.get(id);
   }
   getArtistAlbums(id: string) {
-    this.#subscribe();
-    return this.#index.getArtistAlbums(id);
+    return this.#memory.artistAlbums.get(id) ?? noAlbums;
   }
   getAlbumTracks(id: string) {
-    this.#subscribe();
-    return this.#index.getAlbumTracks(id);
+    return this.#memory.albumTracks.get(id) ?? noTracks;
   }
   get status() {
     this.#subscribe();
@@ -326,9 +314,17 @@ export class MetadataEngine {
   }
 
   #publish(snapshot?: MetadataSnapshot) {
-    const index = new MetadataIndex(snapshot);
-    this.#snapshot = snapshot;
-    this.#index = index;
+    const prepared = prepareMetadata(snapshot);
+    this.#snapshotInfo = snapshot && {
+      lastModified: snapshot.lastModified,
+      savedAt: snapshot.savedAt,
+    };
+    // No awaits or subscriber notifications between related map assignments.
+    this.#memory.artists = prepared.artists;
+    this.#memory.albums = prepared.albums;
+    this.#memory.tracks = prepared.tracks;
+    this.#memory.artistAlbums = prepared.artistAlbums;
+    this.#memory.albumTracks = prepared.albumTracks;
   }
 
   // Startup restoration needs only account identity, not an authenticated client.
@@ -348,6 +344,7 @@ export class MetadataEngine {
     )
       this.#client = undefined;
     this.#publish();
+    this.#memory.account = { host: account.host, username: account.username };
     this.#status = "loading";
     this.#error = undefined;
     this.#warning = undefined;
@@ -426,13 +423,13 @@ export class MetadataEngine {
     this.#error = undefined;
     this.#warning = undefined;
     if (this.#network === "offline") {
-      this.#status = this.#snapshot ? "ready" : "error";
-      if (!this.#snapshot)
+      this.#status = this.#snapshotInfo ? "ready" : "error";
+      if (!this.#snapshotInfo)
         this.#error = new Error("No library is available offline. Reconnect to download metadata.");
       this.#update();
       return;
     }
-    const existing = this.#snapshot;
+    const existing = this.#snapshotInfo;
     const valid = () =>
       !this.#destroyed && generation === this.#generation && client === this.#client;
     this.#status = existing ? "refreshing" : "loading";

@@ -61,6 +61,12 @@ Keep the preview server and tunnel running, then open `http://localhost:4173` on
 
 The Navidrome server must be reachable **from the phone** and permit the frontend origin through CORS. Switching ports or hosts creates a different origin: saved authentication and downloaded music do not carry over automatically.
 
+## Shared memory migration
+
+`Memory` is being adopted incrementally. Metadata is integrated: `app.svelte` owns one instance, `MetadataEngine` validates/restores/refreshes data and synchronously replaces its top-level readonly maps, and the UI reads those maps directly. There is no selector layer. Published records and relationship arrays are immutable by type contract.
+
+Statuses, errors, validation, persistence, and timestamps remain engine-owned. The engine retains no separate entity snapshot or lookup index; its existing getters and temporary artwork snapshot adapter read the same Memory maps. Other engines will migrate in subsequent steps. Shared schemas and inferred types live in `src/schema.ts`, imported directly from their defining module.
+
 ## Storage architecture and offline behavior
 
 - The service worker precaches only the production app shell, manifest, and install icons. The style guide is not available offline.
