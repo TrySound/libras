@@ -16,6 +16,10 @@ export class Memory {
   artistAlbums = $state.raw<ReadonlyMap<string, readonly Immutable<Album>[]>>(new Map());
   albumTracks = $state.raw<ReadonlyMap<string, readonly Immutable<Track>[]>>(new Map());
 
+  queueTracks = $state.raw<readonly string[]>([]);
+  queueIndex = $state(-1);
+  queuePosition = $state(0);
+
   account = $state.raw<Readonly<MetadataAccount> | null>(null);
 }
 

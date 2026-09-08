@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueueEngine } from "./queue-engine";
 import { SubsonicClient } from "./subsonic-client";
+import { Memory } from "./memory.svelte";
 
 const account = { host: "https://music.example.com", username: "listener" };
 const auth = { ...account, token: "token", salt: "salt" };
@@ -79,8 +80,8 @@ function installStorage() {
 }
 let storage: ReturnType<typeof installStorage>;
 const engines: QueueEngine[] = [];
-function engine() {
-  const queue = new QueueEngine();
+function engine(memory = new Memory()) {
+  const queue = new QueueEngine(memory);
   engines.push(queue);
   return queue;
 }
@@ -95,6 +96,63 @@ afterEach(async () => {
 });
 
 describe("queue engine", () => {
+  it("publishes the complete normalized queue before notifying playback subscribers", () => {
+    const memory = new Memory();
+    const queue = engine(memory);
+    const observed: unknown[] = [];
+    queue.subscribe(() => {
+      observed.push({
+        tracks: memory.queueTracks,
+        index: memory.queueIndex,
+        position: memory.queuePosition,
+      });
+      expect(queue.tracks).toBe(memory.queueTracks);
+      expect(queue.index).toBe(memory.queueIndex);
+      expect(queue.position).toBe(memory.queuePosition);
+      expect(queue.current).toBe(memory.queueTracks[memory.queueIndex]);
+    });
+    const input = ["a", "b", "a"];
+    queue.update({ tracks: input, index: 2, position: 12 });
+    const published = memory.queueTracks;
+    input.push("changed");
+    queue.setPosition(15);
+    expect(memory.queueTracks).toBe(published);
+    queue.update({ tracks: ["b"], index: 9, position: 20 });
+    expect(published).toEqual(["a", "b", "a"]);
+    expect(observed).toEqual([
+      { tracks: ["a", "b", "a"], index: 2, position: 12 },
+      { tracks: ["a", "b", "a"], index: 2, position: 15 },
+      { tracks: ["b"], index: -1, position: 0 },
+    ]);
+  });
+
+  it("persists injected memory changes without replacing metadata or exposing operational state", async () => {
+    const memory = new Memory();
+    const artists = memory.artists;
+    const tracks = memory.tracks;
+    const queue = engine(memory);
+    await queue.setNetwork("offline");
+    await queue.restore(account);
+    queue.update({ tracks: ["a", "a"], index: 1, position: 7 });
+    queue.setPosition(9);
+    await queue.flush();
+    expect(await storage.json()).toMatchObject({
+      tracks: memory.queueTracks,
+      index: 1,
+      position: 9,
+      pendingSync: true,
+    });
+    expect(memory.artists).toBe(artists);
+    expect(memory.tracks).toBe(tracks);
+    expect(memory).not.toHaveProperty("status");
+    expect(memory).not.toHaveProperty("storageError");
+    const restoredMemory = new Memory();
+    await engine(restoredMemory).restore(account);
+    expect(restoredMemory.queueTracks).toEqual(["a", "a"]);
+    expect(restoredMemory.queueIndex).toBe(1);
+    expect(restoredMemory.queuePosition).toBe(9);
+  });
+
   it("reports a newer disk queue instead of acknowledging or uploading a skipped write", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);
@@ -154,8 +212,12 @@ describe("queue engine", () => {
     await storage.seed();
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const queue = engine();
+    const memory = new Memory();
+    const queue = engine(memory);
     await queue.restore(account);
+    expect(memory.queueTracks).toEqual(["a", "b", "a"]);
+    expect(memory.queueIndex).toBe(2);
+    expect(memory.queuePosition).toBe(12.5);
     expect(queue.tracks).toEqual(["a", "b", "a"]);
     expect(queue.index).toBe(2);
     expect(queue.current).toBe("a");

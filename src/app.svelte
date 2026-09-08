@@ -37,11 +37,11 @@
   let password = $state("");
   const memory = new Memory();
   const metadataEngine = new MetadataEngine(memory);
-  const queueEngine = new QueueEngine();
+  const queueEngine = new QueueEngine(memory);
   let navigate = $state<RouterNavigate>(() => {});
   let artists = $derived([...memory.artists.values()]);
   let queue = $derived(
-    queueEngine.tracks.flatMap((id, index) => {
+    memory.queueTracks.flatMap((id, index) => {
       const track = memory.tracks.get(id);
       return track && (!offlineMode || trackEngine.getStatus(id) === "downloaded")
         ? [{ track, index }]
@@ -173,19 +173,19 @@
   function playNext(tracks: readonly Track[]) {
     const items = availableTracks(tracks);
     if (items.length === 0) return;
-    if (queueEngine.tracks.length === 0) {
+    if (memory.queueTracks.length === 0) {
       replaceQueueAndPlay(items);
       return;
     }
 
-    const insertAt = Math.max(0, queueEngine.index + 1);
+    const insertAt = Math.max(0, memory.queueIndex + 1);
     queueEngine.update({
-      index: queueEngine.index,
-      position: playback.position,
+      index: memory.queueIndex,
+      position: memory.queuePosition,
       tracks: [
-        ...queueEngine.tracks.slice(0, insertAt),
+        ...memory.queueTracks.slice(0, insertAt),
         ...items.map((track) => track.id),
-        ...queueEngine.tracks.slice(insertAt),
+        ...memory.queueTracks.slice(insertAt),
       ],
     });
   }
@@ -193,15 +193,15 @@
   function playLast(tracks: readonly Track[]) {
     const items = availableTracks(tracks);
     if (items.length === 0) return;
-    if (queueEngine.tracks.length === 0) {
+    if (memory.queueTracks.length === 0) {
       replaceQueueAndPlay(items);
       return;
     }
 
     queueEngine.update({
-      index: queueEngine.index,
-      position: playback.position,
-      tracks: [...queueEngine.tracks, ...items.map((track) => track.id)],
+      index: memory.queueIndex,
+      position: memory.queuePosition,
+      tracks: [...memory.queueTracks, ...items.map((track) => track.id)],
     });
   }
 
@@ -254,11 +254,8 @@
 
   async function applyOfflineLibrary() {
     await trackEngine.ready();
-    if (
-      offlineMode &&
-      queueEngine.current &&
-      trackEngine.getStatus(queueEngine.current) !== "downloaded"
-    ) {
+    const current = memory.queueTracks[memory.queueIndex];
+    if (offlineMode && current && trackEngine.getStatus(current) !== "downloaded") {
       playback.pause();
     }
   }
@@ -292,7 +289,7 @@
 
   function playbackPercent() {
     if (!Number.isFinite(playback.duration) || playback.duration <= 0) return 0;
-    return Math.min(100, Math.max(0, (playback.position / playback.duration) * 100));
+    return Math.min(100, Math.max(0, (memory.queuePosition / playback.duration) * 100));
   }
 
   function formatTime(value: number) {
@@ -736,7 +733,7 @@
             min="0"
             max={Number.isFinite(playback.duration) ? playback.duration : 0}
             step="0.1"
-            value={playback.position}
+            value={memory.queuePosition}
             disabled={!playback.duration ||
               (offlineMode &&
                 playback.track &&
@@ -744,7 +741,7 @@
             oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
           />
           <div class="playback-time type-caption">
-            <span>{formatTime(playback.position)}</span>
+            <span>{formatTime(memory.queuePosition)}</span>
             <span>{formatTime(playback.duration)}</span>
           </div>
         </div>
@@ -756,7 +753,7 @@
             data-size="md"
             data-variant="neutral"
             onclick={() => playback.previous()}
-            disabled={!playback.hasPrevious && playback.position <= 0}
+            disabled={!playback.hasPrevious && memory.queuePosition <= 0}
             title="Previous">{@render icon("previous")}</button
           >
           <button
@@ -817,7 +814,7 @@
               {queue.length} track{queue.length === 1 ? "" : "s"}
             </h2>
           </div>
-          {#if queueEngine.tracks.length > 0}
+          {#if memory.queueTracks.length > 0}
             <button
               type="button"
               class="button"
@@ -839,15 +836,15 @@
                   onclick={() => playback.playIndex(index)}
                 ></button>
                 <span class="track-leading">
-                  {#if index === playback.currentIndex && playbackLoading}
+                  {#if index === memory.queueIndex && playbackLoading}
                     <span role="img" aria-label="Loading playback">
                       {@render icon("loading")}
                     </span>
-                  {:else if index === playback.currentIndex && playback.playing}
+                  {:else if index === memory.queueIndex && playback.playing}
                     <span role="img" aria-label="Playing">
                       {@render icon("sound-bars")}
                     </span>
-                  {:else if index === playback.currentIndex}
+                  {:else if index === memory.queueIndex}
                     <span role="img" aria-label="Current track, not playing">
                       {@render icon("pause")}
                     </span>
@@ -869,7 +866,7 @@
               </div>
             {/each}
           </div>
-        {:else if queueEngine.tracks.length > 0}
+        {:else if memory.queueTracks.length > 0}
           <p class="type-body muted">No available tracks.</p>
         {:else}
           <p class="type-body muted">The queue is empty.</p>

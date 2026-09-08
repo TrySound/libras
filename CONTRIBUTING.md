@@ -63,9 +63,9 @@ The Navidrome server must be reachable **from the phone** and permit the fronten
 
 ## Shared memory migration
 
-`Memory` is being adopted incrementally. Metadata is integrated: `app.svelte` owns one instance, `MetadataEngine` validates/restores/refreshes data and synchronously replaces its top-level readonly maps, and the UI reads those maps directly. There is no selector layer. Published records and relationship arrays are immutable by type contract.
+`Memory` is being adopted incrementally. Metadata and queue data are integrated: `app.svelte` owns one instance, `MetadataEngine` validates/restores/refreshes data and synchronously replaces its top-level readonly maps, and `QueueEngine` owns writes to `queueTracks`, `queueIndex`, and `queuePosition`. The UI reads these fields directly, with no selector layer. Published records, relationship arrays, and queue lists are immutable by type contract.
 
-Statuses, errors, validation, persistence, and timestamps remain engine-owned. The engine retains no separate entity snapshot or lookup index; its existing getters and temporary artwork snapshot adapter read the same Memory maps. Other engines will migrate in subsequent steps. Shared schemas and inferred types live in `src/schema.ts`, imported directly from their defining module.
+Statuses, errors, validation, persistence, and timestamps remain engine-owned. The engine retains no separate entity snapshot or lookup index; its existing getters and temporary artwork snapshot adapter read the same Memory maps. Queue statuses/errors, persistence, synchronization, and conflict handling remain in `QueueEngine`; its compatibility getters read Memory for playback consumers. All queue fields are published before synchronous subscribers are notified, and position updates do not replace the track list. Other engines will migrate in subsequent steps. Shared schemas and inferred types live in `src/schema.ts`, imported directly from their defining module.
 
 ## Storage architecture and offline behavior
 

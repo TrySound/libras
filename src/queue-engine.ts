@@ -2,6 +2,9 @@ import * as v from "valibot";
 import { OpfsJsonStore, jsonFileName } from "./json-store";
 import { createSubscriber } from "svelte/reactivity";
 import { SubsonicClient } from "./subsonic-client";
+import { Memory } from "./memory.svelte";
+
+type QueueMemory = Pick<Memory, "queueTracks" | "queueIndex" | "queuePosition">;
 
 export interface QueueState {
   index?: number;
@@ -33,9 +36,11 @@ export type QueueNetwork = "offline" | "online";
 export class QueueEngine {
   #client?: SubsonicClient;
   #account?: Account;
-  #index = -1;
-  #position = 0;
-  #tracks: readonly string[] = [];
+  #memory: QueueMemory;
+
+  constructor(memory: QueueMemory = new Memory()) {
+    this.#memory = memory;
+  }
   #dirty = false;
   #needsPersist = false;
   #conflict = false;
@@ -76,12 +81,10 @@ export class QueueEngine {
     for (const listener of this.#listeners) listener();
   }
   get current() {
-    this.#subscribe();
-    return this.#tracks[this.#index];
+    return this.#memory.queueTracks[this.#memory.queueIndex];
   }
   get index() {
-    this.#subscribe();
-    return this.#index;
+    return this.#memory.queueIndex;
   }
   get error() {
     this.#subscribe();
@@ -92,28 +95,37 @@ export class QueueEngine {
     return this.#storageError;
   }
   get position() {
-    this.#subscribe();
-    return this.#position;
+    return this.#memory.queuePosition;
   }
   get status() {
     this.#subscribe();
     return this.#status;
   }
   get tracks() {
-    this.#subscribe();
-    return this.#tracks;
+    return this.#memory.queueTracks;
   }
 
   #publish(state: QueueState) {
-    this.#tracks = [...state.tracks];
-    const index = state.index ?? -1;
-    this.#index = Number.isInteger(index) && index >= 0 && index < this.#tracks.length ? index : -1;
-    this.#position =
-      this.#index >= 0 && Number.isFinite(state.position) ? Math.max(0, state.position) : 0;
+    const tracks = [...state.tracks];
+    const requestedIndex = state.index ?? -1;
+    const index =
+      Number.isInteger(requestedIndex) && requestedIndex >= 0 && requestedIndex < tracks.length
+        ? requestedIndex
+        : -1;
+    const position =
+      index >= 0 && Number.isFinite(state.position) ? Math.max(0, state.position) : 0;
+    // Publish every queue field before synchronous playback subscribers run.
+    this.#memory.queueTracks = tracks;
+    this.#memory.queueIndex = index;
+    this.#memory.queuePosition = position;
     this.#notify();
   }
   #state() {
-    return { tracks: this.#tracks, index: this.#index, position: this.#position };
+    return {
+      tracks: this.#memory.queueTracks,
+      index: this.#memory.queueIndex,
+      position: this.#memory.queuePosition,
+    };
   }
   #file({ host, username }: Account) {
     const key = `${host}\n${username}`;
@@ -145,9 +157,9 @@ export class QueueEngine {
     const revision = this.#revision;
     const record: QueueRecord = {
       account,
-      tracks: [...this.#tracks],
-      index: this.#index,
-      position: this.#position,
+      tracks: [...this.#memory.queueTracks],
+      index: this.#memory.queueIndex,
+      position: this.#memory.queuePosition,
       pendingSync: this.#dirty,
       updatedAt: this.#updatedAt,
     };
@@ -245,13 +257,13 @@ export class QueueEngine {
       // Subsonic identifies the selection by ID, so retain our occurrence index
       // when an unchanged server queue contains the same track more than once.
       const sameSelection =
-        queue.current === this.#tracks[this.#index] &&
-        queue.tracks.length === this.#tracks.length &&
-        queue.tracks.every((id, index) => id === this.#tracks[index]);
+        queue.current === this.#memory.queueTracks[this.#memory.queueIndex] &&
+        queue.tracks.length === this.#memory.queueTracks.length &&
+        queue.tracks.every((id, index) => id === this.#memory.queueTracks[index]);
       this.#publish({
         tracks: queue.tracks,
         index: sameSelection
-          ? this.#index
+          ? this.#memory.queueIndex
           : queue.current
             ? queue.tracks.indexOf(queue.current)
             : -1,
@@ -324,10 +336,10 @@ export class QueueEngine {
     this.save();
   }
   setPosition(position: number) {
-    if (this.#index < 0 || !Number.isFinite(position)) return;
+    if (this.#memory.queueIndex < 0 || !Number.isFinite(position)) return;
     position = Math.max(0, position);
-    if (position === this.#position) return;
-    this.#position = position;
+    if (position === this.#memory.queuePosition) return;
+    this.#memory.queuePosition = position;
     this.#changed();
     this.#notify();
     // A throttle, not a debounce: continuous playback still gets local checkpoints.
