@@ -265,6 +265,81 @@ describe("Network connection lifecycle", () => {
     }
   });
 
+  it("exposes accepted audio URLs and hands off an unbuffered download response", async () => {
+    const network = new Network();
+    const client = network.prepare(auth);
+    expect(() => network.audio(client)).toThrow("Connection superseded");
+    network.accept(client);
+    const audio = network.audio(client);
+    const url = new URL(audio.url("track", { format: "mp3", position: 42 }));
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      id: "track",
+      format: "mp3",
+      timeOffset: "42",
+      estimateContentLength: "true",
+      u: auth.username,
+    });
+    const response = new Response("audio");
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => response);
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      const controller = new AbortController();
+      expect(await audio.read("track", { format: "raw", signal: controller.signal })).toBe(
+        response,
+      );
+      expect(response.bodyUsed).toBe(false);
+      const downloadUrl = new URL(String(fetcher.mock.calls[0][0]));
+      expect(downloadUrl.searchParams.get("format")).toBe("raw");
+      expect(downloadUrl.searchParams.has("timeOffset")).toBe(false);
+      expect(await response.text()).toBe("audio");
+      const next = network.prepare({ ...auth, username: "other" });
+      network.accept(next);
+      expect(() => audio.url("track", { format: "raw" })).toThrowError(/abort/i);
+      await expect(
+        audio.read("track", { format: "raw", signal: controller.signal }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(fetcher).toHaveBeenCalledOnce();
+    } finally {
+      network.setMode("offline");
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["job", "connection", "http"])(
+    "releases unused audio responses on %s failure",
+    async (failure) => {
+      const network = new Network();
+      const client = network.prepare(auth);
+      network.accept(client);
+      const controller = new AbortController();
+      let resolve!: (response: Response) => void;
+      const fetcher = vi.fn(
+        () =>
+          new Promise<Response>((done) => {
+            resolve = done;
+          }),
+      );
+      vi.stubGlobal("fetch", fetcher);
+      try {
+        const pending = network
+          .audio(client)
+          .read("track", { format: "mp3", signal: controller.signal });
+        if (failure === "job") controller.abort();
+        if (failure === "connection") network.setMode("offline");
+        const response = new Response("unused", { status: failure === "http" ? 500 : 200 });
+        const cancel = vi.spyOn(response.body!, "cancel");
+        resolve(response);
+        if (failure === "http") await expect(pending).rejects.toThrow("HTTP 500");
+        else await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+        expect(cancel).toHaveBeenCalledOnce();
+      } finally {
+        network.setMode("offline");
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+      }
+    },
+  );
+
   it("rejects a late SDK response after network access is revoked", async () => {
     const network = new Network();
     let respond!: (response: Response) => void;

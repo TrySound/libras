@@ -34,6 +34,17 @@ export interface QueueConnection {
   write(queue: RemoteQueue): Promise<void>;
 }
 
+type AudioFormat = "raw" | "mp3";
+
+export interface AudioConnection {
+  readonly account: Readonly<MetadataAccount>;
+  readonly signal: AbortSignal;
+  /** Browser playback must release network media explicitly on detachment. Position is seconds. */
+  url(id: string, options: { format: AudioFormat; position?: number }): string;
+  /** The consumer streams the body to storage and must cancel any unused response. */
+  read(id: string, options: { format: AudioFormat; signal: AbortSignal }): Promise<Response>;
+}
+
 type ArtworkValidators = { etag?: string; lastModified?: string };
 type RemoteArtwork = ArtworkValidators & { blob: Blob; type: string };
 
@@ -215,6 +226,37 @@ export class Network {
             lastModified: response.headers.get("Last-Modified") ?? undefined,
           };
         }),
+    };
+  }
+
+  audio(client: SubsonicClient): AudioConnection {
+    this.#check(client);
+    const url = (id: string, options: { format: AudioFormat; position?: number }) => {
+      this.#check(client);
+      return client.getStreamUrl(id, {
+        format: options.format,
+        estimateContentLength: true,
+        timeOffset: options.position,
+      });
+    };
+    return {
+      account: Object.freeze({ host: client.host, username: client.username }),
+      signal: client.signal,
+      url,
+      read: async (id, options) => {
+        const signal = AbortSignal.any([client.signal, options.signal]);
+        signal.throwIfAborted();
+        const response = await fetch(url(id, { format: options.format }), { signal });
+        try {
+          this.#check(client);
+          signal.throwIfAborted();
+          if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
+          return response;
+        } catch (error) {
+          await response.body?.cancel().catch(() => {});
+          throw error;
+        }
+      },
     };
   }
 

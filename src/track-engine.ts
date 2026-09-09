@@ -1,5 +1,5 @@
 import { createSubscriber } from "svelte/reactivity";
-import { SubsonicClient } from "./subsonic-client";
+import type { AudioConnection } from "./network.svelte";
 import { OpfsTrackStore } from "./track-store";
 import type { DownloadTrack, TrackFileDescriptor } from "./schema";
 import type { Memory } from "./memory.svelte";
@@ -26,16 +26,17 @@ export interface TrackSourceOptions {
 export type TrackStatus = "idle" | "queued" | "downloading" | "downloaded";
 export interface TrackEngineOptions {
   memory: DownloadMemory;
-  client?: SubsonicClient;
+  connection?: AudioConnection;
   concurrency?: number;
 }
-type StreamDescriptor = TrackFileDescriptor & { url: string };
 export type DownloadJobInfo = TrackFileDescriptor & {
   track: DownloadTrack;
   status: "queued" | "downloading";
 };
 interface DownloadJob {
-  descriptor: StreamDescriptor;
+  descriptor: TrackFileDescriptor;
+  connection: AudioConnection;
+  signal: AbortSignal;
   track: DownloadTrack;
   status: "queued" | "downloading";
   controller: AbortController;
@@ -46,7 +47,7 @@ interface DownloadJob {
 
 export class TrackEngine {
   #activeObjectUrl = "";
-  #client?: SubsonicClient;
+  #connection?: AudioConnection;
   #jobs = new Map<string, DownloadJob>();
   #memory: DownloadMemory;
   #ready: Promise<void>;
@@ -68,7 +69,7 @@ export class TrackEngine {
 
   constructor(options: TrackEngineOptions) {
     this.#memory = options.memory;
-    if (options.client) this.setClient(options.client);
+    if (options.connection) this.setConnection(options.connection);
     this.#concurrency = options.concurrency ?? 3;
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1)
       throw new Error("Download concurrency must be a positive integer.");
@@ -158,25 +159,26 @@ export class TrackEngine {
     );
   }
 
-  #streamUrl(trackId: string, descriptor: TrackFileDescriptor, timeOffset?: number) {
-    const client = this.#client;
+  #connectionFor(descriptor: TrackFileDescriptor) {
+    const connection = this.#connection;
     if (
-      !client ||
-      client.host !== descriptor.host ||
-      client.username !== descriptor.username ||
+      !connection ||
+      connection.account.host !== descriptor.host ||
+      connection.account.username !== descriptor.username ||
       !this.#matchesAccount(descriptor)
     ) {
       throw new Error("This track is not downloaded. Connect to its music server to stream it.");
     }
-    return client.getStreamUrl(trackId, {
-      format: descriptor.format,
-      estimateContentLength: true,
-      timeOffset,
-    });
+    connection.signal.throwIfAborted();
+    return connection;
+  }
+
+  #streamUrl(trackId: string, descriptor: TrackFileDescriptor, position?: number) {
+    return this.#connectionFor(descriptor).url(trackId, { format: descriptor.format, position });
   }
 
   #drain() {
-    if (this.#destroyed || !this.#client) return;
+    if (this.#destroyed || !this.#connection) return;
     const jobs = [...this.#jobs.values()];
     let active = jobs.filter((job) => job.status === "downloading").length;
     for (const job of jobs.filter((job) => job.status === "queued")) {
@@ -203,20 +205,19 @@ export class TrackEngine {
   }
 
   async #download(job: DownloadJob) {
-    const { descriptor, track, controller } = job;
+    const { descriptor, track, connection, signal } = job;
     try {
       let file = await this.#store.get(descriptor, track);
-      controller.signal.throwIfAborted();
+      signal.throwIfAborted();
       if (!file) {
-        const response = await fetch(descriptor.url, { signal: controller.signal });
-        if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-        file = await this.#store.put(descriptor, track, response, controller.signal);
+        const response = await connection.read(track.id, { format: descriptor.format, signal });
+        file = await this.#store.put(descriptor, track, response, signal);
       }
-      controller.signal.throwIfAborted();
+      signal.throwIfAborted();
       await this.#refreshCatalog();
       return file;
     } catch (error) {
-      if (!this.#destroyed && !controller.signal.aborted) {
+      if (!this.#destroyed && !signal.aborted) {
         this.#error = error;
         this.#update();
       }
@@ -227,8 +228,8 @@ export class TrackEngine {
   cache(track: EngineTrack, options: TrackSourceOptions = {}) {
     if (this.#destroyed)
       return Promise.reject(new DOMException("Downloads stopped.", "AbortError"));
-    const file = this.#describe(track, options);
-    const descriptor: StreamDescriptor = { ...file, url: this.#streamUrl(track.id, file) };
+    const descriptor = this.#describe(track, options);
+    const connection = this.#connectionFor(descriptor);
     const existing = this.#jobs.get(descriptor.key);
     if (existing) return existing.promise;
     let resolve!: (file: File) => void;
@@ -237,11 +238,14 @@ export class TrackEngine {
       resolve = done;
       reject = fail;
     });
+    const controller = new AbortController();
     this.#jobs.set(descriptor.key, {
       descriptor,
+      connection,
+      signal: AbortSignal.any([controller.signal, connection.signal]),
       track: this.#track(track),
       status: "queued",
-      controller: new AbortController(),
+      controller,
       promise,
       resolve,
       reject,
@@ -339,18 +343,16 @@ export class TrackEngine {
     this.#sourceRequest++;
     this.#clearObjectUrl();
   }
-  setClient(client?: SubsonicClient) {
-    if (this.#client === client) return;
+  setConnection(connection?: AudioConnection) {
+    if (this.#connection === connection) return;
     this.#sourceRequest++;
     this.#cancelDownloads();
-    this.#client = client;
-    if (client) {
-      if (
-        this.#memory.account?.host !== client.host ||
-        this.#memory.account?.username !== client.username
-      ) {
+    this.#connection = connection;
+    if (connection) {
+      const { host, username } = connection.account;
+      if (this.#memory.account?.host !== host || this.#memory.account?.username !== username) {
         this.#clearObjectUrl();
-        this.#memory.account = { host: client.host, username: client.username };
+        this.#memory.account = { host, username };
       }
     }
     // Detaching credentials preserves account identity and completed downloads.

@@ -30,7 +30,7 @@ describe("session", () => {
       host: credentials.host,
       username: credentials.username,
     });
-    const client = tracks.setClient.mock.calls.at(-1)![0];
+    const client = tracks.setConnection.mock.calls.at(-1)![0];
     const refresh = deferred();
     metadata.refresh.mockReturnValueOnce(refresh.promise);
     const pending = session.refresh();
@@ -41,7 +41,7 @@ describe("session", () => {
     await pending;
     expect(metadata.revalidate).toHaveBeenCalledOnce();
     expect(metadata.restore).toHaveBeenCalledOnce();
-    expect(tracks.setClient.mock.calls.at(-1)![0]).toBe(client);
+    expect(tracks.setConnection.mock.calls.at(-1)![0]).toBe(client);
     expect(queue.synchronize).toHaveBeenCalledOnce();
     expect(await session.connect(input)).toBe(false);
     expect(metadata.prepareConnection).not.toHaveBeenCalled();
@@ -50,7 +50,7 @@ describe("session", () => {
   it("disconnects immediately, aborts the client, and preserves every offline data field", async () => {
     const { session, auth, memory, metadata, tracks, covers, queue, playback, storage } =
       await connected();
-    const client = tracks.setClient.mock.calls.at(-1)![0];
+    const client = tracks.setConnection.mock.calls.at(-1)![0];
     const fields = [
       "artists",
       "albums",
@@ -80,7 +80,7 @@ describe("session", () => {
     expect(metadata.setConnection).toHaveBeenLastCalledWith(undefined);
     expect(queue.setConnection).toHaveBeenLastCalledWith(undefined);
     expect(covers.setConnection).toHaveBeenLastCalledWith(undefined);
-    expect(tracks.setClient).toHaveBeenLastCalledWith(undefined);
+    expect(tracks.setConnection).toHaveBeenLastCalledWith(undefined);
     expect(playback.suspendNetwork).toHaveBeenCalled();
     refresh.resolve();
     await pending;
@@ -187,7 +187,7 @@ describe("session", () => {
       expect(client.signal.aborted).toBe(true);
       expect(auth.load()).toBeNull();
       expect(metadata.acceptConnection).not.toHaveBeenCalled();
-      expect(tracks.setClient.mock.calls.every(([client]) => client === undefined)).toBe(true);
+      expect(tracks.setConnection.mock.calls.every(([client]) => client === undefined)).toBe(true);
     },
   );
 
@@ -245,13 +245,13 @@ describe("session", () => {
 
   it("keeps credentials for voluntary offline mode and resumes with a fresh cancellable client", async () => {
     const { session, tracks, metadata, auth } = await connected();
-    const client = tracks.setClient.mock.calls.at(-1)![0];
+    const client = tracks.setConnection.mock.calls.at(-1)![0];
     await session.setOfflineMode(true);
     expect(client.signal.aborted).toBe(true);
     expect(auth.load()).not.toBeNull();
     expect(session.auth).not.toBeNull();
     await session.setOfflineMode(false);
-    expect(tracks.setClient.mock.calls.at(-1)![0]).not.toBe(client);
+    expect(tracks.setConnection.mock.calls.at(-1)![0]).not.toBe(client);
     expect(metadata.restore).toHaveBeenCalledOnce();
     expect(metadata.revalidate).toHaveBeenCalledTimes(2);
     expect(session.status).toBe("connected");

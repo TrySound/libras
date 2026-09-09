@@ -31,7 +31,7 @@ interface SessionOptions {
   >;
   covers: Pick<CoverEngine, "restore" | "refresh" | "setConnection">;
   queue: Pick<QueueEngine, "restore" | "setConnection" | "synchronize" | "flush">;
-  tracks: Pick<TrackEngine, "setClient">;
+  tracks: Pick<TrackEngine, "setConnection">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
   storage: Pick<Storage, "getItem" | "setItem">;
 }
@@ -88,7 +88,7 @@ export class Session {
     metadata.setConnection(undefined);
     queue.setConnection(undefined);
     covers.setConnection(undefined);
-    tracks.setClient(undefined);
+    tracks.setConnection(undefined);
     playback.suspendNetwork();
     void queue.flush();
   }
@@ -98,7 +98,7 @@ export class Session {
     metadata.setConnection(this.#options.network.metadata(client));
     queue.setConnection(this.#options.network.queue(client));
     covers.setConnection(this.#options.network.artwork(client));
-    tracks.setClient(client);
+    tracks.setConnection(this.#options.network.audio(client));
     void queue.synchronize();
   }
 
