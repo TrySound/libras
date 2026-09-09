@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MetadataEngine, type MetadataSnapshot } from "./metadata-engine";
 import type { MetadataAccount } from "./schema";
-import { SubsonicClient } from "./subsonic-client";
+import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";
 
 const account = { host: "https://music.example.com", username: "listener" };
@@ -73,6 +73,12 @@ function installMetadataStorage() {
 }
 
 const auth = { ...account, token: "token", salt: "salt" };
+function createConnection(credentials = auth) {
+  const network = new Network();
+  const client = network.prepare(credentials);
+  network.accept(client);
+  return { ...network.metadata(client), abort: () => network.setMode("offline") };
+}
 function response(data: Record<string, unknown>) {
   return new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...data } }));
 }
@@ -111,9 +117,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function loadLibrary(engine: MetadataEngine, client: SubsonicClient) {
-  await engine.restore(client);
-  engine.setClient(client);
+async function loadLibrary(engine: MetadataEngine, client: ReturnType<typeof createConnection>) {
+  await engine.restore(client.account);
+  engine.setConnection(client);
   await engine.revalidate();
 }
 
@@ -125,16 +131,21 @@ describe("metadata engine", () => {
     const engine = new MetadataEngine(memory);
     await engine.restore(account);
     const previous = memory.tracks;
-    const client = new SubsonicClient({ ...auth, username: "other" });
+    const network = new Network();
+    const client = network.prepare({ ...auth, username: "other" });
     vi.stubGlobal("fetch", serveLibrary());
-    const prepared = await engine.prepareConnection(client);
+    const prepared = await engine.prepareConnection(network.metadata(client));
+    expect(network.mode).toBe("offline");
     expect(memory.tracks).toBe(previous);
     expect(memory.account).toEqual(account);
     expect(storage.files.size).toBe(1);
     const saved = await engine.saveConnection(prepared, client.signal);
     expect(storage.files.size).toBe(2);
     expect(memory.tracks).toBe(previous);
+    network.accept(client);
     engine.acceptConnection(saved);
+    engine.setConnection(network.metadata(client));
+    expect(network.mode).toBe("online");
     expect(memory.account).toEqual({ host: auth.host, username: "other" });
     expect(memory.tracks).not.toBe(previous);
     expect(memory.tracks.get("song")?.title).toBe("Song");
@@ -147,7 +158,7 @@ describe("metadata engine", () => {
     const memory = new Memory();
     const engine = new MetadataEngine(memory);
     await engine.restore(account);
-    const client = new SubsonicClient(auth);
+    const client = createConnection(auth);
     storage.beforeWrite = () => client.abort();
     await expect(
       engine.saveConnection({ ...snapshot(), savedAt: 200 }, client.signal),
@@ -176,11 +187,11 @@ describe("metadata engine", () => {
             }),
         ),
       );
-      const client = new SubsonicClient(auth);
+      const client = createConnection(auth);
       const preparing = engine.prepareConnection(client);
       if (abort) {
         client.abort();
-        engine.setClient(undefined);
+        engine.setConnection(undefined);
       }
       resolve(
         abort
@@ -196,15 +207,15 @@ describe("metadata engine", () => {
     },
   );
 
-  it("configures clients and network policy without I/O, leaving restoration and refresh explicit", async () => {
+  it("configures captured connections without I/O, leaving restoration and refresh explicit", async () => {
     const storage = installMetadataStorage();
     const fetcher = serveLibrary();
     vi.stubGlobal("fetch", fetcher);
     const memory = new Memory();
     const engine = new MetadataEngine(memory);
-    engine.setClient(new SubsonicClient(auth));
-    engine.setNetwork("offline");
-    engine.setNetwork("online");
+    engine.setConnection(createConnection(auth));
+    engine.setConnection(undefined);
+    engine.setConnection(createConnection(auth));
     expect(storage.getDirectory).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
     await engine.restore(account);
@@ -215,11 +226,59 @@ describe("metadata engine", () => {
     await engine.refresh();
     expect(engine.status).toBe("ready");
     fetcher.mockClear();
-    engine.setNetwork("offline");
-    engine.setNetwork("online");
+    engine.setConnection(undefined);
+    engine.setConnection(createConnection(auth));
     expect(fetcher).not.toHaveBeenCalled();
     await engine.revalidate();
     expect(fetcher).toHaveBeenCalled();
+    engine.destroy();
+  });
+
+  it("paginates albums through Network while retaining bounded track-fetch concurrency", async () => {
+    installMetadataStorage();
+    const albums = Array.from({ length: 501 }, (_, index) => ({
+      id: `album-${index}`,
+      name: `Album ${index}`,
+      artistId: "artist",
+    }));
+    const offsets: number[] = [];
+    let active = 0;
+    let peak = 0;
+    let trackRequests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = new URL(String(input));
+        expect(url.searchParams.get("u")).toBe(auth.username);
+        if (url.pathname.endsWith("getIndexes.view"))
+          return response({ indexes: { lastModified: 20 } });
+        if (url.pathname.endsWith("getArtists.view"))
+          return response({ artists: { index: [{ artist: [{ id: "artist", name: "Artist" }] }] } });
+        if (url.pathname.endsWith("getAlbumList2.view")) {
+          expect(url.searchParams.get("type")).toBe("alphabeticalByArtist");
+          expect(url.searchParams.get("size")).toBe("500");
+          const offset = Number(url.searchParams.get("offset"));
+          offsets.push(offset);
+          return response({ albumList2: { album: albums.slice(offset, offset + 500) } });
+        }
+        if (url.pathname.endsWith("getAlbum.view")) {
+          trackRequests++;
+          peak = Math.max(peak, ++active);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          active--;
+          return response({ album: { song: [] } });
+        }
+        throw new Error(`Unexpected request: ${url.pathname}`);
+      }),
+    );
+    const memory = new Memory();
+    const engine = new MetadataEngine(memory);
+    await loadLibrary(engine, createConnection(auth));
+    expect(offsets).toEqual([0, 500]);
+    expect(trackRequests).toBe(501);
+    expect(peak).toBe(6);
+    expect(memory.albums.size).toBe(501);
+    expect(engine.status).toBe("ready");
     engine.destroy();
   });
 
@@ -251,7 +310,7 @@ describe("metadata engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    loadLibrary(engine, new SubsonicClient(auth));
+    loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(engine.status).toBe("ready"));
     expect(engineMemory.albums.get("album")).toEqual({
       id: "album",
@@ -344,7 +403,7 @@ describe("metadata engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    loadLibrary(engine, new SubsonicClient(auth));
+    loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(engine.status).toBe("ready"));
     const ids = [...engineMemory.artists.values()].map((artist) => artist.id);
     expect(ids).toHaveLength(2);
@@ -402,7 +461,7 @@ describe("metadata engine", () => {
     await engine.restore(account);
     const before = await storage.files.get(await snapshotPath(account))!.text();
     storage.beforeWrite = vi.fn(() => engine.destroy());
-    loadLibrary(engine, new SubsonicClient(auth));
+    loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(storage.beforeWrite).toHaveBeenCalledOnce());
     expect(await storage.files.get(await snapshotPath(account))!.text()).toBe(before);
     expect(storage.writes).toBe(0);
@@ -425,8 +484,8 @@ describe("metadata engine", () => {
     await Promise.all([first.restore(account), second.restore(account)]);
     expect(request).toHaveBeenCalledTimes(2);
     request.mockClear();
-    loadLibrary(first, new SubsonicClient(auth));
-    loadLibrary(second, new SubsonicClient(auth));
+    loadLibrary(first, createConnection(auth));
+    loadLibrary(second, createConnection(auth));
     await vi.waitFor(() => {
       expect(first.status).toBe("ready");
       expect(second.status).toBe("ready");
@@ -446,7 +505,7 @@ describe("metadata engine", () => {
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(account);
     expect(engine.status).toBe("error");
-    await loadLibrary(engine, new SubsonicClient(auth));
+    await loadLibrary(engine, createConnection(auth));
     expect(engine.status).toBe("ready");
     expect(engineMemory.tracks.get("song")?.title).toBe("Song");
     expect(storage.writes).toBe(1);
@@ -475,7 +534,7 @@ describe("metadata engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    loadLibrary(engine, new SubsonicClient(auth));
+    loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(engine.status).toBe("ready"));
     expect(engineMemory.tracks.get("song")?.title).toBe("Newer");
     expect(storage.writes).toBe(0);
@@ -496,7 +555,7 @@ describe("metadata engine", () => {
     expect(memory.artistAlbums.get("artist")?.[0]).toBe(memory.albums.get("album"));
     const oldTracks = memory.tracks;
     vi.stubGlobal("fetch", serveLibrary());
-    await loadLibrary(engine, new SubsonicClient(auth));
+    await loadLibrary(engine, createConnection(auth));
     expect(memory.tracks).not.toBe(oldTracks);
     expect(memory.tracks.get("song")?.title).toBe("Song");
     expect(oldTracks.get("song")).toEqual(snapshot().tracks[0]);
@@ -537,7 +596,7 @@ describe("metadata engine", () => {
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(account);
     storage.getDirectory.mockClear();
-    engine.setClient(new SubsonicClient(auth));
+    engine.setConnection(createConnection(auth));
     void engine.revalidate();
     expect(engine.status).toBe("refreshing");
     expect(engineMemory.tracks.get("song")?.title).toBe("Song");
@@ -554,7 +613,7 @@ describe("metadata engine", () => {
     vi.stubGlobal("fetch", serveLibrary());
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    loadLibrary(engine, new SubsonicClient(auth));
+    loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(engine.status).toBe("ready"));
     expect(engineMemory.tracks.get("song")).toMatchObject({
       albumId: "album",
@@ -591,7 +650,7 @@ describe("metadata engine", () => {
       memory.artistAlbums,
       memory.albumTracks,
     ];
-    loadLibrary(engine, new SubsonicClient(auth));
+    loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(engine.warning).toBeInstanceOf(Error));
     [memory.artists, memory.albums, memory.tracks, memory.artistAlbums, memory.albumTracks].forEach(
       (map, i) => expect(map).toBe(accepted[i]),
@@ -614,11 +673,11 @@ describe("metadata engine", () => {
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(account);
-    loadLibrary(engine, new SubsonicClient(auth));
+    loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(engine.status).toBe("ready"));
     storage.getDirectory.mockClear();
     fetcher.mockClear();
-    engine.setNetwork("offline");
+    engine.setConnection(undefined);
     expect(engine.status).toBe("ready");
     expect(engineMemory.tracks.get("song")).toBeDefined();
     expect(storage.getDirectory).not.toHaveBeenCalled();
@@ -643,7 +702,7 @@ describe("metadata engine", () => {
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(account);
-    loadLibrary(engine, new SubsonicClient(auth));
+    loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(engine.status).toBe("ready"));
     expect(storage.writes).toBe(0);
     engine.refresh();
@@ -671,9 +730,9 @@ describe("metadata engine", () => {
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(account);
-    loadLibrary(engine, new SubsonicClient(auth));
+    loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
-    engine.setNetwork("offline");
+    engine.setConnection(undefined);
     resolve(response({ indexes: { lastModified: 20 } }));
     await Promise.resolve();
     await Promise.resolve();
@@ -690,9 +749,9 @@ describe("metadata engine", () => {
     vi.stubGlobal("indexedDB", indexedDB);
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    engine.setNetwork("offline");
-    loadLibrary(engine, new SubsonicClient(auth));
-    await vi.waitFor(() => expect(engine.status).toBe("error"));
+    await engine.restore(account);
+    await engine.revalidate();
+    expect(engine.status).toBe("error");
     expect([...engineMemory.artists.values()]).toEqual([]);
     expect(indexedDB.open).not.toHaveBeenCalled();
     engine.destroy();
@@ -726,7 +785,7 @@ describe("metadata engine", () => {
     const memory = new Memory();
 
     const engine = new MetadataEngine(memory);
-    loadLibrary(engine, new SubsonicClient(auth));
+    loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     await engine.restore(other);
     const accepted = memory.artists;

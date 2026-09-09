@@ -77,6 +77,39 @@ describe("Network connection lifecycle", () => {
     network.setMode("offline");
   });
 
+  it("keeps metadata bound to its candidate through acceptance and rejects it after replacement", async () => {
+    const network = new Network();
+    const fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            "subsonic-response": { status: "ok", artists: { index: [] } },
+          }),
+        ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    try {
+      const candidate = network.prepare(auth);
+      const metadata = network.metadata(candidate);
+      expect(metadata.account).toEqual({ host: auth.host, username: auth.username });
+      expect(network.mode).toBe("offline");
+      await expect(metadata.listArtists()).resolves.toEqual([]);
+      network.accept(candidate);
+      await expect(metadata.listArtists()).resolves.toEqual([]);
+      const replacement = network.prepare({ ...auth, username: "other" });
+      await expect(metadata.listArtists()).resolves.toEqual([]);
+      network.accept(replacement);
+      const requests = fetch.mock.calls.length;
+      await expect(metadata.listArtists()).rejects.toMatchObject({ name: "AbortError" });
+      expect(fetch).toHaveBeenCalledTimes(requests);
+      expect(() => network.metadata(candidate)).toThrowError(/abort/i);
+      expect(network.metadata(replacement).account.username).toBe("other");
+    } finally {
+      network.setMode("offline");
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("rejects a late SDK response after network access is revoked", async () => {
     const network = new Network();
     let respond!: (response: Response) => void;
@@ -90,7 +123,7 @@ describe("Network connection lifecycle", () => {
     try {
       network.setMode("online");
       const client = network.open(auth);
-      const request = client.getArtists();
+      const request = network.metadata(client).listArtists();
       const rejection = expect(request).rejects.toMatchObject({ name: "AbortError" });
       expect(fetch.mock.calls[0]).toEqual([expect.any(String), { signal: client.signal }]);
       network.setMode("offline");

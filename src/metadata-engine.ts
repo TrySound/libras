@@ -12,12 +12,7 @@ import {
 } from "./schema";
 import { OpfsJsonStore, jsonFileName } from "./json-store";
 import { createSubscriber } from "svelte/reactivity";
-import {
-  SubsonicClient,
-  type SubsonicAlbum,
-  type SubsonicArtist,
-  type SubsonicTrack,
-} from "./subsonic-client";
+import type { MetadataConnection, RemoteAlbum, RemoteArtist, RemoteTrack } from "./network.svelte";
 
 type MetadataMemory = Pick<
   Memory,
@@ -60,21 +55,11 @@ function parseSnapshot(value: unknown): MetadataSnapshot {
   return snapshot;
 }
 
-function genres(item: { genre?: string; genres?: { name: string }[] }) {
-  const names = [item.genre ?? "", ...(item.genres ?? []).map((genre) => genre.name)]
-    .flatMap((name) => name.split("|"))
-    .map((name) => name.trim())
-    .filter(Boolean);
-  return [...new Map(names.map((name) => [name.toLocaleLowerCase(), name])).values()].sort((a, b) =>
-    a.localeCompare(b),
-  );
-}
-
 function normalizeLibrary(
   account: MetadataAccount,
-  sourceArtists: readonly SubsonicArtist[],
-  sourceAlbums: readonly SubsonicAlbum[],
-  songs: ReadonlyMap<string, readonly SubsonicTrack[]>,
+  sourceArtists: readonly RemoteArtist[],
+  sourceAlbums: readonly RemoteAlbum[],
+  songs: ReadonlyMap<string, readonly RemoteTrack[]>,
   lastModified: number | null,
   savedAt: number,
 ): MetadataSnapshot {
@@ -85,8 +70,8 @@ function normalizeLibrary(
     const artist: Artist = {
       id: source.id || syntheticId(source.name),
       name: source.name,
-      artworkId: source.coverArt || undefined,
-      genres: genres(source),
+      artworkId: source.artworkId,
+      genres: source.genres,
     };
     if (artists.has(artist.id)) throw new Error(`Duplicate artist ID: ${artist.id}`);
     artists.set(artist.id, artist);
@@ -105,14 +90,14 @@ function normalizeLibrary(
   const albums: Album[] = [];
   const tracks: Track[] = [];
   for (const source of sourceAlbums) {
-    const owner = artistFor(source.artistId, source.artist);
+    const owner = artistFor(source.artistId, source.artistName);
     albums.push({
       id: source.id,
-      title: source.name,
+      title: source.title,
       artistId: owner.id,
-      artworkId: source.coverArt || undefined,
-      year: source.year && source.year > 0 ? source.year : undefined,
-      genres: genres(source),
+      artworkId: source.artworkId,
+      year: source.year,
+      genres: source.genres,
     });
     const albumTracks = songs.get(source.id);
     if (!albumTracks) throw new Error(`Missing tracks for album ${source.id}.`);
@@ -123,13 +108,13 @@ function normalizeLibrary(
         id: song.id,
         title: song.title,
         albumId: source.id,
-        artistId: artistFor(song.artistId, song.artist, owner).id,
-        artworkId: song.coverArt || undefined,
-        number: song.track && song.track > 0 ? song.track : undefined,
-        disc: song.discNumber && song.discNumber > 0 ? song.discNumber : undefined,
+        artistId: artistFor(song.artistId, song.artistName, owner).id,
+        artworkId: song.artworkId,
+        number: song.number,
+        disc: song.disc,
         duration: song.duration,
-        mimeType: song.contentType,
-        genres: genres(song),
+        mimeType: song.mimeType,
+        genres: song.genres,
       });
     }
   }
@@ -238,7 +223,6 @@ class MetadataStore {
 }
 
 export type MetadataStatus = "idle" | "loading" | "refreshing" | "ready" | "error";
-export type MetadataNetwork = "offline" | "online";
 
 export class MetadataEngine {
   #memory: MetadataMemory;
@@ -248,13 +232,12 @@ export class MetadataEngine {
     this.#memory = memory;
   }
   #store = new MetadataStore();
-  #client?: SubsonicClient;
+  #connection?: MetadataConnection;
   #scope = "";
   #restored = false;
   #restoring?: Promise<void>;
   #generation = 0;
   #destroyed = false;
-  #network: MetadataNetwork = "online";
   #status: MetadataStatus = "idle";
   #error: unknown;
   #warning: unknown;
@@ -298,7 +281,7 @@ export class MetadataEngine {
     this.#memory.albumTracks = prepared.albumTracks;
   }
 
-  // Startup restoration needs only account identity, not an authenticated client.
+  // Startup restoration needs only account identity, not an authenticated connection.
   restore(account: MetadataAccount): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
     const scope = `${account.host}\n${account.username}`;
@@ -310,10 +293,11 @@ export class MetadataEngine {
     this.#scope = scope;
     this.#restored = false;
     if (
-      this.#client &&
-      (this.#client.host !== account.host || this.#client.username !== account.username)
+      this.#connection &&
+      (this.#connection.account.host !== account.host ||
+        this.#connection.account.username !== account.username)
     )
-      this.#client = undefined;
+      this.#connection = undefined;
     this.#publish();
     this.#memory.account = { host: account.host, username: account.username };
     this.#status = "loading";
@@ -340,71 +324,73 @@ export class MetadataEngine {
       }));
   }
 
-  async #fetchLibrary(client: SubsonicClient, valid: () => boolean, lastModified: number | null) {
+  async #fetchLibrary(
+    connection: MetadataConnection,
+    valid: () => boolean,
+    lastModified: number | null,
+  ) {
     const check = () => {
       if (!valid()) throw new DOMException("Metadata request superseded.", "AbortError");
     };
     const fetchAlbums = async () => {
-      const albums: SubsonicAlbum[] = [];
+      const albums: RemoteAlbum[] = [];
       for (let offset = 0; ; offset += 500) {
         check();
-        const page = await client.getAlbumList2({
-          type: "alphabeticalByArtist",
-          size: 500,
+        const page = await connection.listAlbums({
+          limit: 500,
           offset,
         });
         albums.push(...page);
         if (page.length < 500) return albums;
       }
     };
-    const [artists, albums] = await Promise.all([client.getArtists(), fetchAlbums()]);
+    const [artists, albums] = await Promise.all([connection.listArtists(), fetchAlbums()]);
     check();
-    const tracks = new Map<string, SubsonicTrack[]>();
+    const tracks = new Map<string, readonly RemoteTrack[]>();
     let next = 0;
     const worker = async () => {
       while (next < albums.length) {
         check();
         const album = albums[next++];
-        tracks.set(album.id, await client.getAlbum(album.id));
+        tracks.set(album.id, await connection.getAlbumTracks(album.id));
       }
     };
     await Promise.all(Array.from({ length: Math.min(6, albums.length) }, worker));
     check();
-    return normalizeLibrary(
-      { host: client.host, username: client.username },
-      artists,
-      albums,
-      tracks,
-      lastModified,
-      Date.now(),
-    );
+    return normalizeLibrary(connection.account, artists, albums, tracks, lastModified, Date.now());
   }
 
   async #refresh(force: boolean) {
-    const client = this.#client;
-    if (!client || this.#destroyed) return;
+    const connection = this.#connection;
+    if (this.#destroyed) return;
     if (this.#restoring) await this.#restoring;
-    if (client !== this.#client || this.#destroyed) return;
-    if (!this.#restored || this.#scope !== `${client.host}\n${client.username}`)
-      throw new Error("Restore the client's account before refreshing metadata.");
-    const generation = ++this.#generation;
-    this.#error = undefined;
-    this.#warning = undefined;
-    if (this.#network === "offline") {
+    if (connection !== this.#connection || this.#destroyed) return;
+    if (!connection || connection.signal.aborted) {
       this.#status = this.#snapshotInfo ? "ready" : "error";
       if (!this.#snapshotInfo)
         this.#error = new Error("No library is available offline. Reconnect to download metadata.");
       this.#update();
       return;
     }
+    if (
+      !this.#restored ||
+      this.#scope !== `${connection.account.host}\n${connection.account.username}`
+    )
+      throw new Error("Restore the connection's account before refreshing metadata.");
+    const generation = ++this.#generation;
+    this.#error = undefined;
+    this.#warning = undefined;
     const existing = this.#snapshotInfo;
     const valid = () =>
-      !this.#destroyed && generation === this.#generation && client === this.#client;
+      !this.#destroyed &&
+      generation === this.#generation &&
+      connection === this.#connection &&
+      !connection.signal.aborted;
     this.#status = existing ? "refreshing" : "loading";
     this.#update();
     try {
       const modified =
-        (await client.getIndexes(existing?.lastModified ?? undefined)) ??
+        (await connection.getModifiedAt(existing?.lastModified ?? undefined)) ??
         existing?.lastModified ??
         null;
       if (!valid()) return;
@@ -413,7 +399,7 @@ export class MetadataEngine {
         this.#update();
         return;
       }
-      const snapshot = await this.#fetchLibrary(client, valid, modified);
+      const snapshot = await this.#fetchLibrary(connection, valid, modified);
       if (!valid()) return;
       const committed = await this.#store.save(snapshot, valid);
       if (!valid() || !committed) return;
@@ -434,18 +420,18 @@ export class MetadataEngine {
   }
 
   /** Validate a candidate without changing the selected library or its saved snapshot. */
-  async prepareConnection(client: SubsonicClient): Promise<MetadataSnapshot> {
+  async prepareConnection(connection: MetadataConnection): Promise<MetadataSnapshot> {
     if (this.#restoring) await this.#restoring;
-    client.signal.throwIfAborted();
+    connection.signal.throwIfAborted();
     if (this.#destroyed) throw new DOMException("Metadata stopped.", "AbortError");
     const generation = ++this.#generation;
     const valid = () =>
-      !this.#destroyed && generation === this.#generation && !client.signal.aborted;
+      !this.#destroyed && generation === this.#generation && !connection.signal.aborted;
     this.#status = this.#snapshotInfo ? "refreshing" : "loading";
     this.#update();
     try {
-      const modified = await client.getIndexes();
-      const snapshot = await this.#fetchLibrary(client, valid, modified);
+      const modified = await connection.getModifiedAt();
+      const snapshot = await this.#fetchLibrary(connection, valid, modified);
       if (!valid()) throw new DOMException("Connection superseded.", "AbortError");
       return snapshot;
     } finally {
@@ -488,20 +474,9 @@ export class MetadataEngine {
     return this.#refresh(false);
   }
 
-  setClient(client: SubsonicClient | undefined) {
-    if ((client && client === this.#client) || this.#destroyed) return;
-    this.#client = client;
-    if (!this.#restoring) {
-      this.#generation++;
-      this.#status = this.#snapshotInfo ? "ready" : "idle";
-      this.#update();
-    }
-  }
-
-  setNetwork(network: MetadataNetwork) {
-    if (network === this.#network || this.#destroyed) return;
-    this.#network = network;
-    // Cancel network work without invalidating an independent cache restoration.
+  setConnection(connection: MetadataConnection | undefined) {
+    if ((connection && connection === this.#connection) || this.#destroyed) return;
+    this.#connection = connection;
     if (!this.#restoring) {
       this.#generation++;
       this.#status = this.#snapshotInfo ? "ready" : "idle";

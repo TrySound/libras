@@ -23,8 +23,7 @@ interface SessionOptions {
     | "prepareConnection"
     | "saveConnection"
     | "acceptConnection"
-    | "setClient"
-    | "setNetwork"
+    | "setConnection"
     | "savedAt"
     | "status"
     | "error"
@@ -86,9 +85,8 @@ export class Session {
   #detach() {
     const { metadata, queue, covers, tracks, playback } = this.#options;
     this.#options.network.setMode("offline");
-    metadata.setNetwork("offline");
     queue.setNetwork("offline");
-    metadata.setClient(undefined);
+    metadata.setConnection(undefined);
     queue.setClient(undefined);
     covers.setClient(undefined);
     tracks.setClient(undefined);
@@ -98,9 +96,8 @@ export class Session {
 
   #attach(client: SubsonicClient) {
     const { metadata, queue, covers, tracks } = this.#options;
-    metadata.setNetwork("online");
     queue.setNetwork("online");
-    metadata.setClient(client);
+    metadata.setConnection(this.#options.network.metadata(client));
     queue.setClient(client);
     covers.setClient(client);
     tracks.setClient(client);
@@ -165,7 +162,7 @@ export class Session {
       const { metadata, queue, covers, auth, storage } = this.#options;
       // Explicit connection may use the network while the offline switch is locked.
       // Do not replace the selected workspace, or attach any other clients, on failure.
-      const prepared = await metadata.prepareConnection(client);
+      const prepared = await metadata.prepareConnection(this.#options.network.metadata(client));
       if (!this.#valid(generation)) return false;
       auth.save(credentials);
       auth.saveAccount(prepared.account);

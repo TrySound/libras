@@ -1,10 +1,9 @@
 import { vi } from "vitest";
 import { AuthStore } from "./auth";
 import { Memory } from "./memory.svelte";
-import { Network } from "./network.svelte";
+import { Network, type MetadataConnection } from "./network.svelte";
 import type { MetadataSnapshot, MetadataStatus } from "./metadata-engine";
 import type { MetadataAccount } from "./schema";
-import type { SubsonicClient } from "./subsonic-client";
 import { Session } from "./session.svelte";
 
 export const credentials = {
@@ -68,7 +67,9 @@ export function createSession(saved = false, storage = createStorage()) {
       metadata.savedAt = 100;
       metadata.status = "ready";
     }),
-    prepareConnection: vi.fn(async (client: SubsonicClient) => snapshot(client)),
+    prepareConnection: vi.fn(async (connection: MetadataConnection) =>
+      snapshot(connection.account),
+    ),
     saveConnection: vi.fn(async (value: MetadataSnapshot, _signal: AbortSignal) => value),
     acceptConnection: vi.fn((value: MetadataSnapshot) => {
       memory.account = value.account;
@@ -78,8 +79,7 @@ export function createSession(saved = false, storage = createStorage()) {
     }),
     revalidate: vi.fn(async () => {}),
     refresh: vi.fn(async () => {}),
-    setClient: vi.fn(),
-    setNetwork: vi.fn(),
+    setConnection: vi.fn(),
   };
   const covers = {
     restore: vi.fn(async () => {}),

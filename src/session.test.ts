@@ -77,7 +77,8 @@ describe("session", () => {
     expect(session.status).toBe("disconnected");
     fields.forEach((field, index) => expect(memory[field]).toBe(data[index]));
     expect([memory.queueTracks, memory.queueIndex, memory.queuePosition]).toEqual(queueState);
-    for (const engine of [metadata, tracks, covers, queue])
+    expect(metadata.setConnection).toHaveBeenLastCalledWith(undefined);
+    for (const engine of [tracks, covers, queue])
       expect(engine.setClient).toHaveBeenLastCalledWith(undefined);
     expect(playback.suspendNetwork).toHaveBeenCalled();
     refresh.resolve();
