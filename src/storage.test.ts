@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Storage, parseSnapshot, type MetadataSnapshot, type QueueRecord } from "./storage";
 import { jsonFileName } from "./json-store";
+import type { TrackFileDescriptor } from "./schema";
 
 const account = { host: "https://music.example.com", username: "listener" };
 const snapshot = (): MetadataSnapshot => ({
@@ -17,7 +18,7 @@ function installStorage() {
   const state = { writes: 0, fail: false, beforeWrite: (_path: string) => {} };
   const getDirectory = vi.fn(async () => ({
     async getDirectoryHandle(directory: string) {
-      expect(["metadata", "queue", "images"]).toContain(directory);
+      expect(["metadata", "queue", "images", "tracks"]).toContain(directory);
       return {
         async getFileHandle(name: string, options?: { create?: boolean }) {
           const path = `${directory}/${name}`;
@@ -26,22 +27,31 @@ function installStorage() {
           if (!files.has(path)) files.set(path, "");
           return {
             async getFile() {
-              return new File([files.get(path)!], name);
+              const value = files.get(path)!;
+              return value instanceof File ? value : new File([value], name);
             },
             async createWritable() {
               let pending: string | Blob = "";
-              return {
-                async write(value: string | Blob) {
-                  state.beforeWrite(path);
-                  if (state.fail) throw new Error("Storage full");
-                  pending = value;
-                },
-                async close() {
-                  files.set(path, pending);
-                  state.writes++;
-                },
-                async abort() {},
+              const write = (value: string | Blob) => {
+                state.beforeWrite(path);
+                if (state.fail) throw new Error("Storage full");
+                pending = value;
               };
+              const close = () => {
+                files.set(path, pending);
+                state.writes++;
+              };
+              return Object.assign(
+                new WritableStream<Uint8Array>({
+                  write: (chunk) => write(new Blob([pending, chunk.slice().buffer as ArrayBuffer])),
+                  close,
+                }),
+                {
+                  write: async (value: string | Blob) => write(value),
+                  close: async () => close(),
+                  abort: async () => {},
+                },
+              );
             },
           };
         },
@@ -51,7 +61,17 @@ function installStorage() {
       };
     },
   }));
-  const lock = vi.fn(async (_name: string, run: () => Promise<unknown>) => run());
+  const lock = vi.fn(
+    async (
+      _name: string,
+      options: LockOptions | (() => Promise<unknown>),
+      callback?: () => Promise<unknown>,
+    ) => {
+      if (typeof options === "function") return options();
+      options.signal?.throwIfAborted();
+      return callback!();
+    },
+  );
   vi.stubGlobal("navigator", { storage: { getDirectory }, locks: { request: lock } });
   return { files, state, getDirectory, lock };
 }
@@ -59,6 +79,62 @@ function installStorage() {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("audio storage", () => {
+  const track = { id: "track", title: "Track", artist: "Artist", album: "Album" };
+  const descriptor = (identity = account): TrackFileDescriptor => ({
+    ...identity,
+    key: `${identity.host}\n${identity.username}\ntrack\nmp3-v1`,
+    format: "mp3",
+    contentType: "audio/mpeg",
+  });
+
+  it("shares a lazy cross-account catalog and streams files through the existing locks", async () => {
+    const disk = installStorage();
+    const storage = new Storage();
+    const first = storage.audio();
+    const second = storage.audio();
+    expect(disk.getDirectory).not.toHaveBeenCalled();
+    expect(await first.entries()).toEqual([]);
+    const signal = new AbortController().signal;
+    const own = descriptor();
+    const other = descriptor({ ...account, username: "other" });
+    const response = new Response("first audio");
+    expect(await (await second.save(own, track, response, signal)).text()).toBe("first audio");
+    expect(response.bodyUsed).toBe(true);
+    await first.save(other, track, new Response("other audio"), signal);
+    expect((await second.entries()).map((record) => record.key).sort()).toEqual(
+      [own.key, other.key].sort(),
+    );
+    expect(await (await first.read(own, track))!.text()).toBe("first audio");
+    expect(await (await second.read(other, track))!.text()).toBe("other audio");
+    expect(await new Storage().audio().list()).toHaveLength(2);
+    const name = (await jsonFileName(own.key)).replace(/\.json$/, ".audio");
+    expect(disk.files.has(`tracks/${name}`)).toBe(true);
+    expect(disk.files.has("tracks/downloads.json")).toBe(true);
+    expect(disk.lock).toHaveBeenCalledWith(
+      `music-web-audio:${name}`,
+      { signal },
+      expect.any(Function),
+    );
+    expect(disk.lock).toHaveBeenCalledWith("music-web-downloads-index", expect.any(Function));
+  });
+
+  it("adopts legacy audio without renaming files or changing their recorded modification dates", async () => {
+    const disk = installStorage();
+    const entry = descriptor();
+    const name = (await jsonFileName(entry.key)).replace(/\.json$/, ".audio");
+    disk.files.set(`tracks/${name}`, new File(["legacy"], name, { lastModified: 123 }));
+    const audio = new Storage().audio();
+    expect(await (await audio.read(entry, track))!.text()).toBe("legacy");
+    expect(await audio.entries()).toEqual([
+      expect.objectContaining({ key: entry.key, fileName: name, downloadedAt: 123, size: 6 }),
+    ]);
+    expect([...disk.files.keys()].sort()).toEqual(
+      [`tracks/${name}`, "tracks/downloads.json"].sort(),
+    );
+  });
 });
 
 describe("artwork storage", () => {

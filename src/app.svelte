@@ -43,7 +43,7 @@
     }),
   );
   const coverEngine = new CoverEngine(memory, metadataEngine, storage);
-  const trackEngine = new TrackEngine({ memory });
+  const trackEngine = new TrackEngine({ memory, storage });
   const downloads = $derived.by(() => {
     const jobs = trackEngine.downloadJobs;
     const activeKeys = new Set(jobs.map((job) => job.key));

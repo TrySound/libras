@@ -1,6 +1,6 @@
 import { createSubscriber } from "svelte/reactivity";
 import type { AudioConnection } from "./network.svelte";
-import { OpfsTrackStore } from "./track-store";
+import type { Storage } from "./storage";
 import type { DownloadTrack, TrackFileDescriptor } from "./schema";
 import type { Memory } from "./memory.svelte";
 
@@ -26,6 +26,7 @@ export interface TrackSourceOptions {
 export type TrackStatus = "idle" | "queued" | "downloading" | "downloaded";
 export interface TrackEngineOptions {
   memory: DownloadMemory;
+  storage: Pick<Storage, "audio">;
   connection?: AudioConnection;
   concurrency?: number;
 }
@@ -58,7 +59,7 @@ export class TrackEngine {
   #error: unknown;
   #mediaProbe = document.createElement("audio");
   #sourceRequest = 0;
-  #store = new OpfsTrackStore();
+  #storage: Pick<Storage, "audio">;
   #update = () => {};
   #subscribe = createSubscriber((update) => {
     this.#update = update;
@@ -69,6 +70,7 @@ export class TrackEngine {
 
   constructor(options: TrackEngineOptions) {
     this.#memory = options.memory;
+    this.#storage = options.storage;
     if (options.connection) this.setConnection(options.connection);
     this.#concurrency = options.concurrency ?? 3;
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1)
@@ -108,7 +110,8 @@ export class TrackEngine {
   async #refreshCatalog(validate = false) {
     const request = ++this.#catalogRequest;
     try {
-      const entries = await (validate ? this.#store.list() : this.#store.entries());
+      const audio = this.#storage.audio();
+      const entries = await (validate ? audio.list() : audio.entries());
       if (this.#destroyed || request !== this.#catalogRequest) return;
       this.#memory.downloads = new Map(entries.map((entry) => [entry.key, entry]));
     } catch (error) {
@@ -207,11 +210,11 @@ export class TrackEngine {
   async #download(job: DownloadJob) {
     const { descriptor, track, connection, signal } = job;
     try {
-      let file = await this.#store.get(descriptor, track);
+      let file = await this.#storage.audio().read(descriptor, track);
       signal.throwIfAborted();
       if (!file) {
         const response = await connection.read(track.id, { format: descriptor.format, signal });
-        file = await this.#store.put(descriptor, track, response, signal);
+        file = await this.#storage.audio().save(descriptor, track, response, signal);
       }
       signal.throwIfAborted();
       await this.#refreshCatalog();
@@ -257,7 +260,7 @@ export class TrackEngine {
 
   async #cached(track: EngineTrack, descriptor: TrackFileDescriptor) {
     const metadata = this.#track(track);
-    const file = await this.#store.get(descriptor, metadata);
+    const file = await this.#storage.audio().read(descriptor, metadata);
     if (file) return { file, contentType: descriptor.contentType };
     // A codec retry may have downloaded MP3 even when canPlayType claims raw support.
     if (descriptor.format === "raw") {
@@ -267,7 +270,7 @@ export class TrackEngine {
         format: "mp3",
         contentType: "audio/mpeg",
       };
-      const mp3 = await this.#store.get(fallback, metadata);
+      const mp3 = await this.#storage.audio().read(fallback, metadata);
       if (mp3) return { file: mp3, contentType: fallback.contentType };
     }
     return null;
