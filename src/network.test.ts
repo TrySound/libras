@@ -18,7 +18,7 @@ describe("Network connection lifecycle", () => {
     expect(client.signal.aborted).toBe(false);
     network.setMode("offline");
     expect(client.signal.aborted).toBe(true);
-    expect(() => client.getStreamUrl("track")).toThrowError(/abort/i);
+    expect(() => network.audio(client)).toThrowError(/abort/i);
   });
 
   it("allows isolated login preparation while offline, enabling access only on acceptance", () => {
@@ -58,7 +58,46 @@ describe("Network connection lifecycle", () => {
     other.setMode("offline");
   });
 
-  it("aborts active and candidate work offline and never revives old clients", () => {
+  it("exposes only frozen, credential-free connection identity", () => {
+    const network = new Network();
+    const connection = network.prepare(auth);
+    expect(Object.keys(connection).sort()).toEqual(["account", "signal"]);
+    expect(connection.account).toEqual({ host: auth.host, username: auth.username });
+    expect(Object.isFrozen(connection)).toBe(true);
+    expect(Object.isFrozen(connection.account)).toBe(true);
+    expect(network.metadata(connection).account).toBe(connection.account);
+    network.accept(connection);
+    for (const feature of ["queue", "artwork", "audio"] as const) {
+      expect(network[feature](connection).account).toBe(connection.account);
+      expect(network[feature](connection).signal).toBe(connection.signal);
+    }
+    network.setMode("offline");
+  });
+
+  it("rejects foreign and copied handles without disturbing its active connection or candidate", () => {
+    const network = new Network();
+    network.setMode("online");
+    const active = network.open(auth);
+    const candidate = network.prepare(auth);
+    const other = new Network();
+    const foreign = other.prepare(auth);
+    for (const connection of [foreign, { ...candidate }, network.metadata(candidate)]) {
+      expect(() => network.accept(connection)).toThrow("Connection superseded");
+      for (const feature of ["metadata", "queue", "artwork", "audio"] as const) {
+        expect(() => network[feature](connection)).toThrow("Connection superseded");
+      }
+    }
+    expect(active.signal.aborted).toBe(false);
+    expect(candidate.signal.aborted).toBe(false);
+    expect(foreign.signal.aborted).toBe(false);
+    expect(() => network.accept(active)).toThrow("Connection superseded");
+    network.accept(candidate);
+    expect(active.signal.aborted).toBe(true);
+    network.setMode("offline");
+    other.setMode("offline");
+  });
+
+  it("aborts active and candidate work offline and never revives old connections", () => {
     const network = new Network();
     network.setMode("online");
     const active = network.open(auth);

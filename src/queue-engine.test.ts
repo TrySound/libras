@@ -7,9 +7,9 @@ const account = { host: "https://music.example.com", username: "listener" };
 const auth = { ...account, token: "token", salt: "salt" };
 function createConnection(credentials = auth) {
   const network = new Network();
-  const sdk = network.prepare(credentials);
-  network.accept(sdk);
-  return { ...network.queue(sdk), sdk, abort: () => network.setMode("offline") };
+  const connection = network.prepare(credentials);
+  network.accept(connection);
+  return { ...network.queue(connection), abort: () => network.setMode("offline") };
 }
 const record = () => ({
   account,
@@ -114,8 +114,8 @@ describe("queue engine", () => {
     const queue = engine(memory);
     await queue.restore(account);
     const client = createConnection(auth);
-    let resolve!: (value: { tracks: string[]; current: string; position: number }) => void;
-    vi.spyOn(client.sdk, "getPlayQueue").mockImplementation(
+    let resolve!: (value: { trackIds: string[]; currentTrackId: string; position: number }) => void;
+    vi.spyOn(client, "read").mockImplementation(
       () =>
         new Promise((done) => {
           resolve = done;
@@ -126,7 +126,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(resolve).toBeDefined());
     queue.setConnection(undefined);
     client.abort();
-    resolve({ tracks: ["late"], current: "late", position: 0 });
+    resolve({ trackIds: ["late"], currentTrackId: "late", position: 0 });
     await loading;
     expect(memory.queueTracks).toEqual(["a", "b", "a"]);
     expect(memory.queueIndex).toBe(2);
@@ -138,8 +138,8 @@ describe("queue engine", () => {
     const getDirectory = vi.spyOn(navigator.storage, "getDirectory");
     const client = createConnection(auth);
     const load = vi
-      .spyOn(client.sdk, "getPlayQueue")
-      .mockResolvedValue({ tracks: ["a"], current: "a", position: 0 });
+      .spyOn(client, "read")
+      .mockResolvedValue({ trackIds: ["a"], currentTrackId: "a", position: 0 });
     const memory = new Memory();
     const queue = engine(memory);
     queue.setConnection(client);
@@ -152,7 +152,7 @@ describe("queue engine", () => {
     await queue.synchronize();
     expect(load).toHaveBeenCalledOnce();
     expect(memory.queueTracks).toEqual(["a"]);
-    load.mockResolvedValue({ tracks: ["b"], current: "b", position: 0 });
+    load.mockResolvedValue({ trackIds: ["b"], currentTrackId: "b", position: 0 });
     await queue.synchronize();
     expect(load).toHaveBeenCalledTimes(2);
     expect(memory.queueTracks).toEqual(["b"]);
@@ -189,12 +189,12 @@ describe("queue engine", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);
     const client = createConnection(auth);
-    vi.spyOn(client.sdk, "getPlayQueue").mockResolvedValue({
-      tracks: ["a"],
-      current: "a",
+    vi.spyOn(client, "read").mockResolvedValue({
+      trackIds: ["a"],
+      currentTrackId: "a",
       position: 0,
     });
-    const save = vi.spyOn(client.sdk, "savePlayQueue").mockResolvedValue(undefined);
+    const save = vi.spyOn(client, "write").mockResolvedValue(undefined);
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     await connectQueue(queue, client);
@@ -221,13 +221,13 @@ describe("queue engine", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);
     const client = createConnection(auth);
-    vi.spyOn(client.sdk, "getPlayQueue").mockResolvedValue({
-      tracks: ["a"],
-      current: "a",
+    vi.spyOn(client, "read").mockResolvedValue({
+      trackIds: ["a"],
+      currentTrackId: "a",
       position: 0,
     });
     const newer = { ...record(), updatedAt: 5000, pendingSync: true };
-    const save = vi.spyOn(client.sdk, "savePlayQueue").mockImplementation(async () => {
+    const save = vi.spyOn(client, "write").mockImplementation(async () => {
       await storage.seed(newer);
     });
     const queueMemory = new Memory();

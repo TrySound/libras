@@ -1,6 +1,5 @@
 import { md5 } from "js-md5";
 import * as v from "valibot";
-import type { SubsonicAuth } from "./subsonic-client";
 import { accountSchema, type MetadataAccount } from "./schema";
 
 export interface PasswordAuth {
@@ -15,6 +14,8 @@ const authSchema = v.object({
   token: v.pipe(v.string(), v.nonEmpty()),
   salt: v.pipe(v.string(), v.nonEmpty()),
 });
+
+export type Auth = v.InferOutput<typeof authSchema>;
 
 export class AuthStore {
   #key: string;
@@ -35,7 +36,7 @@ export class AuthStore {
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   }
 
-  create(input: PasswordAuth): SubsonicAuth {
+  create(input: PasswordAuth): Auth {
     const salt = this.#salt();
     return v.parse(authSchema, {
       host: this.#normalizeHost(input.host.trim()),
@@ -45,7 +46,7 @@ export class AuthStore {
     });
   }
 
-  load(): SubsonicAuth | null {
+  load(): Auth | null {
     const value = this.#storage.getItem(this.#key);
     if (!value) return null;
     try {
@@ -55,7 +56,7 @@ export class AuthStore {
     }
   }
 
-  save(auth: SubsonicAuth) {
+  save(auth: Auth) {
     this.#storage.setItem(this.#key, JSON.stringify(v.parse(authSchema, auth)));
   }
 

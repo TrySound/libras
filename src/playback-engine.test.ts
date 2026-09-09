@@ -263,7 +263,7 @@ describe("playback engine", () => {
       salt: "salt",
     });
     network.accept(client);
-    await queue.restore(client);
+    await queue.restore(client.account);
     queue.setConnection(network.queue(client));
     await queue.synchronize();
     await queue.flush();

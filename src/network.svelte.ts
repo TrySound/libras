@@ -1,5 +1,12 @@
-import { SubsonicClient, type SubsonicAuth } from "./subsonic-client";
+import { SubsonicClient } from "./subsonic-client";
+import type { Auth } from "./auth";
 import type { Album, Artist, Track, MetadataAccount } from "./schema";
+
+/** Credential-free identity for one connection lifetime, owned by its Network. */
+export interface NetworkConnection {
+  readonly account: Readonly<MetadataAccount>;
+  readonly signal: AbortSignal;
+}
 
 export type RemoteArtist = Omit<Artist, "id"> & { id?: string };
 export type RemoteAlbum = Omit<Album, "artistId"> & { artistId?: string; artistName?: string };
@@ -10,9 +17,7 @@ export type RemoteTrack = Omit<Track, "artistId" | "albumId"> & {
 };
 
 /** One captured connection for a complete metadata workflow, including login preparation. */
-export interface MetadataConnection {
-  readonly account: Readonly<MetadataAccount>;
-  readonly signal: AbortSignal;
+export interface MetadataConnection extends NetworkConnection {
   getModifiedAt(since?: number): Promise<number | null>;
   listArtists(): Promise<readonly RemoteArtist[]>;
   listAlbums(options: { limit: number; offset: number }): Promise<readonly RemoteAlbum[]>;
@@ -27,18 +32,14 @@ type RemoteQueue = {
   position: number;
 };
 
-export interface QueueConnection {
-  readonly account: Readonly<MetadataAccount>;
-  readonly signal: AbortSignal;
+export interface QueueConnection extends NetworkConnection {
   read(): Promise<RemoteQueue>;
   write(queue: RemoteQueue): Promise<void>;
 }
 
 type AudioFormat = "raw" | "mp3";
 
-export interface AudioConnection {
-  readonly account: Readonly<MetadataAccount>;
-  readonly signal: AbortSignal;
+export interface AudioConnection extends NetworkConnection {
   /** Browser playback must release network media explicitly on detachment. Position is seconds. */
   url(id: string, options: { format: AudioFormat; position?: number }): string;
   /** The consumer streams the body to storage and must cancel any unused response. */
@@ -48,9 +49,7 @@ export interface AudioConnection {
 type ArtworkValidators = { etag?: string; lastModified?: string };
 type RemoteArtwork = ArtworkValidators & { blob: Blob; type: string };
 
-export interface ArtworkConnection {
-  readonly account: Readonly<MetadataAccount>;
-  readonly signal: AbortSignal;
+export interface ArtworkConnection extends NetworkConnection {
   /** Browser image requests must be released by the consumer on detachment. */
   url(id: string, size: number): string;
   /** Null means the cached image is unchanged. */
@@ -67,11 +66,12 @@ function genres(item: { genre?: string; genres?: { name: string }[] }) {
   );
 }
 
-/** Connection ownership and access policy. Engines migrate behind this boundary separately. */
+/** Application server access, connection ownership, and cancellation policy. */
 export class Network {
   #mode = $state<"online" | "offline">("offline");
   #client?: SubsonicClient;
   #candidate?: SubsonicClient;
+  #clients = new WeakMap<NetworkConnection, SubsonicClient>();
 
   get mode() {
     return this.#mode;
@@ -87,16 +87,21 @@ export class Network {
   }
 
   /** Explicit login validation is allowed while normal access remains offline. */
-  prepare(auth: SubsonicAuth) {
+  prepare(auth: Auth): NetworkConnection {
     const candidate = new SubsonicClient(auth);
     this.#candidate?.abort();
     this.#candidate = candidate;
-    return candidate;
+    const connection = Object.freeze({
+      account: Object.freeze({ host: candidate.host, username: candidate.username }),
+      signal: candidate.signal,
+    });
+    this.#clients.set(connection, candidate);
+    return connection;
   }
 
   /** Accept only the live candidate; stale login work must never restore access. */
-  accept(candidate: SubsonicClient) {
-    candidate.signal.throwIfAborted();
+  accept(connection: NetworkConnection) {
+    const candidate = this.#resolve(connection);
     if (candidate !== this.#candidate) {
       throw new DOMException("Connection superseded.", "AbortError");
     }
@@ -104,6 +109,13 @@ export class Network {
     this.#client = candidate;
     this.#candidate = undefined;
     this.#mode = "online";
+  }
+
+  #resolve(connection: NetworkConnection) {
+    connection.signal.throwIfAborted();
+    const client = this.#clients.get(connection);
+    if (!client) throw new DOMException("Connection superseded.", "AbortError");
+    return client;
   }
 
   #check(client: SubsonicClient, allowCandidate = false) {
@@ -122,12 +134,13 @@ export class Network {
   }
 
   /** Capture metadata operations without exposing SDK requests to the metadata engine. */
-  metadata(client: SubsonicClient): MetadataConnection {
+  metadata(connection: NetworkConnection): MetadataConnection {
+    const client = this.#resolve(connection);
     this.#check(client, true);
     const request = <T>(run: () => Promise<T>) => this.#request(client, run, true);
     return {
-      account: Object.freeze({ host: client.host, username: client.username }),
-      signal: client.signal,
+      account: connection.account,
+      signal: connection.signal,
       getModifiedAt: (since) => request(() => client.getIndexes(since)),
       listArtists: () =>
         request(async () =>
@@ -172,11 +185,12 @@ export class Network {
   }
 
   /** Queue access is available only after accepting a connection, never during login staging. */
-  queue(client: SubsonicClient): QueueConnection {
+  queue(connection: NetworkConnection): QueueConnection {
+    const client = this.#resolve(connection);
     this.#check(client);
     return {
-      account: Object.freeze({ host: client.host, username: client.username }),
-      signal: client.signal,
+      account: connection.account,
+      signal: connection.signal,
       read: () =>
         this.#request(client, async () => {
           const queue = await client.getPlayQueue();
@@ -197,11 +211,12 @@ export class Network {
     };
   }
 
-  artwork(client: SubsonicClient): ArtworkConnection {
+  artwork(connection: NetworkConnection): ArtworkConnection {
+    const client = this.#resolve(connection);
     this.#check(client);
     return {
-      account: Object.freeze({ host: client.host, username: client.username }),
-      signal: client.signal,
+      account: connection.account,
+      signal: connection.signal,
       url: (id, size) => {
         this.#check(client);
         return client.getCoverArtUrl(id, size);
@@ -229,7 +244,8 @@ export class Network {
     };
   }
 
-  audio(client: SubsonicClient): AudioConnection {
+  audio(connection: NetworkConnection): AudioConnection {
+    const client = this.#resolve(connection);
     this.#check(client);
     const url = (id: string, options: { format: AudioFormat; position?: number }) => {
       this.#check(client);
@@ -240,8 +256,8 @@ export class Network {
       });
     };
     return {
-      account: Object.freeze({ host: client.host, username: client.username }),
-      signal: client.signal,
+      account: connection.account,
+      signal: connection.signal,
       url,
       read: async (id, options) => {
         const signal = AbortSignal.any([client.signal, options.signal]);
@@ -261,10 +277,10 @@ export class Network {
   }
 
   /** Resume an authenticated session after access has explicitly been enabled. */
-  open(auth: SubsonicAuth) {
+  open(auth: Auth) {
     if (this.#mode === "offline") throw new Error("Network access is offline.");
-    const client = this.prepare(auth);
-    this.accept(client);
-    return client;
+    const connection = this.prepare(auth);
+    this.accept(connection);
+    return connection;
   }
 }

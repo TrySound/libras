@@ -1,12 +1,11 @@
-import type { AuthStore, PasswordAuth } from "./auth";
+import type { Auth, AuthStore, PasswordAuth } from "./auth";
 import type { CoverEngine } from "./cover-engine";
 import type { MemoryView } from "./memory.svelte";
 import type { MetadataEngine } from "./metadata-engine";
-import type { Network } from "./network.svelte";
+import type { Network, NetworkConnection } from "./network.svelte";
 import type { PlaybackEngine } from "./playback-engine";
 import type { QueueEngine } from "./queue-engine";
 import type { ConnectionStatus, MetadataAccount } from "./schema";
-import type { SubsonicClient, SubsonicAuth } from "./subsonic-client";
 import type { TrackEngine } from "./track-engine";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
@@ -43,7 +42,7 @@ function connectionError(error: unknown) {
 }
 
 export class Session {
-  auth = $state.raw<SubsonicAuth | null>(null);
+  auth = $state.raw<Auth | null>(null);
   status = $state<ConnectionStatus>("disconnected");
   error = $state("");
   refreshError = $state("");
@@ -93,16 +92,16 @@ export class Session {
     void queue.flush();
   }
 
-  #attach(client: SubsonicClient) {
+  #attach(connection: NetworkConnection) {
     const { metadata, queue, covers, tracks } = this.#options;
-    metadata.setConnection(this.#options.network.metadata(client));
-    queue.setConnection(this.#options.network.queue(client));
-    covers.setConnection(this.#options.network.artwork(client));
-    tracks.setConnection(this.#options.network.audio(client));
+    metadata.setConnection(this.#options.network.metadata(connection));
+    queue.setConnection(this.#options.network.queue(connection));
+    covers.setConnection(this.#options.network.artwork(connection));
+    tracks.setConnection(this.#options.network.audio(connection));
     void queue.synchronize();
   }
 
-  start(): SubsonicAuth | null {
+  start(): Auth | null {
     if (this.#started || this.#destroyed) return this.auth;
     this.#started = true;
     const generation = this.#begin();
@@ -154,20 +153,20 @@ export class Session {
     this.status = "connecting";
     try {
       const credentials = this.#options.auth.create(input);
-      const client = this.#options.network.prepare(credentials);
+      const connection = this.#options.network.prepare(credentials);
       await this.#restoration;
       if (!this.#valid(generation)) return false;
       const { metadata, queue, covers, auth, storage } = this.#options;
       // Explicit connection may use the network while the offline switch is locked.
-      // Do not replace the selected workspace, or attach any other clients, on failure.
-      const prepared = await metadata.prepareConnection(this.#options.network.metadata(client));
+      // Do not replace the selected workspace, or attach any other engines, on failure.
+      const prepared = await metadata.prepareConnection(this.#options.network.metadata(connection));
       if (!this.#valid(generation)) return false;
       auth.save(credentials);
       auth.saveAccount(prepared.account);
       storage.setItem(offlineModeStorageKey, "false");
-      const snapshot = await metadata.saveConnection(prepared, client.signal);
+      const snapshot = await metadata.saveConnection(prepared, connection.signal);
       if (!this.#valid(generation)) return false;
-      this.#options.network.accept(client);
+      this.#options.network.accept(connection);
       this.#options.playback.suspend();
       // Clear foreign queue/artwork synchronously before publishing new metadata.
       this.#restoration = Promise.all([
@@ -176,7 +175,7 @@ export class Session {
       ]).then(() => {});
       metadata.acceptConnection(snapshot);
       this.auth = credentials;
-      this.#attach(client);
+      this.#attach(connection);
       await this.#restoration;
       if (!this.#valid(generation)) return false;
       await covers.refresh();
