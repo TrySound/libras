@@ -78,7 +78,8 @@ describe("session", () => {
     fields.forEach((field, index) => expect(memory[field]).toBe(data[index]));
     expect([memory.queueTracks, memory.queueIndex, memory.queuePosition]).toEqual(queueState);
     expect(metadata.setConnection).toHaveBeenLastCalledWith(undefined);
-    for (const engine of [tracks, covers, queue])
+    expect(queue.setConnection).toHaveBeenLastCalledWith(undefined);
+    for (const engine of [tracks, covers])
       expect(engine.setClient).toHaveBeenLastCalledWith(undefined);
     expect(playback.suspendNetwork).toHaveBeenCalled();
     refresh.resolve();

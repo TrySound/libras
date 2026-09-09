@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueueEngine } from "./queue-engine";
-import { SubsonicClient } from "./subsonic-client";
+import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";
 
 const account = { host: "https://music.example.com", username: "listener" };
 const auth = { ...account, token: "token", salt: "salt" };
+function createConnection(credentials = auth) {
+  const network = new Network();
+  const sdk = network.prepare(credentials);
+  network.accept(sdk);
+  return { ...network.queue(sdk), sdk, abort: () => network.setMode("offline") };
+}
 const record = () => ({
   account,
   tracks: ["a", "b", "a"],
@@ -95,9 +101,9 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function connectQueue(queue: QueueEngine, client: SubsonicClient) {
-  await queue.restore(client);
-  queue.setClient(client);
+async function connectQueue(queue: QueueEngine, client: ReturnType<typeof createConnection>) {
+  await queue.restore(client.account);
+  queue.setConnection(client);
   await queue.synchronize();
 }
 
@@ -107,19 +113,18 @@ describe("queue engine", () => {
     const memory = new Memory();
     const queue = engine(memory);
     await queue.restore(account);
-    const client = new SubsonicClient(auth);
+    const client = createConnection(auth);
     let resolve!: (value: { tracks: string[]; current: string; position: number }) => void;
-    vi.spyOn(client, "getPlayQueue").mockImplementation(
+    vi.spyOn(client.sdk, "getPlayQueue").mockImplementation(
       () =>
         new Promise((done) => {
           resolve = done;
         }),
     );
-    queue.setClient(client);
+    queue.setConnection(client);
     const loading = queue.synchronize();
     await vi.waitFor(() => expect(resolve).toBeDefined());
-    queue.setNetwork("offline");
-    queue.setClient(undefined);
+    queue.setConnection(undefined);
     client.abort();
     resolve({ tracks: ["late"], current: "late", position: 0 });
     await loading;
@@ -131,15 +136,15 @@ describe("queue engine", () => {
 
   it("configures without I/O and synchronizes only on an explicit command", async () => {
     const getDirectory = vi.spyOn(navigator.storage, "getDirectory");
-    const client = new SubsonicClient(auth);
+    const client = createConnection(auth);
     const load = vi
-      .spyOn(client, "getPlayQueue")
+      .spyOn(client.sdk, "getPlayQueue")
       .mockResolvedValue({ tracks: ["a"], current: "a", position: 0 });
     const memory = new Memory();
     const queue = engine(memory);
-    queue.setClient(client);
-    queue.setNetwork("offline");
-    queue.setNetwork("online");
+    queue.setConnection(client);
+    queue.setConnection(undefined);
+    queue.setConnection(client);
     expect(getDirectory).not.toHaveBeenCalled();
     expect(load).not.toHaveBeenCalled();
     await queue.restore(account);
@@ -183,13 +188,13 @@ describe("queue engine", () => {
   it("reports a newer disk queue instead of acknowledging or uploading a skipped write", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);
-    const client = new SubsonicClient(auth);
-    vi.spyOn(client, "getPlayQueue").mockResolvedValue({
+    const client = createConnection(auth);
+    vi.spyOn(client.sdk, "getPlayQueue").mockResolvedValue({
       tracks: ["a"],
       current: "a",
       position: 0,
     });
-    const save = vi.spyOn(client, "savePlayQueue").mockResolvedValue(undefined);
+    const save = vi.spyOn(client.sdk, "savePlayQueue").mockResolvedValue(undefined);
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     await connectQueue(queue, client);
@@ -215,14 +220,14 @@ describe("queue engine", () => {
   it("preserves a newer disk queue that appears while a server save is pending", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);
-    const client = new SubsonicClient(auth);
-    vi.spyOn(client, "getPlayQueue").mockResolvedValue({
+    const client = createConnection(auth);
+    vi.spyOn(client.sdk, "getPlayQueue").mockResolvedValue({
       tracks: ["a"],
       current: "a",
       position: 0,
     });
     const newer = { ...record(), updatedAt: 5000, pendingSync: true };
-    const save = vi.spyOn(client, "savePlayQueue").mockImplementation(async () => {
+    const save = vi.spyOn(client.sdk, "savePlayQueue").mockImplementation(async () => {
       await storage.seed(newer);
     });
     const queueMemory = new Memory();
@@ -254,7 +259,7 @@ describe("queue engine", () => {
   it("persists offline edits and empty queues without credentials or track descriptions", async () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.setNetwork("offline");
+    await queue.setConnection(undefined);
     await queue.restore(account);
     queue.update({ tracks: ["a", "b", "a"], index: 2, position: 30 });
     queue.setPosition(35);
@@ -274,7 +279,7 @@ describe("queue engine", () => {
     expect(restoredMemory.queueTracks).toEqual(["a", "b", "a"]);
     expect(restoredMemory.queueIndex).toBe(2);
     expect(restoredMemory.queuePosition).toBe(35);
-    await connectQueue(queue, new SubsonicClient(auth));
+    await connectQueue(queue, createConnection(auth));
     queue.update({ tracks: [], position: 0 });
     await queue.flush();
     const empty = await storage.json();
@@ -302,7 +307,7 @@ describe("queue engine", () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     await queue.restore(account);
-    const connected = connectQueue(queue, new SubsonicClient(auth));
+    const connected = connectQueue(queue, createConnection(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     expect(queueMemory.queueIndex).toBe(2);
     resolve(
@@ -331,7 +336,7 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await connectQueue(queue, new SubsonicClient(auth));
+    await connectQueue(queue, createConnection(auth));
     expect(queueMemory.queueIndex).toBe(2);
     expect((await storage.json()).index).toBe(2);
   });
@@ -342,7 +347,7 @@ describe("queue engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await connectQueue(queue, new SubsonicClient(auth));
+    await connectQueue(queue, createConnection(auth));
     expect(fetcher).toHaveBeenCalledOnce();
     const [url, options] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toContain("savePlayQueue");
@@ -367,7 +372,7 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    const connected = connectQueue(queue, new SubsonicClient(auth));
+    const connected = connectQueue(queue, createConnection(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     queue.update({ tracks: ["local"], index: 0, position: 2 });
     resolve(response({ playQueue: { current: "remote", entry: [{ id: "remote" }] } }));
@@ -387,6 +392,50 @@ describe("queue engine", () => {
     expect(await storage.json()).toMatchObject({ tracks: ["local"], pendingSync: true });
   });
 
+  it("keeps a cancelled upload pending and retries through a fresh Network connection", async () => {
+    await storage.seed({ ...record(), pendingSync: true });
+    const network = new Network();
+    const client = network.prepare(auth);
+    network.accept(client);
+    const memory = new Memory();
+    const queue = engine(memory);
+    await queue.restore(account);
+    queue.setConnection(network.queue(client));
+    let respond!: (value: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            respond = resolve;
+          }),
+      ),
+    );
+    const syncing = queue.synchronize();
+    await vi.waitFor(() => expect(respond).toBeDefined());
+    network.setMode("offline");
+    queue.setConnection(undefined);
+    respond(response());
+    await syncing;
+    expect(client.signal.aborted).toBe(true);
+    expect(queue.error).toBeUndefined();
+    expect((await storage.json()).pendingSync).toBe(true);
+    expect(memory.queueIndex).toBe(2);
+    const fetcher = vi.fn(async () => response());
+    vi.stubGlobal("fetch", fetcher);
+    network.setMode("online");
+    queue.setConnection(network.queue(network.open(auth)));
+    await queue.synchronize();
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0]).toEqual([
+      expect.stringContaining("savePlayQueue"),
+      expect.objectContaining({ method: "POST" }),
+    ]);
+    expect((await storage.json()).pendingSync).toBe(false);
+    network.setMode("offline");
+    queue.setConnection(undefined);
+  });
+
   it("preserves dirty state if a server acknowledgement arrives after another edit", async () => {
     await storage.seed({ ...record(), pendingSync: true });
     let resolve!: (response: Response) => void;
@@ -401,12 +450,12 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    const connected = connectQueue(queue, new SubsonicClient(auth));
+    const connected = connectQueue(queue, createConnection(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     queue.setPosition(20);
     resolve(response());
     await connected;
-    queue.setNetwork("offline");
+    queue.setConnection(undefined);
     await queue.flush();
     expect(await storage.json()).toMatchObject({ position: 20, pendingSync: true });
   });
@@ -421,13 +470,14 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await connectQueue(queue, new SubsonicClient(auth));
+    const client = createConnection(auth);
+    await connectQueue(queue, client);
     expect(queue.error).toBeInstanceOf(Error);
     expect((await storage.json()).pendingSync).toBe(true);
-    await queue.setNetwork("offline");
+    await queue.setConnection(undefined);
     const fetcher = vi.fn(async () => response());
     vi.stubGlobal("fetch", fetcher);
-    queue.setNetwork("online");
+    queue.setConnection(client);
     await queue.synchronize();
     expect(fetcher).toHaveBeenCalledOnce();
     expect((await storage.json()).pendingSync).toBe(false);
@@ -494,7 +544,7 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    const connected = connectQueue(queue, new SubsonicClient(auth));
+    const connected = connectQueue(queue, createConnection(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     await queue.restore(other);
     resolve(response({ playQueue: { current: "remote", entry: [{ id: "remote" }] } }));
@@ -508,7 +558,7 @@ describe("queue engine", () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     const restored = queue.restore(account);
-    const offline = queue.setNetwork("offline");
+    const offline = queue.setConnection(undefined);
     await Promise.all([restored, offline]);
     expect(queueMemory.queueIndex).toBe(2);
     expect(queueMemory.queuePosition).toBe(12.5);

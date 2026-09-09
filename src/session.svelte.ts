@@ -30,7 +30,7 @@ interface SessionOptions {
     | "warning"
   >;
   covers: Pick<CoverEngine, "restore" | "refresh" | "setClient">;
-  queue: Pick<QueueEngine, "restore" | "setClient" | "setNetwork" | "synchronize" | "flush">;
+  queue: Pick<QueueEngine, "restore" | "setConnection" | "synchronize" | "flush">;
   tracks: Pick<TrackEngine, "setClient">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
   storage: Pick<Storage, "getItem" | "setItem">;
@@ -85,9 +85,8 @@ export class Session {
   #detach() {
     const { metadata, queue, covers, tracks, playback } = this.#options;
     this.#options.network.setMode("offline");
-    queue.setNetwork("offline");
     metadata.setConnection(undefined);
-    queue.setClient(undefined);
+    queue.setConnection(undefined);
     covers.setClient(undefined);
     tracks.setClient(undefined);
     playback.suspendNetwork();
@@ -96,9 +95,8 @@ export class Session {
 
   #attach(client: SubsonicClient) {
     const { metadata, queue, covers, tracks } = this.#options;
-    queue.setNetwork("online");
     metadata.setConnection(this.#options.network.metadata(client));
-    queue.setClient(client);
+    queue.setConnection(this.#options.network.queue(client));
     covers.setClient(client);
     tracks.setClient(client);
     void queue.synchronize();

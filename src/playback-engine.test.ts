@@ -238,7 +238,8 @@ describe("playback engine", () => {
 
   it("does not upload deletions when a server queue arrives before fresh metadata", async () => {
     const { player, queue, audio, restoreTrack, memory } = setup();
-    const { SubsonicClient } = await import("./subsonic-client");
+    const { Network } = await import("./network.svelte");
+    const network = new Network();
     const fetcher = vi.fn(
       async () =>
         new Response(
@@ -255,14 +256,15 @@ describe("playback engine", () => {
         ),
     );
     vi.stubGlobal("fetch", fetcher);
-    const client = new SubsonicClient({
+    const client = network.prepare({
       host: "https://music.example.com",
       username: "listener",
       token: "token",
       salt: "salt",
     });
+    network.accept(client);
     await queue.restore(client);
-    queue.setClient(client);
+    queue.setConnection(network.queue(client));
     await queue.synchronize();
     await queue.flush();
     expect(memory.queueTracks).toEqual(["a", "fresh"]);

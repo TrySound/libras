@@ -19,6 +19,21 @@ export interface MetadataConnection {
   getAlbumTracks(albumId: string): Promise<readonly RemoteTrack[]>;
 }
 
+type RemoteQueue = {
+  trackIds: readonly string[];
+  /** Remote selection is by track ID, not duplicate occurrence index. */
+  currentTrackId?: string;
+  /** Seconds. */
+  position: number;
+};
+
+export interface QueueConnection {
+  readonly account: Readonly<MetadataAccount>;
+  readonly signal: AbortSignal;
+  read(): Promise<RemoteQueue>;
+  write(queue: RemoteQueue): Promise<void>;
+}
+
 function genres(item: { genre?: string; genres?: { name: string }[] }) {
   const names = [item.genre ?? "", ...(item.genres ?? []).map((genre) => genre.name)]
     .flatMap((name) => name.split("|"))
@@ -68,21 +83,25 @@ export class Network {
     this.#mode = "online";
   }
 
+  #check(client: SubsonicClient, allowCandidate = false) {
+    client.signal.throwIfAborted();
+    if (allowCandidate && client === this.#candidate) return;
+    if (client !== this.#client || this.#mode !== "online") {
+      throw new DOMException("Connection superseded.", "AbortError");
+    }
+  }
+
+  async #request<T>(client: SubsonicClient, run: () => Promise<T>, allowCandidate = false) {
+    this.#check(client, allowCandidate);
+    const result = await run();
+    this.#check(client, allowCandidate);
+    return result;
+  }
+
   /** Capture metadata operations without exposing SDK requests to the metadata engine. */
   metadata(client: SubsonicClient): MetadataConnection {
-    const check = () => {
-      client.signal.throwIfAborted();
-      if (client !== this.#candidate && (client !== this.#client || this.#mode !== "online")) {
-        throw new DOMException("Connection superseded.", "AbortError");
-      }
-    };
-    const request = async <T>(run: () => Promise<T>) => {
-      check();
-      const result = await run();
-      check();
-      return result;
-    };
-    check();
+    this.#check(client, true);
+    const request = <T>(run: () => Promise<T>) => this.#request(client, run, true);
     return {
       account: Object.freeze({ host: client.host, username: client.username }),
       signal: client.signal,
@@ -125,6 +144,32 @@ export class Network {
             mimeType: track.contentType,
             genres: genres(track),
           })),
+        ),
+    };
+  }
+
+  /** Queue access is available only after accepting a connection, never during login staging. */
+  queue(client: SubsonicClient): QueueConnection {
+    this.#check(client);
+    return {
+      account: Object.freeze({ host: client.host, username: client.username }),
+      signal: client.signal,
+      read: () =>
+        this.#request(client, async () => {
+          const queue = await client.getPlayQueue();
+          return {
+            trackIds: queue.tracks,
+            currentTrackId: queue.current,
+            position: queue.position,
+          };
+        }),
+      write: (queue) =>
+        this.#request(client, () =>
+          client.savePlayQueue({
+            tracks: queue.trackIds,
+            current: queue.currentTrackId,
+            position: queue.position,
+          }),
         ),
     };
   }

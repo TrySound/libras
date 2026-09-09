@@ -110,6 +110,67 @@ describe("Network connection lifecycle", () => {
     }
   });
 
+  it("does not expose remote queue access for an unaccepted login candidate", () => {
+    const network = new Network();
+    const candidate = network.prepare(auth);
+    expect(() => network.queue(candidate)).toThrow("Connection superseded");
+    network.accept(candidate);
+    expect(network.queue(candidate).account.username).toBe(auth.username);
+    network.setMode("offline");
+    expect(() => network.queue(candidate)).toThrowError(/abort/i);
+  });
+
+  it("maps queue IDs and seconds while preserving SDK POST and cancellation semantics", async () => {
+    const network = new Network();
+    const fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            "subsonic-response": {
+              status: "ok",
+              playQueue: {
+                current: "a",
+                position: 3500,
+                entry: [{ id: "a" }, { id: "b" }, { id: "a" }],
+              },
+            },
+          }),
+        ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    try {
+      const client = network.prepare(auth);
+      network.accept(client);
+      const queue = network.queue(client);
+      const state = { trackIds: ["a", "b", "a"], currentTrackId: "a", position: 3.5 };
+      await expect(queue.read()).resolves.toEqual(state);
+      await queue.write(state);
+      expect(fetch.mock.calls[1]).toEqual([
+        expect.stringContaining("savePlayQueue"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: expect.any(URLSearchParams),
+          keepalive: true,
+          signal: client.signal,
+        },
+      ]);
+      const [, options] = vi.mocked(globalThis.fetch).mock.calls[1];
+      const body = options!.body as URLSearchParams;
+      expect(body.getAll("id")).toEqual(["a", "b", "a"]);
+      expect(body.get("current")).toBe("a");
+      expect(body.get("position")).toBe("3500");
+      const replacement = network.prepare({ ...auth, username: "other" });
+      network.accept(replacement);
+      await expect(queue.read()).rejects.toMatchObject({ name: "AbortError" });
+      await expect(queue.write(state)).rejects.toMatchObject({ name: "AbortError" });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      network.setMode("offline");
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("rejects a late SDK response after network access is revoked", async () => {
     const network = new Network();
     let respond!: (response: Response) => void;

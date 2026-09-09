@@ -92,8 +92,7 @@ export function createSession(saved = false, storage = createStorage()) {
       memory.queueIndex = 0;
       memory.queuePosition = 17;
     }),
-    setClient: vi.fn(),
-    setNetwork: vi.fn(),
+    setConnection: vi.fn(),
     synchronize: vi.fn(async () => {}),
     flush: vi.fn(async () => {}),
   };
