@@ -32,14 +32,12 @@
   --color-text-on-image: var(--palette-white);
   --color-text-danger: var(--palette-red-300);
   --color-background: var(--palette-gray-900);
-  --color-background-translucent: rgb(from var(--palette-gray-900) r g b / 94%);
   --color-surface: var(--palette-gray-800);
   --color-surface-input: var(--palette-gray-700);
   --color-surface-raised: var(--palette-gray-700);
   --color-surface-accent: var(--palette-crimson-700);
   --color-surface-danger: var(--palette-red-900);
   --color-border-subtle: var(--palette-gray-600);
-  --color-border-topbar: var(--palette-gray-600);
   --color-border: var(--palette-gray-500);
   --color-border-strong: var(--palette-gray-500);
   --color-control-neutral: var(--palette-gray-600);
@@ -96,6 +94,12 @@
   --type-eyebrow-size: var(--text-xs);
   --type-eyebrow-line: 1rem;
   --type-eyebrow-weight: var(--weight-bold);
+
+  --popover-bg: rgb(from var(--palette-gray-900) r g b / 75%);
+  --popover-blur: 14px;
+  --popover-border: 1px solid var(--palette-gray-600);
+  --popover-shadow: 0 0 15px rgb(0 0 0 / 50%);
+
   font-family: var(--font-sans);
   font-size: var(--type-body-size);
   font-weight: var(--type-body-weight);
@@ -418,9 +422,10 @@ input {
   position: sticky;
   z-index: 30;
   top: 0;
-  border-bottom: 1px solid var(--color-border-topbar);
-  background: var(--color-background-translucent);
-  backdrop-filter: blur(14px);
+  border-bottom: var(--popover-border);
+  background: var(--popover-bg);
+  backdrop-filter: blur(var(--popover-blur));
+  box-shadow: var(--popover-shadow);
 }
 
 .topbar-brand {
@@ -927,9 +932,9 @@ a {
 .action-menu {
   position: fixed;
   inset: auto 0 0;
-  width: 100%;
+  width: calc(100dvw - 1.2rem);
   max-width: none;
-  margin: 0;
+  margin: 0 auto;
   padding: var(--space-md);
   padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
   max-height: calc(100dvh - 2rem);
@@ -940,6 +945,11 @@ a {
   color: var(--color-text-primary);
   background: var(--color-surface-raised);
   box-shadow: 0 -1rem 3rem var(--color-shadow-raised);
+
+  border: var(--popover-border);
+  background: rgb(from var(--color-surface-raised) r g b / 75%);
+  backdrop-filter: blur(var(--popover-blur));
+  box-shadow: var(--popover-shadow);
 
   &::backdrop {
     background: var(--color-backdrop);
@@ -1076,15 +1086,19 @@ a {
   background: var(--color-surface-raised);
   box-shadow: 0 0.8rem 2rem var(--color-shadow-raised);
 
+  border: var(--popover-border);
+  background: rgb(from var(--color-surface-raised) r g b / 75%);
+  backdrop-filter: blur(var(--popover-blur));
+  box-shadow: var(--popover-shadow);
+
   @media (prefers-reduced-motion: no-preference) {
     transition: background-color 160ms ease-out;
   }
 
   &:has(.linkarea:active) {
-    background-color: color-mix(
-      in srgb,
-      var(--color-surface-raised) 90%,
-      var(--color-text-primary) 10%
+    background: rgb(
+      from color-mix(in srgb, var(--color-surface-raised) 90%, var(--color-text-primary) 10%) r g b
+        / 75%
     );
     @media (prefers-reduced-motion: no-preference) {
       transition-duration: 50ms;
@@ -1093,10 +1107,9 @@ a {
 
   @media (hover: hover) {
     &:has(.linkarea:hover) {
-      background-color: color-mix(
-        in srgb,
-        var(--color-surface-raised) 90%,
-        var(--color-text-primary) 10%
+      background: rgb(
+        from color-mix(in srgb, var(--color-surface-raised) 90%, var(--color-text-primary) 10%) r g
+          b / 75%
       );
       @media (prefers-reduced-motion: no-preference) {
         transition-duration: 50ms;
