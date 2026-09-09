@@ -4,6 +4,8 @@ import {
   artistSchema,
   albumSchema,
   trackSchema,
+  imageSchema,
+  type ImageRecord,
   type MetadataAccount,
 } from "./schema";
 import { OpfsJsonStore, jsonFileName } from "./json-store";
@@ -64,10 +66,205 @@ function parseQueueRecord(value: unknown, account: MetadataAccount) {
   return record;
 }
 
+const artworkId = v.pipe(v.string(), v.minLength(1));
+const artworkTime = v.pipe(v.number(), v.integer(), v.minValue(0));
+const artworkReference = v.strictObject({ id: artworkId, candidates: v.array(artworkId) });
+const artworkCatalogSchema = v.strictObject({
+  account: accountSchema,
+  metadataSavedAt: v.nullable(artworkTime),
+  artists: v.array(artworkReference),
+  albums: v.array(artworkReference),
+  tracks: v.array(artworkReference),
+  images: v.array(imageSchema),
+});
+export type ArtworkCatalog = v.InferOutput<typeof artworkCatalogSchema>;
+type ArtworkImage = { blob: Blob; type: string; etag?: string; lastModified?: string };
+
+function emptyArtworkCatalog(account: MetadataAccount): ArtworkCatalog {
+  return {
+    account: { ...account },
+    metadataSavedAt: null,
+    artists: [],
+    albums: [],
+    tracks: [],
+    images: [],
+  };
+}
+function parseArtworkCatalog(value: unknown, account: MetadataAccount) {
+  const catalog = v.parse(artworkCatalogSchema, value);
+  if (catalog.account.host !== account.host || catalog.account.username !== account.username)
+    throw new Error("The cover catalog belongs to a different account.");
+  for (const records of [catalog.artists, catalog.albums, catalog.tracks, catalog.images]) {
+    if (new Set(records.map((record) => record.id)).size !== records.length)
+      throw new Error("Duplicate IDs in the cover catalog.");
+  }
+  return catalog;
+}
+
 /** Application-owned persistence services; acquiring account access does not perform I/O. */
 export class Storage {
   #metadataFiles = new Map<string, Promise<OpfsJsonStore<MetadataSnapshot>>>();
   #queueFiles = new Map<string, Promise<OpfsJsonStore<QueueRecord>>>();
+  #artworkFiles = new Map<string, Promise<OpfsJsonStore<ArtworkCatalog>>>();
+
+  async #imageDirectory() {
+    const root = await navigator.storage.getDirectory();
+    return root.getDirectoryHandle("images", { create: true });
+  }
+
+  #artworkFile({ host, username }: MetadataAccount) {
+    const key = `${host}\n${username}`;
+    let file = this.#artworkFiles.get(key);
+    if (!file) {
+      file = jsonFileName(key)
+        .then(
+          (fileName) =>
+            new OpfsJsonStore({
+              directory: "images",
+              fileName,
+              lockName: `music-web-covers:${fileName}`,
+              parse: (value) => parseArtworkCatalog(value, { host, username }),
+            }),
+        )
+        .catch((error) => {
+          this.#artworkFiles.delete(key);
+          throw error;
+        });
+      this.#artworkFiles.set(key, file);
+    }
+    return file;
+  }
+
+  async #updateArtwork(
+    account: MetadataAccount,
+    change: (catalog: ArtworkCatalog) => ArtworkCatalog,
+    valid: () => boolean,
+  ) {
+    const file = await this.#artworkFile(account);
+    const result = await file.update((catalog) => change(catalog ?? emptyArtworkCatalog(account)), {
+      valid,
+    });
+    return valid() ? (result.value ?? undefined) : undefined;
+  }
+
+  artwork(account: MetadataAccount) {
+    const identity = Object.freeze({ host: account.host, username: account.username });
+    return {
+      account: identity,
+      read: (valid: () => boolean) => this.#readArtwork(identity, valid),
+      update: (change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) =>
+        this.#updateArtwork(identity, change, valid),
+      readImage: async (record: ImageRecord) => {
+        const directory = await this.#imageDirectory();
+        const file = await (await directory.getFileHandle(record.fileName)).getFile();
+        if (file.size !== record.size)
+          throw new DOMException("The cached image is incomplete.", "DataError");
+        // Do not expose mutable OPFS-backed files to browser image consumers.
+        return new Blob([await file.arrayBuffer()], { type: record.type });
+      },
+      saveImage: (
+        id: string,
+        image: ArtworkImage,
+        previousFileName: string | undefined,
+        valid: () => boolean,
+      ) => this.#saveArtworkImage(identity, id, image, previousFileName, valid),
+    };
+  }
+
+  async #readArtwork(account: MetadataAccount, valid: () => boolean) {
+    let catalog = (await (await this.#artworkFile(account)).read()) ?? emptyArtworkCatalog(account);
+    const directory = await this.#imageDirectory();
+    const missing = new Set<string>();
+    let next = 0;
+    const worker = async () => {
+      while (next < catalog.images.length && valid()) {
+        const record = catalog.images[next++];
+        try {
+          const file = await (await directory.getFileHandle(record.fileName)).getFile();
+          if (file.size !== record.size) missing.add(record.fileName);
+        } catch (error) {
+          if (!(error instanceof DOMException && error.name === "NotFoundError")) throw error;
+          missing.add(record.fileName);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, catalog.images.length) }, worker));
+    if (!valid()) return;
+    let error: unknown;
+    if (missing.size) {
+      catalog = {
+        ...catalog,
+        images: catalog.images.filter((image) => !missing.has(image.fileName)),
+      };
+      try {
+        catalog =
+          (await this.#updateArtwork(
+            account,
+            (latest) => ({
+              ...latest,
+              images: latest.images.filter((image) => !missing.has(image.fileName)),
+            }),
+            valid,
+          )) ?? catalog;
+      } catch (cause) {
+        // Still return the filtered catalog when persisting repairs fails.
+        error = cause;
+      }
+    }
+    return valid() ? { catalog, error } : undefined;
+  }
+
+  async #saveArtworkImage(
+    account: MetadataAccount,
+    id: string,
+    image: ArtworkImage,
+    previousFileName: string | undefined,
+    valid: () => boolean,
+  ) {
+    const { blob } = image;
+    const record = v.parse(imageSchema, {
+      id,
+      fileName: `${crypto.randomUUID()}.image`,
+      type: image.type,
+      size: blob.size,
+      cachedAt: Date.now(),
+      etag: image.etag,
+      lastModified: image.lastModified,
+    });
+    if (!valid()) return;
+    const directory = await this.#imageDirectory();
+    const handle = await directory.getFileHandle(record.fileName, { create: true });
+    let writable: FileSystemWritableFileStream | undefined;
+    let committed = false;
+    try {
+      writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      const catalog = await this.#updateArtwork(
+        account,
+        (latest) => {
+          const current = latest.images.find((image) => image.id === id);
+          if (current && current.fileName !== previousFileName) return latest;
+          return {
+            ...latest,
+            images: [...latest.images.filter((image) => image.id !== id), record],
+          };
+        },
+        valid,
+      );
+      committed = catalog?.images.some((image) => image.fileName === record.fileName) ?? false;
+      if (catalog && valid())
+        return {
+          catalog,
+          image: committed ? { id, blob: new Blob([blob], { type: record.type }) } : undefined,
+        };
+    } finally {
+      if (!committed) {
+        await writable?.abort().catch(() => {});
+        await directory.removeEntry(record.fileName).catch(() => {});
+      }
+    }
+  }
 
   #queueFile({ host, username }: MetadataAccount) {
     const key = `${host}\n${username}`;

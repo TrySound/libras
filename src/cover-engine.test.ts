@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoverEngine } from "./cover-engine";
-import type { MetadataSnapshot } from "./storage";
+import { Storage, type MetadataSnapshot } from "./storage";
 import type { MetadataAccount } from "./schema";
 import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";
@@ -173,8 +173,8 @@ function library(data?: MetadataSnapshot) {
     publish,
   };
 }
-function engine(metadata = library(snapshot())) {
-  const result = new CoverEngine(metadata.memory, metadata);
+function engine(metadata = library(snapshot()), storage: Pick<Storage, "artwork"> = new Storage()) {
+  const result = new CoverEngine(metadata.memory, metadata, storage);
   engines.push(result);
   return result;
 }
@@ -185,6 +185,29 @@ afterEach(() => {
 });
 
 describe("cover engine", () => {
+  it("uses injected storage while retaining object URL ownership", async () => {
+    installOpfs();
+    const data = catalog();
+    const access = {
+      account,
+      read: vi.fn(async () => ({ catalog: data, error: undefined })),
+      update: vi.fn(async () => data),
+      readImage: vi.fn(async () => new Blob(["image"], { type: "image/jpeg" })),
+      saveImage: vi.fn(async () => undefined),
+    };
+    const storage = { artwork: vi.fn(() => access) };
+    const covers = engine(library(), storage);
+    await covers.restore(account);
+    const cover = covers.ensureAlbumCover("album", offline);
+    await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
+    expect(storage.artwork).toHaveBeenCalledWith(account);
+    expect(access.read).toHaveBeenCalledOnce();
+    expect(access.readImage).toHaveBeenCalledWith(data.images[0]);
+    expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
+    covers.destroy();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:cover-1");
+  });
+
   it("detaches network handles without discarding cached artwork or accepting late downloads", async () => {
     const storage = installOpfs();
     await storage.seed();

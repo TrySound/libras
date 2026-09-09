@@ -13,11 +13,11 @@ const snapshot = (): MetadataSnapshot => ({
 });
 
 function installStorage() {
-  const files = new Map<string, string>();
-  const state = { writes: 0, fail: false, beforeWrite: () => {} };
+  const files = new Map<string, string | Blob>();
+  const state = { writes: 0, fail: false, beforeWrite: (_path: string) => {} };
   const getDirectory = vi.fn(async () => ({
     async getDirectoryHandle(directory: string) {
-      expect(["metadata", "queue"]).toContain(directory);
+      expect(["metadata", "queue", "images"]).toContain(directory);
       return {
         async getFileHandle(name: string, options?: { create?: boolean }) {
           const path = `${directory}/${name}`;
@@ -29,10 +29,10 @@ function installStorage() {
               return new File([files.get(path)!], name);
             },
             async createWritable() {
-              let pending = "";
+              let pending: string | Blob = "";
               return {
-                async write(value: string) {
-                  state.beforeWrite();
+                async write(value: string | Blob) {
+                  state.beforeWrite(path);
                   if (state.fail) throw new Error("Storage full");
                   pending = value;
                 },
@@ -61,6 +61,132 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("artwork storage", () => {
+  const valid = () => true;
+  const image = (text = "image") => ({ blob: new Blob([text]), type: "image/png", etag: '"v1"' });
+
+  it("stores catalogs and images together and returns independent image bytes", async () => {
+    const disk = installStorage();
+    const storage = new Storage();
+    const artwork = storage.artwork(account);
+    expect(disk.getDirectory).not.toHaveBeenCalled();
+    const empty = await artwork.read(valid);
+    expect(empty?.catalog.images).toEqual([]);
+    await artwork.update(
+      (catalog) => ({
+        ...catalog,
+        metadataSavedAt: 100,
+        albums: [{ id: "album", candidates: ["cover"] }],
+      }),
+      valid,
+    );
+    const saved = await artwork.saveImage("cover", image(), undefined, valid);
+    expect(saved?.image?.blob.type).toBe("image/png");
+    const record = saved!.catalog.images[0];
+    expect(record).toMatchObject({ id: "cover", type: "image/png", size: 5, etag: '"v1"' });
+    const blob = await artwork.readImage(record);
+    disk.files.set(`images/${record.fileName}`, "other");
+    expect(await blob.text()).toBe("image");
+    const name = await jsonFileName(`${account.host}\n${account.username}`);
+    expect(disk.files.has(`images/${name}`)).toBe(true);
+    expect(disk.lock).toHaveBeenCalledWith(`music-web-covers:${name}`, expect.any(Function));
+    expect((await artwork.read(valid))?.catalog.albums).toEqual([
+      { id: "album", candidates: ["cover"] },
+    ]);
+    expect(
+      (await storage.artwork({ ...account, username: "other" }).read(valid))?.catalog.images,
+    ).toEqual([]);
+  });
+
+  it("filters missing and truncated files even when persisting repairs fails", async () => {
+    const disk = installStorage();
+    const artwork = new Storage().artwork(account);
+    await artwork.update(
+      (catalog) => ({
+        ...catalog,
+        albums: [{ id: "album", candidates: ["a", "b"] }],
+        images: ["a", "b"].map((id) => ({
+          id,
+          fileName: `${id}.image`,
+          type: "image/png",
+          size: 5,
+          cachedAt: 100,
+        })),
+      }),
+      valid,
+    );
+    disk.files.set("images/b.image", "x");
+    disk.state.fail = true;
+    const result = await artwork.read(valid);
+    expect(result?.catalog.images).toEqual([]);
+    expect(result?.catalog.albums[0].candidates).toEqual(["a", "b"]);
+    expect(result?.error).toBeInstanceOf(Error);
+    disk.state.fail = false;
+    const repaired = await artwork.read(valid);
+    expect(repaired?.error).toBeUndefined();
+    expect(repaired?.catalog.images).toEqual([]);
+    expect(disk.files.get("images/b.image")).toBe("x");
+  });
+
+  it("keeps the concurrent winner and removes only the unused image file", async () => {
+    const disk = installStorage();
+    const storage = new Storage();
+    const first = storage.artwork(account);
+    const second = storage.artwork({ ...account });
+    const results = await Promise.all([
+      first.saveImage("cover", image("first"), undefined, valid),
+      second.saveImage("cover", image("second"), undefined, valid),
+    ]);
+    expect(results.filter((result) => result?.image)).toHaveLength(1);
+    expect([...disk.files.keys()].filter((name) => name.endsWith(".image"))).toHaveLength(1);
+    const read = await first.read(valid);
+    expect(read?.catalog.images).toHaveLength(1);
+    const winner = results.find((result) => result?.image)!;
+    expect(await (await second.readImage(read!.catalog.images[0])).text()).toBe(
+      await winner.image!.blob.text(),
+    );
+  });
+
+  it("preserves cached bytes and catalog after failed or cancelled replacements", async () => {
+    const disk = installStorage();
+    const artwork = new Storage().artwork(account);
+    const original = await artwork.saveImage("cover", image(), undefined, valid);
+    const previous = original!.catalog.images[0];
+    disk.state.beforeWrite = (path) => {
+      if (path.endsWith(".json")) throw new Error("Storage full");
+    };
+    await expect(
+      artwork.saveImage("cover", image("new"), previous.fileName, valid),
+    ).rejects.toThrow("Storage full");
+    let current = true;
+    disk.state.beforeWrite = (path) => {
+      if (path.endsWith(".json")) current = false;
+    };
+    expect(
+      await artwork.saveImage("cover", image("late"), previous.fileName, () => current),
+    ).toBeUndefined();
+    disk.state.beforeWrite = () => {};
+    expect((await artwork.read(valid))?.catalog).toEqual(original!.catalog);
+    expect(await (await artwork.readImage(previous)).text()).toBe("image");
+    expect([...disk.files.keys()].filter((name) => name.endsWith(".image"))).toEqual([
+      `images/${previous.fileName}`,
+    ]);
+  });
+
+  it("does not repair corrupt catalogs or adopt legacy images implicitly", async () => {
+    const disk = installStorage();
+    const artwork = new Storage().artwork(account);
+    const path = `images/${await jsonFileName(`${account.host}\n${account.username}`)}`;
+    disk.files.set(path, "broken JSON");
+    disk.files.set("images/legacy.image", "legacy");
+    await expect(artwork.read(valid)).rejects.toThrow();
+    await expect(artwork.update((catalog) => catalog, valid)).rejects.toThrow();
+    await expect(artwork.saveImage("cover", image(), undefined, valid)).rejects.toThrow();
+    expect(disk.files.get(path)).toBe("broken JSON");
+    expect([...disk.files.keys()]).toEqual([path, "images/legacy.image"]);
+  });
+});
+
 describe("queue storage", () => {
   const record = (): QueueRecord => ({
     account,
@@ -81,7 +207,7 @@ describe("queue storage", () => {
     await storage.metadata(account).save(snapshot());
     const name = await jsonFileName(`${account.host}\n${account.username}`);
     expect(disk.files.size).toBe(2);
-    expect(JSON.parse(disk.files.get(`queue/${name}`)!)).toEqual(record());
+    expect(JSON.parse(disk.files.get(`queue/${name}`) as string)).toEqual(record());
     expect(disk.lock).toHaveBeenCalledWith(`music-web-queue:${name}`, expect.any(Function));
     expect(await new Storage().queue(account).read()).toEqual(record());
     expect(await storage.metadata(account).read()).toEqual(snapshot());
@@ -167,7 +293,7 @@ describe("metadata storage", () => {
     expect(await store.metadata(account).read()).toBeNull();
     expect(await store.metadata(account).save(snapshot())).toEqual(snapshot());
     const name = await jsonFileName(`${account.host}\n${account.username}`);
-    expect(JSON.parse(disk.files.get(`metadata/${name}`)!)).toEqual(snapshot());
+    expect(JSON.parse(disk.files.get(`metadata/${name}`) as string)).toEqual(snapshot());
     expect(disk.lock).toHaveBeenCalledWith(`music-web-metadata:${name}`, expect.any(Function));
     expect(await new Storage().metadata(account).read()).toEqual(snapshot());
     expect(await store.metadata({ ...account, username: "other" }).read()).toBeNull();

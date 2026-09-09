@@ -1,8 +1,7 @@
-import * as v from "valibot";
-import { OpfsJsonStore, jsonFileName } from "./json-store";
+import type { Storage, ArtworkCatalog } from "./storage";
 import { createSubscriber } from "svelte/reactivity";
 import type { ArtworkConnection } from "./network.svelte";
-import { imageSchema, type ImageRecord, type MetadataAccount } from "./schema";
+import type { ImageRecord, MetadataAccount } from "./schema";
 import type { Memory } from "./memory.svelte";
 
 type CoverMemory = Pick<
@@ -35,18 +34,6 @@ export interface Cover {
   readonly cache: () => void;
 }
 
-const idSchema = v.pipe(v.string(), v.minLength(1));
-const timeSchema = v.pipe(v.number(), v.integer(), v.minValue(0));
-const referenceSchema = v.strictObject({ id: idSchema, candidates: v.array(idSchema) });
-const catalogSchema = v.strictObject({
-  account: v.strictObject({ host: idSchema, username: idSchema }),
-  metadataSavedAt: v.nullable(timeSchema),
-  artists: v.array(referenceSchema),
-  albums: v.array(referenceSchema),
-  tracks: v.array(referenceSchema),
-  images: v.array(imageSchema),
-});
-type Catalog = v.InferOutput<typeof catalogSchema>;
 type Entity = "artists" | "albums" | "tracks" | "image";
 interface CoverEntry {
   entity: Entity;
@@ -62,26 +49,6 @@ interface CoverEntry {
 
 function scope(account: MetadataAccount) {
   return `${account.host}\n${account.username}`;
-}
-function emptyCatalog(account: MetadataAccount): Catalog {
-  return {
-    account: { host: account.host, username: account.username },
-    metadataSavedAt: null,
-    artists: [],
-    albums: [],
-    tracks: [],
-    images: [],
-  };
-}
-function parseCatalog(value: unknown, account: MetadataAccount) {
-  const catalog = v.parse(catalogSchema, value);
-  if (scope(catalog.account) !== scope(account))
-    throw new Error("The cover catalog belongs to a different account.");
-  for (const records of [catalog.artists, catalog.albums, catalog.tracks, catalog.images]) {
-    if (new Set(records.map((record) => record.id)).size !== records.length)
-      throw new Error("Duplicate IDs in the cover catalog.");
-  }
-  return catalog;
 }
 function candidates(values: readonly (string | undefined)[]) {
   return [...new Set(values.filter((id): id is string => Boolean(id)))];
@@ -148,9 +115,14 @@ export class CoverEngine {
   #metadata: { readonly savedAt: number | undefined };
   #connection?: ArtworkConnection;
 
-  constructor(memory: CoverMemory, metadata: { readonly savedAt: number | undefined }) {
+  constructor(
+    memory: CoverMemory,
+    metadata: { readonly savedAt: number | undefined },
+    storage: Pick<Storage, "artwork">,
+  ) {
     this.#memory = memory;
     this.#metadata = metadata;
+    this.#storage = storage;
   }
   #metadataSavedAt: number | null = null;
   #scope = "";
@@ -159,7 +131,7 @@ export class CoverEngine {
   #destroyed = false;
   #reconcileKey = "";
   #reconciling: Promise<void> = Promise.resolve();
-  #files = new Map<string, Promise<OpfsJsonStore<Catalog>>>();
+  #storage: Pick<Storage, "artwork">;
   #covers = new Map<string, CoverEntry>();
   #downloads = new Map<string, Promise<void>>();
   #loads = new Map<string, Promise<string | undefined>>();
@@ -188,44 +160,6 @@ export class CoverEngine {
     this.#subscribe();
     return this.#error;
   }
-  async #directory() {
-    const root = await navigator.storage.getDirectory();
-    return root.getDirectoryHandle("images", { create: true });
-  }
-  #file({ host, username }: MetadataAccount) {
-    const key = `${host}\n${username}`;
-    let file = this.#files.get(key);
-    if (!file) {
-      file = jsonFileName(key)
-        .then(
-          (fileName) =>
-            new OpfsJsonStore({
-              directory: "images",
-              fileName,
-              lockName: `music-web-covers:${fileName}`,
-              parse: (value) => parseCatalog(value, { host, username }),
-            }),
-        )
-        .catch((error) => {
-          this.#files.delete(key);
-          throw error;
-        });
-      this.#files.set(key, file);
-    }
-    return file;
-  }
-  async #commit(
-    account: MetadataAccount,
-    change: (catalog: Catalog) => Catalog,
-    valid: () => boolean,
-  ) {
-    const file = await this.#file(account);
-    const result = await file.update((catalog) => change(catalog ?? emptyCatalog(account)), {
-      valid,
-    });
-    return valid() ? (result.value ?? undefined) : undefined;
-  }
-
   restore(account: MetadataAccount): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
     if (this.#scope === scope(account)) return this.#ready;
@@ -257,44 +191,11 @@ export class CoverEngine {
     this.#notify();
     return (this.#ready = (async () => {
       try {
-        let catalog = (await (await this.#file(account)).read()) ?? emptyCatalog(account);
-        const directory = await this.#directory();
-        const missing = new Set<string>();
-        let next = 0;
-        const worker = async () => {
-          while (next < catalog.images.length && valid()) {
-            const record = catalog.images[next++];
-            try {
-              const file = await (await directory.getFileHandle(record.fileName)).getFile();
-              if (file.size !== record.size) missing.add(record.fileName);
-            } catch (error) {
-              if (!(error instanceof DOMException && error.name === "NotFoundError")) throw error;
-              missing.add(record.fileName);
-            }
-          }
-        };
-        await Promise.all(Array.from({ length: Math.min(6, catalog.images.length) }, worker));
-        if (!valid()) return;
-        if (missing.size) {
-          catalog = {
-            ...catalog,
-            images: catalog.images.filter((image) => !missing.has(image.fileName)),
-          };
-          try {
-            catalog =
-              (await this.#commit(
-                account,
-                (latest) => ({
-                  ...latest,
-                  images: latest.images.filter((image) => !missing.has(image.fileName)),
-                }),
-                valid,
-              )) ?? catalog;
-          } catch (error) {
-            if (valid()) this.#error = error;
-          }
+        const result = await this.#storage.artwork(account).read(valid);
+        if (result && valid()) {
+          this.#error = result.error;
+          await this.#apply(result.catalog);
         }
-        if (valid()) await this.#apply(catalog);
       } catch (error) {
         if (valid()) {
           this.#error = error;
@@ -338,11 +239,13 @@ export class CoverEngine {
     const refs = references({ artists, albums, tracks, artistAlbums, albumTracks }, savedAt);
     return (this.#reconciling = (async () => {
       try {
-        const catalog = await this.#commit(
-          account,
-          (latest) => ((latest.metadataSavedAt ?? -1) > savedAt ? latest : { ...latest, ...refs }),
-          valid,
-        );
+        const catalog = await this.#storage
+          .artwork(account)
+          .update(
+            (latest) =>
+              (latest.metadataSavedAt ?? -1) > savedAt ? latest : { ...latest, ...refs },
+            valid,
+          );
         if (catalog && valid()) {
           this.#error = undefined;
           await this.#apply(catalog);
@@ -356,7 +259,7 @@ export class CoverEngine {
     })());
   }
 
-  async #apply(catalog: Catalog, downloaded?: { id: string; blob: Blob }) {
+  async #apply(catalog: ArtworkCatalog, downloaded?: { id: string; blob: Blob }) {
     if (
       this.#destroyed ||
       this.#scope !== scope(catalog.account) ||
@@ -400,12 +303,9 @@ export class CoverEngine {
     if (loading) return loading;
     const generation = this.#generation;
     const load = (async () => {
-      const directory = await this.#directory();
-      const file = await (await directory.getFileHandle(record.fileName)).getFile();
-      if (file.size !== record.size)
-        throw new DOMException("The cached image is incomplete.", "DataError");
-      // Never hand mutable OPFS-backed files to the browser or Media Session.
-      const bytes = await file.arrayBuffer();
+      const account = this.#memory.account;
+      if (!account) return;
+      const blob = await this.#storage.artwork(account).readImage(record);
       if (
         this.#destroyed ||
         generation !== this.#generation ||
@@ -414,7 +314,7 @@ export class CoverEngine {
         this.#memory.images.get(record.id)?.fileName !== record.fileName
       )
         return;
-      const source = URL.createObjectURL(new Blob([bytes], { type: record.type }));
+      const source = URL.createObjectURL(blob);
       this.#objectUrls.set(record.id, source);
       return source;
     })().finally(() => {
@@ -464,19 +364,21 @@ export class CoverEngine {
           images.delete(id);
           this.#memory.images = images;
           const account = this.#memory.account!;
-          void this.#commit(
-            account,
-            (catalog) => ({
-              ...catalog,
-              images: catalog.images.filter((image) => image.fileName !== record.fileName),
-            }),
-            () => generation === this.#generation && !this.#destroyed,
-          ).catch((error) => {
-            if (valid()) {
-              this.#error = error;
-              this.#notify();
-            }
-          });
+          void this.#storage
+            .artwork(account)
+            .update(
+              (catalog) => ({
+                ...catalog,
+                images: catalog.images.filter((image) => image.fileName !== record.fileName),
+              }),
+              () => generation === this.#generation && !this.#destroyed,
+            )
+            .catch((error) => {
+              if (valid()) {
+                this.#error = error;
+                this.#notify();
+              }
+            });
         }
       }
     }
@@ -532,49 +434,10 @@ export class CoverEngine {
       lastModified: cached?.lastModified,
     });
     if (!valid() || !result) return;
-    const { blob } = result;
-    const record = v.parse(imageSchema, {
-      id,
-      fileName: `${crypto.randomUUID()}.image`,
-      type: result.type,
-      size: blob.size,
-      cachedAt: Date.now(),
-      etag: result.etag,
-      lastModified: result.lastModified,
-    });
-    if (!valid()) return;
-    const directory = await this.#directory();
-    const handle = await directory.getFileHandle(record.fileName, { create: true });
-    let writable: FileSystemWritableFileStream | undefined;
-    let committed = false;
-    try {
-      writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      const catalog = await this.#commit(
-        connection.account,
-        (latest) => {
-          const current = latest.images.find((image) => image.id === id);
-          if (current && current.fileName !== cached?.fileName) return latest;
-          return {
-            ...latest,
-            images: [...latest.images.filter((image) => image.id !== id), record],
-          };
-        },
-        valid,
-      );
-      committed = catalog?.images.some((image) => image.fileName === record.fileName) ?? false;
-      if (catalog && valid())
-        await this.#apply(
-          catalog,
-          committed ? { id, blob: new Blob([blob], { type: record.type }) } : undefined,
-        );
-    } finally {
-      if (!committed) {
-        await writable?.abort().catch(() => {});
-        await directory.removeEntry(record.fileName).catch(() => {});
-      }
-    }
+    const saved = await this.#storage
+      .artwork(connection.account)
+      .saveImage(id, result, cached?.fileName, valid);
+    if (saved && valid()) await this.#apply(saved.catalog, saved.image);
   }
 
   // Explicit resource acquisition. Reading the returned handle does not schedule I/O.
