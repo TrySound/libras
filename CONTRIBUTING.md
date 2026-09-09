@@ -75,6 +75,8 @@ Only metadata validation is available to a login candidate. Acceptance enables o
 
 Network owns remote requests, response mapping, authenticated URLs, and connection cancellation. Metadata's `readLibrary(signal)` traverses 500-album pages and fetches album tracks with up to six workers. Superseded workflows abort their requests without closing the shared connection; a failed traversal also cancels sibling requests. MetadataEngine retains graph normalization, synthetic artists, validation, snapshot persistence, and publication. Engines retain cache policy, download scheduling, persistence, and object URLs. Audio responses stream directly to OPFS with both connection and job cancellation. Network's `createAuth()` normalizes the host and delegates salt/token generation to the SDK's `createSubsonicAuth()` helper, without enabling access or making requests. AuthStore only validates and persists credentials and last-account identity. Authentication storage keeps its existing token/salt format; its `Auth` type is inferred in `auth.ts`, separate from SDK types.
 
+`NetworkTransportError` identifies a rejected fetch before a response is returned, preserving the original cause. The SDK accepts an injected fetch implementation so Network applies the same classification to SDK, artwork, and audio requests. HTTP status, protocol, parsing/body-consumption, and storage errors retain their original identities; cancellation is never wrapped. Session provides connection troubleshooting text only for this transport error, without claiming to diagnose CORS.
+
 ## Storage architecture and offline behavior
 
 - The service worker precaches only the production app shell, manifest, and install icons. The style guide is not available offline.

@@ -102,18 +102,21 @@ export interface SubsonicStreamOptions {
 export interface SubsonicClientOptions {
   apiVersion?: string;
   clientName?: string;
+  fetch?: typeof fetch;
 }
 
 export class SubsonicClient {
   #apiVersion: string;
   #auth: SubsonicAuth;
   #clientName: string;
+  #fetch: typeof fetch;
   #controller = new AbortController();
 
   constructor(auth: SubsonicAuth, options: SubsonicClientOptions = {}) {
     this.#auth = auth;
     this.#apiVersion = options.apiVersion ?? "1.16.1";
     this.#clientName = options.clientName ?? "libras";
+    this.#fetch = options.fetch ?? ((...args) => fetch(...args));
   }
 
   get signal() {
@@ -173,7 +176,7 @@ export class SubsonicClient {
     const signal = requestSignal ? AbortSignal.any([this.signal, requestSignal]) : this.signal;
     signal.throwIfAborted();
     const query = this.#query(params);
-    return this.#parse(await fetch(this.#url(path, query), { signal }), signal);
+    return this.#parse(await this.#fetch(this.#url(path, query), { signal }), signal);
   }
 
   async getIndexes(ifModifiedSince?: number) {
@@ -233,7 +236,7 @@ export class SubsonicClient {
       query.set("position", String(Math.round(state.position * 1000)));
     }
     await this.#parse(
-      await fetch(this.#url("savePlayQueue", new URLSearchParams()), {
+      await this.#fetch(this.#url("savePlayQueue", new URLSearchParams()), {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: query,

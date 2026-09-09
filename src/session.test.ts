@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MetadataSnapshot } from "./metadata-engine";
+import { NetworkTransportError } from "./network.svelte";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
 const fixtures: ReturnType<typeof createSession>[] = [];
@@ -153,7 +154,9 @@ describe("session", () => {
       session.disconnect();
       const previous = memory.artists;
       const selection = memory.account;
-      metadata.prepareConnection.mockRejectedValueOnce(new TypeError("Network failed"));
+      metadata.prepareConnection.mockRejectedValueOnce(
+        new NetworkTransportError(new TypeError("Network failed")),
+      );
       expect(
         await session.connect({
           ...input,
@@ -200,10 +203,11 @@ describe("session", () => {
       const account = memory.account;
       if (stage === "credentials")
         vi.spyOn(auth, "save").mockImplementationOnce(() => {
-          throw new Error("Storage full");
+          throw new TypeError("Storage full");
         });
-      else metadata.saveConnection.mockRejectedValueOnce(new Error("Storage full"));
+      else metadata.saveConnection.mockRejectedValueOnce(new TypeError("Storage full"));
       expect(await session.connect({ ...input, username: "other" })).toBe(false);
+      expect(session.error).toBe("Storage full");
       expect(memory.artists).toBe(previous);
       expect(metadata.acceptConnection).not.toHaveBeenCalled();
       expect(auth.load()).toBeNull();
@@ -211,6 +215,14 @@ describe("session", () => {
       expect(storage.getItem("navidrome-offline-mode")).toBe("true");
     },
   );
+
+  it("does not report invalid connection input as a transport or CORS failure", async () => {
+    const { session, metadata } = setup();
+    expect(await session.connect({ ...input, host: "https://" })).toBe(false);
+    expect(session.error).toMatch(/URL/i);
+    expect(session.error).not.toContain("CORS");
+    expect(metadata.prepareConnection).not.toHaveBeenCalled();
+  });
 
   it("removes credentials saved during connection if disconnect interrupts metadata persistence", async () => {
     const { session, auth, metadata, memory } = await connected();

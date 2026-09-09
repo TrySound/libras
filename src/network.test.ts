@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Network } from "./network.svelte";
+import { Network, NetworkTransportError } from "./network.svelte";
 
 const auth = {
   host: "https://music.example",
@@ -9,6 +9,104 @@ const auth = {
 };
 
 describe("Network connection lifecycle", () => {
+  it.each(["modified", "library", "queueRead", "queueWrite", "artwork", "audio"] as const)(
+    "classifies rejected %s fetches at the transport boundary",
+    async (operation) => {
+      const network = new Network();
+      const connection = network.prepare(auth);
+      network.accept(connection);
+      const cause = new TypeError("Failed to fetch");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          throw cause;
+        }),
+      );
+      const signal = new AbortController().signal;
+      const operations = {
+        modified: () => network.metadata(connection).getModifiedAt(),
+        library: () => network.metadata(connection).readLibrary(signal),
+        queueRead: () => network.queue(connection).read(),
+        queueWrite: () => network.queue(connection).write({ trackIds: [], position: 0 }),
+        artwork: () => network.artwork(connection).read("cover", { size: 500 }),
+        audio: () => network.audio(connection).read("track", { format: "raw", signal }),
+      };
+      try {
+        const result = operations[operation]();
+        await expect(result).rejects.toBeInstanceOf(NetworkTransportError);
+        await expect(result).rejects.toMatchObject({ cause });
+        expect(network.mode).toBe("online");
+        expect(connection.signal.aborted).toBe(false);
+      } finally {
+        network.setMode("offline");
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it.each(["http", "protocol", "json", "body"])(
+    "does not misclassify %s errors as failed fetches",
+    async (kind) => {
+      const network = new Network();
+      const connection = network.prepare(auth);
+      let response: Response;
+      if (kind === "http") response = new Response(null, { status: 503 });
+      else if (kind === "protocol")
+        response = new Response(
+          JSON.stringify({
+            "subsonic-response": { status: "failed", error: { message: "Denied" } },
+          }),
+        );
+      else response = new Response("not JSON");
+      const bodyError = new TypeError("Body already consumed");
+      if (kind === "body") vi.spyOn(response, "json").mockRejectedValue(bodyError);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => response),
+      );
+      try {
+        const result = network.metadata(connection).getModifiedAt();
+        await expect(result).rejects.not.toBeInstanceOf(NetworkTransportError);
+        if (kind === "http") await expect(result).rejects.toThrow("HTTP 503");
+        if (kind === "protocol") await expect(result).rejects.toThrow("Denied");
+        if (kind === "json") await expect(result).rejects.toBeInstanceOf(SyntaxError);
+        if (kind === "body") await expect(result).rejects.toBe(bodyError);
+      } finally {
+        network.setMode("offline");
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+      }
+    },
+  );
+
+  it.each(["signal", "exception"])(
+    "preserves cancellation reported by %s rather than wrapping it",
+    async (kind) => {
+      const network = new Network();
+      const connection = network.prepare(auth);
+      const cancelled = new DOMException("Cancelled", "AbortError");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          if (kind === "signal") {
+            network.setMode("offline");
+            throw new TypeError("Fetch failed after abort");
+          }
+          throw cancelled;
+        }),
+      );
+      try {
+        const result = network.metadata(connection).getModifiedAt();
+        await expect(result).rejects.toBe(
+          kind === "exception" ? cancelled : connection.signal.reason,
+        );
+      } finally {
+        network.setMode("offline");
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   it.each([
     [" music.example/ ", "https://music.example"],
     ["http://music.example:4533/music/", "http://music.example:4533/music"],

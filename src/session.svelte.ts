@@ -2,7 +2,12 @@ import type { Auth, AuthStore } from "./auth";
 import type { CoverEngine } from "./cover-engine";
 import type { MemoryView } from "./memory.svelte";
 import type { MetadataEngine } from "./metadata-engine";
-import type { Network, NetworkConnection, PasswordAuth } from "./network.svelte";
+import {
+  NetworkTransportError,
+  type Network,
+  type NetworkConnection,
+  type PasswordAuth,
+} from "./network.svelte";
 import type { PlaybackEngine } from "./playback-engine";
 import type { QueueEngine } from "./queue-engine";
 import type { ConnectionStatus, MetadataAccount } from "./schema";
@@ -36,8 +41,8 @@ interface SessionOptions {
 }
 
 function connectionError(error: unknown) {
-  if (error instanceof TypeError)
-    return "Could not reach the server. Check the host and its CORS settings.";
+  if (error instanceof NetworkTransportError)
+    return "Could not reach the server. Check your connection, server address, and CORS settings.";
   return error instanceof Error ? error.message : "Could not connect to the server.";
 }
 

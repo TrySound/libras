@@ -3,6 +3,14 @@ import { authSchema, type Auth } from "./auth";
 import * as v from "valibot";
 import type { Album, Artist, Track, MetadataAccount } from "./schema";
 
+/** Fetch failed before returning a response; browsers do not expose a reliable CORS diagnosis. */
+export class NetworkTransportError extends Error {
+  constructor(cause: unknown) {
+    super("The server request failed.", { cause });
+    this.name = "NetworkTransportError";
+  }
+}
+
 export interface PasswordAuth {
   host: string;
   username: string;
@@ -113,7 +121,9 @@ export class Network {
 
   /** Explicit login validation is allowed while normal access remains offline. */
   prepare(auth: Auth): NetworkConnection {
-    const candidate = new SubsonicClient(auth);
+    const candidate = new SubsonicClient(auth, {
+      fetch: (input, init) => this.#fetch(input, init),
+    });
     this.#candidate?.abort();
     this.#candidate = candidate;
     const connection = Object.freeze({
@@ -148,6 +158,16 @@ export class Network {
     if (allowCandidate && client === this.#candidate) return;
     if (client !== this.#client || this.#mode !== "online") {
       throw new DOMException("Connection superseded.", "AbortError");
+    }
+  }
+
+  async #fetch(input: RequestInfo | URL, init?: RequestInit) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      init?.signal?.throwIfAborted();
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      throw new NetworkTransportError(error);
     }
   }
 
@@ -295,7 +315,7 @@ export class Network {
           const headers = new Headers();
           if (options.etag) headers.set("If-None-Match", options.etag);
           if (options.lastModified) headers.set("If-Modified-Since", options.lastModified);
-          const response = await fetch(client.getCoverArtUrl(id, options.size), {
+          const response = await this.#fetch(client.getCoverArtUrl(id, options.size), {
             headers,
             signal: client.signal,
           });
@@ -331,7 +351,7 @@ export class Network {
       read: async (id, options) => {
         const signal = AbortSignal.any([client.signal, options.signal]);
         signal.throwIfAborted();
-        const response = await fetch(url(id, { format: options.format }), { signal });
+        const response = await this.#fetch(url(id, { format: options.format }), { signal });
         try {
           this.#check(client);
           signal.throwIfAborted();
