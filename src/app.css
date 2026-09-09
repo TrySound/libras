@@ -171,6 +171,7 @@
   border-radius: 0;
   color: inherit;
   cursor: pointer;
+  outline: 0;
 }
 
 .row-button {
@@ -1020,6 +1021,22 @@ a {
   text-align: left;
   background: var(--color-surface-raised);
   box-shadow: 0 0.8rem 2rem var(--color-shadow-raised);
+  transition: background-color 160ms ease-out;
+
+  &:has(.linkarea:hover),
+  &:has(.linkarea:active) {
+    background-color: color-mix(
+      in srgb,
+      var(--color-surface-raised) 90%,
+      var(--color-text-primary) 10%
+    );
+    transition-duration: 50ms;
+  }
+
+  &:has(.linkarea:focus-visible) {
+    outline: 2px solid var(--color-accent-text);
+    outline-offset: 2px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1040,7 +1057,8 @@ a {
   }
 
   .row-button,
-  .row-area {
+  .row-area,
+  .mini-player {
     transition: none;
   }
 

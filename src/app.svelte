@@ -1411,44 +1411,42 @@
       allowNetwork: !offlineMode,
     })}
     <div class="mini-player wings">
-      <div class="wings-item row-button">
-        <button
-          class="linkarea"
-          commandfor="player-dialog"
-          command="show-modal"
-          aria-label="Open player"
-        ></button>
-        <span class="mini-art">
-          {#if cover.source}
-            <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
-          {:else}
-            <span>{@render icon("music")}</span>
-          {/if}
-        </span>
-        <span class="mini-copy stack-xs">
-          <strong class="type-title">
-            {playback.track.title}
-          </strong>
-          <small class="type-small muted">
-            {memory.artists.get(playback.track.artistId)?.name}
-          </small>
-        </span>
-        <button
-          class="icon-button"
-          data-size="md"
-          data-variant="primary"
-          onclick={() => playback.toggle()}
-          title={playback.playing ? "Pause" : "Play"}
-        >
-          {#if playbackLoading}
-            {@render icon("loading")}
-          {:else if playback.playing}
-            {@render icon("pause")}
-          {:else}
-            {@render icon("play")}
-          {/if}
-        </button>
-      </div>
+      <button
+        class="linkarea"
+        commandfor="player-dialog"
+        command="show-modal"
+        aria-label="Open player"
+      ></button>
+      <span class="mini-art">
+        {#if cover.source}
+          <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
+        {:else}
+          <span>{@render icon("music")}</span>
+        {/if}
+      </span>
+      <span class="mini-copy stack-xs">
+        <strong class="type-title">
+          {playback.track.title}
+        </strong>
+        <small class="type-small muted">
+          {memory.artists.get(playback.track.artistId)?.name}
+        </small>
+      </span>
+      <button
+        class="icon-button"
+        data-size="md"
+        data-variant="primary"
+        onclick={() => playback.toggle()}
+        title={playback.playing ? "Pause" : "Play"}
+      >
+        {#if playbackLoading}
+          {@render icon("loading")}
+        {:else if playback.playing}
+          {@render icon("pause")}
+        {:else}
+          {@render icon("play")}
+        {/if}
+      </button>
       <span class="mini-progress">
         <span style:width={`${playbackPercent()}%`}></span>
       </span>
