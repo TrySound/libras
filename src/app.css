@@ -410,9 +410,7 @@ input {
 .app-shell {
   position: relative;
   width: 100%;
-  max-width: 32rem;
   min-height: 100dvh;
-  margin: 0 auto;
   padding-bottom: 5.5rem;
 }
 
@@ -688,42 +686,11 @@ a {
   gap: var(--space-xs);
 }
 
-.collection-art {
-  position: relative;
-  display: grid;
-  margin-bottom: var(--space-lg);
-  overflow: hidden;
-  place-items: center;
-  border-radius: 1.25rem;
-  color: var(--color-artwork-foreground);
-  background: linear-gradient(
-    145deg,
-    var(--color-gradient-cover-start),
-    var(--color-gradient-cover-end)
-  );
-  font-size: 5rem;
-}
-
-.collection-art img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.collection-art-artist {
-  aspect-ratio: 1;
-  background: var(--color-surface);
-}
-
-.collection-art-artist img {
-  object-fit: contain;
-}
-
-.collection-art-album {
-  width: min(100%, 20rem);
-  aspect-ratio: 1;
+.collection-view,
+.settings-view {
+  box-sizing: border-box;
+  max-width: 40rem;
   margin-inline: auto;
-  box-shadow: 0 0.75rem 2rem var(--color-shadow-artwork);
 }
 
 .collection-heading {
@@ -750,8 +717,9 @@ a {
 
 .player-dialog {
   --dialog-dismiss-offset: calc(50dvh + 50%);
-  width: min(calc(100% - 2rem), 32rem);
-  max-width: none;
+  box-sizing: border-box;
+  width: calc(100% - 2rem);
+  max-width: 80rem;
   height: min(calc(100dvh - 2rem), 52rem);
   max-height: none;
   padding: 0;
@@ -768,13 +736,16 @@ a {
   backdrop-filter: blur(6px);
 }
 
-.player-dialog .player-main {
-  height: calc(min(100dvh - 2rem, 52rem) - 6.25rem);
+.player-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(25rem, 100%), 1fr));
+  align-items: start;
+  gap: var(--space-xl);
 }
 
 .player-main {
   display: flex;
-  height: calc(100dvh - 6.25rem);
+  min-width: 0;
   min-height: 0;
   flex-direction: column;
   justify-content: center;
@@ -782,27 +753,31 @@ a {
 
 .artwork {
   display: grid;
-  width: 100%;
+  width: min(100%, 20rem);
+  aspect-ratio: 1;
   min-height: 0;
-  margin: 0 0 1.5rem;
+  margin: 0 auto var(--space-lg);
   overflow: hidden;
-  flex: 1 1 auto;
   place-items: center;
-  border-radius: 1.5rem;
+  border-radius: 1.25rem;
   color: var(--color-artwork-foreground);
   background: linear-gradient(
     145deg,
-    var(--color-gradient-primary),
-    var(--color-gradient-secondary)
+    var(--color-gradient-cover-start),
+    var(--color-gradient-cover-end)
   );
-  box-shadow: 0 1.5rem 3.5rem var(--color-shadow-artwork);
+  box-shadow: 0 0.75rem 2rem var(--color-shadow-artwork);
   font-size: 5rem;
 }
 
 .artwork img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+}
+
+.player-main .artwork {
+  flex: 0 1 auto;
 }
 
 .player-main > p {
@@ -846,7 +821,7 @@ a {
 
 .artist-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(10rem, 100%), 1fr));
   gap: 0.8rem;
 }
 
@@ -952,9 +927,9 @@ a {
 .action-menu {
   position: fixed;
   inset: auto 0 0;
-  width: min(100%, 32rem);
+  width: 100%;
   max-width: none;
-  margin: 0 auto;
+  margin: 0;
   padding: var(--space-md);
   padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
   max-height: calc(100dvh - 2rem);
@@ -1053,9 +1028,7 @@ a {
 }
 
 .player-queue {
-  margin-top: 1.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--color-border-subtle);
+  min-width: 0;
 }
 
 .empty-state {
@@ -1097,8 +1070,6 @@ a {
   right: 0.6rem;
   bottom: max(0.6rem, env(safe-area-inset-bottom));
   left: 0.6rem;
-  max-width: 30.8rem;
-  margin: 0 auto;
   border: 1px solid var(--color-border-strong);
   border-radius: 0.9rem;
   text-align: left;
@@ -1187,17 +1158,4 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-@media (max-width: 34rem) {
-  .player-dialog {
-    width: 100%;
-    height: 100dvh;
-    border: 0;
-    border-radius: 0;
-  }
-
-  .player-dialog .player-main {
-    height: calc(100dvh - 6.25rem);
-  }
 }

@@ -583,7 +583,7 @@
   {@const artist = playback.track && memory.artists.get(playback.track.artistId)}
   {@const album = playback.track && memory.albums.get(playback.track.albumId)}
   {@const albumArtist = album && memory.artists.get(album.artistId)}
-  <dialog id="player-dialog" class="player-dialog" use:swipeToDismiss>
+  <dialog id="player-dialog" class="player-dialog" closedby="any" use:swipeToDismiss>
     <header class="topbar wings">
       <button
         class="icon-button"
@@ -945,12 +945,12 @@
   </header>
   {@render alerts()}
 
-  <section class="view library-view">
+  <section class="view collection-view">
     {#if libraryAvailable && artist}
       {@const artwork = coverEngine.ensureArtistCover(artist.id, {
         allowNetwork: !offlineMode,
       })}
-      <div class="collection-art collection-art-artist" aria-hidden="true">
+      <div class="artwork" aria-hidden="true">
         {#if artwork.source}
           <img src={artwork.source} alt="" onload={artwork.cache} />
         {:else}
@@ -1178,12 +1178,12 @@
   </header>
   {@render alerts()}
 
-  <section class="view library-view">
+  <section class="view collection-view">
     {#if libraryAvailable && artist && album}
       {@const artwork = coverEngine.ensureAlbumCover(album.id, {
         allowNetwork: !offlineMode,
       })}
-      <div class="collection-art collection-art-album" aria-hidden="true">
+      <div class="artwork" aria-hidden="true">
         {#if artwork.source}
           <img src={artwork.source} alt="" onload={artwork.cache} />
         {:else}
