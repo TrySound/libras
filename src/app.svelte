@@ -19,6 +19,7 @@
   import { QueueEngine } from "./queue-engine";
   import { type RouteParams } from "./router-engine";
   import { Session } from "./session.svelte";
+  import { Network } from "./network.svelte";
   import Router, { type RouteControls, type RouterNavigate } from "./router.svelte";
   import { TrackEngine } from "./track-engine";
   import { swipeToDismiss } from "./swipe-to-dismiss";
@@ -57,8 +58,10 @@
     covers: coverEngine,
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
   });
+  const network = new Network();
   const session = new Session({
     memory,
+    network,
     auth: new AuthStore(),
     metadata: metadataEngine,
     queue: queueEngine,

@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import { AuthStore } from "./auth";
 import { Memory } from "./memory.svelte";
+import { Network } from "./network.svelte";
 import type { MetadataSnapshot, MetadataStatus } from "./metadata-engine";
 import type { MetadataAccount } from "./schema";
 import type { SubsonicClient } from "./subsonic-client";
@@ -98,6 +99,17 @@ export function createSession(saved = false, storage = createStorage()) {
   };
   const tracks = { setClient: vi.fn() };
   const playback = { suspend: vi.fn(), suspendNetwork: vi.fn() };
-  const session = new Session({ memory, auth, metadata, covers, queue, tracks, playback, storage });
-  return { session, memory, auth, metadata, covers, queue, tracks, playback, storage };
+  const network = new Network();
+  const session = new Session({
+    memory,
+    network,
+    auth,
+    metadata,
+    covers,
+    queue,
+    tracks,
+    playback,
+    storage,
+  });
+  return { session, network, memory, auth, metadata, covers, queue, tracks, playback, storage };
 }

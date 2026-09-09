@@ -2,16 +2,18 @@ import type { AuthStore, PasswordAuth } from "./auth";
 import type { CoverEngine } from "./cover-engine";
 import type { MemoryView } from "./memory.svelte";
 import type { MetadataEngine } from "./metadata-engine";
+import type { Network } from "./network.svelte";
 import type { PlaybackEngine } from "./playback-engine";
 import type { QueueEngine } from "./queue-engine";
 import type { ConnectionStatus, MetadataAccount } from "./schema";
-import { SubsonicClient, type SubsonicAuth } from "./subsonic-client";
+import type { SubsonicClient, SubsonicAuth } from "./subsonic-client";
 import type { TrackEngine } from "./track-engine";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
 interface SessionOptions {
   memory: MemoryView;
+  network: Network;
   auth: Pick<AuthStore, "create" | "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
   metadata: Pick<
     MetadataEngine,
@@ -43,13 +45,11 @@ function connectionError(error: unknown) {
 
 export class Session {
   auth = $state.raw<SubsonicAuth | null>(null);
-  offlineMode = $state(true);
   status = $state<ConnectionStatus>("disconnected");
   error = $state("");
   refreshError = $state("");
 
   #options: SessionOptions;
-  #client?: SubsonicClient;
   #restoration: Promise<void> = Promise.resolve();
   #generation = 0;
   #started = false;
@@ -61,6 +61,10 @@ export class Session {
 
   get busy() {
     return this.status === "connecting";
+  }
+
+  get offlineMode() {
+    return this.#options.network.mode === "offline";
   }
 
   #valid(generation: number) {
@@ -81,8 +85,7 @@ export class Session {
 
   #detach() {
     const { metadata, queue, covers, tracks, playback } = this.#options;
-    this.#client?.abort();
-    this.#client = undefined;
+    this.#options.network.setMode("offline");
     metadata.setNetwork("offline");
     queue.setNetwork("offline");
     metadata.setClient(undefined);
@@ -95,7 +98,6 @@ export class Session {
 
   #attach(client: SubsonicClient) {
     const { metadata, queue, covers, tracks } = this.#options;
-    this.#client = client;
     metadata.setNetwork("online");
     queue.setNetwork("online");
     metadata.setClient(client);
@@ -118,9 +120,10 @@ export class Session {
       const account = this.auth
         ? { host: this.auth.host, username: this.auth.username }
         : this.#options.auth.loadAccount();
-      this.offlineMode =
+      const offlineMode =
         !this.auth || this.#options.storage.getItem(offlineModeStorageKey) === "true";
       this.#detach();
+      this.#options.network.setMode(offlineMode ? "offline" : "online");
       if (this.offlineMode) this.#options.storage.setItem(offlineModeStorageKey, "true");
       if (account) {
         // Migrate existing installations before credentials can be removed.
@@ -156,8 +159,7 @@ export class Session {
     this.status = "connecting";
     try {
       const credentials = this.#options.auth.create(input);
-      const client = new SubsonicClient(credentials);
-      this.#client = client;
+      const client = this.#options.network.prepare(credentials);
       await this.#restoration;
       if (!this.#valid(generation)) return false;
       const { metadata, queue, covers, auth, storage } = this.#options;
@@ -170,6 +172,7 @@ export class Session {
       storage.setItem(offlineModeStorageKey, "false");
       const snapshot = await metadata.saveConnection(prepared, client.signal);
       if (!this.#valid(generation)) return false;
+      this.#options.network.accept(client);
       this.#options.playback.suspend();
       // Clear foreign queue/artwork synchronously before publishing new metadata.
       this.#restoration = Promise.all([
@@ -178,7 +181,6 @@ export class Session {
       ]).then(() => {});
       metadata.acceptConnection(snapshot);
       this.auth = credentials;
-      this.offlineMode = false;
       this.#attach(client);
       await this.#restoration;
       if (!this.#valid(generation)) return false;
@@ -199,7 +201,6 @@ export class Session {
     if (this.#destroyed) return false;
     const generation = this.#begin();
     this.auth = null;
-    this.offlineMode = true;
     this.#detach();
     this.status = "disconnected";
     try {
@@ -227,7 +228,7 @@ export class Session {
   async #resumeOnline(generation: number) {
     if (!this.auth || !this.#valid(generation)) return;
     this.status = "connecting";
-    this.#attach(new SubsonicClient(this.auth));
+    this.#attach(this.#options.network.open(this.auth));
     await this.#options.metadata.revalidate();
     if (!this.#valid(generation)) return;
     await this.#options.covers.refresh();
@@ -251,7 +252,7 @@ export class Session {
   async setOfflineMode(enabled: boolean) {
     if (!this.auth || this.#destroyed || enabled === this.offlineMode) return;
     const generation = this.#begin();
-    this.offlineMode = enabled;
+    if (!enabled) this.#options.network.setMode("online");
     try {
       if (enabled) {
         this.#detach();
