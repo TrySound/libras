@@ -95,7 +95,37 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+async function connectQueue(queue: QueueEngine, client: SubsonicClient) {
+  await queue.restore(client);
+  queue.setClient(client);
+  await queue.synchronize();
+}
+
 describe("queue engine", () => {
+  it("configures without I/O and synchronizes only on an explicit command", async () => {
+    const getDirectory = vi.spyOn(navigator.storage, "getDirectory");
+    const client = new SubsonicClient(auth);
+    const load = vi
+      .spyOn(client, "getPlayQueue")
+      .mockResolvedValue({ tracks: ["a"], current: "a", position: 0 });
+    const memory = new Memory();
+    const queue = engine(memory);
+    queue.setClient(client);
+    queue.setNetwork("offline");
+    queue.setNetwork("online");
+    expect(getDirectory).not.toHaveBeenCalled();
+    expect(load).not.toHaveBeenCalled();
+    await queue.restore(account);
+    expect(load).not.toHaveBeenCalled();
+    await queue.synchronize();
+    expect(load).toHaveBeenCalledOnce();
+    expect(memory.queueTracks).toEqual(["a"]);
+    load.mockResolvedValue({ tracks: ["b"], current: "b", position: 0 });
+    await queue.synchronize();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(memory.queueTracks).toEqual(["b"]);
+  });
+
   it("publishes the complete normalized queue before notifying playback subscribers", () => {
     const memory = new Memory();
 
@@ -135,7 +165,7 @@ describe("queue engine", () => {
     const save = vi.spyOn(client, "savePlayQueue").mockResolvedValue(undefined);
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.setClient(client);
+    await connectQueue(queue, client);
     queue.update({ tracks: ["local"], index: 0, position: 0 });
     const newer = { ...record(), updatedAt: 5000, pendingSync: true };
     await storage.seed(newer);
@@ -170,7 +200,7 @@ describe("queue engine", () => {
     });
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.setClient(client);
+    await connectQueue(queue, client);
     queue.update({ tracks: ["local"], index: 0, position: 0 });
     await queue.flush();
     expect(queue.storageError).toBeInstanceOf(Error);
@@ -217,7 +247,7 @@ describe("queue engine", () => {
     expect(restoredMemory.queueTracks).toEqual(["a", "b", "a"]);
     expect(restoredMemory.queueIndex).toBe(2);
     expect(restoredMemory.queuePosition).toBe(35);
-    await queue.setClient(new SubsonicClient(auth));
+    await connectQueue(queue, new SubsonicClient(auth));
     queue.update({ tracks: [], position: 0 });
     await queue.flush();
     const empty = await storage.json();
@@ -245,7 +275,7 @@ describe("queue engine", () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     await queue.restore(account);
-    const connected = queue.setClient(new SubsonicClient(auth));
+    const connected = connectQueue(queue, new SubsonicClient(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     expect(queueMemory.queueIndex).toBe(2);
     resolve(
@@ -274,7 +304,7 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.setClient(new SubsonicClient(auth));
+    await connectQueue(queue, new SubsonicClient(auth));
     expect(queueMemory.queueIndex).toBe(2);
     expect((await storage.json()).index).toBe(2);
   });
@@ -285,7 +315,7 @@ describe("queue engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.setClient(new SubsonicClient(auth));
+    await connectQueue(queue, new SubsonicClient(auth));
     expect(fetcher).toHaveBeenCalledOnce();
     const [url, options] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toContain("savePlayQueue");
@@ -310,7 +340,7 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    const connected = queue.setClient(new SubsonicClient(auth));
+    const connected = connectQueue(queue, new SubsonicClient(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     queue.update({ tracks: ["local"], index: 0, position: 2 });
     resolve(response({ playQueue: { current: "remote", entry: [{ id: "remote" }] } }));
@@ -344,12 +374,13 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    const connected = queue.setClient(new SubsonicClient(auth));
+    const connected = connectQueue(queue, new SubsonicClient(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     queue.setPosition(20);
     resolve(response());
     await connected;
-    await queue.setNetwork("offline");
+    queue.setNetwork("offline");
+    await queue.flush();
     expect(await storage.json()).toMatchObject({ position: 20, pendingSync: true });
   });
 
@@ -363,13 +394,14 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.setClient(new SubsonicClient(auth));
+    await connectQueue(queue, new SubsonicClient(auth));
     expect(queue.error).toBeInstanceOf(Error);
     expect((await storage.json()).pendingSync).toBe(true);
     await queue.setNetwork("offline");
     const fetcher = vi.fn(async () => response());
     vi.stubGlobal("fetch", fetcher);
-    await queue.setNetwork("online");
+    queue.setNetwork("online");
+    await queue.synchronize();
     expect(fetcher).toHaveBeenCalledOnce();
     expect((await storage.json()).pendingSync).toBe(false);
   });
@@ -435,7 +467,7 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    const connected = queue.setClient(new SubsonicClient(auth));
+    const connected = connectQueue(queue, new SubsonicClient(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     await queue.restore(other);
     resolve(response({ playQueue: { current: "remote", entry: [{ id: "remote" }] } }));

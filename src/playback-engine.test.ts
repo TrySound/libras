@@ -222,14 +222,15 @@ describe("playback engine", () => {
         ),
     );
     vi.stubGlobal("fetch", fetcher);
-    await queue.setClient(
-      new SubsonicClient({
-        host: "https://music.example.com",
-        username: "listener",
-        token: "token",
-        salt: "salt",
-      }),
-    );
+    const client = new SubsonicClient({
+      host: "https://music.example.com",
+      username: "listener",
+      token: "token",
+      salt: "salt",
+    });
+    await queue.restore(client);
+    queue.setClient(client);
+    await queue.synchronize();
     await queue.flush();
     expect(memory.queueTracks).toEqual(["a", "fresh"]);
     expect(memory.queueIndex).toBe(1);

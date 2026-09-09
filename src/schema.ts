@@ -1,5 +1,7 @@
 import * as v from "valibot";
 
+export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
+
 const id = v.pipe(v.string(), v.minLength(1));
 
 const ordinal = v.optional(v.pipe(v.number(), v.integer(), v.minValue(1)));

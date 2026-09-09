@@ -325,14 +325,7 @@ export class MetadataEngine {
       .then((snapshot) => {
         if (generation !== this.#generation || this.#destroyed) return;
         this.#publish(snapshot ?? undefined);
-        this.#status =
-          this.#client && this.#network === "online"
-            ? snapshot
-              ? "refreshing"
-              : "loading"
-            : snapshot
-              ? "ready"
-              : "idle";
+        this.#status = snapshot ? "ready" : "idle";
       })
       .catch((error) => {
         if (generation !== this.#generation || this.#destroyed) return;
@@ -390,6 +383,10 @@ export class MetadataEngine {
   async #refresh(force: boolean) {
     const client = this.#client;
     if (!client || this.#destroyed) return;
+    if (this.#restoring) await this.#restoring;
+    if (client !== this.#client || this.#destroyed) return;
+    if (!this.#restored || this.#scope !== `${client.host}\n${client.username}`)
+      throw new Error("Restore the client's account before refreshing metadata.");
     const generation = ++this.#generation;
     this.#error = undefined;
     this.#warning = undefined;
@@ -436,26 +433,33 @@ export class MetadataEngine {
     }
   }
 
-  async refresh() {
-    const client = this.#client;
-    if (!client) return;
-    if (this.#restoring) await this.#restoring;
-    if (this.#client === client) return this.#refresh(true);
+  refresh() {
+    return this.#refresh(true);
   }
 
-  async setClient(client: SubsonicClient) {
+  revalidate() {
+    return this.#refresh(false);
+  }
+
+  setClient(client: SubsonicClient) {
     if (client === this.#client || this.#destroyed) return;
     this.#client = client;
-    if (!this.#restored || this.#scope !== `${client.host}\n${client.username}`) {
-      await this.restore(client);
+    if (!this.#restoring) {
+      this.#generation++;
+      this.#status = this.#snapshotInfo ? "ready" : "idle";
+      this.#update();
     }
-    if (this.#client === client) return this.#refresh(false);
   }
 
-  async setNetwork(network: MetadataNetwork) {
+  setNetwork(network: MetadataNetwork) {
     if (network === this.#network || this.#destroyed) return;
     this.#network = network;
-    if (!this.#restoring) return this.#refresh(false);
+    // Cancel network work without invalidating an independent cache restoration.
+    if (!this.#restoring) {
+      this.#generation++;
+      this.#status = this.#snapshotInfo ? "ready" : "idle";
+      this.#update();
+    }
   }
 
   destroy() {

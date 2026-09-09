@@ -272,6 +272,8 @@ export class QueueEngine {
     const result = this.#serverWrites.then(async () => {
       if (
         !client ||
+        !this.#account ||
+        scope(client) !== scope(this.#account) ||
         epoch !== this.#epoch ||
         this.#network === "offline" ||
         !this.#loaded ||
@@ -365,25 +367,34 @@ export class QueueEngine {
       if (this.#dirty) await this.#sync();
       else await this.#load();
     })();
-    this.#connecting = { epoch: this.#epoch, promise };
-    return promise;
+    const connecting = { epoch: this.#epoch, promise };
+    this.#connecting = connecting;
+    return promise.finally(() => {
+      if (this.#connecting === connecting) this.#connecting = undefined;
+    });
   }
-  async setClient(client: SubsonicClient) {
+  setClient(client: SubsonicClient) {
     if (client === this.#client || this.#destroyed) return;
     this.#client = client;
     this.#epoch++;
-    await this.restore(client);
-    if (this.#client === client && !this.#destroyed) await this.#connect();
+    this.#status = "idle";
+    this.#update();
   }
-  async setNetwork(network: QueueNetwork) {
+  setNetwork(network: QueueNetwork) {
     if (network === this.#network || this.#destroyed) return;
     this.#network = network;
     this.#epoch++;
     this.#clearTimers();
-    // Restoration has its own account epoch; do not interrupt an initial disk read.
+    this.#status = "idle";
+    this.#update();
+  }
+  async synchronize() {
+    const epoch = this.#epoch;
     await this.#ready;
+    if (epoch !== this.#epoch || this.#destroyed) return;
+    if (!this.#account || !this.#client || scope(this.#account) !== scope(this.#client)) return;
     await this.#persist();
-    if (!this.#destroyed) await this.#connect();
+    if (epoch === this.#epoch && !this.#destroyed) await this.#connect();
   }
   destroy() {
     const persisted = this.#persist();

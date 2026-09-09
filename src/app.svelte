@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, untrack } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { installLongPress } from "./long-press";
   import { PlaybackEngine } from "./playback-engine";
   import WebappUpdater from "./webapp-updater.svelte";
@@ -18,19 +18,13 @@
   type Track = Immutable<TrackRecord>;
   import { QueueEngine } from "./queue-engine";
   import { type RouteParams } from "./router-engine";
-  import { SubsonicClient, type SubsonicAuth } from "./subsonic-client";
+  import { Session } from "./session.svelte";
   import Router, { type RouteControls, type RouterNavigate } from "./router.svelte";
   import { TrackEngine } from "./track-engine";
   import { swipeToDismiss } from "./swipe-to-dismiss";
 
-  const offlineModeStorageKey = "navidrome-offline-mode";
-  const authStore = new AuthStore();
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
-
-  type SavedAuth = SubsonicAuth;
-
-  type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
   let host = $state("");
   let username = $state("");
@@ -48,8 +42,6 @@
         : [];
     }),
   );
-  let activeAuth = $state<SavedAuth | null>(null);
-  let activeClient = $state<SubsonicClient>();
   const coverEngine = new CoverEngine(memory, metadataEngine);
   const trackEngine = new TrackEngine({ memory });
   const downloads = $derived.by(() => {
@@ -61,13 +53,29 @@
       .map((file) => ({ ...file, status: "downloaded" as const }));
     return [...jobs, ...completed];
   });
-  const playback = new PlaybackEngine({
+  const playback: PlaybackEngine = new PlaybackEngine({
     queue: queueEngine,
     memory,
     tracks: trackEngine,
     covers: coverEngine,
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
   });
+  const session = new Session({
+    memory,
+    auth: new AuthStore(),
+    metadata: metadataEngine,
+    queue: queueEngine,
+    covers: coverEngine,
+    tracks: trackEngine,
+    playback,
+    storage: localStorage,
+  });
+  const activeAuth = $derived(session.auth);
+  const activeClient = $derived(session.client);
+  const offlineMode = $derived(session.offlineMode);
+  const connectionStatus = $derived(session.status);
+  const error = $derived(session.error);
+  const refreshError = $derived(session.refreshError);
   let playbackLoading = $derived(["loading", "buffering", "seeking"].includes(playback.status));
   let downloadError = $state("");
   let playbackError = $derived(
@@ -78,21 +86,16 @@
         : "",
   );
   let downloadingCollection = $state("");
-  let offlineMode = $state(false);
   const offlineScanning = $derived(offlineMode && trackEngine.downloadsLoading);
   let loading = $derived(metadataEngine.status === "loading");
   let refreshing = $derived(metadataEngine.status === "refreshing");
-  let refreshError = $state("");
-  let error = $state("");
-  let connectionStatus = $state<ConnectionStatus>("disconnected");
   let connectionOpen = $state(false);
-  let pendingConnection = $state<{ auth: SavedAuth; client: SubsonicClient }>();
-  let navigateAfterConnection = $state(false);
 
   onMount(() => installLongPress());
   onMount(() => playback.mount());
 
   onDestroy(() => {
+    session.destroy();
     playback.destroy();
     coverEngine.destroy();
     metadataEngine.destroy();
@@ -101,34 +104,14 @@
   });
 
   onMount(() => {
-    const lifetime = new AbortController();
-    offlineMode = localStorage.getItem(offlineModeStorageKey) === "true";
-
-    try {
-      const savedAuth = authStore.load();
-      if (!savedAuth) {
-        connectionOpen = true;
-        navigate("/settings", "replace");
-        return;
-      }
-
-      activeAuth = savedAuth;
+    const savedAuth = session.start();
+    if (savedAuth) {
       host = savedAuth.host;
       username = savedAuth.username;
-      const account = { host: savedAuth.host, username: savedAuth.username };
-      void Promise.all([metadataEngine.restore(account), coverEngine.restore(account)]).then(
-        async () => {
-          await coverEngine.refresh();
-          if (metadataEngine.savedAt !== undefined) await queueEngine.restore(account);
-          if (!lifetime.signal.aborted) loadArtists(savedAuth);
-        },
-      );
-    } catch {
-      authStore.clear();
+    } else {
       connectionOpen = true;
       navigate("/settings", "replace");
     }
-    return () => lifetime.abort();
   });
 
   function artistPath(artist: Artist) {
@@ -262,27 +245,6 @@
     }
   }
 
-  async function applyOfflineLibrary() {
-    await trackEngine.ready();
-    const current = memory.queueTracks[memory.queueIndex];
-    if (offlineMode && current && trackEngine.getStatus(current) !== "downloaded") {
-      playback.pause();
-    }
-  }
-
-  async function setOfflineMode(enabled: boolean) {
-    offlineMode = enabled;
-    localStorage.setItem(offlineModeStorageKey, String(enabled));
-
-    const network = enabled ? "offline" : "online";
-    const refresh = metadataEngine.setNetwork(network);
-    queueEngine.setNetwork(network);
-    if (enabled) await applyOfflineLibrary();
-    else if (activeAuth) loadArtists(activeAuth);
-    await refresh;
-    await coverEngine.refresh();
-  }
-
   function replaceQueueAndPlay(items: readonly Track[], startIndex = 0) {
     if (!items.length) {
       clearQueue();
@@ -317,94 +279,13 @@
     return "Disconnected";
   }
 
-  function connectionError(caught: unknown) {
-    if (caught instanceof TypeError) {
-      return "Could not reach the server. Check the host and its CORS settings.";
-    }
-    return caught instanceof Error ? caught.message : "Could not load artists.";
-  }
-
-  function submitConnection(event: SubmitEvent) {
+  async function submitConnection(event: SubmitEvent) {
     event.preventDefault();
-    navigateAfterConnection = true;
-    loadArtists();
-  }
-
-  async function loadArtists(savedAuth?: SavedAuth, forceRefresh = false) {
-    connectionStatus = "connecting";
-    error = "";
-    refreshError = "";
-
-    try {
-      const credentials = savedAuth ?? authStore.create({ host, username, password });
-      const client =
-        activeAuth &&
-        activeClient &&
-        activeAuth.host === credentials.host &&
-        activeAuth.username === credentials.username &&
-        activeAuth.token === credentials.token &&
-        activeAuth.salt === credentials.salt
-          ? activeClient
-          : new SubsonicClient(credentials);
-
-      pendingConnection = { auth: credentials, client };
-      const network = offlineMode ? "offline" : "online";
-      const refresh = metadataEngine.setNetwork(network);
-      queueEngine.setNetwork(network);
-      await Promise.all([refresh, metadataEngine.setClient(client)]);
-      if (forceRefresh) await metadataEngine.refresh();
-      await coverEngine.refresh();
-    } catch (caught) {
-      pendingConnection = undefined;
-      connectionStatus = "error";
-      error = connectionError(caught);
-    }
-  }
-
-  $effect(() => {
-    const pending = pendingConnection;
-    const status = metadataEngine.status;
-    if (!pending || (status !== "refreshing" && status !== "ready" && status !== "error")) return;
-    const { auth: credentials, client } = pending;
-
-    if (status === "error") {
-      pendingConnection = undefined;
-      connectionStatus = "error";
-      error = connectionError(metadataEngine.error);
-      return;
-    }
-
-    // Cached metadata is usable while revalidation is still in flight.
-    // Configure dependent engines once, not again when refreshing becomes ready.
-    untrack(() => {
-      if (activeClient !== client) {
-        activeAuth = credentials;
-        activeClient = client;
-        coverEngine.setClient(client);
-        queueEngine.setClient(client);
-        trackEngine.setClient(client);
-      }
-    });
-    if (status === "refreshing") return;
-
-    pendingConnection = undefined;
-    if (metadataEngine.warning) {
-      connectionStatus = "error";
-      refreshError = `Background refresh failed: ${connectionError(metadataEngine.warning)}`;
-    } else if (offlineMode) {
-      connectionStatus = "disconnected";
-      applyOfflineLibrary().catch(() => {});
-    } else {
-      connectionStatus = "connected";
-      authStore.save(credentials);
-    }
-
-    if (navigateAfterConnection) {
-      navigateAfterConnection = false;
+    if (await session.connect({ host, username, password })) {
       connectionOpen = false;
       navigate("/library");
     }
-  });
+  }
 </script>
 
 <svelte:head>
@@ -482,7 +363,7 @@
             data-size="md"
             data-variant="neutral"
             disabled={offlineMode || loading || refreshing}
-            onclick={() => loadArtists(activeAuth!, true)}
+            onclick={() => void session.refresh()}
           >
             {offlineMode
               ? "Unavailable offline"
@@ -565,7 +446,7 @@
           type="checkbox"
           checked={offlineMode}
           disabled={offlineScanning}
-          onchange={(event) => void setOfflineMode(event.currentTarget.checked)}
+          onchange={(event) => void session.setOfflineMode(event.currentTarget.checked)}
         />
         <span></span>
       </label>
