@@ -292,7 +292,9 @@
 </svelte:head>
 
 {#snippet icon(name: string)}
-  <svg class="icon" aria-hidden="true"><use href={`#icon-${name}`}></use></svg>
+  <svg aria-hidden="true" width="20" height="20">
+    <use href={`#icon-${name}`}></use>
+  </svg>
 {/snippet}
 
 {#snippet brand()}
@@ -317,7 +319,9 @@
   </header>
   <section class="view settings-view">
     <span class="type-eyebrow muted">Settings</span>
-    <h2 class="type-heading">{session.auth ? "Music server" : "Connect to your music"}</h2>
+    <h2 class="type-heading">
+      {session.auth ? "Music server" : "Connect to your music"}
+    </h2>
     <p class="type-body muted">
       {session.auth
         ? "Disconnect first to change servers. Your offline library will stay on this device."
@@ -345,7 +349,6 @@
           <div class="connection-actions">
             <button
               class="icon-button"
-              type="button"
               data-size="md"
               data-variant="neutral"
               aria-label={session.busy ? "Refreshing…" : "Refresh library"}
@@ -357,7 +360,6 @@
             </button>
             <button
               class="icon-button"
-              type="button"
               data-size="md"
               data-variant="neutral"
               aria-label="Disconnect"
@@ -437,7 +439,6 @@
         {#if appUpdate.hasUpdate}
           <button
             class="button"
-            type="button"
             data-size="sm"
             disabled={appUpdate.busy}
             onclick={() => void updater?.update()}
@@ -582,7 +583,6 @@
     <header class="topbar track-list">
       <div class="track-item">
         <button
-          type="button"
           class="icon-button"
           data-size="md"
           data-variant="neutral"
@@ -661,7 +661,6 @@
 
         <div class="controls">
           <button
-            type="button"
             class="icon-button"
             data-size="md"
             data-variant="neutral"
@@ -670,7 +669,6 @@
             title="Previous">{@render icon("previous")}</button
           >
           <button
-            type="button"
             class="icon-button"
             data-size="lg"
             data-variant="primary"
@@ -687,7 +685,6 @@
             {/if}
           </button>
           <button
-            type="button"
             class="icon-button"
             data-size="md"
             data-variant="neutral"
@@ -728,12 +725,8 @@
             </h2>
           </div>
           {#if memory.queueTracks.length > 0}
-            <button
-              type="button"
-              class="button"
-              data-size="sm"
-              data-variant="neutral"
-              onclick={clearQueue}>Clear</button
+            <button class="button" data-size="sm" data-variant="neutral" onclick={clearQueue}
+              >Clear</button
             >
           {/if}
         </div>
@@ -743,7 +736,6 @@
               {@const downloadStatus = trackEngine.getStatus(track.id)}
               <div class="track-item">
                 <button
-                  type="button"
                   class="track-target"
                   aria-label={`Play ${track.title}`}
                   onclick={() => playback.playIndex(index)}
@@ -773,9 +765,7 @@
                     {visibleIndex + 1}
                   {/if}
                 </span>
-                <span class="track-content">
-                  <span>{track.title}</span>
-                </span>
+                <span>{track.title}</span>
               </div>
             {/each}
           </div>
@@ -858,7 +848,6 @@
                 </span>
               </a>
               <button
-                type="button"
                 class="icon-button artist-menu-trigger"
                 hidden
                 data-size="sm"
@@ -869,55 +858,6 @@
               >
                 {@render icon("menu")}
               </button>
-              <dialog
-                id={menuId}
-                class="action-menu"
-                aria-labelledby={`${menuId}-title`}
-                closedby="closerequest"
-                use:swipeToDismiss
-                onclick={(event) => event.currentTarget.close()}
-              >
-                <header class="action-menu-heading">
-                  <strong id={`${menuId}-title`} class="type-title">
-                    {artist.name}
-                  </strong>
-                </header>
-                <div class="track-list">
-                  <button
-                    type="button"
-                    class="track-item action-menu-item"
-                    onclick={() => playArtist(artist)}
-                  >
-                    {@render icon("play")}
-                    <span>Play</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="track-item action-menu-item"
-                    onclick={() => playNext(artistTracks(artist))}
-                  >
-                    {@render icon("next")}
-                    <span>Play next</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="track-item action-menu-item"
-                    onclick={() => playLast(artistTracks(artist))}
-                  >
-                    {@render icon("plus")}
-                    <span>Play last</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="track-item action-menu-item"
-                    onclick={() => downloadArtist(artist)}
-                  >
-                    {@render icon("download")}
-                    <span>Download</span>
-                  </button>
-                </div>
-                <button type="button" class="button" data-variant="neutral"> Cancel </button>
-              </dialog>
             </article>
           {/each}
         </div>
@@ -933,6 +873,44 @@
       {@render connectLibrary(router)}
     {/if}
   </section>
+  {#if libraryAvailable && !offlineScanning}
+    {#each visibleArtists as artist, index}
+      {@const menuId = `artist-menu-${index}`}
+      <dialog
+        id={menuId}
+        class="action-menu"
+        aria-labelledby={`${menuId}-title`}
+        closedby="closerequest"
+        use:swipeToDismiss
+        onclick={(event) => event.currentTarget.close()}
+      >
+        <div class="stack-sm">
+          <header id={`${menuId}-title`} class="type-title">
+            {artist.name}
+          </header>
+          <div class="track-list">
+            <button class="track-item" onclick={() => playArtist(artist)}>
+              {@render icon("play")}
+              <span>Play</span>
+            </button>
+            <button class="track-item" onclick={() => playNext(artistTracks(artist))}>
+              {@render icon("next")}
+              <span>Play next</span>
+            </button>
+            <button class="track-item" onclick={() => playLast(artistTracks(artist))}>
+              {@render icon("plus")}
+              <span>Play last</span>
+            </button>
+            <button class="track-item" onclick={() => downloadArtist(artist)}>
+              {@render icon("download")}
+              <span>Download</span>
+            </button>
+          </div>
+          <button class="button" data-variant="neutral">Cancel</button>
+        </div>
+      </dialog>
+    {/each}
+  {/if}
   {@render miniPlayer()}
 {/snippet}
 
@@ -999,7 +977,6 @@
           {/if}
         </div>
         <button
-          type="button"
           class="icon-button"
           data-size="md"
           data-variant="neutral"
@@ -1009,55 +986,6 @@
         >
           {@render icon("menu")}
         </button>
-        <dialog
-          id="artist-page-menu"
-          class="action-menu"
-          aria-labelledby="artist-page-menu-title"
-          closedby="closerequest"
-          use:swipeToDismiss
-          onclick={(event) => event.currentTarget.close()}
-        >
-          <header class="action-menu-heading">
-            <strong id="artist-page-menu-title" class="type-title">
-              {artist.name}
-            </strong>
-          </header>
-          <div class="track-list">
-            <button
-              type="button"
-              class="track-item action-menu-item"
-              onclick={() => playArtist(artist)}
-            >
-              {@render icon("play")}
-              <span>Play</span>
-            </button>
-            <button
-              type="button"
-              class="track-item action-menu-item"
-              onclick={() => playNext(artistTracks(artist))}
-            >
-              {@render icon("next")}
-              <span>Play next</span>
-            </button>
-            <button
-              type="button"
-              class="track-item action-menu-item"
-              onclick={() => playLast(artistTracks(artist))}
-            >
-              {@render icon("plus")}
-              <span>Play last</span>
-            </button>
-            <button
-              type="button"
-              class="track-item action-menu-item"
-              onclick={() => downloadArtist(artist)}
-            >
-              {@render icon("download")}
-              <span>Download</span>
-            </button>
-          </div>
-          <button type="button" class="button" data-variant="neutral"> Cancel </button>
-        </dialog>
       </div>
 
       {#if offlineScanning}
@@ -1086,7 +1014,7 @@
                 data-longpress="show-modal"
                 title={`${album.title} — hold for actions`}
               ></a>
-              <span class="track-leading album-leading">
+              <span class="track-leading">
                 <span class="cover album-cover">
                   {#if cover.source}
                     <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
@@ -1095,7 +1023,7 @@
                   {/if}
                 </span>
               </span>
-              <span class="track-content stack-xs">
+              <span class="stack-xs">
                 <strong class="type-title">{album.title}</strong>
                 <small class="type-small muted">
                   {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
@@ -1103,7 +1031,6 @@
               </span>
               <span class="track-actions">
                 <button
-                  type="button"
                   class="icon-button"
                   data-size="sm"
                   data-variant="ghost"
@@ -1113,55 +1040,6 @@
                 >
                   {@render icon("menu")}
                 </button>
-                <dialog
-                  id={albumMenuId}
-                  class="action-menu"
-                  aria-labelledby={`${albumMenuId}-title`}
-                  closedby="closerequest"
-                  use:swipeToDismiss
-                  onclick={(event) => event.currentTarget.close()}
-                >
-                  <header class="action-menu-heading">
-                    <strong id={`${albumMenuId}-title`} class="type-title">
-                      {album.title}
-                    </strong>
-                  </header>
-                  <div class="track-list">
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => playAlbum(album)}
-                    >
-                      {@render icon("play")}
-                      <span>Play</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => playNext(memory.albumTracks.get(album.id) ?? [])}
-                    >
-                      {@render icon("next")}
-                      <span>Play next</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => playLast(memory.albumTracks.get(album.id) ?? [])}
-                    >
-                      {@render icon("plus")}
-                      <span>Play last</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => downloadAlbum(album)}
-                    >
-                      {@render icon("download")}
-                      <span>Download</span>
-                    </button>
-                  </div>
-                  <button type="button" class="button" data-variant="neutral"> Cancel </button>
-                </dialog>
               </span>
             </article>
           {:else}
@@ -1190,6 +1068,85 @@
       </div>
     {/if}
   </section>
+  {#if libraryAvailable && artist}
+    <dialog
+      id="artist-page-menu"
+      class="action-menu"
+      aria-labelledby="artist-page-menu-title"
+      closedby="closerequest"
+      use:swipeToDismiss
+      onclick={(event) => event.currentTarget.close()}
+    >
+      <div class="stack-sm">
+        <header id="artist-page-menu-title" class="type-title">
+          {artist.name}
+        </header>
+        <div class="track-list">
+          <button class="track-item" onclick={() => playArtist(artist)}>
+            {@render icon("play")}
+            <span>Play</span>
+          </button>
+          <button class="track-item" onclick={() => playNext(artistTracks(artist))}>
+            {@render icon("next")}
+            <span>Play next</span>
+          </button>
+          <button class="track-item" onclick={() => playLast(artistTracks(artist))}>
+            {@render icon("plus")}
+            <span>Play last</span>
+          </button>
+          <button class="track-item" onclick={() => downloadArtist(artist)}>
+            {@render icon("download")}
+            <span>Download</span>
+          </button>
+        </div>
+        <button class="button" data-variant="neutral">Cancel</button>
+      </div>
+    </dialog>
+    {#if !offlineScanning}
+      {#each visibleAlbums as album, index}
+        {@const albumMenuId = `album-menu-${index}`}
+        <dialog
+          id={albumMenuId}
+          class="action-menu"
+          aria-labelledby={`${albumMenuId}-title`}
+          closedby="closerequest"
+          use:swipeToDismiss
+          onclick={(event) => event.currentTarget.close()}
+        >
+          <div class="stack-sm">
+            <header id={`${albumMenuId}-title`} class="type-title">
+              {album.title}
+            </header>
+            <div class="track-list">
+              <button class="track-item" onclick={() => playAlbum(album)}>
+                {@render icon("play")}
+                <span>Play</span>
+              </button>
+              <button
+                class="track-item"
+                onclick={() => playNext(memory.albumTracks.get(album.id) ?? [])}
+              >
+                {@render icon("next")}
+                <span>Play next</span>
+              </button>
+              <button
+                class="track-item"
+                onclick={() => playLast(memory.albumTracks.get(album.id) ?? [])}
+              >
+                {@render icon("plus")}
+                <span>Play last</span>
+              </button>
+              <button class="track-item" onclick={() => downloadAlbum(album)}>
+                {@render icon("download")}
+                <span>Download</span>
+              </button>
+            </div>
+            <button class="button" data-variant="neutral">Cancel</button>
+          </div>
+        </dialog>
+      {/each}
+    {/if}
+  {/if}
   {@render miniPlayer()}
 {/snippet}
 
@@ -1258,7 +1215,6 @@
           {/if}
         </div>
         <button
-          type="button"
           class="icon-button"
           data-size="md"
           data-variant="neutral"
@@ -1268,55 +1224,6 @@
         >
           {@render icon("menu")}
         </button>
-        <dialog
-          id="album-page-menu"
-          class="action-menu"
-          aria-labelledby="album-page-menu-title"
-          closedby="closerequest"
-          use:swipeToDismiss
-          onclick={(event) => event.currentTarget.close()}
-        >
-          <header class="action-menu-heading">
-            <strong id="album-page-menu-title" class="type-title">
-              {album.title}
-            </strong>
-          </header>
-          <div class="track-list">
-            <button
-              type="button"
-              class="track-item action-menu-item"
-              onclick={() => playAlbum(album)}
-            >
-              {@render icon("play")}
-              <span>Play</span>
-            </button>
-            <button
-              type="button"
-              class="track-item action-menu-item"
-              onclick={() => playNext(memory.albumTracks.get(album.id) ?? [])}
-            >
-              {@render icon("next")}
-              <span>Play next</span>
-            </button>
-            <button
-              type="button"
-              class="track-item action-menu-item"
-              onclick={() => playLast(memory.albumTracks.get(album.id) ?? [])}
-            >
-              {@render icon("plus")}
-              <span>Play last</span>
-            </button>
-            <button
-              type="button"
-              class="track-item action-menu-item"
-              onclick={() => downloadAlbum(album)}
-            >
-              {@render icon("download")}
-              <span>Download</span>
-            </button>
-          </div>
-          <button type="button" class="button" data-variant="neutral"> Cancel </button>
-        </dialog>
       </div>
 
       {#if offlineScanning}
@@ -1331,7 +1238,6 @@
             {@const downloadStatus = trackEngine.getStatus(track.id)}
             <div class="track-item">
               <button
-                type="button"
                 class="track-target"
                 aria-label={`Play ${track.title}`}
                 onclick={() => playTrack(track)}
@@ -1364,12 +1270,9 @@
                   {track.number ?? index + 1}
                 {/if}
               </span>
-              <span class="track-content">
-                <span>{track.title}</span>
-              </span>
+              <span>{track.title}</span>
               <span class="track-actions">
                 <button
-                  type="button"
                   class="icon-button"
                   data-size="sm"
                   data-variant="ghost"
@@ -1379,67 +1282,6 @@
                 >
                   {@render icon("menu")}
                 </button>
-                <dialog
-                  id={trackMenuId}
-                  class="action-menu"
-                  aria-labelledby={`${trackMenuId}-title`}
-                  closedby="closerequest"
-                  use:swipeToDismiss
-                  onclick={(event) => event.currentTarget.close()}
-                >
-                  <header class="action-menu-heading">
-                    <strong id={`${trackMenuId}-title`} class="type-title">
-                      {track.title}
-                    </strong>
-                  </header>
-                  <div class="track-list">
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => playTrack(track)}
-                    >
-                      {@render icon("play")}
-                      <span>Play</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => playNext([track])}
-                    >
-                      {@render icon("next")}
-                      <span>Play next</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      onclick={() => playLast([track])}
-                    >
-                      {@render icon("plus")}
-                      <span>Play last</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="track-item action-menu-item"
-                      disabled={downloadStatus !== "idle"}
-                      onclick={() => downloadTrack(track)}
-                    >
-                      {#if downloadStatus === "downloaded"}
-                        {@render icon("check")}
-                        <span>Downloaded</span>
-                      {:else if downloadStatus === "queued"}
-                        {@render icon("clock")}
-                        <span>Queued</span>
-                      {:else if downloadStatus === "downloading"}
-                        {@render icon("loading")}
-                        <span>Downloading…</span>
-                      {:else}
-                        {@render icon("download")}
-                        <span>Download</span>
-                      {/if}
-                    </button>
-                  </div>
-                  <button type="button" class="button" data-variant="neutral"> Cancel </button>
-                </dialog>
               </span>
             </div>
           {:else}
@@ -1468,6 +1310,101 @@
       </div>
     {/if}
   </section>
+  {#if libraryAvailable && artist && album}
+    <dialog
+      id="album-page-menu"
+      class="action-menu"
+      aria-labelledby="album-page-menu-title"
+      closedby="closerequest"
+      use:swipeToDismiss
+      onclick={(event) => event.currentTarget.close()}
+    >
+      <div class="stack-sm">
+        <header id="album-page-menu-title" class="type-title">
+          {album.title}
+        </header>
+        <div class="track-list">
+          <button class="track-item" onclick={() => playAlbum(album)}>
+            {@render icon("play")}
+            <span>Play</span>
+          </button>
+          <button
+            class="track-item"
+            onclick={() => playNext(memory.albumTracks.get(album.id) ?? [])}
+          >
+            {@render icon("next")}
+            <span>Play next</span>
+          </button>
+          <button
+            class="track-item"
+            onclick={() => playLast(memory.albumTracks.get(album.id) ?? [])}
+          >
+            {@render icon("plus")}
+            <span>Play last</span>
+          </button>
+          <button class="track-item" onclick={() => downloadAlbum(album)}>
+            {@render icon("download")}
+            <span>Download</span>
+          </button>
+        </div>
+        <button class="button" data-variant="neutral">Cancel</button>
+      </div>
+    </dialog>
+    {#if !offlineScanning}
+      {#each visibleTracks as track, index}
+        {@const trackMenuId = `album-track-menu-${index}`}
+        {@const downloadStatus = trackEngine.getStatus(track.id)}
+        <dialog
+          id={trackMenuId}
+          class="action-menu"
+          aria-labelledby={`${trackMenuId}-title`}
+          closedby="closerequest"
+          use:swipeToDismiss
+          onclick={(event) => event.currentTarget.close()}
+        >
+          <div class="stack-sm">
+            <header id={`${trackMenuId}-title`} class="type-title">
+              {track.title}
+            </header>
+            <div class="track-list">
+              <button class="track-item" onclick={() => playTrack(track)}>
+                {@render icon("play")}
+                <span>Play</span>
+              </button>
+              <button class="track-item" onclick={() => playNext([track])}>
+                {@render icon("next")}
+                <span>Play next</span>
+              </button>
+              <button class="track-item" onclick={() => playLast([track])}>
+                {@render icon("plus")}
+                <span>Play last</span>
+              </button>
+              <button
+                class="track-item"
+                disabled={downloadStatus !== "idle"}
+                onclick={() => downloadTrack(track)}
+              >
+                {#if downloadStatus === "downloaded"}
+                  {@render icon("check")}
+                  <span>Downloaded</span>
+                {:else if downloadStatus === "queued"}
+                  {@render icon("clock")}
+                  <span>Queued</span>
+                {:else if downloadStatus === "downloading"}
+                  {@render icon("loading")}
+                  <span>Downloading…</span>
+                {:else}
+                  {@render icon("download")}
+                  <span>Download</span>
+                {/if}
+              </button>
+            </div>
+            <button class="button" data-variant="neutral">Cancel</button>
+          </div>
+        </dialog>
+      {/each}
+    {/if}
+  {/if}
   {@render miniPlayer()}
 {/snippet}
 
@@ -1491,7 +1428,6 @@
       <div class="track-item">
         <button
           class="track-target"
-          type="button"
           commandfor="player-dialog"
           command="show-modal"
           aria-label="Open player"
@@ -1512,7 +1448,6 @@
           </small>
         </span>
         <button
-          type="button"
           class="icon-button"
           data-size="md"
           data-variant="primary"

@@ -18,7 +18,6 @@
   --palette-crimson-300: #c94d60;
   --palette-crimson-500: #9f2940;
   --palette-crimson-700: #341c24;
-  --palette-crimson-900: #24151b;
   --palette-pink-500: #d35b91;
   --palette-pink-900: #44293d;
   --palette-green-500: #53d58b;
@@ -70,7 +69,6 @@
   --text-sm: 0.875rem;
   --text-md: 1rem;
   --text-lg: 1.25rem;
-  --text-xl: 1.5rem;
   --weight-regular: 400;
   --weight-semibold: 600;
   --weight-bold: 700;
@@ -156,6 +154,32 @@
   grid-template-columns: subgrid;
   align-items: center;
   padding: 0.5rem;
+  min-height: 3rem;
+  font-family: inherit;
+  font-size: var(--type-control-size);
+  font-weight: var(--type-control-weight);
+  line-height: var(--type-control-line);
+
+  &:where(button, a) {
+    -webkit-tap-highlight-color: transparent;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.16s ease-out;
+
+    &:active:not(:disabled) {
+      background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+      transition-duration: 50ms;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent-text);
+      outline-offset: 2px;
+    }
+  }
 }
 
 .track-item + .track-item {
@@ -271,24 +295,12 @@ input {
   align-items: center;
 }
 
-.topbar-spacer {
-  width: 2.75rem;
-}
-
 .view {
   padding: 1.25rem;
 }
 
-.hidden {
-  display: none;
-}
-
 .muted {
   color: var(--color-text-muted);
-}
-
-form {
-  margin-top: 1.5rem;
 }
 
 input:not([type="range"]):not([type="checkbox"]) {
@@ -369,10 +381,6 @@ input:not([type="range"]):not([type="checkbox"]):focus {
   gap: 0.5rem;
 }
 
-.connection-details form {
-  margin-top: 1rem;
-}
-
 .settings-option {
   display: flex;
   margin-top: 1rem;
@@ -432,12 +440,6 @@ input:not([type="range"]):not([type="checkbox"]):focus {
 
 .switch input:disabled + span {
   opacity: 0.5;
-}
-
-.icon {
-  display: block;
-  width: 1em;
-  height: 1em;
 }
 
 a {
@@ -532,7 +534,6 @@ a {
 }
 
 .icon-button[data-variant="ghost"] {
-  --control-color: var(--color-accent-text);
   --control-background: var(--palette-transparent);
 }
 
@@ -829,21 +830,10 @@ a {
   color: var(--color-text-primary);
   background: var(--color-surface-raised);
   box-shadow: 0 -1rem 3rem var(--color-shadow-raised);
-}
 
-.action-menu[open] {
-  display: grid;
-  gap: var(--space-sm);
-}
-
-.action-menu::backdrop {
-  background: var(--color-backdrop);
-}
-
-.action-menu-heading {
-  display: grid;
-  min-height: 3rem;
-  align-items: center;
+  &::backdrop {
+    background: var(--color-backdrop);
+  }
 }
 
 .player-dialog,
@@ -905,48 +895,12 @@ a {
   }
 }
 
-.action-menu-item {
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 160ms ease-out;
-  min-height: 3rem;
-  padding: 0.75rem;
-  border: 0;
-  border-radius: 0;
-  color: inherit;
-  background: var(--palette-transparent);
-  font-family: inherit;
-  font-size: var(--type-control-size);
-  font-weight: var(--type-control-weight);
-  line-height: var(--type-control-line);
-  text-align: left;
-  cursor: pointer;
-}
-
-.action-menu-item:active:not(:disabled) {
-  background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
-  transition-duration: 50ms;
-}
-
-.action-menu-item .icon {
-  font-size: 1.25rem;
-}
-
-.action-menu-item:focus-visible {
-  outline: 2px solid var(--color-accent-text);
-  outline-offset: 2px;
-}
-
 .track-leading {
   display: grid;
-  min-width: 1.5rem;
   align-self: stretch;
   place-items: center;
   color: var(--color-text-quiet);
   text-align: right;
-}
-
-.track-leading .icon {
-  color: var(--color-accent-text);
 }
 
 .track-details {
@@ -983,34 +937,9 @@ a {
   z-index: 2;
 }
 
-.track-content {
-  display: grid;
-  min-width: 0;
-  min-height: 2.75rem;
-  padding-block: 0.4rem;
-  align-content: center;
-  color: inherit;
-  font-family: inherit;
-  font-size: var(--type-control-size);
-  font-weight: var(--type-control-weight);
-  line-height: var(--type-control-line);
-  text-align: left;
-}
-
-.track-content > * {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .track-actions {
   display: flex;
   align-items: center;
-}
-
-.album-leading {
-  padding-block: 0.65rem;
-  padding-inline-start: 0.5rem;
 }
 
 .album-cover {
@@ -1095,10 +1024,6 @@ a {
     scale: none;
   }
 
-  .action-menu-item {
-    transition: none;
-  }
-
   .track-target {
     transition: none;
   }
@@ -1109,10 +1034,6 @@ a {
 
   .artist-main:active {
     scale: none;
-  }
-
-  .connection-card-header {
-    transition: none;
   }
 }
 
