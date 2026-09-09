@@ -234,6 +234,52 @@ describe("metadata engine", () => {
     engine.destroy();
   });
 
+  it("cancels detached library traversal without revoking the shared connection", async () => {
+    const storage = installMetadataStorage();
+    await storage.seed(account, snapshot());
+    const memory = new Memory();
+    const engine = new MetadataEngine(memory);
+    await engine.restore(account);
+    const previous = memory.tracks;
+    const connection = createConnection(auth);
+    engine.setConnection(connection);
+    let resolve!: (response: Response) => void;
+    let signal: AbortSignal | null | undefined;
+    const fetcher = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("getIndexes.view"))
+        return response({ indexes: { lastModified: 20 } });
+      if (url.pathname.endsWith("getArtists.view")) return response({ artists: { index: [] } });
+      signal = options?.signal;
+      return new Promise<Response>((done) => {
+        resolve = done;
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const refreshing = engine.refresh();
+    await vi.waitFor(() => expect(resolve).toBeDefined());
+    engine.setConnection(undefined);
+    expect(signal?.aborted).toBe(true);
+    expect(connection.signal.aborted).toBe(false);
+    resolve(
+      response({
+        albumList2: {
+          album: Array.from({ length: 500 }, (_, i) => ({ id: String(i), name: String(i) })),
+        },
+      }),
+    );
+    await refreshing;
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(memory.tracks).toBe(previous);
+    expect(storage.writes).toBe(0);
+    expect(engine.status).toBe("ready");
+    vi.stubGlobal("fetch", serveLibrary());
+    engine.setConnection(connection);
+    await engine.refresh();
+    expect(memory.tracks.get("song")?.title).toBe("Song");
+    engine.destroy();
+  });
+
   it("paginates albums through Network while retaining bounded track-fetch concurrency", async () => {
     installMetadataStorage();
     const albums = Array.from({ length: 501 }, (_, index) => ({

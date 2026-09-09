@@ -173,17 +173,83 @@ describe("Network connection lifecycle", () => {
       const metadata = network.metadata(candidate);
       expect(metadata.account).toEqual({ host: auth.host, username: auth.username });
       expect(network.mode).toBe("offline");
-      await expect(metadata.listArtists()).resolves.toEqual([]);
+      await expect(metadata.readLibrary(new AbortController().signal)).resolves.toEqual({
+        artists: [],
+        albums: [],
+        tracksByAlbum: new Map(),
+      });
       network.accept(candidate);
-      await expect(metadata.listArtists()).resolves.toEqual([]);
+      await expect(metadata.readLibrary(new AbortController().signal)).resolves.toEqual({
+        artists: [],
+        albums: [],
+        tracksByAlbum: new Map(),
+      });
       const replacement = network.prepare({ ...auth, username: "other" });
-      await expect(metadata.listArtists()).resolves.toEqual([]);
+      await expect(metadata.readLibrary(new AbortController().signal)).resolves.toEqual({
+        artists: [],
+        albums: [],
+        tracksByAlbum: new Map(),
+      });
       network.accept(replacement);
       const requests = fetch.mock.calls.length;
-      await expect(metadata.listArtists()).rejects.toMatchObject({ name: "AbortError" });
+      await expect(metadata.readLibrary(new AbortController().signal)).rejects.toMatchObject({
+        name: "AbortError",
+      });
       expect(fetch).toHaveBeenCalledTimes(requests);
       expect(() => network.metadata(candidate)).toThrowError(/abort/i);
       expect(network.metadata(replacement).account.username).toBe("other");
+    } finally {
+      network.setMode("offline");
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("cancels sibling library requests on failure without closing the connection", async () => {
+    const network = new Network();
+    const candidate = network.prepare(auth);
+    const metadata = network.metadata(candidate);
+    const aborted = vi.fn();
+    const requested: string[] = [];
+    const fetcher = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
+      const url = new URL(String(input));
+      const reply = (data: object) =>
+        new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...data } }));
+      if (url.pathname.endsWith("getArtists.view")) return reply({ artists: { index: [] } });
+      if (url.pathname.endsWith("getAlbumList2.view"))
+        return reply({
+          albumList2: {
+            album: Array.from({ length: 7 }, (_, i) => ({ id: String(i), name: String(i) })),
+          },
+        });
+      if (url.pathname.endsWith("getIndexes.view")) return reply({ indexes: { lastModified: 20 } });
+      const id = url.searchParams.get("id")!;
+      requested.push(id);
+      if (id === "0") return new Response(null, { status: 500 });
+      return new Promise<Response>((_resolve, reject) => {
+        options!.signal!.addEventListener(
+          "abort",
+          () => {
+            aborted();
+            reject(options!.signal!.reason);
+          },
+          { once: true },
+        );
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      await expect(metadata.readLibrary(new AbortController().signal)).rejects.toThrow("HTTP 500");
+      expect(requested).toEqual(["0", "1", "2", "3", "4", "5"]);
+      expect(aborted).toHaveBeenCalledTimes(5);
+      expect(candidate.signal.aborted).toBe(false);
+      await expect(metadata.getModifiedAt()).resolves.toBe(20);
+      const cancelled = new AbortController();
+      cancelled.abort();
+      const calls = fetcher.mock.calls.length;
+      await expect(metadata.readLibrary(cancelled.signal)).rejects.toMatchObject({
+        name: "AbortError",
+      });
+      expect(fetcher).toHaveBeenCalledTimes(calls);
     } finally {
       network.setMode("offline");
       vi.unstubAllGlobals();
@@ -433,7 +499,7 @@ describe("Network connection lifecycle", () => {
     try {
       network.setMode("online");
       const client = network.open(auth);
-      const request = network.metadata(client).listArtists();
+      const request = network.metadata(client).getModifiedAt();
       const rejection = expect(request).rejects.toMatchObject({ name: "AbortError" });
       expect(fetch.mock.calls[0]).toEqual([expect.any(String), { signal: client.signal }]);
       network.setMode("offline");

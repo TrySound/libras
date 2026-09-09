@@ -152,10 +152,11 @@ export class SubsonicClient {
     return `${this.#auth.host}/rest/${path}.view?${query}`;
   }
 
-  async #parse(response: Response): Promise<SubsonicResponse> {
+  async #parse(response: Response, signal = this.signal): Promise<SubsonicResponse> {
+    signal.throwIfAborted();
     if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
     const parsed = v.safeParse(responseSchema, await response.json());
-    this.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!parsed.success) throw new Error("The server returned an invalid Subsonic response.");
     const result = parsed.output["subsonic-response"];
     if (result.status !== "ok") {
@@ -164,9 +165,15 @@ export class SubsonicClient {
     return result;
   }
 
-  async #get(path: string, params?: Record<string, string | number | boolean | undefined>) {
+  async #get(
+    path: string,
+    params?: Record<string, string | number | boolean | undefined>,
+    requestSignal?: AbortSignal,
+  ) {
+    const signal = requestSignal ? AbortSignal.any([this.signal, requestSignal]) : this.signal;
+    signal.throwIfAborted();
     const query = this.#query(params);
-    return this.#parse(await fetch(this.#url(path, query), { signal: this.signal }));
+    return this.#parse(await fetch(this.#url(path, query), { signal }), signal);
   }
 
   async getIndexes(ifModifiedSince?: number) {
@@ -176,18 +183,21 @@ export class SubsonicClient {
     return Number.isFinite(lastModified) ? lastModified : null;
   }
 
-  async getArtists() {
-    const result = await this.#get("getArtists");
+  async getArtists(signal?: AbortSignal) {
+    const result = await this.#get("getArtists", undefined, signal);
     return (result.artists?.index ?? []).flatMap((index) => index.artist ?? []);
   }
 
-  async getAlbumList2(options: { type: "alphabeticalByArtist"; size: number; offset: number }) {
-    const result = await this.#get("getAlbumList2", options);
+  async getAlbumList2(
+    options: { type: "alphabeticalByArtist"; size: number; offset: number },
+    signal?: AbortSignal,
+  ) {
+    const result = await this.#get("getAlbumList2", options, signal);
     return result.albumList2?.album ?? [];
   }
 
-  async getAlbum(id: string) {
-    const result = await this.#get("getAlbum", { id });
+  async getAlbum(id: string, signal?: AbortSignal) {
+    const result = await this.#get("getAlbum", { id }, signal);
     return result.album?.song ?? [];
   }
 

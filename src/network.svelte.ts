@@ -23,12 +23,16 @@ export type RemoteTrack = Omit<Track, "artistId" | "albumId"> & {
   albumId?: string;
 };
 
+type RemoteLibrary = {
+  artists: readonly RemoteArtist[];
+  albums: readonly RemoteAlbum[];
+  tracksByAlbum: ReadonlyMap<string, readonly RemoteTrack[]>;
+};
+
 /** One captured connection for a complete metadata workflow, including login preparation. */
 export interface MetadataConnection extends NetworkConnection {
   getModifiedAt(since?: number): Promise<number | null>;
-  listArtists(): Promise<readonly RemoteArtist[]>;
-  listAlbums(options: { limit: number; offset: number }): Promise<readonly RemoteAlbum[]>;
-  getAlbumTracks(albumId: string): Promise<readonly RemoteTrack[]>;
+  readLibrary(signal: AbortSignal): Promise<RemoteLibrary>;
 }
 
 type RemoteQueue = {
@@ -163,19 +167,36 @@ export class Network {
       account: connection.account,
       signal: connection.signal,
       getModifiedAt: (since) => request(() => client.getIndexes(since)),
-      listArtists: () =>
-        request(async () =>
-          (await client.getArtists()).map((artist) => ({
-            id: artist.id,
-            name: artist.name,
-            artworkId: artist.coverArt || undefined,
-            genres: genres(artist),
-          })),
-        ),
-      listAlbums: ({ limit, offset }) =>
-        request(async () =>
-          (await client.getAlbumList2({ type: "alphabeticalByArtist", size: limit, offset })).map(
-            (album) => ({
+      readLibrary: async (workflowSignal) => {
+        const controller = new AbortController();
+        const signal = AbortSignal.any([connection.signal, workflowSignal, controller.signal]);
+        const check = () => {
+          signal.throwIfAborted();
+          this.#check(client, true);
+        };
+        const read = async <T>(run: () => Promise<T>) => {
+          check();
+          const result = await run();
+          check();
+          return result;
+        };
+        const listArtists = () =>
+          read(async () =>
+            (await client.getArtists(signal)).map((artist) => ({
+              id: artist.id,
+              name: artist.name,
+              artworkId: artist.coverArt || undefined,
+              genres: genres(artist),
+            })),
+          );
+        const listAlbums = (offset: number) =>
+          read(async () =>
+            (
+              await client.getAlbumList2(
+                { type: "alphabeticalByArtist", size: 500, offset },
+                signal,
+              )
+            ).map((album) => ({
               id: album.id,
               title: album.name,
               artistId: album.artistId,
@@ -183,25 +204,52 @@ export class Network {
               artworkId: album.coverArt || undefined,
               year: album.year && album.year > 0 ? album.year : undefined,
               genres: genres(album),
-            }),
-          ),
-        ),
-      getAlbumTracks: (albumId) =>
-        request(async () =>
-          (await client.getAlbum(albumId)).map((track) => ({
-            id: track.id,
-            title: track.title,
-            albumId: track.albumId,
-            artistId: track.artistId,
-            artistName: track.artist,
-            artworkId: track.coverArt || undefined,
-            number: track.track && track.track > 0 ? track.track : undefined,
-            disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,
-            duration: track.duration,
-            mimeType: track.contentType,
-            genres: genres(track),
-          })),
-        ),
+            })),
+          );
+        const getAlbumTracks = (albumId: string) =>
+          read(async () =>
+            (await client.getAlbum(albumId, signal)).map((track) => ({
+              id: track.id,
+              title: track.title,
+              albumId: track.albumId,
+              artistId: track.artistId,
+              artistName: track.artist,
+              artworkId: track.coverArt || undefined,
+              number: track.track && track.track > 0 ? track.track : undefined,
+              disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,
+              duration: track.duration,
+              mimeType: track.contentType,
+              genres: genres(track),
+            })),
+          );
+        const fetchAlbums = async () => {
+          const albums: RemoteAlbum[] = [];
+          for (let offset = 0; ; offset += 500) {
+            const page = await listAlbums(offset);
+            albums.push(...page);
+            if (page.length < 500) return albums;
+          }
+        };
+        try {
+          const [artists, albums] = await Promise.all([listArtists(), fetchAlbums()]);
+          check();
+          const tracksByAlbum = new Map<string, readonly RemoteTrack[]>();
+          let next = 0;
+          const worker = async () => {
+            while (next < albums.length) {
+              check();
+              const album = albums[next++];
+              tracksByAlbum.set(album.id, await getAlbumTracks(album.id));
+            }
+          };
+          await Promise.all(Array.from({ length: Math.min(6, albums.length) }, worker));
+          check();
+          return { artists, albums, tracksByAlbum };
+        } finally {
+          // Cancel sibling requests on failure without revoking the connection.
+          controller.abort();
+        }
+      },
     };
   }
 

@@ -237,6 +237,13 @@ export class MetadataEngine {
   #restored = false;
   #restoring?: Promise<void>;
   #generation = 0;
+  #libraryController?: AbortController;
+
+  #invalidate() {
+    this.#libraryController?.abort();
+    this.#libraryController = undefined;
+    return ++this.#generation;
+  }
   #destroyed = false;
   #status: MetadataStatus = "idle";
   #error: unknown;
@@ -289,7 +296,7 @@ export class MetadataEngine {
       if (this.#restoring) return this.#restoring;
       if (this.#restored) return Promise.resolve();
     }
-    const generation = ++this.#generation;
+    const generation = this.#invalidate();
     this.#scope = scope;
     this.#restored = false;
     if (
@@ -329,35 +336,24 @@ export class MetadataEngine {
     valid: () => boolean,
     lastModified: number | null,
   ) {
-    const check = () => {
+    if (!valid()) throw new DOMException("Metadata request superseded.", "AbortError");
+    const controller = new AbortController();
+    this.#libraryController = controller;
+    try {
+      const library = await connection.readLibrary(controller.signal);
       if (!valid()) throw new DOMException("Metadata request superseded.", "AbortError");
-    };
-    const fetchAlbums = async () => {
-      const albums: RemoteAlbum[] = [];
-      for (let offset = 0; ; offset += 500) {
-        check();
-        const page = await connection.listAlbums({
-          limit: 500,
-          offset,
-        });
-        albums.push(...page);
-        if (page.length < 500) return albums;
-      }
-    };
-    const [artists, albums] = await Promise.all([connection.listArtists(), fetchAlbums()]);
-    check();
-    const tracks = new Map<string, readonly RemoteTrack[]>();
-    let next = 0;
-    const worker = async () => {
-      while (next < albums.length) {
-        check();
-        const album = albums[next++];
-        tracks.set(album.id, await connection.getAlbumTracks(album.id));
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(6, albums.length) }, worker));
-    check();
-    return normalizeLibrary(connection.account, artists, albums, tracks, lastModified, Date.now());
+      return normalizeLibrary(
+        connection.account,
+        library.artists,
+        library.albums,
+        library.tracksByAlbum,
+        lastModified,
+        Date.now(),
+      );
+    } finally {
+      controller.abort();
+      if (this.#libraryController === controller) this.#libraryController = undefined;
+    }
   }
 
   async #refresh(force: boolean) {
@@ -377,7 +373,7 @@ export class MetadataEngine {
       this.#scope !== `${connection.account.host}\n${connection.account.username}`
     )
       throw new Error("Restore the connection's account before refreshing metadata.");
-    const generation = ++this.#generation;
+    const generation = this.#invalidate();
     this.#error = undefined;
     this.#warning = undefined;
     const existing = this.#snapshotInfo;
@@ -424,7 +420,7 @@ export class MetadataEngine {
     if (this.#restoring) await this.#restoring;
     connection.signal.throwIfAborted();
     if (this.#destroyed) throw new DOMException("Metadata stopped.", "AbortError");
-    const generation = ++this.#generation;
+    const generation = this.#invalidate();
     const valid = () =>
       !this.#destroyed && generation === this.#generation && !connection.signal.aborted;
     this.#status = this.#snapshotInfo ? "refreshing" : "loading";
@@ -445,7 +441,7 @@ export class MetadataEngine {
   async saveConnection(snapshot: MetadataSnapshot, signal: AbortSignal) {
     signal.throwIfAborted();
     if (this.#destroyed) throw new DOMException("Metadata stopped.", "AbortError");
-    const generation = ++this.#generation;
+    const generation = this.#invalidate();
     const valid = () => !this.#destroyed && generation === this.#generation && !signal.aborted;
     const committed = await this.#store.save(snapshot, valid);
     if (!valid() || !committed) throw new DOMException("Connection superseded.", "AbortError");
@@ -455,7 +451,7 @@ export class MetadataEngine {
   /** Publish only after Session has accepted a successfully prepared connection. */
   acceptConnection(snapshot: MetadataSnapshot) {
     if (this.#destroyed) return;
-    this.#generation++;
+    this.#invalidate();
     this.#scope = `${snapshot.account.host}\n${snapshot.account.username}`;
     this.#restored = true;
     this.#memory.account = { ...snapshot.account };
@@ -478,7 +474,7 @@ export class MetadataEngine {
     if ((connection && connection === this.#connection) || this.#destroyed) return;
     this.#connection = connection;
     if (!this.#restoring) {
-      this.#generation++;
+      this.#invalidate();
       this.#status = this.#snapshotInfo ? "ready" : "idle";
       this.#update();
     }
@@ -486,6 +482,6 @@ export class MetadataEngine {
 
   destroy() {
     this.#destroyed = true;
-    this.#generation++;
+    this.#invalidate();
   }
 }
