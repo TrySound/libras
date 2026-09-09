@@ -15,7 +15,13 @@ const snapshot = (): MetadataSnapshot => ({
 
 function installStorage() {
   const files = new Map<string, string | Blob>();
-  const state = { writes: 0, fail: false, beforeWrite: (_path: string) => {} };
+  const state = {
+    writes: 0,
+    fail: false,
+    beforeWrite: (_path: string) => {},
+    afterRead: (_path: string) => {},
+    afterClose: (_path: string) => {},
+  };
   const getDirectory = vi.fn(async () => ({
     async getDirectoryHandle(directory: string) {
       expect(["metadata", "queue", "images", "tracks"]).toContain(directory);
@@ -28,7 +34,9 @@ function installStorage() {
           return {
             async getFile() {
               const value = files.get(path)!;
-              return value instanceof File ? value : new File([value], name);
+              const file = value instanceof File ? value : new File([value], name);
+              state.afterRead(path);
+              return file;
             },
             async createWritable() {
               let pending: string | Blob = "";
@@ -40,6 +48,7 @@ function installStorage() {
               const close = () => {
                 files.set(path, pending);
                 state.writes++;
+                state.afterClose(path);
               };
               return Object.assign(
                 new WritableStream<Uint8Array>({
@@ -80,6 +89,51 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+it("preserves committed artwork when cancellation arrives during catalog close", async () => {
+  const disk = installStorage();
+  let valid = true;
+  disk.state.afterClose = (path) => {
+    if (path.endsWith(".json")) valid = false;
+  };
+  await expect(
+    new Storage()
+      .artwork(account)
+      .saveImage("cover", { blob: new Blob(["image"]), type: "image/png" }, undefined, () => valid),
+  ).resolves.toBeUndefined();
+  const catalogPath = `images/${await jsonFileName(`${account.host}\n${account.username}`)}`;
+  const catalog = JSON.parse(disk.files.get(catalogPath) as string);
+  expect(disk.files.has(`images/${catalog.images[0].fileName}`)).toBe(true);
+});
+
+it.each([0, 1])(
+  "preserves a replacement audio record during stale repair (timestamp delta: %s)",
+  async (delta) => {
+    const disk = installStorage();
+    const audio = new Storage().audio();
+    const descriptor: TrackFileDescriptor = {
+      ...account,
+      key: `${account.host}\n${account.username}\ntrack\nmp3-v1`,
+      format: "mp3",
+      contentType: "audio/mpeg",
+    };
+    const track = { id: "track", title: "Track", artist: "Artist", album: "Album" };
+    await audio.save(descriptor, track, new Response("old audio"), new AbortController().signal);
+    const [old] = await audio.entries();
+    const newer = { ...old, downloadedAt: old.downloadedAt + delta, size: 12 };
+    const path = `tracks/${old.fileName}`;
+    disk.files.set(path, "x");
+    disk.state.afterRead = (readPath) => {
+      if (readPath === path) {
+        disk.state.afterRead = () => {};
+        disk.files.set(path, "new complete");
+        disk.files.set("tracks/downloads.json", JSON.stringify([newer]));
+      }
+    };
+    await audio.read(descriptor, track);
+    expect(await audio.entries()).toEqual([newer]);
+  },
+);
 
 describe("audio storage", () => {
   const track = { id: "track", title: "Track", artist: "Artist", album: "Album" };

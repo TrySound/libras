@@ -155,7 +155,8 @@ export class Storage {
     const result = await file.update((catalog) => change(catalog ?? emptyArtworkCatalog(account)), {
       valid,
     });
-    return valid() ? (result.value ?? undefined) : undefined;
+    // Callers must distinguish a completed commit from permission to publish it.
+    return result.value ?? undefined;
   }
 
   artwork(account: MetadataAccount) {
@@ -163,8 +164,10 @@ export class Storage {
     return {
       account: identity,
       read: (valid: () => boolean) => this.#readArtwork(identity, valid),
-      update: (change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) =>
-        this.#updateArtwork(identity, change, valid),
+      update: async (change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) => {
+        const catalog = await this.#updateArtwork(identity, change, valid);
+        return valid() ? catalog : undefined;
+      },
       readImage: async (record: ImageRecord) => {
         const directory = await this.#imageDirectory();
         const file = await (await directory.getFileHandle(record.fileName)).getFile();
@@ -490,7 +493,9 @@ class AudioStore {
     if (!file || (record && record.size !== file.size)) {
       if (record)
         await this.#mutate((latest) => {
-          latest.delete(descriptor.key);
+          const current = latest.get(descriptor.key);
+          if (current?.downloadedAt === record.downloadedAt && current.size === record.size)
+            latest.delete(descriptor.key);
         });
       return null;
     }
