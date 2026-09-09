@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueueEngine } from "./queue-engine";
+import { Storage } from "./storage";
 import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";
 
@@ -86,8 +87,8 @@ function installStorage() {
 }
 let storage: ReturnType<typeof installStorage>;
 const engines: QueueEngine[] = [];
-function engine(memory: Memory) {
-  const queue = new QueueEngine(memory);
+function engine(memory: Memory, storage: Pick<Storage, "queue"> = new Storage()) {
+  const queue = new QueueEngine(memory, storage);
   engines.push(queue);
   return queue;
 }
@@ -108,6 +109,39 @@ async function connectQueue(queue: QueueEngine, client: ReturnType<typeof create
 }
 
 describe("queue engine", () => {
+  it("uses injected storage and retains engine-owned conflict handling", async () => {
+    const saved = record();
+    const store = {
+      account,
+      read: vi.fn(async () => saved),
+      save: vi.fn(async () => ({
+        written: false,
+        value: { ...saved, updatedAt: Date.now() + 1000 },
+      })),
+    };
+    const disk = { queue: vi.fn(() => store) };
+    const memory = new Memory();
+    const queue = engine(memory, disk);
+    await queue.restore(account);
+    expect(disk.queue).toHaveBeenCalledWith(account);
+    expect(store.read).toHaveBeenCalledOnce();
+    expect(memory.queueIndex).toBe(2);
+    queue.update({ tracks: ["edited"], index: 0, position: 2 });
+    await queue.flush();
+    expect(store.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        tracks: ["edited"],
+        index: 0,
+        position: 2,
+        pendingSync: true,
+      }),
+    );
+    expect(queue.storageError).toBeInstanceOf(Error);
+    expect(memory.queueTracks).toEqual(["edited"]);
+    expect(storage.writes).toBe(0);
+  });
+
   it("preserves the queue when a server response arrives after credentials are detached", async () => {
     await storage.seed();
     const memory = new Memory();

@@ -45,9 +45,70 @@ export function parseSnapshot(value: unknown): MetadataSnapshot {
   return snapshot;
 }
 
+const queueRecordSchema = v.strictObject({
+  account: v.strictObject({ host: v.string(), username: v.string() }),
+  tracks: v.array(v.pipe(v.string(), v.minLength(1))),
+  index: v.pipe(v.number(), v.integer(), v.minValue(-1)),
+  position: v.pipe(v.number(), v.finite(), v.minValue(0)),
+  updatedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  pendingSync: v.boolean(),
+});
+export type QueueRecord = v.InferOutput<typeof queueRecordSchema>;
+
+function parseQueueRecord(value: unknown, account: MetadataAccount) {
+  const record = v.parse(queueRecordSchema, value);
+  if (record.account.host !== account.host || record.account.username !== account.username)
+    throw new Error("The queue belongs to a different account.");
+  if (record.index >= record.tracks.length || (record.index === -1 && record.position !== 0))
+    throw new Error("The saved queue selection is invalid.");
+  return record;
+}
+
 /** Application-owned persistence services; acquiring account access does not perform I/O. */
 export class Storage {
   #metadataFiles = new Map<string, Promise<OpfsJsonStore<MetadataSnapshot>>>();
+  #queueFiles = new Map<string, Promise<OpfsJsonStore<QueueRecord>>>();
+
+  #queueFile({ host, username }: MetadataAccount) {
+    const key = `${host}\n${username}`;
+    let file = this.#queueFiles.get(key);
+    if (!file) {
+      file = jsonFileName(key)
+        .then(
+          (fileName) =>
+            new OpfsJsonStore({
+              directory: "queue",
+              fileName,
+              lockName: `music-web-queue:${fileName}`,
+              parse: (value) => parseQueueRecord(value, { host, username }),
+            }),
+        )
+        .catch((error) => {
+          this.#queueFiles.delete(key);
+          throw error;
+        });
+      this.#queueFiles.set(key, file);
+    }
+    return file;
+  }
+
+  queue(account: MetadataAccount) {
+    const identity = Object.freeze({ host: account.host, username: account.username });
+    return {
+      account: identity,
+      read: async () => (await this.#queueFile(identity)).read(),
+      save: async (record: QueueRecord) => {
+        if (record.account.host !== identity.host || record.account.username !== identity.username)
+          throw new Error("The queue belongs to a different account.");
+        const file = await this.#queueFile(identity);
+        return file.update(
+          (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
+          // Preserve the queue's existing repair-on-write policy.
+          { recoverReadError: () => null },
+        );
+      },
+    };
+  }
 
   #metadataFile({ host, username }: MetadataAccount) {
     const key = `${host}\n${username}`;

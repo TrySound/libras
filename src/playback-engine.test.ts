@@ -3,6 +3,7 @@ import { PlaybackEngine } from "./playback-engine";
 import { flushSync } from "svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
 import { QueueEngine } from "./queue-engine";
+import { Storage } from "./storage";
 import type { Track } from "./schema";
 import type { TrackSource } from "./track-engine";
 import { Memory } from "./memory.svelte";
@@ -71,7 +72,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       ...patch,
     });
   };
-  const queue = new QueueEngine(memory);
+  const queue = new QueueEngine(memory, new Storage());
   const audio = new AudioStub();
   const tracks = {
     getSource: vi.fn(

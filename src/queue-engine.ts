@@ -1,5 +1,4 @@
-import * as v from "valibot";
-import { OpfsJsonStore, jsonFileName } from "./json-store";
+import type { Storage, QueueRecord } from "./storage";
 import { createSubscriber } from "svelte/reactivity";
 import type { QueueConnection } from "./network.svelte";
 import type { Memory } from "./memory.svelte";
@@ -12,24 +11,7 @@ export interface QueueState {
   tracks: readonly string[];
 }
 type Account = { host: string; username: string };
-const recordSchema = v.strictObject({
-  account: v.strictObject({ host: v.string(), username: v.string() }),
-  tracks: v.array(v.pipe(v.string(), v.minLength(1))),
-  index: v.pipe(v.number(), v.integer(), v.minValue(-1)),
-  position: v.pipe(v.number(), v.finite(), v.minValue(0)),
-  updatedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  pendingSync: v.boolean(),
-});
-type QueueRecord = v.InferOutput<typeof recordSchema>;
 const scope = (account: Account) => `${account.host}\n${account.username}`;
-function parseRecord(value: unknown, account: Account) {
-  const record = v.parse(recordSchema, value);
-  if (scope(record.account) !== scope(account))
-    throw new Error("The queue belongs to a different account.");
-  if (record.index >= record.tracks.length || (record.index === -1 && record.position !== 0))
-    throw new Error("The saved queue selection is invalid.");
-  return record;
-}
 export type QueueEngineStatus = "idle" | "loading" | "ready" | "saving" | "error";
 
 export class QueueEngine {
@@ -37,13 +19,14 @@ export class QueueEngine {
   #account?: Account;
   #memory: QueueMemory;
 
-  constructor(memory: QueueMemory) {
+  constructor(memory: QueueMemory, storage: Pick<Storage, "queue">) {
     this.#memory = memory;
+    this.#storage = storage;
   }
   #dirty = false;
   #needsPersist = false;
   #conflict = false;
-  #files = new Map<string, Promise<OpfsJsonStore<QueueRecord>>>();
+  #storage: Pick<Storage, "queue">;
   #connecting?: { epoch: number; promise: Promise<void> };
   #updatedAt = 0;
   #revision = 0;
@@ -112,29 +95,6 @@ export class QueueEngine {
       position: this.#memory.queuePosition,
     };
   }
-  #file({ host, username }: Account) {
-    const key = `${host}\n${username}`;
-    let file = this.#files.get(key);
-    if (!file) {
-      file = jsonFileName(key)
-        .then(
-          (fileName) =>
-            new OpfsJsonStore({
-              directory: "queue",
-              fileName,
-              lockName: `music-web-queue:${fileName}`,
-              parse: (value) => parseRecord(value, { host, username }),
-            }),
-        )
-        .catch((error) => {
-          this.#files.delete(key);
-          throw error;
-        });
-      this.#files.set(key, file);
-    }
-    return file;
-  }
-
   #persist(): Promise<void> {
     if (!this.#account || (!this.#loaded && !this.#dirty) || !this.#needsPersist)
       return this.#localWrites.then(() => {});
@@ -150,14 +110,7 @@ export class QueueEngine {
     };
     // Also retain an engine-wide tail so teardown waits for writes to previous accounts.
     const result = this.#localWrites
-      .then(() => this.#file(account))
-      .then((file) =>
-        file.update(
-          (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
-          // Preserve the queue's existing repair-on-write policy.
-          { recoverReadError: () => null },
-        ),
-      )
+      .then(() => this.#storage.queue(account).save(record))
       .then(({ written }) => {
         if (this.#account !== account) return;
         if (!written) {
@@ -207,7 +160,7 @@ export class QueueEngine {
     this.#publish({ tracks: [], position: 0 });
     return (this.#ready = (async () => {
       try {
-        const record = await (await this.#file(account)).read();
+        const record = await this.#storage.queue(account).read();
         if (generation !== this.#accountGeneration || this.#destroyed) return;
         if (record && revision === this.#revision) {
           this.#dirty = record.pendingSync;
