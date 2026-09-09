@@ -1,16 +1,6 @@
-import * as v from "valibot";
 import type { Memory } from "./memory.svelte";
-import {
-  accountSchema,
-  artistSchema,
-  albumSchema,
-  trackSchema,
-  type Artist,
-  type Album,
-  type Track,
-  type MetadataAccount,
-} from "./schema";
-import { OpfsJsonStore, jsonFileName } from "./json-store";
+import type { Artist, Album, Track, MetadataAccount } from "./schema";
+import { entityMap, parseSnapshot, type MetadataSnapshot, type Storage } from "./storage";
 import { createSubscriber } from "svelte/reactivity";
 import type { MetadataConnection, RemoteAlbum, RemoteArtist, RemoteTrack } from "./network.svelte";
 
@@ -18,42 +8,6 @@ type MetadataMemory = Pick<
   Memory,
   "account" | "artists" | "albums" | "tracks" | "artistAlbums" | "albumTracks"
 >;
-
-const timestamp = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000));
-const snapshotSchema = v.strictObject({
-  account: accountSchema,
-  lastModified: v.nullable(timestamp),
-  savedAt: timestamp,
-  artists: v.array(artistSchema),
-  albums: v.array(albumSchema),
-  tracks: v.array(trackSchema),
-});
-export type MetadataSnapshot = v.InferOutput<typeof snapshotSchema>;
-
-function entityMap<T extends { id: string }>(items: readonly T[]) {
-  const map = new Map<string, T>();
-  for (const item of items) {
-    if (map.has(item.id)) throw new Error(`Duplicate metadata ID: ${item.id}`);
-    map.set(item.id, item);
-  }
-  return map;
-}
-
-function parseSnapshot(value: unknown): MetadataSnapshot {
-  const snapshot = v.parse(snapshotSchema, value);
-  const artists = entityMap(snapshot.artists);
-  const albums = entityMap(snapshot.albums);
-  entityMap(snapshot.tracks);
-  for (const album of albums.values()) {
-    if (!artists.has(album.artistId)) throw new Error(`Unknown artist for album ${album.id}.`);
-  }
-  for (const track of snapshot.tracks) {
-    if (!artists.has(track.artistId) || !albums.has(track.albumId)) {
-      throw new Error(`Invalid metadata references for track ${track.id}.`);
-    }
-  }
-  return snapshot;
-}
 
 function normalizeLibrary(
   account: MetadataAccount,
@@ -162,76 +116,17 @@ function prepareMetadata(snapshot?: MetadataSnapshot) {
   return { artists, albums, tracks, artistAlbums, albumTracks };
 }
 
-class MetadataStore {
-  #files = new Map<string, Promise<OpfsJsonStore<MetadataSnapshot>>>();
-
-  #file({ host, username }: MetadataAccount) {
-    const key = `${host}\n${username}`;
-    let file = this.#files.get(key);
-    if (!file) {
-      file = jsonFileName(key)
-        .then(
-          (fileName) =>
-            new OpfsJsonStore({
-              directory: "metadata",
-              fileName,
-              lockName: `music-web-metadata:${fileName}`,
-              parse: (value) => {
-                const snapshot = parseSnapshot(value);
-                if (snapshot.account.host !== host || snapshot.account.username !== username)
-                  throw new Error("The metadata snapshot belongs to a different account.");
-                return snapshot;
-              },
-            }),
-        )
-        .catch((error) => {
-          this.#files.delete(key);
-          throw error;
-        });
-      this.#files.set(key, file);
-    }
-    return file;
-  }
-
-  async load(account: MetadataAccount) {
-    return (await this.#file(account)).read();
-  }
-
-  async save(snapshot: MetadataSnapshot, current: () => boolean = () => true) {
-    const file = await this.#file(snapshot.account);
-    const result = await file.update(
-      (existing) => {
-        if (
-          existing &&
-          ((existing.lastModified !== null &&
-            snapshot.lastModified !== null &&
-            existing.lastModified > snapshot.lastModified) ||
-            (existing.lastModified === snapshot.lastModified &&
-              existing.savedAt > snapshot.savedAt))
-        )
-          return undefined;
-        return snapshot;
-      },
-      {
-        valid: current,
-        // Preserve metadata's existing policy: a fresh server snapshot may repair a bad cache.
-        recoverReadError: () => null,
-      },
-    );
-    return current() ? result.value : undefined;
-  }
-}
-
 export type MetadataStatus = "idle" | "loading" | "refreshing" | "ready" | "error";
 
 export class MetadataEngine {
   #memory: MetadataMemory;
   #snapshotInfo?: Pick<MetadataSnapshot, "lastModified" | "savedAt">;
 
-  constructor(memory: MetadataMemory) {
+  constructor(memory: MetadataMemory, storage: Pick<Storage, "metadata">) {
     this.#memory = memory;
+    this.#storage = storage;
   }
-  #store = new MetadataStore();
+  #storage: Pick<Storage, "metadata">;
   #connection?: MetadataConnection;
   #scope = "";
   #restored = false;
@@ -311,8 +206,9 @@ export class MetadataEngine {
     this.#error = undefined;
     this.#warning = undefined;
     this.#update();
-    return (this.#restoring = this.#store
-      .load(account)
+    return (this.#restoring = this.#storage
+      .metadata(account)
+      .read()
       .then((snapshot) => {
         if (generation !== this.#generation || this.#destroyed) return;
         this.#publish(snapshot ?? undefined);
@@ -397,7 +293,7 @@ export class MetadataEngine {
       }
       const snapshot = await this.#fetchLibrary(connection, valid, modified);
       if (!valid()) return;
-      const committed = await this.#store.save(snapshot, valid);
+      const committed = await this.#storage.metadata(snapshot.account).save(snapshot, valid);
       if (!valid() || !committed) return;
       this.#publish(committed);
       this.#status = "ready";
@@ -443,7 +339,7 @@ export class MetadataEngine {
     if (this.#destroyed) throw new DOMException("Metadata stopped.", "AbortError");
     const generation = this.#invalidate();
     const valid = () => !this.#destroyed && generation === this.#generation && !signal.aborted;
-    const committed = await this.#store.save(snapshot, valid);
+    const committed = await this.#storage.metadata(snapshot.account).save(snapshot, valid);
     if (!valid() || !committed) throw new DOMException("Connection superseded.", "AbortError");
     return committed;
   }

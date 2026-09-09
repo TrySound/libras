@@ -79,6 +79,8 @@ Network owns remote requests, response mapping, authenticated URLs, and connecti
 
 ## Storage architecture and offline behavior
 
+`src/storage.ts` contains one application-owned `Storage` service and shared snapshot types/validation. `MetadataEngine` receives that instance explicitly and uses `storage.metadata(account).read()` / `.save(snapshot, valid)`; it retains remote normalization, refresh decisions, staging, and Memory publication. Account access is lazy, captures identity, and shares underlying file caches and write ordering. Storage keeps existing account-scoped paths, atomic newer-snapshot comparisons, and repair-on-write policy. Queue, artwork, and audio storage remain unchanged pending their separate migrations.
+
 - The service worker precaches only the production app shell, manifest, and install icons. The style guide is not available offline.
 - Subsonic API requests, artwork, and audio streams are not runtime-cached by the service worker. Metadata, artwork, and downloads remain owned by the existing engines.
 - Metadata, queue state, cover catalogs, and the downloads catalog share `src/json-store.ts`: validated JSON reads, serialized read–modify–write operations, named Web Locks, atomic replacement, and optional stale-write cancellation before commit. Schemas and conflict policies stay in the engines. Corrupt files are preserved by default; metadata and queue explicitly retain their repair-on-write policies. Binary audio/image files remain engine-owned.

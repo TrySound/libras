@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoverEngine } from "./cover-engine";
-import type { MetadataSnapshot } from "./metadata-engine";
+import type { MetadataSnapshot } from "./storage";
 import type { MetadataAccount } from "./schema";
 import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";

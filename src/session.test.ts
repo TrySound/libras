@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MetadataSnapshot } from "./metadata-engine";
+import type { MetadataSnapshot } from "./storage";
 import { NetworkTransportError } from "./network.svelte";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
