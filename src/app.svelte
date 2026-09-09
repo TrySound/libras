@@ -315,16 +315,18 @@
       title="Home">{@render icon("home")}</a
     >
   </header>
-  <section class="view settings-view">
-    <span class="type-eyebrow muted">Settings</span>
-    <h2 class="type-heading">
-      {session.auth ? "Music server" : "Connect to your music"}
-    </h2>
-    <p class="type-body muted">
-      {session.auth
-        ? "Disconnect first to change servers. Your offline library will stay on this device."
-        : "Enter your Navidrome server details. Authentication stays on this device."}
-    </p>
+  <section class="view settings-view stack-md">
+    <div class="stack-sm">
+      <span class="type-eyebrow muted">Settings</span>
+      <h2 class="type-heading">
+        {session.auth ? "Music server" : "Connect to your music"}
+      </h2>
+      <p class="type-body muted">
+        {session.auth
+          ? "Disconnect first to change servers. Your offline library will stay on this device."
+          : "Enter your Navidrome server details. Authentication stays on this device."}
+      </p>
+    </div>
 
     <section class="connection-card" aria-label="Music server">
       <div class="connection-card-header">
@@ -336,10 +338,14 @@
           class:failed={session.status === "error"}
         ></span>
         <span class="connection-summary stack-xs">
-          <strong class="type-title">{session.auth?.host ?? "Add a server"}</strong>
-          <small class="type-small muted">
-            {session.auth ? `${session.auth.username} · ${statusLabel}` : "Navidrome connection"}
-          </small>
+          <strong class="type-title">
+            {session.auth?.host ?? "Add a server"}
+          </strong>
+          {#if session.auth}
+            <small class="type-small muted">
+              {`${session.auth.username} · ${statusLabel}`}
+            </small>
+          {/if}
         </span>
         {#if session.auth}
           <div class="connection-actions">
@@ -379,37 +385,42 @@
           {/if}
           {#if !session.auth}
             <form class="stack-md" onsubmit={submitConnection}>
-              <label class="stack-sm"
-                >Host
-                <input
-                  type="text"
-                  bind:value={host}
-                  placeholder="https://music.example.com"
-                  autocomplete="url"
-                  required
-                  disabled={session.busy}
-                />
-              </label>
-              <label class="stack-sm"
-                >Username
-                <input
-                  type="text"
-                  bind:value={username}
-                  autocomplete="username"
-                  required
-                  disabled={session.busy}
-                />
-              </label>
-              <label class="stack-sm"
-                >Password
-                <input
-                  type="password"
-                  bind:value={password}
-                  autocomplete="current-password"
-                  required
-                  disabled={session.busy}
-                />
-              </label>
+              <div class="stack-sm">
+                <div class="stack-xs">
+                  <label for="server-host">Host</label>
+                  <input
+                    id="server-host"
+                    type="text"
+                    bind:value={host}
+                    placeholder="https://music.example.com"
+                    autocomplete="url"
+                    required
+                    disabled={session.busy}
+                  />
+                </div>
+                <div class="stack-xs">
+                  <label for="server-username">Username</label>
+                  <input
+                    id="server-username"
+                    type="text"
+                    bind:value={username}
+                    autocomplete="username"
+                    required
+                    disabled={session.busy}
+                  />
+                </div>
+                <div class="stack-xs">
+                  <label for="server-password">Password</label>
+                  <input
+                    id="server-password"
+                    type="password"
+                    bind:value={password}
+                    autocomplete="current-password"
+                    required
+                    disabled={session.busy}
+                  />
+                </div>
+              </div>
               <button
                 class="button"
                 type="submit"
