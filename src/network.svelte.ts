@@ -85,12 +85,13 @@ function genres(item: { genre?: string; genres?: { name: string }[] }) {
   );
 }
 
+type ConnectionEntry = { handle: NetworkConnection; client: SubsonicClient };
+
 /** Application server access, connection ownership, and cancellation policy. */
 export class Network {
   #mode = $state<"online" | "offline">("offline");
-  #client?: SubsonicClient;
-  #candidate?: SubsonicClient;
-  #clients = new WeakMap<NetworkConnection, SubsonicClient>();
+  #active?: ConnectionEntry;
+  #candidate?: ConnectionEntry;
 
   get mode() {
     return this.#mode;
@@ -99,9 +100,9 @@ export class Network {
   setMode(mode: "online" | "offline") {
     this.#mode = mode;
     if (mode === "online") return;
-    this.#client?.abort();
-    this.#candidate?.abort();
-    this.#client = undefined;
+    this.#active?.client.abort();
+    this.#candidate?.client.abort();
+    this.#active = undefined;
     this.#candidate = undefined;
   }
 
@@ -124,39 +125,39 @@ export class Network {
     const candidate = new SubsonicClient(auth, {
       fetch: (input, init) => this.#fetch(input, init),
     });
-    this.#candidate?.abort();
-    this.#candidate = candidate;
+    this.#candidate?.client.abort();
     const connection = Object.freeze({
       account: Object.freeze({ host: candidate.host, username: candidate.username }),
       signal: candidate.signal,
     });
-    this.#clients.set(connection, candidate);
+    this.#candidate = { handle: connection, client: candidate };
     return connection;
   }
 
   /** Accept only the live candidate; stale login work must never restore access. */
   accept(connection: NetworkConnection) {
-    const candidate = this.#resolve(connection);
-    if (candidate !== this.#candidate) {
+    connection.signal.throwIfAborted();
+    const candidate = this.#candidate;
+    if (!candidate || candidate.handle !== connection) {
       throw new DOMException("Connection superseded.", "AbortError");
     }
-    this.#client?.abort();
-    this.#client = candidate;
+    this.#active?.client.abort();
+    this.#active = candidate;
     this.#candidate = undefined;
     this.#mode = "online";
   }
 
   #resolve(connection: NetworkConnection) {
     connection.signal.throwIfAborted();
-    const client = this.#clients.get(connection);
-    if (!client) throw new DOMException("Connection superseded.", "AbortError");
-    return client;
+    if (this.#active?.handle === connection) return this.#active.client;
+    if (this.#candidate?.handle === connection) return this.#candidate.client;
+    throw new DOMException("Connection superseded.", "AbortError");
   }
 
   #check(client: SubsonicClient, allowCandidate = false) {
     client.signal.throwIfAborted();
-    if (allowCandidate && client === this.#candidate) return;
-    if (client !== this.#client || this.#mode !== "online") {
+    if (allowCandidate && client === this.#candidate?.client) return;
+    if (client !== this.#active?.client || this.#mode !== "online") {
       throw new DOMException("Connection superseded.", "AbortError");
     }
   }
@@ -182,95 +183,94 @@ export class Network {
   metadata(connection: NetworkConnection): MetadataConnection {
     const client = this.#resolve(connection);
     this.#check(client, true);
-    const request = <T>(run: () => Promise<T>) => this.#request(client, run, true);
     return {
       account: connection.account,
       signal: connection.signal,
-      getModifiedAt: (since) => request(() => client.getIndexes(since)),
-      readLibrary: async (workflowSignal) => {
-        const controller = new AbortController();
-        const signal = AbortSignal.any([connection.signal, workflowSignal, controller.signal]);
-        const check = () => {
-          signal.throwIfAborted();
-          this.#check(client, true);
-        };
-        const read = async <T>(run: () => Promise<T>) => {
-          check();
-          const result = await run();
-          check();
-          return result;
-        };
-        const listArtists = () =>
-          read(async () =>
-            (await client.getArtists(signal)).map((artist) => ({
-              id: artist.id,
-              name: artist.name,
-              artworkId: artist.coverArt || undefined,
-              genres: genres(artist),
-            })),
-          );
-        const listAlbums = (offset: number) =>
-          read(async () =>
-            (
-              await client.getAlbumList2(
-                { type: "alphabeticalByArtist", size: 500, offset },
-                signal,
-              )
-            ).map((album) => ({
-              id: album.id,
-              title: album.name,
-              artistId: album.artistId,
-              artistName: album.artist,
-              artworkId: album.coverArt || undefined,
-              year: album.year && album.year > 0 ? album.year : undefined,
-              genres: genres(album),
-            })),
-          );
-        const getAlbumTracks = (albumId: string) =>
-          read(async () =>
-            (await client.getAlbum(albumId, signal)).map((track) => ({
-              id: track.id,
-              title: track.title,
-              albumId: track.albumId,
-              artistId: track.artistId,
-              artistName: track.artist,
-              artworkId: track.coverArt || undefined,
-              number: track.track && track.track > 0 ? track.track : undefined,
-              disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,
-              duration: track.duration,
-              mimeType: track.contentType,
-              genres: genres(track),
-            })),
-          );
-        const fetchAlbums = async () => {
-          const albums: RemoteAlbum[] = [];
-          for (let offset = 0; ; offset += 500) {
-            const page = await listAlbums(offset);
-            albums.push(...page);
-            if (page.length < 500) return albums;
-          }
-        };
-        try {
-          const [artists, albums] = await Promise.all([listArtists(), fetchAlbums()]);
-          check();
-          const tracksByAlbum = new Map<string, readonly RemoteTrack[]>();
-          let next = 0;
-          const worker = async () => {
-            while (next < albums.length) {
-              check();
-              const album = albums[next++];
-              tracksByAlbum.set(album.id, await getAlbumTracks(album.id));
-            }
-          };
-          await Promise.all(Array.from({ length: Math.min(6, albums.length) }, worker));
-          check();
-          return { artists, albums, tracksByAlbum };
-        } finally {
-          // Cancel sibling requests on failure without revoking the connection.
-          controller.abort();
-        }
-      },
+      getModifiedAt: (since) => this.#request(client, () => client.getIndexes(since), true),
+      readLibrary: (signal) => this.#readLibrary(client, signal),
     };
+  }
+
+  async #readLibrary(client: SubsonicClient, workflowSignal: AbortSignal): Promise<RemoteLibrary> {
+    const controller = new AbortController();
+    // The SDK adds its connection signal to each request.
+    const signal = AbortSignal.any([workflowSignal, controller.signal]);
+    const check = () => {
+      signal.throwIfAborted();
+      this.#check(client, true);
+    };
+    const read = async <T>(run: () => Promise<T>) => {
+      check();
+      const result = await run();
+      check();
+      return result;
+    };
+    const listArtists = () =>
+      read(async () =>
+        (await client.getArtists(signal)).map((artist) => ({
+          id: artist.id,
+          name: artist.name,
+          artworkId: artist.coverArt || undefined,
+          genres: genres(artist),
+        })),
+      );
+    const listAlbums = (offset: number) =>
+      read(async () =>
+        (
+          await client.getAlbumList2({ type: "alphabeticalByArtist", size: 500, offset }, signal)
+        ).map((album) => ({
+          id: album.id,
+          title: album.name,
+          artistId: album.artistId,
+          artistName: album.artist,
+          artworkId: album.coverArt || undefined,
+          year: album.year && album.year > 0 ? album.year : undefined,
+          genres: genres(album),
+        })),
+      );
+    const getAlbumTracks = (albumId: string) =>
+      read(async () =>
+        (await client.getAlbum(albumId, signal)).map((track) => ({
+          id: track.id,
+          title: track.title,
+          albumId: track.albumId,
+          artistId: track.artistId,
+          artistName: track.artist,
+          artworkId: track.coverArt || undefined,
+          number: track.track && track.track > 0 ? track.track : undefined,
+          disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,
+          duration: track.duration,
+          mimeType: track.contentType,
+          genres: genres(track),
+        })),
+      );
+    const fetchAlbums = async () => {
+      const albums: RemoteAlbum[] = [];
+      for (let offset = 0; ; offset += 500) {
+        const page = await listAlbums(offset);
+        albums.push(...page);
+        if (page.length < 500) return albums;
+      }
+    };
+    try {
+      const [artists, albums] = await Promise.all([listArtists(), fetchAlbums()]);
+      check();
+      const tracksByAlbum = new Map<string, readonly RemoteTrack[]>();
+      let next = 0;
+      const worker = async () => {
+        while (next < albums.length) {
+          check();
+          const album = albums[next++];
+          tracksByAlbum.set(album.id, await getAlbumTracks(album.id));
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, albums.length) }, worker));
+      check();
+      return { artists, albums, tracksByAlbum };
+    } finally {
+      // Cancel sibling requests on failure without revoking the connection.
+      controller.abort();
+    }
   }
 
   /** Queue access is available only after accepting a connection, never during login staging. */

@@ -302,6 +302,41 @@ describe("Network connection lifecycle", () => {
     }
   });
 
+  it.each(["offline", "replacement"])(
+    "cancels library fetches on connection %s without cancelling the caller's signal",
+    async (action) => {
+      const network = new Network();
+      const connection = network.prepare(auth);
+      network.accept(connection);
+      const workflow = new AbortController();
+      const signals: AbortSignal[] = [];
+      const fetcher = vi.fn(
+        (_input: RequestInfo | URL, options?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            const signal = options!.signal!;
+            signals.push(signal);
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          }),
+      );
+      vi.stubGlobal("fetch", fetcher);
+      try {
+        const result = network.metadata(connection).readLibrary(workflow.signal);
+        const rejected = expect(result).rejects.toMatchObject({ name: "AbortError" });
+        await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+        if (action === "offline") network.setMode("offline");
+        else network.accept(network.prepare({ ...auth, username: "other" }));
+        await rejected;
+        expect(signals.every((signal) => signal.aborted)).toBe(true);
+        expect(workflow.signal.aborted).toBe(false);
+        expect(connection.signal.aborted).toBe(true);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+      } finally {
+        network.setMode("offline");
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   it("cancels sibling library requests on failure without closing the connection", async () => {
     const network = new Network();
     const candidate = network.prepare(auth);
