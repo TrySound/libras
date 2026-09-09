@@ -45,7 +45,7 @@
   --color-control-neutral: var(--palette-gray-600);
   --color-primary: var(--palette-crimson-500);
   --color-accent: var(--palette-crimson-300);
-  --color-accent-text: var(--palette-crimson-100);
+  --color-accent-text: var(--palette-crimson-300);
   --color-status-neutral: var(--palette-gray-400);
   --color-status-success: var(--palette-green-500);
   --color-status-warning: var(--palette-amber-500);
@@ -187,7 +187,10 @@
   font-size: var(--type-control-size);
   font-weight: var(--type-control-weight);
   line-height: var(--type-control-line);
-  transition: background-color 0.16s ease-out;
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: background-color 0.16s ease-out;
+  }
 }
 
 .row-button:where(button, a) {
@@ -197,17 +200,26 @@
   border-radius: 0;
   color: inherit;
   cursor: pointer;
-  transition: background-color 0.16s ease-out;
 
   &:disabled {
     cursor: default;
     opacity: 0.5;
   }
 
-  &:active:not(:disabled),
-  &:hover:not(:disabled) {
+  &:active:not(:disabled) {
     background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
-    transition-duration: 50ms;
+    @media (prefers-reduced-motion: no-preference) {
+      transition-duration: 50ms;
+    }
+  }
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+      @media (prefers-reduced-motion: no-preference) {
+        transition-duration: 50ms;
+      }
+    }
   }
 
   &:focus-visible {
@@ -217,10 +229,20 @@
 }
 
 .row-button:has(.linkarea) {
-  &:has(.linkarea:active:not(:disabled)),
-  &:has(.linkarea:hover:not(:disabled)) {
+  &:has(.linkarea:active:not(:disabled)) {
     background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
-    transition-duration: 50ms;
+    @media (prefers-reduced-motion: no-preference) {
+      transition-duration: 50ms;
+    }
+  }
+
+  @media (hover: hover) {
+    &:has(.linkarea:hover:not(:disabled)) {
+      background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+      @media (prefers-reduced-motion: no-preference) {
+        transition-duration: 50ms;
+      }
+    }
   }
 
   &:has(.linkare:focus-visible) {
@@ -238,6 +260,12 @@
   background: var(--color-border-strong);
   cursor: pointer;
   transition: background 160ms ease;
+
+  @media (hover: hover) {
+    &:hover:not(:has(input:disabled)) {
+      filter: brightness(1.15);
+    }
+  }
 
   input {
     position: absolute;
@@ -266,6 +294,25 @@
 
   &:has(input:disabled) {
     opacity: 0.5;
+  }
+}
+
+.text-link {
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+
+  @media (hover: hover) {
+    &:hover {
+      color: var(--color-accent-text);
+      filter: brightness(1.2);
+      text-underline-offset: 0.4em;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition:
+      color 160ms ease-out,
+      text-underline-offset 160ms ease-out;
   }
 }
 
@@ -399,6 +446,12 @@ input:not([type="range"]):not([type="checkbox"]) {
   outline: none;
   color: var(--color-text-primary);
   background: var(--color-surface-input);
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      border-color: var(--color-accent);
+    }
+  }
 }
 
 input:not([type="range"]):not([type="checkbox"]):focus {
@@ -491,11 +544,6 @@ a {
   text-decoration: none;
 }
 
-.text-link {
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-
 .button,
 .icon-button {
   --control-size: 2.75rem;
@@ -516,9 +564,6 @@ a {
 
 .button {
   -webkit-tap-highlight-color: transparent;
-  transition:
-    scale 160ms ease-out,
-    filter 160ms ease-out;
   display: inline-grid;
   min-height: var(--control-size);
   padding-inline: var(--control-padding);
@@ -526,20 +571,32 @@ a {
   border-radius: 999px;
   text-align: center;
   text-decoration: none;
+
+  @media (hover: hover) {
+    &:hover:not(:active):not(:disabled) {
+      filter: brightness(1.12);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition:
+      scale 160ms ease-out,
+      filter 160ms ease-out;
+  }
 }
 
 .button:active:not(:disabled) {
-  scale: 0.97;
   filter: brightness(0.9);
-  transition-duration: 50ms;
+
+  @media (prefers-reduced-motion: no-preference) {
+    scale: 0.97;
+    transition-duration: 50ms;
+  }
 }
 
 .icon-button {
   position: relative;
   -webkit-tap-highlight-color: transparent;
-  transition:
-    scale 160ms ease-out,
-    background-color 160ms ease-out;
   display: inline-grid;
   width: var(--control-size);
   height: var(--control-size);
@@ -548,16 +605,35 @@ a {
   place-items: center;
   border-radius: 50%;
   font-size: var(--control-icon-size);
+
+  @media (hover: hover) {
+    &:hover:not(:active):not(:disabled) {
+      background-color: color-mix(
+        in srgb,
+        var(--control-background) 90%,
+        var(--color-text-primary) 10%
+      );
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition:
+      scale 160ms ease-out,
+      background-color 160ms ease-out;
+  }
 }
 
 .icon-button:active:not(:disabled) {
-  scale: 0.9;
   background-color: color-mix(
     in srgb,
     var(--control-background) 80%,
     var(--color-text-primary) 20%
   );
-  transition-duration: 50ms;
+
+  @media (prefers-reduced-motion: no-preference) {
+    scale: 0.9;
+    transition-duration: 50ms;
+  }
 }
 
 .button[data-size="sm"],
@@ -747,6 +823,12 @@ a {
   width: 100%;
   margin: 0;
   accent-color: var(--color-accent);
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      cursor: pointer;
+    }
+  }
 }
 
 .playback-time {
@@ -791,18 +873,30 @@ a {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
   user-select: none;
-  transition:
-    scale 160ms ease-out,
-    filter 160ms ease-out;
   display: grid;
   width: 100%;
   padding: 0;
+
+  @media (hover: hover) {
+    &:hover:not(:active) {
+      filter: brightness(1.1);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition:
+      scale 160ms ease-out,
+      filter 160ms ease-out;
+  }
 }
 
 .artist-main:active {
-  scale: 0.98;
   filter: brightness(0.85);
-  transition-duration: 50ms;
+
+  @media (prefers-reduced-motion: no-preference) {
+    scale: 0.98;
+    transition-duration: 50ms;
+  }
 }
 
 .cover {
@@ -885,11 +979,14 @@ a {
   overscroll-behavior-y: contain;
   opacity: 0;
   translate: 0 var(--dialog-dismiss-offset, 100%);
-  transition:
-    translate 180ms ease-out,
-    opacity 180ms ease,
-    overlay 180ms allow-discrete,
-    display 180ms allow-discrete;
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition:
+      translate 180ms ease-out,
+      opacity 180ms ease,
+      overlay 180ms allow-discrete,
+      display 180ms allow-discrete;
+  }
 }
 
 .player-dialog[open],
@@ -901,10 +998,13 @@ a {
 .player-dialog::backdrop,
 .action-menu::backdrop {
   opacity: 0;
-  transition:
-    opacity 180ms ease,
-    overlay 180ms allow-discrete,
-    display 180ms allow-discrete;
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition:
+      opacity 180ms ease,
+      overlay 180ms allow-discrete,
+      display 180ms allow-discrete;
+  }
 }
 
 .player-dialog[open]::backdrop,
@@ -928,15 +1028,6 @@ a {
 .player-dialog[data-dragging],
 .action-menu[data-dragging] {
   transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .player-dialog,
-  .action-menu,
-  .player-dialog::backdrop,
-  .action-menu::backdrop {
-    transition: none;
-  }
 }
 
 .track-leading {
@@ -1016,53 +1107,38 @@ a {
   text-align: left;
   background: var(--color-surface-raised);
   box-shadow: 0 0.8rem 2rem var(--color-shadow-raised);
-  transition: background-color 160ms ease-out;
 
-  &:has(.linkarea:hover),
+  @media (prefers-reduced-motion: no-preference) {
+    transition: background-color 160ms ease-out;
+  }
+
   &:has(.linkarea:active) {
     background-color: color-mix(
       in srgb,
       var(--color-surface-raised) 90%,
       var(--color-text-primary) 10%
     );
-    transition-duration: 50ms;
+    @media (prefers-reduced-motion: no-preference) {
+      transition-duration: 50ms;
+    }
+  }
+
+  @media (hover: hover) {
+    &:has(.linkarea:hover) {
+      background-color: color-mix(
+        in srgb,
+        var(--color-surface-raised) 90%,
+        var(--color-text-primary) 10%
+      );
+      @media (prefers-reduced-motion: no-preference) {
+        transition-duration: 50ms;
+      }
+    }
   }
 
   &:has(.linkarea:focus-visible) {
     outline: 2px solid var(--color-accent-text);
     outline-offset: 2px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .button {
-    transition: none;
-  }
-
-  .button:active:not(:disabled) {
-    scale: none;
-  }
-
-  .icon-button {
-    transition: none;
-  }
-
-  .icon-button:active:not(:disabled) {
-    scale: none;
-  }
-
-  .row-button,
-  .row-area,
-  .mini-player {
-    transition: none;
-  }
-
-  .artist-main {
-    transition: none;
-  }
-
-  .artist-main:active {
-    scale: none;
   }
 }
 
