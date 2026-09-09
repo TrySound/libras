@@ -304,18 +304,16 @@
 {/snippet}
 
 {#snippet settingsRoute(_params: RouteParams, router: RouteControls)}
-  <header class="topbar track-list">
-    <div class="track-item">
-      <span class="icon-button visually-hidden" aria-hidden="true"></span>
-      {@render brand()}
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/library")}
-        title="Home">{@render icon("home")}</a
-      >
-    </div>
+  <header class="topbar wings">
+    <span class="icon-button visually-hidden" aria-hidden="true"></span>
+    {@render brand()}
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/library")}
+      title="Home">{@render icon("home")}</a
+    >
   </header>
   <section class="view settings-view">
     <span class="type-eyebrow muted">Settings</span>
@@ -339,11 +337,9 @@
         ></span>
         <span class="connection-summary stack-xs">
           <strong class="type-title">{session.auth?.host ?? "Add a server"}</strong>
-          <small class="type-small muted"
-            >{session.auth
-              ? `${session.auth.username} · ${statusLabel}`
-              : "Navidrome connection"}</small
-          >
+          <small class="type-small muted">
+            {session.auth ? `${session.auth.username} · ${statusLabel}` : "Navidrome connection"}
+          </small>
         </span>
         {#if session.auth}
           <div class="connection-actions">
@@ -479,20 +475,18 @@
 {/snippet}
 
 {#snippet downloadsRoute(_params: RouteParams, router: RouteControls)}
-  <header class="topbar track-list">
-    <div class="track-item">
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/settings")}
-        title="Settings"
-      >
-        {@render icon("back")}
-      </a>
-      {@render brand()}
-      <span class="icon-button visually-hidden" aria-hidden="true"></span>
-    </div>
+  <header class="topbar wings">
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/settings")}
+      title="Settings"
+    >
+      {@render icon("back")}
+    </a>
+    {@render brand()}
+    <span class="icon-button visually-hidden" aria-hidden="true"></span>
   </header>
   <section class="view stack-md">
     <h2 class="type-heading">Downloads</h2>
@@ -508,9 +502,9 @@
       <p class="type-body muted" role="status">Reading downloaded files…</p>
     {/if}
     {#if downloads.length}
-      <div class="track-list">
+      <div class="wings">
         {#each downloads as entry (entry.key)}
-          <div class="track-item">
+          <div class="wings-item">
             <span
               class="track-leading"
               role="img"
@@ -580,19 +574,17 @@
   {@const album = playback.track && memory.albums.get(playback.track.albumId)}
   {@const albumArtist = album && memory.artists.get(album.artistId)}
   <dialog id="player-dialog" class="player-dialog" use:swipeToDismiss>
-    <header class="topbar track-list">
-      <div class="track-item">
-        <button
-          class="icon-button"
-          data-size="md"
-          data-variant="neutral"
-          commandfor="player-dialog"
-          command="close"
-          title="Close player">{@render icon("chevron-down")}</button
-        >
-        {@render brand()}
-        <span class="icon-button visually-hidden" aria-hidden="true"></span>
-      </div>
+    <header class="topbar wings">
+      <button
+        class="icon-button"
+        data-size="md"
+        data-variant="neutral"
+        commandfor="player-dialog"
+        command="close"
+        title="Close player">{@render icon("chevron-down")}</button
+      >
+      {@render brand()}
+      <span class="icon-button visually-hidden" aria-hidden="true"></span>
     </header>
     {@render alerts()}
 
@@ -731,12 +723,12 @@
           {/if}
         </div>
         {#if queue.length > 0}
-          <div class="track-list">
+          <div class="wings">
             {#each queue as { track, index }, visibleIndex}
               {@const downloadStatus = trackEngine.getStatus(track.id)}
-              <div class="track-item">
+              <div class="wings-item row-button">
                 <button
-                  class="track-target"
+                  class="linkarea"
                   aria-label={`Play ${track.title}`}
                   onclick={() => playback.playIndex(index)}
                 ></button>
@@ -786,24 +778,22 @@
       )
     : artists}
 
-  <header class="topbar track-list">
-    <div class="track-item">
-      <span class="icon-button visually-hidden" aria-hidden="true"></span>
-      {@render brand()}
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/settings")}
-        aria-label={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
-        title={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
-      >
-        {@render icon("settings")}
-        {#if appUpdate?.hasUpdate}
-          <span class="icon-button-notification" aria-hidden="true"></span>
-        {/if}
-      </a>
-    </div>
+  <header class="topbar wings">
+    <span class="icon-button visually-hidden" aria-hidden="true"></span>
+    {@render brand()}
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/settings")}
+      aria-label={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+      title={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+    >
+      {@render icon("settings")}
+      {#if appUpdate?.hasUpdate}
+        <span class="icon-button-notification" aria-hidden="true"></span>
+      {/if}
+    </a>
   </header>
   {@render alerts()}
 
@@ -888,25 +878,25 @@
           <header id={`${menuId}-title`} class="type-title">
             {artist.name}
           </header>
-          <div class="track-list">
-            <button class="track-item" onclick={() => playArtist(artist)}>
+          <div class="wings">
+            <button class="wings-item row-button" onclick={() => playArtist(artist)}>
               {@render icon("play")}
               <span>Play</span>
             </button>
-            <button class="track-item" onclick={() => playNext(artistTracks(artist))}>
+            <button class="wings-item row-button" onclick={() => playNext(artistTracks(artist))}>
               {@render icon("next")}
               <span>Play next</span>
             </button>
-            <button class="track-item" onclick={() => playLast(artistTracks(artist))}>
+            <button class="wings-item row-button" onclick={() => playLast(artistTracks(artist))}>
               {@render icon("plus")}
               <span>Play last</span>
             </button>
-            <button class="track-item" onclick={() => downloadArtist(artist)}>
+            <button class="wings-item row-button" onclick={() => downloadArtist(artist)}>
               {@render icon("download")}
               <span>Download</span>
             </button>
+            <button class="wings-item row-button"><span></span>Cancel</button>
           </div>
-          <button class="button" data-variant="neutral">Cancel</button>
         </div>
       </dialog>
     {/each}
@@ -926,24 +916,22 @@
       : (memory.artistAlbums.get(artist.id) ?? [])
     : []}
 
-  <header class="topbar track-list">
-    <div class="track-item">
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/library")}
-        title="Back">{@render icon("back")}</a
-      >
-      {@render brand()}
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/library")}
-        title="Home">{@render icon("home")}</a
-      >
-    </div>
+  <header class="topbar wings">
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/library")}
+      title="Back">{@render icon("back")}</a
+    >
+    {@render brand()}
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/library")}
+      title="Home">{@render icon("home")}</a
+    >
   </header>
   {@render alerts()}
 
@@ -994,7 +982,7 @@
           <p class="type-body">Checking downloaded music…</p>
         </div>
       {:else}
-        <div class="track-list">
+        <div class="wings">
           {#each visibleAlbums as album, index}
             {@const albumMenuId = `album-menu-${index}`}
             {@const visibleTracks = offlineMode
@@ -1005,9 +993,9 @@
             {@const cover = coverEngine.ensureAlbumCover(album.id, {
               allowNetwork: !offlineMode,
             })}
-            <article class="track-item">
+            <article class="wings-item row-button">
               <a
-                class="track-target"
+                class="linkarea"
                 href={router.href(albumPath(artist, album))}
                 aria-label={`Open ${album.title}`}
                 data-longpressfor={albumMenuId}
@@ -1081,25 +1069,25 @@
         <header id="artist-page-menu-title" class="type-title">
           {artist.name}
         </header>
-        <div class="track-list">
-          <button class="track-item" onclick={() => playArtist(artist)}>
+        <div class="wings">
+          <button class="wings-item row-button" onclick={() => playArtist(artist)}>
             {@render icon("play")}
             <span>Play</span>
           </button>
-          <button class="track-item" onclick={() => playNext(artistTracks(artist))}>
+          <button class="wings-item row-button" onclick={() => playNext(artistTracks(artist))}>
             {@render icon("next")}
             <span>Play next</span>
           </button>
-          <button class="track-item" onclick={() => playLast(artistTracks(artist))}>
+          <button class="wings-item row-button" onclick={() => playLast(artistTracks(artist))}>
             {@render icon("plus")}
             <span>Play last</span>
           </button>
-          <button class="track-item" onclick={() => downloadArtist(artist)}>
+          <button class="wings-item row-button" onclick={() => downloadArtist(artist)}>
             {@render icon("download")}
             <span>Download</span>
           </button>
+          <button class="wings-item row-button"><span></span>Cancel</button>
         </div>
-        <button class="button" data-variant="neutral">Cancel</button>
       </div>
     </dialog>
     {#if !offlineScanning}
@@ -1117,31 +1105,31 @@
             <header id={`${albumMenuId}-title`} class="type-title">
               {album.title}
             </header>
-            <div class="track-list">
-              <button class="track-item" onclick={() => playAlbum(album)}>
+            <div class="wings">
+              <button class="wings-item row-button" onclick={() => playAlbum(album)}>
                 {@render icon("play")}
                 <span>Play</span>
               </button>
               <button
-                class="track-item"
+                class="wings-item row-button"
                 onclick={() => playNext(memory.albumTracks.get(album.id) ?? [])}
               >
                 {@render icon("next")}
                 <span>Play next</span>
               </button>
               <button
-                class="track-item"
+                class="wings-item row-button"
                 onclick={() => playLast(memory.albumTracks.get(album.id) ?? [])}
               >
                 {@render icon("plus")}
                 <span>Play last</span>
               </button>
-              <button class="track-item" onclick={() => downloadAlbum(album)}>
+              <button class="wings-item row-button" onclick={() => downloadAlbum(album)}>
                 {@render icon("download")}
                 <span>Download</span>
               </button>
+              <button class="wings-item row-button"><span></span>Cancel</button>
             </div>
-            <button class="button" data-variant="neutral">Cancel</button>
           </div>
         </dialog>
       {/each}
@@ -1161,24 +1149,22 @@
       : (memory.albumTracks.get(album.id) ?? [])
     : []}
 
-  <header class="topbar track-list">
-    <div class="track-item">
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={artist ? router.href(artistPath(artist)) : router.href("/library")}
-        title="Back">{@render icon("back")}</a
-      >
-      {@render brand()}
-      <a
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        href={router.href("/library")}
-        title="Home">{@render icon("home")}</a
-      >
-    </div>
+  <header class="topbar wings">
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={artist ? router.href(artistPath(artist)) : router.href("/library")}
+      title="Back">{@render icon("back")}</a
+    >
+    {@render brand()}
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="neutral"
+      href={router.href("/library")}
+      title="Home">{@render icon("home")}</a
+    >
   </header>
   {@render alerts()}
 
@@ -1232,13 +1218,13 @@
           <p class="type-body">Checking downloaded music…</p>
         </div>
       {:else}
-        <div class="track-list">
+        <div class="wings">
           {#each visibleTracks as track, index}
             {@const trackMenuId = `album-track-menu-${index}`}
             {@const downloadStatus = trackEngine.getStatus(track.id)}
-            <div class="track-item">
+            <div class="wings-item row-button">
               <button
-                class="track-target"
+                class="linkarea"
                 aria-label={`Play ${track.title}`}
                 onclick={() => playTrack(track)}
                 data-longpressfor={trackMenuId}
@@ -1323,31 +1309,31 @@
         <header id="album-page-menu-title" class="type-title">
           {album.title}
         </header>
-        <div class="track-list">
-          <button class="track-item" onclick={() => playAlbum(album)}>
+        <div class="wings">
+          <button class="wings-item row-button" onclick={() => playAlbum(album)}>
             {@render icon("play")}
             <span>Play</span>
           </button>
           <button
-            class="track-item"
+            class="wings-item row-button"
             onclick={() => playNext(memory.albumTracks.get(album.id) ?? [])}
           >
             {@render icon("next")}
             <span>Play next</span>
           </button>
           <button
-            class="track-item"
+            class="wings-item row-button"
             onclick={() => playLast(memory.albumTracks.get(album.id) ?? [])}
           >
             {@render icon("plus")}
             <span>Play last</span>
           </button>
-          <button class="track-item" onclick={() => downloadAlbum(album)}>
+          <button class="wings-item row-button" onclick={() => downloadAlbum(album)}>
             {@render icon("download")}
             <span>Download</span>
           </button>
+          <button class="wings-item row-button"><span></span>Cancel</button>
         </div>
-        <button class="button" data-variant="neutral">Cancel</button>
       </div>
     </dialog>
     {#if !offlineScanning}
@@ -1366,21 +1352,21 @@
             <header id={`${trackMenuId}-title`} class="type-title">
               {track.title}
             </header>
-            <div class="track-list">
-              <button class="track-item" onclick={() => playTrack(track)}>
+            <div class="wings">
+              <button class="wings-item row-button" onclick={() => playTrack(track)}>
                 {@render icon("play")}
                 <span>Play</span>
               </button>
-              <button class="track-item" onclick={() => playNext([track])}>
+              <button class="wings-item row-button" onclick={() => playNext([track])}>
                 {@render icon("next")}
                 <span>Play next</span>
               </button>
-              <button class="track-item" onclick={() => playLast([track])}>
+              <button class="wings-item row-button" onclick={() => playLast([track])}>
                 {@render icon("plus")}
                 <span>Play last</span>
               </button>
               <button
-                class="track-item"
+                class="wings-item row-button"
                 disabled={downloadStatus !== "idle"}
                 onclick={() => downloadTrack(track)}
               >
@@ -1398,8 +1384,8 @@
                   <span>Download</span>
                 {/if}
               </button>
+              <button class="wings-item row-button"><span></span>Cancel</button>
             </div>
-            <button class="button" data-variant="neutral">Cancel</button>
           </div>
         </dialog>
       {/each}
@@ -1424,10 +1410,10 @@
     {@const cover = coverEngine.ensureTrackCover(playback.track.id, {
       allowNetwork: !offlineMode,
     })}
-    <div class="mini-player track-list">
-      <div class="track-item">
+    <div class="mini-player wings">
+      <div class="wings-item row-button">
         <button
-          class="track-target"
+          class="linkarea"
           commandfor="player-dialog"
           command="show-modal"
           aria-label="Open player"
