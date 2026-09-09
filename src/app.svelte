@@ -467,7 +467,6 @@
           disabled={!session.auth || session.busy || offlineScanning}
           onchange={(event) => void session.setOfflineMode(event.currentTarget.checked)}
         />
-        <span></span>
       </label>
     </div>
   </section>
