@@ -557,6 +557,17 @@ export class PlaybackEngine {
     await this.#load(position, resume, false, true);
   }
 
+  suspendNetwork() {
+    if (!this.#cached || this.#status === "loading" || this.#status === "seeking") this.suspend();
+    else this.#publish();
+  }
+
+  suspend() {
+    this.#unload();
+    this.#error = undefined;
+    this.#publish();
+  }
+
   stop() {
     this.#unload();
     this.#error = undefined;

@@ -189,6 +189,39 @@ function setupShortcuts() {
 }
 
 describe("playback engine", () => {
+  it("keeps cached playback running when network sources are suspended", async () => {
+    const { player, audio, tracks } = setup();
+    await player.play();
+    const source = audio.src;
+    player.suspendNetwork();
+    expect(player.playing).toBe(true);
+    expect(audio.src).toBe(source);
+    tracks.getSource.mockResolvedValue({ cached: false, url: "https://music.example/stream" });
+    await player.next();
+    player.suspendNetwork();
+    expect(player.playing).toBe(false);
+    expect(audio.src).toBe("");
+  });
+
+  it("suspends playback for account changes without losing queue selection or position", async () => {
+    const { player, audio, memory, tracks } = setup();
+    await player.play();
+    audio.currentTime = 23;
+    audio.dispatchEvent(new Event("timeupdate"));
+    const queued = memory.queueTracks;
+    player.suspend();
+    expect(audio.src).toBe("");
+    expect(player.playing).toBe(false);
+    expect(memory.queueTracks).toBe(queued);
+    expect(memory.queueIndex).toBe(0);
+    expect(memory.queuePosition).toBe(23);
+    await player.play();
+    expect(tracks.getSource).toHaveBeenLastCalledWith(expect.objectContaining({ id: "a" }), {
+      forceTranscode: false,
+      position: 23,
+    });
+  });
+
   it("stops playback and clears selection and position without deleting the queue", async () => {
     const { player, memory, audio, session } = setup();
     await player.play();

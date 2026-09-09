@@ -4,7 +4,7 @@ import type { MemoryView } from "./memory.svelte";
 import type { MetadataEngine } from "./metadata-engine";
 import type { PlaybackEngine } from "./playback-engine";
 import type { QueueEngine } from "./queue-engine";
-import type { ConnectionStatus } from "./schema";
+import type { ConnectionStatus, MetadataAccount } from "./schema";
 import { SubsonicClient, type SubsonicAuth } from "./subsonic-client";
 import type { TrackEngine } from "./track-engine";
 
@@ -12,12 +12,15 @@ const offlineModeStorageKey = "navidrome-offline-mode";
 
 interface SessionOptions {
   memory: MemoryView;
-  auth: Pick<AuthStore, "create" | "load" | "save" | "clear">;
+  auth: Pick<AuthStore, "create" | "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
   metadata: Pick<
     MetadataEngine,
     | "restore"
     | "refresh"
     | "revalidate"
+    | "prepareConnection"
+    | "saveConnection"
+    | "acceptConnection"
     | "setClient"
     | "setNetwork"
     | "savedAt"
@@ -27,26 +30,27 @@ interface SessionOptions {
   >;
   covers: Pick<CoverEngine, "restore" | "refresh" | "setClient">;
   queue: Pick<QueueEngine, "restore" | "setClient" | "setNetwork" | "synchronize" | "flush">;
-  tracks: Pick<TrackEngine, "ready" | "getStatus" | "setClient">;
-  playback: Pick<PlaybackEngine, "pause">;
+  tracks: Pick<TrackEngine, "setClient">;
+  playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
   storage: Pick<Storage, "getItem" | "setItem">;
 }
 
 function connectionError(error: unknown) {
   if (error instanceof TypeError)
     return "Could not reach the server. Check the host and its CORS settings.";
-  return error instanceof Error ? error.message : "Could not load artists.";
+  return error instanceof Error ? error.message : "Could not connect to the server.";
 }
 
 export class Session {
   auth = $state.raw<SubsonicAuth | null>(null);
-  offlineMode = $state(false);
+  offlineMode = $state(true);
   status = $state<ConnectionStatus>("disconnected");
   error = $state("");
   refreshError = $state("");
 
   #options: SessionOptions;
-  #client = $state.raw<SubsonicClient>();
+  #client?: SubsonicClient;
+  #restoration: Promise<void> = Promise.resolve();
   #generation = 0;
   #started = false;
   #destroyed = false;
@@ -55,8 +59,8 @@ export class Session {
     this.#options = options;
   }
 
-  get client() {
-    return this.#client;
+  get busy() {
+    return this.status === "connecting";
   }
 
   #valid(generation: number) {
@@ -75,114 +79,163 @@ export class Session {
     this.error = connectionError(error);
   }
 
-  #setNetwork() {
-    const network = this.offlineMode ? "offline" : "online";
-    this.#options.metadata.setNetwork(network);
-    this.#options.queue.setNetwork(network);
+  #detach() {
+    const { metadata, queue, covers, tracks, playback } = this.#options;
+    this.#client?.abort();
+    this.#client = undefined;
+    metadata.setNetwork("offline");
+    queue.setNetwork("offline");
+    metadata.setClient(undefined);
+    queue.setClient(undefined);
+    covers.setClient(undefined);
+    tracks.setClient(undefined);
+    playback.suspendNetwork();
+    void queue.flush();
+  }
+
+  #attach(client: SubsonicClient) {
+    const { metadata, queue, covers, tracks } = this.#options;
+    this.#client = client;
+    metadata.setNetwork("online");
+    queue.setNetwork("online");
+    metadata.setClient(client);
+    queue.setClient(client);
+    covers.setClient(client);
+    tracks.setClient(client);
+    void queue.synchronize();
   }
 
   start(): SubsonicAuth | null {
     if (this.#started || this.#destroyed) return this.auth;
     this.#started = true;
     const generation = this.#begin();
-    this.offlineMode = this.#options.storage.getItem(offlineModeStorageKey) === "true";
-    this.#setNetwork();
     try {
-      this.auth = this.#options.auth.load();
-    } catch {
-      this.#options.auth.clear();
-      return null;
+      try {
+        this.auth = this.#options.auth.load();
+      } catch {
+        this.#options.auth.clear();
+      }
+      const account = this.auth
+        ? { host: this.auth.host, username: this.auth.username }
+        : this.#options.auth.loadAccount();
+      this.offlineMode =
+        !this.auth || this.#options.storage.getItem(offlineModeStorageKey) === "true";
+      this.#detach();
+      if (this.offlineMode) this.#options.storage.setItem(offlineModeStorageKey, "true");
+      if (account) {
+        // Migrate existing installations before credentials can be removed.
+        this.#options.auth.saveAccount(account);
+        this.#restoration = this.#restore(account);
+        if (this.auth) this.status = "connecting";
+        void this.#restoration
+          .then(async () => {
+            if (!this.#valid(generation)) return;
+            if (this.auth && !this.offlineMode) await this.#resumeOnline(generation);
+            else this.status = "disconnected";
+          })
+          .catch((error) => this.#fail(error, generation));
+      }
+    } catch (error) {
+      this.#fail(error, generation);
     }
-    if (this.auth) void this.#open(this.auth, generation);
     return this.auth;
   }
 
-  async connect(input: PasswordAuth): Promise<boolean> {
-    if (this.#destroyed) return false;
-    const generation = this.#begin();
-    try {
-      const accepted = await this.#open(this.#options.auth.create(input), generation);
-      return this.#valid(generation) && accepted;
-    } catch (error) {
-      this.#fail(error, generation);
-      return false;
-    }
-  }
-
-  #attach(auth: SubsonicAuth, client: SubsonicClient) {
-    this.auth = auth;
-    this.#client = client;
-    this.#options.covers.setClient(client);
-    this.#options.queue.setClient(client);
-    this.#options.tracks.setClient(client);
-    void this.#options.queue.synchronize();
-  }
-
-  async #open(auth: SubsonicAuth, generation: number): Promise<boolean> {
+  async #restore(account: MetadataAccount) {
     const { metadata, covers, queue } = this.#options;
-    const account = { host: auth.host, username: auth.username };
-    const client = new SubsonicClient(auth);
+    await Promise.all([metadata.restore(account), covers.restore(account)]);
+    if (this.#destroyed) return;
+    // Queue restoration is credential-free even if the metadata cache is missing.
+    await queue.restore(account);
+    if (!this.#destroyed) await covers.refresh();
+  }
+
+  async connect(input: PasswordAuth): Promise<boolean> {
+    if (this.auth || this.busy || this.#destroyed) return false;
+    const generation = this.#begin();
     this.status = "connecting";
     try {
-      if (
-        this.#client &&
-        (this.#client.host !== auth.host || this.#client.username !== auth.username)
-      )
-        this.#client = undefined;
-      metadata.setClient(client);
-      await Promise.all([metadata.restore(account), covers.restore(account)]);
+      const credentials = this.#options.auth.create(input);
+      const client = new SubsonicClient(credentials);
+      this.#client = client;
+      await this.#restoration;
       if (!this.#valid(generation)) return false;
-      const cached = metadata.savedAt !== undefined;
-      if (cached) {
-        await covers.refresh();
-        if (!this.#valid(generation)) return false;
-        await queue.restore(account);
-        if (!this.#valid(generation)) return false;
-        this.#attach(auth, client);
-      }
-      await metadata.revalidate();
+      const { metadata, queue, covers, auth, storage } = this.#options;
+      // Explicit connection may use the network while the offline switch is locked.
+      // Do not replace the selected workspace, or attach any other clients, on failure.
+      const prepared = await metadata.prepareConnection(client);
       if (!this.#valid(generation)) return false;
-      if (metadata.status === "error") {
-        this.#fail(metadata.error, generation);
-        return false;
-      }
-      if (!cached) {
-        await queue.restore(account);
-        if (!this.#valid(generation)) return false;
-        this.#attach(auth, client);
-      }
-      // Reconcile references after revalidation may have replaced metadata.
+      auth.save(credentials);
+      auth.saveAccount(prepared.account);
+      storage.setItem(offlineModeStorageKey, "false");
+      const snapshot = await metadata.saveConnection(prepared, client.signal);
+      if (!this.#valid(generation)) return false;
+      this.#options.playback.suspend();
+      // Clear foreign queue/artwork synchronously before publishing new metadata.
+      this.#restoration = Promise.all([
+        queue.restore(snapshot.account),
+        covers.restore(snapshot.account),
+      ]).then(() => {});
+      metadata.acceptConnection(snapshot);
+      this.auth = credentials;
+      this.offlineMode = false;
+      this.#attach(client);
+      await this.#restoration;
+      if (!this.#valid(generation)) return false;
       await covers.refresh();
       if (!this.#valid(generation)) return false;
-      if (this.offlineMode) await this.#applyOfflineLibrary(generation);
-      return this.#report(generation, auth);
+      this.status = "connected";
+      return true;
+    } catch (error) {
+      if (this.#valid(generation)) {
+        // Also remove partially saved credentials if browser persistence failed.
+        if (this.disconnect()) this.#fail(error, this.#generation);
+      }
+      return false;
+    }
+  }
+
+  disconnect() {
+    if (this.#destroyed) return false;
+    const generation = this.#begin();
+    this.auth = null;
+    this.offlineMode = true;
+    this.#detach();
+    this.status = "disconnected";
+    try {
+      this.#options.auth.clear();
+      this.#options.storage.setItem(offlineModeStorageKey, "true");
+      const account = this.#options.memory.account;
+      if (account) this.#options.auth.saveAccount(account);
+      return true;
     } catch (error) {
       this.#fail(error, generation);
       return false;
     }
   }
 
-  #report(generation: number, credentials?: SubsonicAuth) {
-    if (!this.#valid(generation)) return false;
-    const { metadata, auth } = this.#options;
-    if (metadata.status === "error") {
-      this.#fail(metadata.error, generation);
-      return false;
-    }
-    if (metadata.warning) {
+  #report(generation: number) {
+    if (!this.#valid(generation)) return;
+    const { metadata } = this.#options;
+    if (metadata.status === "error") this.#fail(metadata.error, generation);
+    else if (metadata.warning) {
       this.status = "error";
       this.refreshError = `Background refresh failed: ${connectionError(metadata.warning)}`;
-    } else if (this.offlineMode) {
-      this.status = "disconnected";
-    } else {
-      if (credentials) auth.save(credentials);
-      this.status = "connected";
-    }
-    return true;
+    } else this.status = "connected";
+  }
+
+  async #resumeOnline(generation: number) {
+    if (!this.auth || !this.#valid(generation)) return;
+    this.status = "connecting";
+    this.#attach(new SubsonicClient(this.auth));
+    await this.#options.metadata.revalidate();
+    if (!this.#valid(generation)) return;
+    await this.#options.covers.refresh();
+    this.#report(generation);
   }
 
   async refresh() {
-    if (!this.#client || this.#destroyed) return;
+    if (!this.auth || this.offlineMode || this.busy || this.#destroyed) return;
     const generation = this.#begin();
     this.status = "connecting";
     try {
@@ -195,37 +248,19 @@ export class Session {
     }
   }
 
-  async #applyOfflineLibrary(generation: number) {
-    const { tracks, memory, playback } = this.#options;
-    await tracks.ready();
-    if (!this.#valid(generation) || !this.offlineMode) return;
-    const current = memory.queueTracks[memory.queueIndex];
-    if (current && tracks.getStatus(current) !== "downloaded") playback.pause();
-  }
-
   async setOfflineMode(enabled: boolean) {
-    if (this.#destroyed || enabled === this.offlineMode) return;
+    if (!this.auth || this.#destroyed || enabled === this.offlineMode) return;
     const generation = this.#begin();
     this.offlineMode = enabled;
-    const { storage, metadata, queue, covers } = this.#options;
     try {
-      storage.setItem(offlineModeStorageKey, String(enabled));
-      this.#setNetwork();
       if (enabled) {
-        // Persist locally without waiting for an obsolete server save to settle.
-        void queue.flush();
-        await this.#applyOfflineLibrary(generation);
-        if (this.#valid(generation)) this.status = "disconnected";
-      } else if (this.#client) {
-        this.status = "connecting";
-        void queue.synchronize();
-        await metadata.revalidate();
-        if (!this.#valid(generation)) return;
-        await covers.refresh();
-        this.#report(generation);
-      } else if (this.auth) {
-        // Startup may have found credentials but no offline metadata.
-        await this.#open(this.auth, generation);
+        this.#detach();
+        this.status = "disconnected";
+      }
+      this.#options.storage.setItem(offlineModeStorageKey, String(enabled));
+      if (!enabled) {
+        await this.#restoration;
+        if (this.#valid(generation)) await this.#resumeOnline(generation);
       }
     } catch (error) {
       this.#fail(error, generation);
@@ -235,5 +270,6 @@ export class Session {
   destroy() {
     this.#destroyed = true;
     this.#generation++;
+    this.#detach();
   }
 }

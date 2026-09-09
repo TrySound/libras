@@ -1,6 +1,7 @@
 import { md5 } from "js-md5";
 import * as v from "valibot";
 import type { SubsonicAuth } from "./subsonic-client";
+import { accountSchema, type MetadataAccount } from "./schema";
 
 export interface PasswordAuth {
   host: string;
@@ -60,5 +61,28 @@ export class AuthStore {
 
   clear() {
     this.#storage.removeItem(this.#key);
+  }
+
+  loadAccount(): MetadataAccount | null {
+    const value = this.#storage.getItem("navidrome-account");
+    if (!value) return null;
+    try {
+      return v.parse(accountSchema, JSON.parse(value));
+    } catch {
+      this.#storage.removeItem("navidrome-account");
+      return null;
+    }
+  }
+
+  saveAccount(account: MetadataAccount) {
+    this.#storage.setItem(
+      "navidrome-account",
+      JSON.stringify(
+        v.parse(accountSchema, {
+          host: account.host,
+          username: account.username,
+        }),
+      ),
+    );
   }
 }

@@ -51,7 +51,6 @@ export class TrackEngine {
   #memory: DownloadMemory;
   #ready: Promise<void>;
   #concurrency: number;
-  #active = 0;
   #destroyed = false;
   #catalogRequest = 0;
   #loading = true;
@@ -177,15 +176,15 @@ export class TrackEngine {
   }
 
   #drain() {
-    if (this.#destroyed) return;
-    const queued = [...this.#jobs.values()].filter((job) => job.status === "queued");
-    for (const job of queued) {
-      if (this.#active >= this.#concurrency) break;
+    if (this.#destroyed || !this.#client) return;
+    const jobs = [...this.#jobs.values()];
+    let active = jobs.filter((job) => job.status === "downloading").length;
+    for (const job of jobs.filter((job) => job.status === "queued")) {
+      if (active >= this.#concurrency) break;
       job.status = "downloading";
-      this.#active++;
+      active++;
       const finish = () => {
-        this.#jobs.delete(job.descriptor.key);
-        this.#active--;
+        if (this.#jobs.get(job.descriptor.key) === job) this.#jobs.delete(job.descriptor.key);
         this.#drain();
         this.#update();
       };
@@ -213,10 +212,11 @@ export class TrackEngine {
         if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
         file = await this.#store.put(descriptor, track, response, controller.signal);
       }
+      controller.signal.throwIfAborted();
       await this.#refreshCatalog();
       return file;
     } catch (error) {
-      if (!this.#destroyed) {
+      if (!this.#destroyed && !controller.signal.aborted) {
         this.#error = error;
         this.#update();
       }
@@ -342,6 +342,7 @@ export class TrackEngine {
   setClient(client?: SubsonicClient) {
     if (this.#client === client) return;
     this.#sourceRequest++;
+    this.#cancelDownloads();
     this.#client = client;
     if (client) {
       if (
@@ -355,15 +356,17 @@ export class TrackEngine {
     // Detaching credentials preserves account identity and completed downloads.
     this.#update();
   }
+  #cancelDownloads() {
+    for (const job of this.#jobs.values()) {
+      job.controller.abort();
+      job.reject(job.controller.signal.reason);
+    }
+    this.#jobs.clear();
+  }
+
   destroy() {
     this.#destroyed = true;
     this.releaseSource();
-    for (const [key, job] of this.#jobs) {
-      job.controller.abort();
-      if (job.status === "queued") {
-        this.#jobs.delete(key);
-        job.reject(job.controller.signal.reason);
-      }
-    }
+    this.#cancelDownloads();
   }
 }

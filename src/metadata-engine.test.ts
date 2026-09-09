@@ -118,6 +118,84 @@ async function loadLibrary(engine: MetadataEngine, client: SubsonicClient) {
 }
 
 describe("metadata engine", () => {
+  it("prepares a foreign connection without replacing offline metadata until acceptance", async () => {
+    const storage = installMetadataStorage();
+    await storage.seed(account, snapshot());
+    const memory = new Memory();
+    const engine = new MetadataEngine(memory);
+    await engine.restore(account);
+    const previous = memory.tracks;
+    const client = new SubsonicClient({ ...auth, username: "other" });
+    vi.stubGlobal("fetch", serveLibrary());
+    const prepared = await engine.prepareConnection(client);
+    expect(memory.tracks).toBe(previous);
+    expect(memory.account).toEqual(account);
+    expect(storage.files.size).toBe(1);
+    const saved = await engine.saveConnection(prepared, client.signal);
+    expect(storage.files.size).toBe(2);
+    expect(memory.tracks).toBe(previous);
+    engine.acceptConnection(saved);
+    expect(memory.account).toEqual({ host: auth.host, username: "other" });
+    expect(memory.tracks).not.toBe(previous);
+    expect(memory.tracks.get("song")?.title).toBe("Song");
+    engine.destroy();
+  });
+
+  it("does not commit a candidate snapshot after cancellation during its write", async () => {
+    const storage = installMetadataStorage();
+    await storage.seed(account, snapshot());
+    const memory = new Memory();
+    const engine = new MetadataEngine(memory);
+    await engine.restore(account);
+    const client = new SubsonicClient(auth);
+    storage.beforeWrite = () => client.abort();
+    await expect(
+      engine.saveConnection({ ...snapshot(), savedAt: 200 }, client.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(storage.writes).toBe(0);
+    expect(JSON.parse(await [...storage.files.values()][0].text())).toEqual(snapshot());
+    engine.destroy();
+  });
+
+  it.each([false, true])(
+    "preserves offline metadata after failed or aborted connection preparation (abort: %s)",
+    async (abort) => {
+      const storage = installMetadataStorage();
+      await storage.seed(account, snapshot());
+      const memory = new Memory();
+      const engine = new MetadataEngine(memory);
+      await engine.restore(account);
+      const previous = memory.tracks;
+      let resolve!: (response: Response) => void;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          () =>
+            new Promise<Response>((done) => {
+              resolve = done;
+            }),
+        ),
+      );
+      const client = new SubsonicClient(auth);
+      const preparing = engine.prepareConnection(client);
+      if (abort) {
+        client.abort();
+        engine.setClient(undefined);
+      }
+      resolve(
+        abort
+          ? response({ indexes: { lastModified: 20 } })
+          : new Response("Unauthorized", { status: 401 }),
+      );
+      await expect(preparing).rejects.toThrow();
+      expect(memory.tracks).toBe(previous);
+      expect(memory.account).toEqual(account);
+      expect(storage.writes).toBe(0);
+      expect(engine.status).toBe("ready");
+      engine.destroy();
+    },
+  );
+
   it("configures clients and network policy without I/O, leaving restoration and refresh explicit", async () => {
     const storage = installMetadataStorage();
     const fetcher = serveLibrary();

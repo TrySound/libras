@@ -663,30 +663,64 @@ describe("track engine", () => {
     engine.destroy();
   });
 
-  it("cancels queued and active work on destruction without persisting it", async () => {
+  it.each(["detach", "destroy"])(
+    "cancels queued and active work on %s without persisting it",
+    async (action) => {
+      const files = installOpfs();
+      const fetcher = vi.fn(
+        (_url, options: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            options.signal!.addEventListener("abort", () => reject(options.signal!.reason));
+          }),
+      );
+      vi.stubGlobal("fetch", fetcher);
+      const engineMemory = new Memory();
+      const engine = new TrackEngine({
+        memory: engineMemory,
+        client: new SubsonicClient(auth),
+        concurrency: 1,
+      });
+      const result = Promise.allSettled([
+        engine.cache({ id: "active" }),
+        engine.cache({ id: "queued" }),
+      ]);
+      await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+      if (action === "detach") engine.setClient(undefined);
+      else engine.destroy();
+      expect(engine.downloadJobs).toEqual([]);
+      expect((await result).map((item) => item.status)).toEqual(["rejected", "rejected"]);
+      expect(files.has("downloads.json")).toBe(false);
+      expect(engineMemory.account).toEqual({ host: auth.host, username: auth.username });
+      expect(fetcher).toHaveBeenCalledOnce();
+      expect(engine.error).toBeUndefined();
+      engine.destroy();
+    },
+  );
+
+  it("ignores an aborted transfer even if its late response arrives during a retry", async () => {
     const files = installOpfs();
-    const fetcher = vi.fn(
-      (_url, options: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          options.signal!.addEventListener("abort", () => reject(options.signal!.reason));
-        }),
-    );
+    const responses: ((response: Response) => void)[] = [];
+    const fetcher = vi.fn(() => new Promise<Response>((resolve) => responses.push(resolve)));
     vi.stubGlobal("fetch", fetcher);
-    const engineMemory = new Memory();
-    const engine = new TrackEngine({
-      memory: engineMemory,
-      client: new SubsonicClient(auth),
-      concurrency: 1,
-    });
-    const result = Promise.allSettled([
-      engine.cache({ id: "active" }),
-      engine.cache({ id: "queued" }),
-    ]);
-    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
-    engine.destroy();
-    expect((await result).map((item) => item.status)).toEqual(["rejected", "rejected"]);
+    const memory = new Memory();
+    const engine = new TrackEngine({ memory, client: new SubsonicClient(auth) });
+    const first = engine.cache({ id: "same" });
+    const rejected = expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(responses).toHaveLength(1));
+    engine.setClient(undefined);
+    await rejected;
+    engine.setClient(new SubsonicClient(auth));
+    const retry = engine.cache({ id: "same" });
+    await vi.waitFor(() => expect(responses).toHaveLength(2));
+    responses[0](new Response("old"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(engine.downloadJobs).toHaveLength(1);
     expect(files.has("downloads.json")).toBe(false);
-    expect(fetcher).toHaveBeenCalledOnce();
+    responses[1](new Response("new"));
+    await retry;
+    expect(memory.downloads.size).toBe(1);
+    expect(engine.error).toBeUndefined();
+    engine.destroy();
   });
 
   it("filters offline tracks from memory without opening storage again", async () => {

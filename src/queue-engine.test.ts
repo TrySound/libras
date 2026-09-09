@@ -102,6 +102,33 @@ async function connectQueue(queue: QueueEngine, client: SubsonicClient) {
 }
 
 describe("queue engine", () => {
+  it("preserves the queue when a server response arrives after credentials are detached", async () => {
+    await storage.seed();
+    const memory = new Memory();
+    const queue = engine(memory);
+    await queue.restore(account);
+    const client = new SubsonicClient(auth);
+    let resolve!: (value: { tracks: string[]; current: string; position: number }) => void;
+    vi.spyOn(client, "getPlayQueue").mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    queue.setClient(client);
+    const loading = queue.synchronize();
+    await vi.waitFor(() => expect(resolve).toBeDefined());
+    queue.setNetwork("offline");
+    queue.setClient(undefined);
+    client.abort();
+    resolve({ tracks: ["late"], current: "late", position: 0 });
+    await loading;
+    expect(memory.queueTracks).toEqual(["a", "b", "a"]);
+    expect(memory.queueIndex).toBe(2);
+    expect(memory.queuePosition).toBe(12.5);
+    expect(storage.writes).toBe(0);
+  });
+
   it("configures without I/O and synchronizes only on an explicit command", async () => {
     const getDirectory = vi.spyOn(navigator.storage, "getDirectory");
     const client = new SubsonicClient(auth);

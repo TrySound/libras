@@ -91,11 +91,20 @@ export class SubsonicClient {
   #apiVersion: string;
   #auth: SubsonicAuth;
   #clientName: string;
+  #controller = new AbortController();
 
   constructor(auth: SubsonicAuth, options: SubsonicClientOptions = {}) {
     this.#auth = auth;
     this.#apiVersion = options.apiVersion ?? "1.16.1";
     this.#clientName = options.clientName ?? "libras";
+  }
+
+  get signal() {
+    return this.#controller.signal;
+  }
+
+  abort() {
+    this.#controller.abort();
   }
 
   get host() {
@@ -107,6 +116,7 @@ export class SubsonicClient {
   }
 
   #query(params?: Record<string, string | number | boolean | undefined>) {
+    this.signal.throwIfAborted();
     const query = new URLSearchParams({
       u: this.#auth.username,
       t: this.#auth.token,
@@ -128,6 +138,7 @@ export class SubsonicClient {
   async #parse(response: Response): Promise<SubsonicResponse> {
     if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
     const parsed = v.safeParse(responseSchema, await response.json());
+    this.signal.throwIfAborted();
     if (!parsed.success) throw new Error("The server returned an invalid Subsonic response.");
     const result = parsed.output["subsonic-response"];
     if (result.status !== "ok") {
@@ -138,7 +149,7 @@ export class SubsonicClient {
 
   async #get(path: string, params?: Record<string, string | number | boolean | undefined>) {
     const query = this.#query(params);
-    return this.#parse(await fetch(this.#url(path, query)));
+    return this.#parse(await fetch(this.#url(path, query), { signal: this.signal }));
   }
 
   async getIndexes(ifModifiedSince?: number) {
@@ -200,6 +211,7 @@ export class SubsonicClient {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: query,
         keepalive: true,
+        signal: this.signal,
       }),
     );
   }

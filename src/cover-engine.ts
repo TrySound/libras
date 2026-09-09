@@ -490,6 +490,7 @@ export class CoverEngine {
   #networkClient() {
     const client = this.#client;
     return client &&
+      !client.signal.aborted &&
       this.#memory.account &&
       scope(client) === this.#scope &&
       scope(this.#memory.account) === this.#scope
@@ -525,7 +526,10 @@ export class CoverEngine {
     const headers = new Headers();
     if (cached?.etag) headers.set("If-None-Match", cached.etag);
     if (cached?.lastModified) headers.set("If-Modified-Since", cached.lastModified);
-    const response = await fetch(client.getCoverArtUrl(id, 500), { headers });
+    const response = await fetch(client.getCoverArtUrl(id, 500), {
+      headers,
+      signal: client.signal,
+    });
     if (!valid() || (response.status === 304 && cached)) return;
     if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
     const blob = await response.blob();
@@ -627,9 +631,21 @@ export class CoverEngine {
     return this.#ensureCover("image", artworkId, options);
   }
 
-  setClient(client: SubsonicClient) {
+  setClient(client: SubsonicClient | undefined) {
     if (client === this.#client || this.#destroyed) return;
     this.#client = client;
+    if (!client) {
+      for (const entry of this.#covers.values()) {
+        entry.generation++;
+        if (entry.network) {
+          entry.network = false;
+          entry.source = undefined;
+        }
+        void this.#resolve(entry, false);
+      }
+      this.#notify();
+      return;
+    }
     void this.restore(client).then(() => {
       if (this.#client === client && !this.#destroyed) {
         for (const entry of this.#covers.values()) void this.#resolve(entry, true);

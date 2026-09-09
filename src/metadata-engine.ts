@@ -433,6 +433,53 @@ export class MetadataEngine {
     }
   }
 
+  /** Validate a candidate without changing the selected library or its saved snapshot. */
+  async prepareConnection(client: SubsonicClient): Promise<MetadataSnapshot> {
+    if (this.#restoring) await this.#restoring;
+    client.signal.throwIfAborted();
+    if (this.#destroyed) throw new DOMException("Metadata stopped.", "AbortError");
+    const generation = ++this.#generation;
+    const valid = () =>
+      !this.#destroyed && generation === this.#generation && !client.signal.aborted;
+    this.#status = this.#snapshotInfo ? "refreshing" : "loading";
+    this.#update();
+    try {
+      const modified = await client.getIndexes();
+      const snapshot = await this.#fetchLibrary(client, valid, modified);
+      if (!valid()) throw new DOMException("Connection superseded.", "AbortError");
+      return snapshot;
+    } finally {
+      if (valid()) {
+        this.#status = this.#snapshotInfo ? "ready" : "idle";
+        this.#update();
+      }
+    }
+  }
+
+  async saveConnection(snapshot: MetadataSnapshot, signal: AbortSignal) {
+    signal.throwIfAborted();
+    if (this.#destroyed) throw new DOMException("Metadata stopped.", "AbortError");
+    const generation = ++this.#generation;
+    const valid = () => !this.#destroyed && generation === this.#generation && !signal.aborted;
+    const committed = await this.#store.save(snapshot, valid);
+    if (!valid() || !committed) throw new DOMException("Connection superseded.", "AbortError");
+    return committed;
+  }
+
+  /** Publish only after Session has accepted a successfully prepared connection. */
+  acceptConnection(snapshot: MetadataSnapshot) {
+    if (this.#destroyed) return;
+    this.#generation++;
+    this.#scope = `${snapshot.account.host}\n${snapshot.account.username}`;
+    this.#restored = true;
+    this.#memory.account = { ...snapshot.account };
+    this.#publish(snapshot);
+    this.#status = "ready";
+    this.#error = undefined;
+    this.#warning = undefined;
+    this.#update();
+  }
+
   refresh() {
     return this.#refresh(true);
   }
@@ -441,8 +488,8 @@ export class MetadataEngine {
     return this.#refresh(false);
   }
 
-  setClient(client: SubsonicClient) {
-    if (client === this.#client || this.#destroyed) return;
+  setClient(client: SubsonicClient | undefined) {
+    if ((client && client === this.#client) || this.#destroyed) return;
     this.#client = client;
     if (!this.#restoring) {
       this.#generation++;

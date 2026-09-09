@@ -312,24 +312,11 @@ input:not([type="range"]):not([type="checkbox"]):focus {
   background: var(--color-surface);
 }
 
-.connection-card summary {
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 160ms ease-out;
+.connection-card-header {
   display: flex;
-  padding: 0.85rem;
+  padding: 1rem;
   align-items: center;
   gap: 0.75rem;
-  cursor: pointer;
-  list-style: none;
-}
-
-.connection-card summary:active {
-  background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
-  transition-duration: 50ms;
-}
-
-.connection-card summary::-webkit-details-marker {
-  display: none;
 }
 
 .connection-dot {
@@ -370,38 +357,20 @@ input:not([type="range"]):not([type="checkbox"]):focus {
   white-space: nowrap;
 }
 
-.connection-chevron {
-  color: var(--color-text-muted);
-  font-size: 1.2rem;
-  transition: transform 160ms ease;
-}
-
-.connection-card[open] .connection-chevron {
-  transform: rotate(180deg);
-}
-
 .connection-details {
   padding: 1rem;
   border-top: 1px solid var(--color-border);
 }
 
+.connection-actions {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
 .connection-details form {
   margin-top: 1rem;
-}
-
-.connection-details h3 {
-  margin-top: 1.5rem;
-}
-
-.connection-status {
-  display: flex;
-  margin-bottom: 0.8rem;
-  justify-content: space-between;
-  color: var(--color-text-muted);
-}
-
-.connection-status strong {
-  color: var(--color-text-primary);
 }
 
 .settings-option {
@@ -1142,7 +1111,7 @@ a {
     scale: none;
   }
 
-  .connection-card summary {
+  .connection-card-header {
     transition: none;
   }
 }

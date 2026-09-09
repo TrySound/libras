@@ -178,6 +178,44 @@ afterEach(() => {
 });
 
 describe("cover engine", () => {
+  it("detaches network handles without discarding cached artwork or accepting late downloads", async () => {
+    const storage = installOpfs();
+    await storage.seed();
+    storage.image();
+    const metadata = library();
+    const covers = engine(metadata);
+    await covers.restore(account);
+    const cached = covers.ensureAlbumCover("album", offline);
+    await vi.waitFor(() => expect(cached.source).toBe("blob:cover-1"));
+    const images = metadata.memory.images;
+    let resolve!: (response: Response) => void;
+    const fetcher = vi.fn(
+      (_url: string, _options: RequestInit) =>
+        new Promise<Response>((done) => {
+          resolve = done;
+        }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const client = new SubsonicClient(auth);
+    covers.setClient(client);
+    const remote = covers.ensureCover("remote", online);
+    await vi.waitFor(() => expect(remote.source).toContain("getCoverArt"));
+    remote.cache();
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    client.abort();
+    covers.setClient(undefined);
+    expect(remote.source).toBeUndefined();
+    expect(fetcher.mock.calls[0][1].signal?.aborted).toBe(true);
+    resolve(new Response("late image", { headers: { "Content-Type": "image/jpeg" } }));
+    await Promise.resolve();
+    await Promise.resolve();
+    remote.cache();
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(cached.source).toBe("blob:cover-1");
+    expect(metadata.memory.images).toBe(images);
+    expect(storage.writes).toBe(0);
+  });
+
   it("reads metadata on explicit refresh without effects or metadata listeners", async () => {
     const storage = installOpfs();
     const metadata = library();

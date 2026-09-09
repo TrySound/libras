@@ -373,8 +373,8 @@ export class QueueEngine {
       if (this.#connecting === connecting) this.#connecting = undefined;
     });
   }
-  setClient(client: SubsonicClient) {
-    if (client === this.#client || this.#destroyed) return;
+  setClient(client: SubsonicClient | undefined) {
+    if ((client && client === this.#client) || this.#destroyed) return;
     this.#client = client;
     this.#epoch++;
     this.#status = "idle";

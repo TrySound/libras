@@ -49,9 +49,31 @@ describe("auth store", () => {
     };
 
     store.save(auth);
+    store.saveAccount(auth);
     expect(store.load()).toEqual(auth);
+    expect(JSON.parse(storage.getItem("navidrome-account")!)).toEqual({
+      host: auth.host,
+      username: auth.username,
+    });
     store.clear();
     expect(store.load()).toBeNull();
+    expect(new AuthStore(storage).loadAccount()).toEqual({
+      host: auth.host,
+      username: auth.username,
+    });
+  });
+
+  it("discards malformed or credential-bearing last-account records", () => {
+    const storage = new MemoryStorage();
+    const store = new AuthStore(storage);
+    for (const record of [
+      { host: "server" },
+      { host: "server", username: "user", token: "secret" },
+    ]) {
+      storage.setItem("navidrome-account", JSON.stringify(record));
+      expect(store.loadAccount()).toBeNull();
+      expect(storage.getItem("navidrome-account")).toBeNull();
+    }
   });
 
   it("rejects malformed persisted authentication", () => {

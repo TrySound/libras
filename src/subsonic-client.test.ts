@@ -32,6 +32,28 @@ describe("subsonic client", () => {
     expect(url.searchParams.get("c")).toBe("libras");
   });
 
+  it("aborts pending requests and refuses late responses or further requests", async () => {
+    let resolve!: (response: Response) => void;
+    const fetcher = vi.fn(
+      (_url: string, _options: RequestInit) =>
+        new Promise<Response>((done) => {
+          resolve = done;
+        }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const client = new SubsonicClient(auth);
+    const pending = client.getArtists();
+    client.abort();
+    expect(fetcher.mock.calls[0][1].signal?.aborted).toBe(true);
+    resolve(response({ artists: { index: [] } }));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await expect(client.getArtists()).rejects.toMatchObject({ name: "AbortError" });
+    await expect(client.savePlayQueue({ tracks: [], position: 0 })).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
   it("rejects malformed responses", async () => {
     vi.stubGlobal(
       "fetch",

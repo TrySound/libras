@@ -26,9 +26,6 @@
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
 
-  let host = $state("");
-  let username = $state("");
-  let password = $state("");
   const memory = new Memory();
   const metadataEngine = new MetadataEngine(memory);
   const queueEngine = new QueueEngine(memory);
@@ -70,10 +67,8 @@
     playback,
     storage: localStorage,
   });
-  const activeAuth = $derived(session.auth);
-  const activeClient = $derived(session.client);
+  const libraryAvailable = $derived(metadataEngine.savedAt !== undefined);
   const offlineMode = $derived(session.offlineMode);
-  const connectionStatus = $derived(session.status);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);
   let playbackLoading = $derived(["loading", "buffering", "seeking"].includes(playback.status));
@@ -88,8 +83,6 @@
   let downloadingCollection = $state("");
   const offlineScanning = $derived(offlineMode && trackEngine.downloadsLoading);
   let loading = $derived(metadataEngine.status === "loading");
-  let refreshing = $derived(metadataEngine.status === "refreshing");
-  let connectionOpen = $state(false);
 
   onMount(() => installLongPress());
   onMount(() => playback.mount());
@@ -105,13 +98,7 @@
 
   onMount(() => {
     const savedAuth = session.start();
-    if (savedAuth) {
-      host = savedAuth.host;
-      username = savedAuth.username;
-    } else {
-      connectionOpen = true;
-      navigate("/settings", "replace");
-    }
+    if (!savedAuth && !memory.account) navigate("/settings", "replace");
   });
 
   function artistPath(artist: Artist) {
@@ -216,6 +203,7 @@
         coverArt: artwork.find((id) => memory.images.has(id)) ?? artwork[0],
       });
     } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError") return;
       downloadError =
         caught instanceof Error ? caught.message : "The track could not be downloaded.";
     }
@@ -270,21 +258,32 @@
     const seconds = Math.floor(value % 60);
     return `${minutes}:${String(seconds).padStart(2, "0")}`;
   }
-
-  function connectionStatusLabel() {
-    if (offlineMode) return "Offline mode";
-    if (connectionStatus === "connected") return "Connected";
-    if (connectionStatus === "connecting") return "Checking…";
-    if (connectionStatus === "error") return "Connection failed";
-    return "Disconnected";
-  }
+  let host = $state("");
+  let username = $state("");
+  let password = $state("");
+  const statusLabel = $derived(
+    session.busy
+      ? "Checking…"
+      : !session.auth
+        ? "Disconnected"
+        : session.offlineMode
+          ? "Offline mode"
+          : session.status === "error"
+            ? "Connection failed"
+            : "Connected",
+  );
 
   async function submitConnection(event: SubmitEvent) {
     event.preventDefault();
     if (await session.connect({ host, username, password })) {
-      connectionOpen = false;
+      host = username = password = "";
       navigate("/library");
     }
+  }
+
+  function disconnectServer() {
+    session.disconnect();
+    host = username = password = "";
   }
 </script>
 
@@ -316,100 +315,118 @@
       >
     </div>
   </header>
-  {@render alerts()}
-
   <section class="view settings-view">
     <span class="type-eyebrow muted">Settings</span>
-    <h2 class="type-heading">
-      {activeAuth ? "Music server" : "Connect to your music"}
-    </h2>
+    <h2 class="type-heading">{session.auth ? "Music server" : "Connect to your music"}</h2>
     <p class="type-body muted">
-      {activeAuth
-        ? "Manage the server used for your library."
+      {session.auth
+        ? "Disconnect first to change servers. Your offline library will stay on this device."
         : "Enter your Navidrome server details. Authentication stays on this device."}
     </p>
 
-    <details class="connection-card" bind:open={connectionOpen}>
-      <summary>
+    <section class="connection-card" aria-label="Music server">
+      <div class="connection-card-header">
         <span
           class="connection-dot"
-          class:offline={offlineMode}
-          class:connected={!offlineMode && connectionStatus === "connected"}
-          class:connecting={!offlineMode && connectionStatus === "connecting"}
-          class:failed={!offlineMode && connectionStatus === "error"}
+          class:offline={session.offlineMode}
+          class:connected={!session.offlineMode && session.status === "connected"}
+          class:connecting={session.busy}
+          class:failed={session.status === "error"}
         ></span>
         <span class="connection-summary stack-xs">
-          <strong class="type-title">
-            {activeAuth?.host ?? "Add a server"}
-          </strong>
-          <small class="type-small muted">
-            {activeAuth
-              ? `${activeAuth.username} · ${connectionStatusLabel()}`
-              : "Navidrome connection"}
-          </small>
+          <strong class="type-title">{session.auth?.host ?? "Add a server"}</strong>
+          <small class="type-small muted"
+            >{session.auth
+              ? `${session.auth.username} · ${statusLabel}`
+              : "Navidrome connection"}</small
+          >
         </span>
-        <span class="connection-chevron">{@render icon("chevron-down")}</span>
-      </summary>
-
-      <div class="connection-details">
-        {#if activeAuth}
-          <div class="connection-status type-small">
-            <span>Status</span>
-            <strong>{connectionStatusLabel()}</strong>
+        {#if session.auth}
+          <div class="connection-actions">
+            <button
+              class="icon-button"
+              type="button"
+              data-size="md"
+              data-variant="neutral"
+              aria-label={session.busy ? "Refreshing…" : "Refresh library"}
+              title={session.busy ? "Refreshing…" : "Refresh library"}
+              disabled={session.offlineMode || session.busy}
+              onclick={() => void session.refresh()}
+            >
+              {@render icon(session.busy ? "loading" : "refresh")}
+            </button>
+            <button
+              class="icon-button"
+              type="button"
+              data-size="md"
+              data-variant="neutral"
+              aria-label="Disconnect"
+              title="Disconnect"
+              onclick={disconnectServer}
+            >
+              {@render icon("disconnect")}
+            </button>
           </div>
-          <button
-            type="button"
-            class="button"
-            data-size="md"
-            data-variant="neutral"
-            disabled={offlineMode || loading || refreshing}
-            onclick={() => void session.refresh()}
-          >
-            {offlineMode
-              ? "Unavailable offline"
-              : loading || refreshing
-                ? "Refreshing…"
-                : "Refresh library data"}
-          </button>
-          <h3 class="type-title">Edit connection</h3>
         {/if}
-
-        <form class="stack-md" onsubmit={submitConnection}>
-          <label class="stack-sm">
-            Host
-            <input
-              type="text"
-              bind:value={host}
-              placeholder="https://music.example.com"
-              autocomplete="url"
-              required
-            />
-          </label>
-
-          <label class="stack-sm">
-            Username
-            <input type="text" bind:value={username} autocomplete="username" required />
-          </label>
-
-          <label class="stack-sm">
-            Password
-            <input type="password" bind:value={password} autocomplete="current-password" required />
-          </label>
-
-          <button
-            class="button"
-            data-size="md"
-            data-variant="neutral"
-            type="submit"
-            disabled={offlineMode || loading || refreshing}
-          >
-            {loading ? "Connecting…" : activeAuth ? "Save connection" : "Connect"}
-          </button>
-
-          <small> Authentication is saved in this browser after a successful login. </small>
-        </form>
       </div>
-    </details>
+      {#if !session.auth || session.error || session.refreshError}
+        <div class="connection-details">
+          {#if session.error}
+            <p class="error type-small" role="alert">{session.error}</p>
+          {/if}
+          {#if session.refreshError}
+            <p class="error type-small" role="status">
+              {session.refreshError} Your existing library is still available.
+            </p>
+          {/if}
+          {#if !session.auth}
+            <form class="stack-md" onsubmit={submitConnection}>
+              <label class="stack-sm"
+                >Host
+                <input
+                  type="text"
+                  bind:value={host}
+                  placeholder="https://music.example.com"
+                  autocomplete="url"
+                  required
+                  disabled={session.busy}
+                />
+              </label>
+              <label class="stack-sm"
+                >Username
+                <input
+                  type="text"
+                  bind:value={username}
+                  autocomplete="username"
+                  required
+                  disabled={session.busy}
+                />
+              </label>
+              <label class="stack-sm"
+                >Password
+                <input
+                  type="password"
+                  bind:value={password}
+                  autocomplete="current-password"
+                  required
+                  disabled={session.busy}
+                />
+              </label>
+              <button
+                class="button"
+                type="submit"
+                data-size="md"
+                data-variant="neutral"
+                disabled={session.busy}
+              >
+                {session.busy ? "Connecting…" : "Connect"}
+              </button>
+              <small>Authentication is saved in this browser after a successful login.</small>
+            </form>
+          {/if}
+        </div>
+      {/if}
+    </section>
 
     {#if appUpdate?.message}
       <section class="settings-option" aria-label="App update">
@@ -435,17 +452,22 @@
       <div class="stack-xs">
         <strong class="type-title">Offline library</strong>
         <small class="type-small muted">
-          {offlineScanning
-            ? "Reading downloads catalog…"
-            : "Show only music downloaded to this device."}
+          {#if !session.auth}
+            Connect to a server to browse online.
+          {:else if offlineScanning}
+            Reading downloads catalog…
+          {:else}
+            Show only music downloaded to this device.
+          {/if}
           <a class="text-link" href={router.href("/downloads")}>View downloads</a>
         </small>
       </div>
       <label class="switch">
         <input
           type="checkbox"
-          checked={offlineMode}
-          disabled={offlineScanning}
+          aria-label="Offline library"
+          checked={session.offlineMode}
+          disabled={!session.auth || session.busy || offlineScanning}
           onchange={(event) => void session.setOfflineMode(event.currentTarget.checked)}
         />
         <span></span>
@@ -796,7 +818,7 @@
   {@render alerts()}
 
   <section class="view library-view">
-    {#if activeClient && !error}
+    {#if libraryAvailable}
       <div class="section-heading">
         <div>
           <span class="type-eyebrow muted">
@@ -948,7 +970,7 @@
   {@render alerts()}
 
   <section class="view library-view">
-    {#if activeClient && !error && artist}
+    {#if libraryAvailable && artist}
       {@const artwork = coverEngine.ensureArtistCover(artist.id, {
         allowNetwork: !offlineMode,
       })}
@@ -1155,15 +1177,15 @@
       <div class="empty-state">
         <span>{@render icon("music")}</span>
         <p class="type-body">
-          {activeClient ? "Artist not found." : "Connect your library."}
+          {libraryAvailable ? "Artist not found." : "Connect your library."}
         </p>
         <a
           class="button"
           data-size="md"
           data-variant="neutral"
-          href={router.href(activeClient ? "/library" : "/settings")}
+          href={router.href(libraryAvailable ? "/library" : "/settings")}
         >
-          {activeClient ? "Open library" : "Open settings"}
+          {libraryAvailable ? "Open library" : "Open settings"}
         </a>
       </div>
     {/if}
@@ -1204,7 +1226,7 @@
   {@render alerts()}
 
   <section class="view library-view">
-    {#if activeClient && !error && artist && album}
+    {#if libraryAvailable && artist && album}
       {@const artwork = coverEngine.ensureAlbumCover(album.id, {
         allowNetwork: !offlineMode,
       })}
@@ -1433,15 +1455,15 @@
       <div class="empty-state">
         <span>{@render icon("music")}</span>
         <p class="type-body">
-          {activeClient ? "Album not found." : "Connect your library."}
+          {libraryAvailable ? "Album not found." : "Connect your library."}
         </p>
         <a
           class="button"
           data-size="md"
           data-variant="neutral"
-          href={router.href(activeClient ? "/library" : "/settings")}
+          href={router.href(libraryAvailable ? "/library" : "/settings")}
         >
-          {activeClient ? "Open library" : "Open settings"}
+          {libraryAvailable ? "Open library" : "Open settings"}
         </a>
       </div>
     {/if}
