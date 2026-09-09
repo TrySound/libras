@@ -2,8 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoverEngine } from "./cover-engine";
 import type { MetadataSnapshot } from "./metadata-engine";
 import type { MetadataAccount } from "./schema";
-import { SubsonicClient } from "./subsonic-client";
+import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";
+
+function createConnection(credentials: Parameters<Network["prepare"]>[0]) {
+  const network = new Network();
+  const client = network.prepare(credentials);
+  network.accept(client);
+  return { ...network.artwork(client), abort: () => network.setMode("offline") };
+}
 
 const account = { host: "https://music.example.com", username: "listener" };
 const auth = { ...account, token: "token", salt: "salt" };
@@ -196,14 +203,14 @@ describe("cover engine", () => {
         }),
     );
     vi.stubGlobal("fetch", fetcher);
-    const client = new SubsonicClient(auth);
-    covers.setClient(client);
+    const client = createConnection(auth);
+    covers.setConnection(client);
     const remote = covers.ensureCover("remote", online);
     await vi.waitFor(() => expect(remote.source).toContain("getCoverArt"));
     remote.cache();
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
     client.abort();
-    covers.setClient(undefined);
+    covers.setConnection(undefined);
     expect(remote.source).toBeUndefined();
     expect(fetcher.mock.calls[0][1].signal?.aborted).toBe(true);
     resolve(new Response("late image", { headers: { "Content-Type": "image/jpeg" } }));
@@ -318,7 +325,7 @@ describe("cover engine", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const covers = engine();
-    covers.setClient(new SubsonicClient(auth));
+    covers.setConnection(createConnection(auth));
     const cover = covers.ensureCover("album-cover", online);
     expect(cover.source).toBeUndefined();
     await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
@@ -420,7 +427,7 @@ describe("cover engine", () => {
     const metadata = library(snapshot());
     const covers = engine(metadata);
     await covers.refresh();
-    covers.setClient(new SubsonicClient(auth));
+    covers.setConnection(createConnection(auth));
     const album = covers.ensureAlbumCover("album", online);
     const track = covers.ensureTrackCover("two", online);
     const cached = covers.ensureTrackCover("two", offline);
@@ -480,7 +487,7 @@ describe("cover engine", () => {
       await covers.restore(account);
       const cached = covers.ensureAlbumCover("album", offline);
       await vi.waitFor(() => expect(cached.source).toBe("blob:cover-1"));
-      covers.setClient(new SubsonicClient(auth));
+      covers.setConnection(createConnection(auth));
       const onlineCover = covers.ensureAlbumCover("album", online);
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
       const headers = new Headers(fetcher.mock.calls[0][1]?.headers);
@@ -511,7 +518,7 @@ describe("cover engine", () => {
     const covers = engine();
     await covers.restore(account);
     storage.failCatalogWrites = true;
-    covers.setClient(new SubsonicClient(auth));
+    covers.setConnection(createConnection(auth));
     const cover = covers.ensureAlbumCover("album", online);
     await vi.waitFor(() => expect(covers.error).toBeInstanceOf(Error));
     expect(cover.source).toBe("blob:cover-1");
@@ -549,7 +556,7 @@ describe("cover engine", () => {
     const metadata = library(snapshot());
     const covers = engine(metadata);
     await covers.refresh();
-    covers.setClient(new SubsonicClient(auth));
+    covers.setConnection(createConnection(auth));
     let resolve!: (response: Response) => void;
     vi.stubGlobal(
       "fetch",
@@ -591,8 +598,8 @@ describe("cover engine", () => {
     const first = engine();
     const second = engine();
     await Promise.all([first.refresh(), second.refresh()]);
-    first.setClient(new SubsonicClient(auth));
-    second.setClient(new SubsonicClient(auth));
+    first.setConnection(createConnection(auth));
+    second.setConnection(createConnection(auth));
     const one = first.ensureCover("one-cover", online);
     const two = second.ensureCover("two-cover", online);
     await vi.waitFor(() => {

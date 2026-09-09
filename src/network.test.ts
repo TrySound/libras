@@ -171,6 +171,100 @@ describe("Network connection lifecycle", () => {
     }
   });
 
+  it("binds artwork URLs to an accepted connection and revokes them on replacement", () => {
+    const network = new Network();
+    const client = network.prepare(auth);
+    expect(() => network.artwork(client)).toThrow("Connection superseded");
+    network.accept(client);
+    const artwork = network.artwork(client);
+    const url = new URL(artwork.url("cover", 500));
+    expect(url.origin).toBe(auth.host);
+    expect(url.pathname).toContain("getCoverArt");
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      id: "cover",
+      size: "500",
+      u: auth.username,
+      t: auth.token,
+      s: auth.salt,
+    });
+    const replacement = network.prepare({ ...auth, host: "https://other.example" });
+    expect(artwork.url("cover", 500)).toBe(url.href);
+    network.accept(replacement);
+    expect(() => artwork.url("cover", 500)).toThrowError(/abort/i);
+    const next = network.artwork(replacement);
+    expect(new URL(next.url("cover", 500)).origin).toBe("https://other.example");
+    network.setMode("offline");
+    expect(() => next.url("cover", 500)).toThrowError(/abort/i);
+  });
+
+  it("normalizes artwork replies and sends conditional validators", async () => {
+    const network = new Network();
+    const client = network.prepare(auth);
+    network.accept(client);
+    const fetcher = vi.fn(
+      async (..._args: Parameters<typeof fetch>) =>
+        new Response("image", {
+          headers: {
+            "Content-Type": "image/png; charset=binary",
+            ETag: '"new"',
+            "Last-Modified": "yesterday",
+          },
+        }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      const artwork = network.artwork(client);
+      const options = { size: 500, etag: '"old"', lastModified: "earlier" };
+      const result = await artwork.read("cover", options);
+      expect(result).toMatchObject({ type: "image/png", etag: '"new"', lastModified: "yesterday" });
+      expect(await result!.blob.text()).toBe("image");
+      const init = fetcher.mock.calls[0][1]!;
+      expect(init.signal).toBe(client.signal);
+      expect(new Headers(init.headers).get("If-None-Match")).toBe('"old"');
+      expect(new Headers(init.headers).get("If-Modified-Since")).toBe("earlier");
+      fetcher.mockResolvedValue(new Response(null, { status: 304 }));
+      await expect(artwork.read("cover", options)).resolves.toBeNull();
+      await expect(artwork.read("cover", { size: 500 })).rejects.toThrow("HTTP 304");
+      fetcher.mockResolvedValue(new Response(null, { status: 404 }));
+      await expect(artwork.read("cover", options)).rejects.toThrow("HTTP 404");
+    } finally {
+      network.setMode("offline");
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("rejects image bytes arriving after disconnect and prevents stale artwork fetches", async () => {
+    const network = new Network();
+    const client = network.prepare(auth);
+    network.accept(client);
+    let resolve!: (blob: Blob) => void;
+    const response = new Response("image");
+    const body = vi.spyOn(response, "blob").mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const fetcher = vi.fn(async () => response);
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      const artwork = network.artwork(client);
+      const pending = artwork.read("cover", { size: 500 });
+      await vi.waitFor(() => expect(body).toHaveBeenCalledOnce());
+      network.setMode("offline");
+      resolve(new Blob(["late image"]));
+      await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      await expect(artwork.read("cover", { size: 500 })).rejects.toMatchObject({
+        name: "AbortError",
+      });
+      expect(fetcher).toHaveBeenCalledOnce();
+    } finally {
+      network.setMode("offline");
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
+  });
+
   it("rejects a late SDK response after network access is revoked", async () => {
     const network = new Network();
     let respond!: (response: Response) => void;

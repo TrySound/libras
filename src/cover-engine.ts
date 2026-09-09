@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import { OpfsJsonStore, jsonFileName } from "./json-store";
 import { createSubscriber } from "svelte/reactivity";
-import { SubsonicClient } from "./subsonic-client";
+import type { ArtworkConnection } from "./network.svelte";
 import { imageSchema, type ImageRecord, type MetadataAccount } from "./schema";
 import type { Memory } from "./memory.svelte";
 
@@ -146,7 +146,7 @@ function references(
 export class CoverEngine {
   #memory: CoverMemory;
   #metadata: { readonly savedAt: number | undefined };
-  #client?: SubsonicClient;
+  #connection?: ArtworkConnection;
 
   constructor(memory: CoverMemory, metadata: { readonly savedAt: number | undefined }) {
     this.#memory = memory;
@@ -236,7 +236,8 @@ export class CoverEngine {
       !this.#destroyed &&
       this.#memory.account !== null &&
       scope(this.#memory.account) === scope(account);
-    if (this.#client && scope(this.#client) !== this.#scope) this.#client = undefined;
+    if (this.#connection && scope(this.#connection.account) !== this.#scope)
+      this.#connection = undefined;
     this.#releaseObjectUrls();
     this.#loads.clear();
     this.#reconcileKey = "";
@@ -481,33 +482,35 @@ export class CoverEngine {
     }
     if (!valid()) return;
     entry.selected = entry.candidates[0];
-    const client = this.#networkClient();
-    entry.network = !!(entry.selected && entry.allowNetwork && client);
-    entry.source = entry.network ? client!.getCoverArtUrl(entry.selected!, 500) : undefined;
+    const connection = this.#networkConnection();
+    entry.network = !!(entry.selected && entry.allowNetwork && connection);
+    entry.source = entry.network ? connection!.url(entry.selected!, 500) : undefined;
     this.#notify();
   }
 
-  #networkClient() {
-    const client = this.#client;
-    return client &&
-      !client.signal.aborted &&
+  #networkConnection() {
+    const connection = this.#connection;
+    return connection &&
+      !connection.signal.aborted &&
       this.#memory.account &&
-      scope(client) === this.#scope &&
+      scope(connection.account) === this.#scope &&
       scope(this.#memory.account) === this.#scope
-      ? client
+      ? connection
       : undefined;
   }
 
   #cache(id: string) {
-    const client = this.#networkClient();
-    if (!client || this.#destroyed) return;
-    const key = `${scope(client)}\n${id}`;
+    const connection = this.#networkConnection();
+    if (!connection || this.#destroyed) return;
+    const key = `${scope(connection.account)}\n${id}`;
     if (this.#downloads.has(key)) return;
     const generation = this.#generation;
     const valid = () =>
-      generation === this.#generation && !this.#destroyed && this.#networkClient() === client;
+      generation === this.#generation &&
+      !this.#destroyed &&
+      this.#networkConnection() === connection;
     this.#error = undefined;
-    const task = this.#download(id, client, valid)
+    const task = this.#download(id, connection, valid)
       .catch((error) => {
         if (valid()) {
           this.#error = error;
@@ -520,27 +523,24 @@ export class CoverEngine {
     this.#downloads.set(key, task);
   }
 
-  async #download(id: string, client: SubsonicClient, valid: () => boolean) {
+  async #download(id: string, connection: ArtworkConnection, valid: () => boolean) {
     const cached = this.#memory.images.get(id);
     if (cached && !cached.etag && !cached.lastModified) return;
-    const headers = new Headers();
-    if (cached?.etag) headers.set("If-None-Match", cached.etag);
-    if (cached?.lastModified) headers.set("If-Modified-Since", cached.lastModified);
-    const response = await fetch(client.getCoverArtUrl(id, 500), {
-      headers,
-      signal: client.signal,
+    const result = await connection.read(id, {
+      size: 500,
+      etag: cached?.etag,
+      lastModified: cached?.lastModified,
     });
-    if (!valid() || (response.status === 304 && cached)) return;
-    if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-    const blob = await response.blob();
+    if (!valid() || !result) return;
+    const { blob } = result;
     const record = v.parse(imageSchema, {
       id,
       fileName: `${crypto.randomUUID()}.image`,
-      type: response.headers.get("Content-Type")?.split(";")[0] ?? "image/jpeg",
+      type: result.type,
       size: blob.size,
       cachedAt: Date.now(),
-      etag: response.headers.get("ETag") ?? undefined,
-      lastModified: response.headers.get("Last-Modified") ?? undefined,
+      etag: result.etag,
+      lastModified: result.lastModified,
     });
     if (!valid()) return;
     const directory = await this.#directory();
@@ -552,7 +552,7 @@ export class CoverEngine {
       await writable.write(blob);
       await writable.close();
       const catalog = await this.#commit(
-        client,
+        connection.account,
         (latest) => {
           const current = latest.images.find((image) => image.id === id);
           if (current && current.fileName !== cached?.fileName) return latest;
@@ -631,10 +631,10 @@ export class CoverEngine {
     return this.#ensureCover("image", artworkId, options);
   }
 
-  setClient(client: SubsonicClient | undefined) {
-    if (client === this.#client || this.#destroyed) return;
-    this.#client = client;
-    if (!client) {
+  setConnection(connection: ArtworkConnection | undefined) {
+    if (connection === this.#connection || this.#destroyed) return;
+    this.#connection = connection;
+    if (!connection) {
       for (const entry of this.#covers.values()) {
         entry.generation++;
         if (entry.network) {
@@ -646,8 +646,8 @@ export class CoverEngine {
       this.#notify();
       return;
     }
-    void this.restore(client).then(() => {
-      if (this.#client === client && !this.#destroyed) {
+    void this.restore(connection.account).then(() => {
+      if (this.#connection === connection && !this.#destroyed) {
         for (const entry of this.#covers.values()) void this.#resolve(entry, true);
       }
     });

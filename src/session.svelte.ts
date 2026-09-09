@@ -29,7 +29,7 @@ interface SessionOptions {
     | "error"
     | "warning"
   >;
-  covers: Pick<CoverEngine, "restore" | "refresh" | "setClient">;
+  covers: Pick<CoverEngine, "restore" | "refresh" | "setConnection">;
   queue: Pick<QueueEngine, "restore" | "setConnection" | "synchronize" | "flush">;
   tracks: Pick<TrackEngine, "setClient">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
@@ -87,7 +87,7 @@ export class Session {
     this.#options.network.setMode("offline");
     metadata.setConnection(undefined);
     queue.setConnection(undefined);
-    covers.setClient(undefined);
+    covers.setConnection(undefined);
     tracks.setClient(undefined);
     playback.suspendNetwork();
     void queue.flush();
@@ -97,7 +97,7 @@ export class Session {
     const { metadata, queue, covers, tracks } = this.#options;
     metadata.setConnection(this.#options.network.metadata(client));
     queue.setConnection(this.#options.network.queue(client));
-    covers.setClient(client);
+    covers.setConnection(this.#options.network.artwork(client));
     tracks.setClient(client);
     void queue.synchronize();
   }

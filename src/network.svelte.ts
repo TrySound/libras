@@ -34,6 +34,18 @@ export interface QueueConnection {
   write(queue: RemoteQueue): Promise<void>;
 }
 
+type ArtworkValidators = { etag?: string; lastModified?: string };
+type RemoteArtwork = ArtworkValidators & { blob: Blob; type: string };
+
+export interface ArtworkConnection {
+  readonly account: Readonly<MetadataAccount>;
+  readonly signal: AbortSignal;
+  /** Browser image requests must be released by the consumer on detachment. */
+  url(id: string, size: number): string;
+  /** Null means the cached image is unchanged. */
+  read(id: string, options: ArtworkValidators & { size: number }): Promise<RemoteArtwork | null>;
+}
+
 function genres(item: { genre?: string; genres?: { name: string }[] }) {
   const names = [item.genre ?? "", ...(item.genres ?? []).map((genre) => genre.name)]
     .flatMap((name) => name.split("|"))
@@ -171,6 +183,38 @@ export class Network {
             position: queue.position,
           }),
         ),
+    };
+  }
+
+  artwork(client: SubsonicClient): ArtworkConnection {
+    this.#check(client);
+    return {
+      account: Object.freeze({ host: client.host, username: client.username }),
+      signal: client.signal,
+      url: (id, size) => {
+        this.#check(client);
+        return client.getCoverArtUrl(id, size);
+      },
+      read: (id, options) =>
+        this.#request(client, async () => {
+          const headers = new Headers();
+          if (options.etag) headers.set("If-None-Match", options.etag);
+          if (options.lastModified) headers.set("If-Modified-Since", options.lastModified);
+          const response = await fetch(client.getCoverArtUrl(id, options.size), {
+            headers,
+            signal: client.signal,
+          });
+          this.#check(client);
+          if (response.status === 304 && (options.etag || options.lastModified)) return null;
+          if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
+          const blob = await response.blob();
+          return {
+            blob,
+            type: response.headers.get("Content-Type")?.split(";")[0] ?? "image/jpeg",
+            etag: response.headers.get("ETag") ?? undefined,
+            lastModified: response.headers.get("Last-Modified") ?? undefined,
+          };
+        }),
     };
   }
 

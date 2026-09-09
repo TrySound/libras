@@ -79,8 +79,8 @@ describe("session", () => {
     expect([memory.queueTracks, memory.queueIndex, memory.queuePosition]).toEqual(queueState);
     expect(metadata.setConnection).toHaveBeenLastCalledWith(undefined);
     expect(queue.setConnection).toHaveBeenLastCalledWith(undefined);
-    for (const engine of [tracks, covers])
-      expect(engine.setClient).toHaveBeenLastCalledWith(undefined);
+    expect(covers.setConnection).toHaveBeenLastCalledWith(undefined);
+    expect(tracks.setClient).toHaveBeenLastCalledWith(undefined);
     expect(playback.suspendNetwork).toHaveBeenCalled();
     refresh.resolve();
     await pending;

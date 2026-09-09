@@ -84,7 +84,7 @@ export function createSession(saved = false, storage = createStorage()) {
   const covers = {
     restore: vi.fn(async () => {}),
     refresh: vi.fn(async () => {}),
-    setClient: vi.fn(),
+    setConnection: vi.fn(),
   };
   const queue = {
     restore: vi.fn(async (account: MetadataAccount) => {
