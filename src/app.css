@@ -164,6 +164,10 @@
   text-transform: uppercase;
 }
 
+.text-muted {
+  color: var(--color-text-muted);
+}
+
 /* controls */
 
 .linkarea {
@@ -436,10 +440,6 @@ input {
 
 .view {
   padding: 1.25rem;
-}
-
-.muted {
-  color: var(--color-text-muted);
 }
 
 input:not([type="range"]):not([type="checkbox"]) {

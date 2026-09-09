@@ -317,11 +317,11 @@
   </header>
   <section class="view settings-view stack-md">
     <div class="stack-sm">
-      <span class="type-eyebrow muted">Settings</span>
+      <span class="type-eyebrow text-muted">Settings</span>
       <h2 class="type-heading">
         {session.auth ? "Music server" : "Connect to your music"}
       </h2>
-      <p class="type-body muted">
+      <p class="type-body text-muted">
         {session.auth
           ? "Disconnect first to change servers. Your offline library will stay on this device."
           : "Enter your Navidrome server details. Authentication stays on this device."}
@@ -342,7 +342,7 @@
             {session.auth?.host ?? "Add a server"}
           </strong>
           {#if session.auth}
-            <small class="type-small muted">
+            <small class="type-small text-muted">
               {`${session.auth.username} · ${statusLabel}`}
             </small>
           {/if}
@@ -441,7 +441,7 @@
       <section class="settings-option" aria-label="App update">
         <div class="stack-xs">
           <strong class="type-title">App update</strong>
-          <small class="type-small muted">{appUpdate.message}</small>
+          <small class="type-small text-muted">{appUpdate.message}</small>
         </div>
         {#if appUpdate.hasUpdate}
           <button
@@ -459,7 +459,7 @@
     <div class="settings-option">
       <div class="stack-xs">
         <strong class="type-title">Offline library</strong>
-        <small class="type-small muted">
+        <small class="type-small text-muted">
           {#if !session.auth}
             Connect to a server to browse online.
           {:else if offlineScanning}
@@ -500,7 +500,7 @@
   </header>
   <section class="view stack-md">
     <h2 class="type-heading">Downloads</h2>
-    <p class="type-small muted">
+    <p class="type-small text-muted">
       Downloading first, then queued tracks and saved files, newest first.
     </p>
     {#if trackEngine.error}
@@ -509,7 +509,7 @@
       </p>
     {/if}
     {#if trackEngine.downloadsLoading}
-      <p class="type-body muted" role="status">Reading downloaded files…</p>
+      <p class="type-body text-muted" role="status">Reading downloaded files…</p>
     {/if}
     {#if downloads.length}
       <div class="wings">
@@ -534,11 +534,11 @@
             </span>
             <div class="track-details stack-xs">
               <strong class="type-small">{entry.track.title}</strong>
-              <p class="type-caption muted">
+              <p class="type-caption text-muted">
                 {entry.track.artist} — {entry.track.album}
               </p>
               {#if entry.status === "downloaded"}
-                <p class="type-caption muted">
+                <p class="type-caption text-muted">
                   <time datetime={new Date(entry.downloadedAt).toISOString()}>
                     {new Date(entry.downloadedAt).toLocaleString()}
                   </time>
@@ -546,7 +546,7 @@
                 </p>
               {/if}
             </div>
-            <span class="type-caption muted">
+            <span class="type-caption text-muted">
               {entry.status === "downloaded"
                 ? new Intl.NumberFormat(undefined, {
                     style: "unit",
@@ -561,7 +561,7 @@
         {/each}
       </div>
     {:else if !trackEngine.downloadsLoading}
-      <p class="type-body muted">No downloaded files yet.</p>
+      <p class="type-body text-muted">No downloaded files yet.</p>
     {/if}
   </section>
   {@render miniPlayer()}
@@ -721,7 +721,7 @@
       <div class="player-queue">
         <div class="section-heading">
           <div>
-            <span class="type-eyebrow muted">Up next</span>
+            <span class="type-eyebrow text-muted">Up next</span>
             <h2 class="type-heading">
               {queue.length} track{queue.length === 1 ? "" : "s"}
             </h2>
@@ -772,9 +772,9 @@
             {/each}
           </div>
         {:else if memory.queueTracks.length > 0}
-          <p class="type-body muted">No available tracks.</p>
+          <p class="type-body text-muted">No available tracks.</p>
         {:else}
-          <p class="type-body muted">The queue is empty.</p>
+          <p class="type-body text-muted">The queue is empty.</p>
         {/if}
       </div>
     </section>
@@ -811,7 +811,7 @@
     {#if libraryAvailable}
       <div class="section-heading">
         <div>
-          <span class="type-eyebrow muted">
+          <span class="type-eyebrow text-muted">
             {offlineMode ? "Downloaded music" : "Your music"}
           </span>
           <h2 class="type-heading">{visibleArtists.length} artists</h2>
@@ -959,7 +959,7 @@
       </div>
       <div class="section-heading collection-heading">
         <div>
-          <span class="type-eyebrow muted">Albums</span>
+          <span class="type-eyebrow text-muted">Albums</span>
           <h2 class="type-heading">{artist.name}</h2>
           <p class="library-meta type-small">
             {visibleAlbums.length} album{visibleAlbums.length === 1 ? "" : "s"}
@@ -1023,7 +1023,7 @@
               </span>
               <span class="stack-xs">
                 <strong class="type-title">{album.title}</strong>
-                <small class="type-small muted">
+                <small class="type-small text-muted">
                   {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
                 </small>
               </span>
@@ -1192,7 +1192,7 @@
       </div>
       <div class="section-heading collection-heading">
         <div>
-          <a class="text-link type-eyebrow muted" href={router.href(artistPath(artist))}
+          <a class="text-link type-eyebrow text-muted" href={router.href(artistPath(artist))}
             >{artist.name}</a
           >
           <h2 class="type-heading">{album.title}</h2>
@@ -1438,7 +1438,7 @@
         <strong class="type-title">
           {playback.track.title}
         </strong>
-        <small class="type-small muted">
+        <small class="type-small text-muted">
           {memory.artists.get(playback.track.artistId)?.name}
         </small>
       </span>
