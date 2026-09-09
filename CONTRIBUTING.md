@@ -73,7 +73,7 @@ Statuses, errors, validation, persistence, and timestamps remain engine-owned. T
 
 Only metadata validation is available to a login candidate. Acceptance enables other operations and aborts the previous connection. Going offline aborts active and candidate connections; returning online creates a fresh connection. Session explicitly sequences persistence, engine attachment/detachment, and playback suspension—there is no lifecycle event bus. Browser-managed image/audio sources must be released explicitly; fetch cancellation alone cannot stop them.
 
-Network owns remote requests, response mapping, authenticated URLs, and connection cancellation. Engines retain domain assembly, cache policy, scheduling, persistence, and object URLs. Audio responses stream directly to OPFS with both connection and job cancellation. Authentication storage keeps its existing validated token/salt format; its `Auth` type is inferred in `auth.ts`, separate from SDK types.
+Network owns remote requests, response mapping, authenticated URLs, and connection cancellation. Engines retain domain assembly, cache policy, scheduling, persistence, and object URLs. Audio responses stream directly to OPFS with both connection and job cancellation. Network's `createAuth()` normalizes the host and delegates salt/token generation to the SDK's `createSubsonicAuth()` helper, without enabling access or making requests. AuthStore only validates and persists credentials and last-account identity. Authentication storage keeps its existing token/salt format; its `Auth` type is inferred in `auth.ts`, separate from SDK types.
 
 ## Storage architecture and offline behavior
 

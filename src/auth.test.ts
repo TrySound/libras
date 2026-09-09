@@ -24,18 +24,23 @@ class MemoryStorage implements Storage {
 }
 
 describe("auth store", () => {
-  it("creates normalized salted token authentication", () => {
-    const store = new AuthStore(new MemoryStorage());
-    const auth = store.create({
-      host: "music.example.com/",
+  it("persists only validated credential fields, never a supplied password", () => {
+    const storage = new MemoryStorage();
+    const store = new AuthStore(storage);
+    const credentials = {
+      host: "https://music.example.com",
       username: "listener",
+      token: "token",
+      salt: "salt",
       password: "secret",
+    };
+    store.save(credentials);
+    expect(JSON.parse(storage.getItem("navidrome-auth")!)).toEqual({
+      host: "https://music.example.com",
+      username: "listener",
+      token: "token",
+      salt: "salt",
     });
-
-    expect(auth.host).toBe("https://music.example.com");
-    expect(auth.username).toBe("listener");
-    expect(auth.salt).toMatch(/^[a-f0-9]{24}$/);
-    expect(auth.token).toMatch(/^[a-f0-9]{32}$/);
   });
 
   it("persists and validates authentication", () => {

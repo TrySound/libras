@@ -1,8 +1,8 @@
-import type { Auth, AuthStore, PasswordAuth } from "./auth";
+import type { Auth, AuthStore } from "./auth";
 import type { CoverEngine } from "./cover-engine";
 import type { MemoryView } from "./memory.svelte";
 import type { MetadataEngine } from "./metadata-engine";
-import type { Network, NetworkConnection } from "./network.svelte";
+import type { Network, NetworkConnection, PasswordAuth } from "./network.svelte";
 import type { PlaybackEngine } from "./playback-engine";
 import type { QueueEngine } from "./queue-engine";
 import type { ConnectionStatus, MetadataAccount } from "./schema";
@@ -13,7 +13,7 @@ const offlineModeStorageKey = "navidrome-offline-mode";
 interface SessionOptions {
   memory: MemoryView;
   network: Network;
-  auth: Pick<AuthStore, "create" | "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
+  auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
   metadata: Pick<
     MetadataEngine,
     | "restore"
@@ -152,7 +152,7 @@ export class Session {
     const generation = this.#begin();
     this.status = "connecting";
     try {
-      const credentials = this.#options.auth.create(input);
+      const credentials = this.#options.network.createAuth(input);
       const connection = this.#options.network.prepare(credentials);
       await this.#restoration;
       if (!this.#valid(generation)) return false;

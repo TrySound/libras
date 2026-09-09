@@ -1,6 +1,13 @@
-import { SubsonicClient } from "./subsonic-client";
-import type { Auth } from "./auth";
+import { SubsonicClient, createSubsonicAuth } from "./subsonic-client";
+import { authSchema, type Auth } from "./auth";
+import * as v from "valibot";
 import type { Album, Artist, Track, MetadataAccount } from "./schema";
+
+export interface PasswordAuth {
+  host: string;
+  username: string;
+  password: string;
+}
 
 /** Credential-free identity for one connection lifetime, owned by its Network. */
 export interface NetworkConnection {
@@ -84,6 +91,20 @@ export class Network {
     this.#candidate?.abort();
     this.#client = undefined;
     this.#candidate = undefined;
+  }
+
+  /** Prepare credentials without enabling access, persisting data, or making requests. */
+  createAuth(input: PasswordAuth): Auth {
+    const host = input.host.trim();
+    const withProtocol = /^https?:\/\//i.test(host) ? host : `https://${host}`;
+    return v.parse(
+      authSchema,
+      createSubsonicAuth({
+        host: new URL(withProtocol).toString().replace(/\/$/, ""),
+        username: input.username,
+        password: input.password,
+      }),
+    );
   }
 
   /** Explicit login validation is allowed while normal access remains offline. */

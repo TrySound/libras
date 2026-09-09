@@ -9,6 +9,47 @@ const auth = {
 };
 
 describe("Network connection lifecycle", () => {
+  it.each([
+    [" music.example/ ", "https://music.example"],
+    ["http://music.example:4533/music/", "http://music.example:4533/music"],
+    ["https://music.example/music/", "https://music.example/music"],
+  ])("prepares credentials for %s without enabling access or fetching", (host, normalized) => {
+    const network = new Network();
+    const candidate = network.prepare(auth);
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      const credentials = network.createAuth({ host, username: "listener", password: "secret" });
+      expect(credentials).toEqual({
+        host: normalized,
+        username: "listener",
+        salt: expect.stringMatching(/^[a-f0-9]{24}$/),
+        token: expect.stringMatching(/^[a-f0-9]{32}$/),
+      });
+      expect(network.mode).toBe("offline");
+      expect(candidate.signal.aborted).toBe(false);
+      expect(fetcher).not.toHaveBeenCalled();
+      network.accept(candidate);
+      network.createAuth({ host, username: "other", password: "secret" });
+      expect(candidate.signal.aborted).toBe(false);
+      expect(network.mode).toBe("online");
+    } finally {
+      network.setMode("offline");
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("rejects invalid credential input before starting a connection", () => {
+    const network = new Network();
+    expect(() =>
+      network.createAuth({ host: "https://", username: "listener", password: "secret" }),
+    ).toThrow();
+    expect(() =>
+      network.createAuth({ host: auth.host, username: "", password: "secret" }),
+    ).toThrow();
+    expect(network.mode).toBe("offline");
+  });
+
   it("starts offline and refuses normal access until explicitly enabled", () => {
     const network = new Network();
     expect(network.mode).toBe("offline");

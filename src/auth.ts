@@ -1,14 +1,7 @@
-import { md5 } from "js-md5";
 import * as v from "valibot";
 import { accountSchema, type MetadataAccount } from "./schema";
 
-export interface PasswordAuth {
-  host: string;
-  username: string;
-  password: string;
-}
-
-const authSchema = v.object({
+export const authSchema = v.object({
   host: v.pipe(v.string(), v.url()),
   username: v.pipe(v.string(), v.nonEmpty()),
   token: v.pipe(v.string(), v.nonEmpty()),
@@ -24,26 +17,6 @@ export class AuthStore {
   constructor(storage: Storage = localStorage, key = "navidrome-auth") {
     this.#storage = storage;
     this.#key = key;
-  }
-
-  #normalizeHost(value: string) {
-    const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
-    return new URL(withProtocol).toString().replace(/\/$/, "");
-  }
-
-  #salt() {
-    const bytes = crypto.getRandomValues(new Uint8Array(12));
-    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  }
-
-  create(input: PasswordAuth): Auth {
-    const salt = this.#salt();
-    return v.parse(authSchema, {
-      host: this.#normalizeHost(input.host.trim()),
-      username: input.username,
-      token: md5(input.password + salt),
-      salt,
-    });
   }
 
   load(): Auth | null {

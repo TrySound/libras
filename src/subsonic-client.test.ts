@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SubsonicClient } from "./subsonic-client";
+import { SubsonicClient, createSubsonicAuth } from "./subsonic-client";
+import { md5 } from "js-md5";
 
 const auth = {
   host: "https://music.example.com",
@@ -18,6 +19,21 @@ afterEach(() => {
 });
 
 describe("subsonic client", () => {
+  it("creates salted token credentials without retaining or altering the password", () => {
+    const input = { host: auth.host, username: auth.username, password: " secret 音 " };
+    const first = createSubsonicAuth(input);
+    const second = createSubsonicAuth(input);
+    expect(first).toEqual({
+      host: input.host,
+      username: input.username,
+      salt: expect.stringMatching(/^[a-f0-9]{24}$/),
+      token: md5(input.password + first.salt),
+    });
+    expect(second.salt).not.toBe(first.salt);
+    expect(second.token).toBe(md5(input.password + second.salt));
+    expect(input.password).toBe(" secret 音 ");
+  });
+
   it("adds authentication and validates metadata responses", async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL) =>
       response({ artists: { index: [{ artist: [{ id: "artist-1", name: "Artist" }] }] } }),

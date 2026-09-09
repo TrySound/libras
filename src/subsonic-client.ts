@@ -1,10 +1,27 @@
 import * as v from "valibot";
+import { md5 } from "js-md5";
 
 export interface SubsonicAuth {
   host: string;
   username: string;
   token: string;
   salt: string;
+}
+
+/** Prepare token authentication without retaining the password or making a request. */
+export function createSubsonicAuth(input: {
+  host: string;
+  username: string;
+  password: string;
+}): SubsonicAuth {
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  const salt = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return {
+    host: input.host,
+    username: input.username,
+    token: md5(input.password + salt),
+    salt,
+  };
 }
 
 const genreSchema = v.object({ name: v.string() });
