@@ -12,6 +12,7 @@
   let registration: ServiceWorkerRegistration | undefined;
   let updateServiceWorker: () => Promise<void>;
   let updateTimeout: ReturnType<typeof setTimeout> | undefined;
+  let reloadAvailable = false;
 
   const busy = $derived(state.status === "updating");
   const hasUpdate = $derived(
@@ -37,19 +38,40 @@
 
   onMount(() => {
     const lifetime = new AbortController();
-    const ready = () => {
+    const serviceWorker = navigator.serviceWorker;
+    let controller = serviceWorker?.controller;
+    const syncAvailability = () => {
       if (lifetime.signal.aborted || busy) return;
-      state = { status: "ready" };
+      // Workbox can also announce an external installation that is already current.
+      if (registration?.waiting || reloadAvailable) state = { status: "ready" };
+      else if (hasUpdate) state = { status: "idle" };
     };
+    const controlled = () => {
+      if (lifetime.signal.aborted) return;
+      const next = serviceWorker?.controller;
+      if (!next || next === controller) return;
+      const previous = controller;
+      controller = next;
+      if (busy) {
+        reloadAvailable = true;
+        reloadHome();
+      } else {
+        // Initial installation claims this page without requiring an update/reload.
+        if (previous) reloadAvailable = true;
+        syncAvailability();
+      }
+    };
+    // The plugin's reload callback is conditional on Workbox's isUpdate heuristic.
+    serviceWorker?.addEventListener("controllerchange", controlled, { signal: lifetime.signal });
     updateServiceWorker = registerSW({
-      onNeedRefresh: ready,
+      onNeedRefresh: syncAvailability,
       onNeedReload() {
-        if (lifetime.signal.aborted) return;
-        if (busy) reloadHome();
-        else ready();
+        // Native controllerchange handles activation; suppress the plugin's default reload.
       },
       onRegisteredSW(_url, value) {
-        if (!lifetime.signal.aborted) registration = value;
+        if (lifetime.signal.aborted) return;
+        registration = value;
+        syncAvailability();
       },
       onRegisterError() {
         if (lifetime.signal.aborted || hasUpdate) return;
@@ -83,6 +105,10 @@
 
   export async function update() {
     if (!hasUpdate || busy) return;
+    if (!registration?.waiting && !reloadAvailable) {
+      state = { status: "idle" };
+      return;
+    }
     state = { status: "updating" };
     const fail = (cause: unknown) => {
       if (updateTimeout !== timeout) return;
@@ -103,11 +129,7 @@
     updateTimeout = timeout;
     try {
       // Another tab may have activated the update before this click.
-      if (
-        registration?.active?.state === "activated" &&
-        !registration.waiting &&
-        !registration.installing
-      ) {
+      if (!registration?.waiting) {
         reloadHome();
       } else {
         await updateServiceWorker();
