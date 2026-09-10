@@ -264,7 +264,14 @@ describe("playback engine", () => {
       salt: "salt",
     });
     const active = network.accept(client);
-    await queue.restore(new Storage(client.account));
+    await queue.restore({
+      account: client.account,
+      queue: {
+        account: client.account,
+        read: async () => null,
+        save: async (record) => ({ written: true, value: record }),
+      },
+    });
     queue.setConnection(active.queue);
     await queue.synchronize();
     await queue.flush();

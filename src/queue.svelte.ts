@@ -161,21 +161,20 @@ export class QueueEngine {
 
   async #load() {
     const connection = this.#connection;
-    if (!connection || connection.signal.aborted || this.#destroyed) return;
+    const storage = this.#storage;
+    const account = this.#account;
+    if (!connection || !storage || !account || connection.signal.aborted || this.#destroyed) return;
     const epoch = this.#epoch;
     const revision = this.#revision;
+    const valid = () =>
+      epoch === this.#epoch &&
+      revision === this.#revision &&
+      !this.#destroyed &&
+      !connection.signal.aborted;
     this.#error = undefined;
     try {
       const queue = await connection.read();
-      if (
-        epoch !== this.#epoch ||
-        revision !== this.#revision ||
-        this.#destroyed ||
-        connection.signal.aborted
-      )
-        return;
-      this.#dirty = false;
-      this.#needsPersist = true;
+      if (!valid()) return;
       this.#updatedAt = Math.max(Date.now(), this.#updatedAt + 1);
       // Remote queues identify the selection by ID, so retain our occurrence index
       // when an unchanged server queue contains the same track more than once.
@@ -183,16 +182,42 @@ export class QueueEngine {
         queue.currentTrackId === this.#memory.queueTracks[this.#memory.queueIndex] &&
         queue.trackIds.length === this.#memory.queueTracks.length &&
         queue.trackIds.every((id, index) => id === this.#memory.queueTracks[index]);
-      this.#publish({
-        tracks: queue.trackIds,
-        index: sameSelection
-          ? this.#memory.queueIndex
-          : queue.currentTrackId
-            ? queue.trackIds.indexOf(queue.currentTrackId)
-            : -1,
-        position: queue.position,
+      const index = sameSelection
+        ? this.#memory.queueIndex
+        : queue.currentTrackId
+          ? queue.trackIds.indexOf(queue.currentTrackId)
+          : -1;
+      const record: QueueRecord = {
+        account,
+        pendingSync: false,
+        updatedAt: this.#updatedAt,
+        tracks: [...queue.trackIds],
+        index,
+        position: index >= 0 && Number.isFinite(queue.position) ? Math.max(0, queue.position) : 0,
+      };
+      // Serialize with local checkpoints, but do not expose the remote queue until durable.
+      const write = this.#localWrites.then(async () => {
+        if (!valid()) return;
+        try {
+          const result = await storage.queue.save(record);
+          if (!valid()) return;
+          if (!result.written) {
+            this.#storageError = new Error(
+              "A newer queue is already stored. Refresh to try again.",
+            );
+            return;
+          }
+          this.#dirty = false;
+          this.#needsPersist = false;
+          this.#conflict = false;
+          this.#storageError = undefined;
+          this.#publish(record);
+        } catch (error) {
+          if (valid()) this.#storageError = error;
+        }
       });
-      await this.#persist();
+      this.#localWrites = write.catch(() => {});
+      await write;
     } catch (error) {
       if (
         epoch !== this.#epoch ||

@@ -3,6 +3,7 @@ import { QueueEngine } from "./queue.svelte";
 import { Storage } from "./storage";
 import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";
+import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
 const auth = { ...account, token: "token", salt: "salt" };
@@ -115,6 +116,64 @@ async function connectQueue(queue: QueueEngine, client: ReturnType<typeof create
 }
 
 describe("queue engine", () => {
+  it.each(["success", "failure", "conflict", "local edit", "detach"])(
+    "waits for durable server state before publication: %s",
+    async (outcome) => {
+      const memory = new Memory();
+      const queue = engine(memory);
+      const committed = deferred<{ written: boolean; value: ReturnType<typeof record> }>();
+      const store = {
+        account,
+        queue: {
+          account,
+          read: vi.fn(async () => record()),
+          save: vi.fn(async () => ({ written: true, value: record() })),
+        },
+      };
+      await queue.restore(store);
+      const client = createConnection();
+      vi.spyOn(client, "read").mockResolvedValue({
+        trackIds: ["remote"],
+        currentTrackId: "remote",
+        position: 9,
+      });
+      queue.setConnection(client);
+      const notify = vi.fn();
+      queue.subscribe(notify);
+      store.queue.save.mockReturnValueOnce(committed.promise);
+      const pending = queue.synchronize();
+      await vi.waitFor(() => expect(store.queue.save).toHaveBeenCalledOnce());
+      expect(memory.queueTracks).toEqual(record().tracks);
+      expect(notify).not.toHaveBeenCalled();
+      expect(store.queue.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tracks: ["remote"],
+          index: 0,
+          position: 9,
+          pendingSync: false,
+        }),
+      );
+      if (outcome === "local edit") queue.update({ tracks: ["local"], index: 0, position: 0 });
+      if (outcome === "detach") queue.setConnection(undefined);
+      if (outcome === "failure") committed.reject(new Error("Disk unavailable"));
+      else committed.resolve({ written: outcome !== "conflict", value: record() });
+      await pending;
+      if (outcome === "success") {
+        expect(memory.queueTracks).toEqual(["remote"]);
+        expect(memory.queuePosition).toBe(9);
+        expect(notify).toHaveBeenCalledOnce();
+      } else if (outcome === "local edit") {
+        expect(memory.queueTracks).toEqual(["local"]);
+        expect(notify).toHaveBeenCalledOnce();
+      } else {
+        expect(memory.queueTracks).toEqual(record().tracks);
+        expect(notify).not.toHaveBeenCalled();
+      }
+      if (outcome === "failure" || outcome === "conflict")
+        expect(queue.storageError).toBeInstanceOf(Error);
+    },
+  );
+
   it("uses injected storage and retains engine-owned conflict handling", async () => {
     const saved = record();
     const store = {
