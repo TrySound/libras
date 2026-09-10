@@ -63,7 +63,7 @@ export function createSession(saved = false, storage = createStorage()) {
     error: undefined as unknown,
     warning: undefined as unknown,
     restore: vi.fn(async (storage: Pick<Storage, "account">) => {
-      const account = storage.account!;
+      const account = storage.account;
       memory.artists = new Map(snapshot(account).artists.map((artist) => [artist.id, artist]));
       metadata.savedAt = 100;
       metadata.status = "ready";
@@ -90,7 +90,7 @@ export function createSession(saved = false, storage = createStorage()) {
   };
   const queue = {
     restore: vi.fn(async (storage: Pick<Storage, "account">) => {
-      const account = storage.account!;
+      const account = storage.account;
       memory.queueTracks = [account.username];
       memory.queueIndex = 0;
       memory.queuePosition = 17;

@@ -103,13 +103,10 @@ describe("configured storage", () => {
     expect((await storage.artwork().read(() => true))?.catalog.account).toEqual(account);
   });
 
-  it("does not allow a configured instance to drift to another account", () => {
-    const storage = new Storage(account);
-    const other = { ...account, username: "other" };
-
-    expect(() => storage.metadata(other)).toThrow("different account");
-    expect(() => storage.queue(other)).toThrow("different account");
-    expect(() => storage.artwork(other)).toThrow("different account");
+  it("validates account identity before any browser storage access", () => {
+    const disk = installStorage();
+    expect(() => new Storage({ ...account, username: "" })).toThrow();
+    expect(disk.getDirectory).not.toHaveBeenCalled();
   });
 });
 
@@ -120,8 +117,8 @@ it("preserves committed artwork when cancellation arrives during catalog close",
     if (path.endsWith(".json")) valid = false;
   };
   await expect(
-    new Storage()
-      .artwork(account)
+    new Storage(account)
+      .artwork()
       .saveImage("cover", { blob: new Blob(["image"]), type: "image/png" }, undefined, () => valid),
   ).resolves.toBeUndefined();
   const catalogPath = `images/${await jsonFileName(`${account.host}\n${account.username}`)}`;
@@ -133,7 +130,7 @@ it.each([0, 1])(
   "preserves a replacement audio record during stale repair (timestamp delta: %s)",
   async (delta) => {
     const disk = installStorage();
-    const audio = new Storage().audio();
+    const audio = new Storage(account).audio();
     const descriptor: TrackFileDescriptor = {
       ...account,
       key: `${account.host}\n${account.username}\ntrack\nmp3-v1`,
@@ -180,7 +177,7 @@ describe("audio storage", () => {
 
   it("shares a lazy cross-account catalog and streams files through the existing locks", async () => {
     const disk = installStorage();
-    const storage = new Storage();
+    const storage = new Storage(account);
     const first = storage.audio();
     const second = storage.audio();
     expect(disk.getDirectory).not.toHaveBeenCalled();
@@ -197,7 +194,7 @@ describe("audio storage", () => {
     );
     expect(await (await first.read(own, track))!.text()).toBe("first audio");
     expect(await (await second.read(other, track))!.text()).toBe("other audio");
-    expect(await new Storage().audio().list()).toHaveLength(2);
+    expect(await new Storage(account).audio().list()).toHaveLength(2);
     const name = (await jsonFileName(own.key)).replace(/\.json$/, ".audio");
     expect(disk.files.has(`tracks/${name}`)).toBe(true);
     expect(disk.files.has("tracks/downloads.json")).toBe(true);
@@ -214,7 +211,7 @@ describe("audio storage", () => {
     const entry = descriptor();
     const name = (await jsonFileName(entry.key)).replace(/\.json$/, ".audio");
     disk.files.set(`tracks/${name}`, new File(["legacy"], name, { lastModified: 123 }));
-    const audio = new Storage().audio();
+    const audio = new Storage(account).audio();
     expect(await (await audio.read(entry, track))!.text()).toBe("legacy");
     expect(await audio.entries()).toEqual([
       expect.objectContaining({ key: entry.key, fileName: name, downloadedAt: 123, size: 6 }),
@@ -231,8 +228,8 @@ describe("artwork storage", () => {
 
   it("stores catalogs and images together and returns independent image bytes", async () => {
     const disk = installStorage();
-    const storage = new Storage();
-    const artwork = storage.artwork(account);
+    const storage = new Storage(account);
+    const artwork = storage.artwork();
     expect(disk.getDirectory).not.toHaveBeenCalled();
     const empty = await artwork.read(valid);
     expect(empty?.catalog.images).toEqual([]);
@@ -257,14 +254,13 @@ describe("artwork storage", () => {
     expect((await artwork.read(valid))?.catalog.albums).toEqual([
       { id: "album", candidates: ["cover"] },
     ]);
-    expect(
-      (await storage.artwork({ ...account, username: "other" }).read(valid))?.catalog.images,
-    ).toEqual([]);
+    const other = new Storage({ ...account, username: "other" });
+    expect((await other.artwork().read(valid))?.catalog.images).toEqual([]);
   });
 
   it("filters missing and truncated files even when persisting repairs fails", async () => {
     const disk = installStorage();
-    const artwork = new Storage().artwork(account);
+    const artwork = new Storage(account).artwork();
     await artwork.update(
       (catalog) => ({
         ...catalog,
@@ -294,9 +290,9 @@ describe("artwork storage", () => {
 
   it("keeps the concurrent winner and removes only the unused image file", async () => {
     const disk = installStorage();
-    const storage = new Storage();
-    const first = storage.artwork(account);
-    const second = storage.artwork({ ...account });
+    const storage = new Storage(account);
+    const first = storage.artwork();
+    const second = storage.artwork();
     const results = await Promise.all([
       first.saveImage("cover", image("first"), undefined, valid),
       second.saveImage("cover", image("second"), undefined, valid),
@@ -313,7 +309,7 @@ describe("artwork storage", () => {
 
   it("preserves cached bytes and catalog after failed or cancelled replacements", async () => {
     const disk = installStorage();
-    const artwork = new Storage().artwork(account);
+    const artwork = new Storage(account).artwork();
     const original = await artwork.saveImage("cover", image(), undefined, valid);
     const previous = original!.catalog.images[0];
     disk.state.beforeWrite = (path) => {
@@ -339,7 +335,7 @@ describe("artwork storage", () => {
 
   it("does not repair corrupt catalogs or adopt legacy images implicitly", async () => {
     const disk = installStorage();
-    const artwork = new Storage().artwork(account);
+    const artwork = new Storage(account).artwork();
     const path = `images/${await jsonFileName(`${account.host}\n${account.username}`)}`;
     disk.files.set(path, "broken JSON");
     disk.files.set("images/legacy.image", "legacy");
@@ -363,25 +359,25 @@ describe("queue storage", () => {
 
   it("shares Storage with metadata without sharing files or changing queue format", async () => {
     const disk = installStorage();
-    const storage = new Storage();
-    const queue = storage.queue(account);
+    const storage = new Storage(account);
+    const queue = storage.queue();
     expect(disk.getDirectory).not.toHaveBeenCalled();
     expect(await queue.read()).toBeNull();
     expect(await queue.save(record())).toEqual({ written: true, value: record() });
-    await storage.metadata(account).save(snapshot());
+    await storage.metadata().save(snapshot());
     const name = await jsonFileName(`${account.host}\n${account.username}`);
     expect(disk.files.size).toBe(2);
     expect(JSON.parse(disk.files.get(`queue/${name}`) as string)).toEqual(record());
     expect(disk.lock).toHaveBeenCalledWith(`music-web-queue:${name}`, expect.any(Function));
-    expect(await new Storage().queue(account).read()).toEqual(record());
-    expect(await storage.metadata(account).read()).toEqual(snapshot());
+    expect(await new Storage(account).queue().read()).toEqual(record());
+    expect(await storage.metadata().read()).toEqual(snapshot());
   });
 
   it("serializes shared handles, reports conflicts, and permits equal-timestamp sync acknowledgements", async () => {
     const disk = installStorage();
-    const storage = new Storage();
-    const first = storage.queue(account);
-    const second = storage.queue({ ...account });
+    const storage = new Storage(account);
+    const first = storage.queue();
+    const second = storage.queue();
     const newer = { ...record(), updatedAt: 100 };
     expect(await Promise.all([first.save(newer), second.save(record())])).toEqual([
       { written: true, value: newer },
@@ -395,22 +391,23 @@ describe("queue storage", () => {
 
   it("captures account identity and rejects foreign writes before I/O", async () => {
     const disk = installStorage();
-    const storage = new Storage();
     const identity = { ...account };
-    const queue = storage.queue(identity);
+    const storage = new Storage(identity);
+    const queue = storage.queue();
     identity.username = "other";
     await expect(queue.save({ ...record(), account: identity })).rejects.toThrow(
       "different account",
     );
     expect(disk.getDirectory).not.toHaveBeenCalled();
     await queue.save(record());
-    expect(await storage.queue(identity).read()).toBeNull();
+    expect(storage.account).toEqual(account);
+    expect(await storage.queue().read()).toEqual(record());
     expect(await queue.read()).toEqual(record());
   });
 
   it("does not hide corrupt or foreign reads and retains explicit repair on write", async () => {
     const disk = installStorage();
-    const queue = new Storage().queue(account);
+    const queue = new Storage(account).queue();
     const path = `queue/${await jsonFileName(`${account.host}\n${account.username}`)}`;
     for (const invalid of [
       "broken JSON",
@@ -428,7 +425,7 @@ describe("queue storage", () => {
     "rejects invalid selection %j without replacing the saved queue",
     async (invalid) => {
       installStorage();
-      const queue = new Storage().queue(account);
+      const queue = new Storage(account).queue();
       await queue.save(record());
       await expect(queue.save({ ...record(), ...invalid })).rejects.toThrow();
       expect(await queue.read()).toEqual(record());
@@ -437,7 +434,7 @@ describe("queue storage", () => {
 
   it("preserves the complete queue on write failure and allows later writes", async () => {
     const disk = installStorage();
-    const queue = new Storage().queue(account);
+    const queue = new Storage(account).queue();
     await queue.save(record());
     const empty = { ...record(), tracks: [], index: -1, position: 0, updatedAt: 100 };
     disk.state.fail = true;
@@ -452,22 +449,23 @@ describe("queue storage", () => {
 describe("metadata storage", () => {
   it("is lazy and retains existing account paths, lock names, and snapshot format", async () => {
     const disk = installStorage();
-    const store = new Storage();
+    const store = new Storage(account);
     expect(disk.getDirectory).not.toHaveBeenCalled();
-    expect(await store.metadata(account).read()).toBeNull();
-    expect(await store.metadata(account).save(snapshot())).toEqual(snapshot());
+    expect(await store.metadata().read()).toBeNull();
+    expect(await store.metadata().save(snapshot())).toEqual(snapshot());
     const name = await jsonFileName(`${account.host}\n${account.username}`);
     expect(JSON.parse(disk.files.get(`metadata/${name}`) as string)).toEqual(snapshot());
     expect(disk.lock).toHaveBeenCalledWith(`music-web-metadata:${name}`, expect.any(Function));
-    expect(await new Storage().metadata(account).read()).toEqual(snapshot());
-    expect(await store.metadata({ ...account, username: "other" }).read()).toBeNull();
+    expect(await new Storage(account).metadata().read()).toEqual(snapshot());
+    const other = new Storage({ ...account, username: "other" });
+    expect(await other.metadata().read()).toBeNull();
   });
 
   it("shares write ordering across metadata handles from the same Storage instance", async () => {
     const disk = installStorage();
-    const storage = new Storage();
-    const first = storage.metadata(account);
-    const second = storage.metadata({ ...account });
+    const storage = new Storage(account);
+    const first = storage.metadata();
+    const second = storage.metadata();
     expect(disk.getDirectory).not.toHaveBeenCalled();
     const newer = { ...snapshot(), savedAt: 200 };
     expect(await Promise.all([first.save(newer), second.save(snapshot())])).toEqual([newer, newer]);
@@ -477,9 +475,9 @@ describe("metadata storage", () => {
 
   it("captures account identity and rejects writes for another account before I/O", async () => {
     const disk = installStorage();
-    const storage = new Storage();
     const identity = { ...account };
-    const metadata = storage.metadata(identity);
+    const storage = new Storage(identity);
+    const metadata = storage.metadata();
     identity.username = "other";
     expect(metadata.account).toEqual(account);
     expect(Object.isFrozen(metadata.account)).toBe(true);
@@ -488,7 +486,8 @@ describe("metadata storage", () => {
     );
     expect(disk.getDirectory).not.toHaveBeenCalled();
     await metadata.save(snapshot());
-    expect(await storage.metadata(identity).read()).toBeNull();
+    expect(storage.account).toEqual(account);
+    expect(await storage.metadata().read()).toEqual(snapshot());
     expect(await metadata.read()).toEqual(snapshot());
   });
 
@@ -509,55 +508,55 @@ describe("metadata storage", () => {
     "returns the newer stored snapshot instead of acknowledging an overwrite",
     async (previous, next) => {
       const disk = installStorage();
-      const store = new Storage();
+      const store = new Storage(account);
       const winner = { ...snapshot(), ...previous };
-      await store.metadata(account).save(winner);
-      expect(await store.metadata(account).save({ ...snapshot(), ...next })).toEqual(winner);
+      await store.metadata().save(winner);
+      expect(await store.metadata().save({ ...snapshot(), ...next })).toEqual(winner);
       expect(disk.state.writes).toBe(1);
-      expect(await store.metadata(account).read()).toEqual(winner);
+      expect(await store.metadata().read()).toEqual(winner);
     },
   );
 
   it("keeps the last complete snapshot after cancellation or write failure", async () => {
     const disk = installStorage();
-    const store = new Storage();
-    await store.metadata(account).save(snapshot());
+    const store = new Storage(account);
+    await store.metadata().save(snapshot());
     const next = { ...snapshot(), savedAt: 200 };
     let valid = true;
     disk.state.beforeWrite = () => {
       valid = false;
     };
-    expect(await store.metadata(account).save(next, () => valid)).toBeUndefined();
-    expect(await store.metadata(account).read()).toEqual(snapshot());
+    expect(await store.metadata().save(next, () => valid)).toBeUndefined();
+    expect(await store.metadata().read()).toEqual(snapshot());
     disk.state.beforeWrite = () => {};
     disk.state.fail = true;
-    await expect(store.metadata(account).save(next)).rejects.toThrow("Storage full");
-    expect(await store.metadata(account).read()).toEqual(snapshot());
+    await expect(store.metadata().save(next)).rejects.toThrow("Storage full");
+    expect(await store.metadata().read()).toEqual(snapshot());
     expect(disk.state.writes).toBe(1);
   });
 
   it("preserves corrupt and foreign records on read but allows explicit repair on save", async () => {
     const disk = installStorage();
-    const store = new Storage();
+    const store = new Storage(account);
     const name = await jsonFileName(`${account.host}\n${account.username}`);
     disk.files.set(`metadata/${name}`, "broken JSON");
-    await expect(store.metadata(account).read()).rejects.toThrow();
+    await expect(store.metadata().read()).rejects.toThrow();
     expect(disk.files.get(`metadata/${name}`)).toBe("broken JSON");
-    await store.metadata(account).save(snapshot());
+    await store.metadata().save(snapshot());
     const foreign = JSON.stringify({ ...snapshot(), account: { ...account, username: "other" } });
     disk.files.set(`metadata/${name}`, foreign);
-    await expect(store.metadata(account).read()).rejects.toThrow("different account");
+    await expect(store.metadata().read()).rejects.toThrow("different account");
     expect(disk.files.get(`metadata/${name}`)).toBe(foreign);
-    await store.metadata(account).save(snapshot());
-    expect(await store.metadata(account).read()).toEqual(snapshot());
+    await store.metadata().save(snapshot());
+    expect(await store.metadata().read()).toEqual(snapshot());
   });
 
   it("shares complete graph validation between prepared and persisted snapshots", async () => {
     const disk = installStorage();
-    const store = new Storage();
+    const store = new Storage(account);
     const invalid = { ...snapshot(), artists: [] };
     expect(() => parseSnapshot(invalid)).toThrow("Unknown artist");
-    await expect(store.metadata(account).save(invalid)).rejects.toThrow("Unknown artist");
+    await expect(store.metadata().save(invalid)).rejects.toThrow("Unknown artist");
     expect(disk.files.size).toBe(0);
     const duplicate = snapshot();
     duplicate.tracks.push(duplicate.tracks[0]);

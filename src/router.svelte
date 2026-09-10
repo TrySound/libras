@@ -41,4 +41,6 @@
   onDestroy(() => engine.destroy());
 </script>
 
-{@render match!.route.render(match!.params, controls)}
+{#if match}
+  {@render match.route.render(match.params, controls)}
+{/if}

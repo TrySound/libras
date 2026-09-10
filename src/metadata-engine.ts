@@ -186,7 +186,6 @@ export class MetadataEngine {
   restore(storage: Pick<Storage, "account" | "metadata">): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
     const account = storage.account;
-    if (!account) throw new Error("Metadata storage requires an account.");
     const scope = `${account.host}\n${account.username}`;
     if (scope === this.#scope) {
       if (this.#restoring) return this.#restoring;
@@ -265,8 +264,10 @@ export class MetadataEngine {
       this.#update();
       return;
     }
+    const storage = this.#storage;
     if (
       !this.#restored ||
+      !storage ||
       this.#scope !== `${connection.account.host}\n${connection.account.username}`
     )
       throw new Error("Restore the connection's account before refreshing metadata.");
@@ -294,7 +295,7 @@ export class MetadataEngine {
       }
       const snapshot = await this.#fetchLibrary(connection, valid, modified);
       if (!valid()) return;
-      const committed = await this.#storage!.metadata().save(snapshot, valid);
+      const committed = await storage.metadata().save(snapshot, valid);
       if (!valid() || !committed) return;
       this.#publish(committed);
       this.#status = "ready";
@@ -343,7 +344,7 @@ export class MetadataEngine {
     signal.throwIfAborted();
     if (this.#destroyed) throw new DOMException("Metadata stopped.", "AbortError");
     if (
-      storage.account?.host !== snapshot.account.host ||
+      storage.account.host !== snapshot.account.host ||
       storage.account.username !== snapshot.account.username
     )
       throw new Error("Metadata storage belongs to a different account.");
@@ -358,7 +359,7 @@ export class MetadataEngine {
   acceptConnection(snapshot: MetadataSnapshot, storage: Pick<Storage, "account" | "metadata">) {
     if (this.#destroyed) return;
     if (
-      storage.account?.host !== snapshot.account.host ||
+      storage.account.host !== snapshot.account.host ||
       storage.account.username !== snapshot.account.username
     )
       throw new Error("Metadata storage belongs to a different account.");

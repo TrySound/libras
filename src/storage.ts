@@ -107,23 +107,11 @@ function parseArtworkCatalog(value: unknown, account: Account) {
 
 /** Application-owned persistence services; acquiring account access does not perform I/O. */
 export class Storage {
-  readonly account?: Readonly<Account>;
+  readonly account: Readonly<Account>;
   #audio = new AudioStore();
 
-  constructor(account?: Account) {
-    this.account = account && Object.freeze(v.parse(accountSchema, account));
-  }
-
-  #identity(account?: Account) {
-    const identity = account ?? this.account;
-    if (!identity) throw new Error("Storage requires an account.");
-    if (
-      account &&
-      this.account &&
-      (account.host !== this.account.host || account.username !== this.account.username)
-    )
-      throw new Error("Storage is configured for a different account.");
-    return this.account ?? Object.freeze({ host: identity.host, username: identity.username });
+  constructor(account: Account) {
+    this.account = Object.freeze(v.parse(accountSchema, account));
   }
 
   /** One shared catalog spans accounts; individual descriptors carry account identity. */
@@ -131,58 +119,53 @@ export class Storage {
     return this.#audio;
   }
 
-  #metadataFiles = new Map<string, Promise<OpfsJsonStore<MetadataSnapshot>>>();
-  #queueFiles = new Map<string, Promise<OpfsJsonStore<QueueRecord>>>();
-  #artworkFiles = new Map<string, Promise<OpfsJsonStore<ArtworkCatalog>>>();
+  #metadataFilePromise?: Promise<OpfsJsonStore<MetadataSnapshot>>;
+  #queueFilePromise?: Promise<OpfsJsonStore<QueueRecord>>;
+  #artworkFilePromise?: Promise<OpfsJsonStore<ArtworkCatalog>>;
 
   async #imageDirectory() {
     const root = await navigator.storage.getDirectory();
     return root.getDirectoryHandle("images", { create: true });
   }
 
-  #artworkFile({ host, username }: Account) {
-    const key = `${host}\n${username}`;
-    let file = this.#artworkFiles.get(key);
-    if (!file) {
-      file = jsonFileName(key)
+  #artworkFile() {
+    if (!this.#artworkFilePromise) {
+      const { host, username } = this.account;
+      const key = `${host}\n${username}`;
+      this.#artworkFilePromise = jsonFileName(key)
         .then(
           (fileName) =>
             new OpfsJsonStore({
               directory: "images",
               fileName,
               lockName: `music-web-covers:${fileName}`,
-              parse: (value) => parseArtworkCatalog(value, { host, username }),
+              parse: (value) => parseArtworkCatalog(value, this.account),
             }),
         )
         .catch((error) => {
-          this.#artworkFiles.delete(key);
+          this.#artworkFilePromise = undefined;
           throw error;
         });
-      this.#artworkFiles.set(key, file);
     }
-    return file;
+    return this.#artworkFilePromise;
   }
 
-  async #updateArtwork(
-    account: Account,
-    change: (catalog: ArtworkCatalog) => ArtworkCatalog,
-    valid: () => boolean,
-  ) {
-    const file = await this.#artworkFile(account);
-    const result = await file.update((catalog) => change(catalog ?? emptyArtworkCatalog(account)), {
-      valid,
-    });
+  async #updateArtwork(change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) {
+    const file = await this.#artworkFile();
+    const result = await file.update(
+      (catalog) => change(catalog ?? emptyArtworkCatalog(this.account)),
+      { valid },
+    );
     // Callers must distinguish a completed commit from permission to publish it.
     return result.value ?? undefined;
   }
 
-  artwork(account?: Account) {
-    const identity = this.#identity(account);
+  artwork() {
     return {
-      account: identity,
-      read: (valid: () => boolean) => this.#readArtwork(identity, valid),
+      account: this.account,
+      read: (valid: () => boolean) => this.#readArtwork(valid),
       update: async (change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) => {
-        const catalog = await this.#updateArtwork(identity, change, valid);
+        const catalog = await this.#updateArtwork(change, valid);
         return valid() ? catalog : undefined;
       },
       readImage: async (record: ImageRecord) => {
@@ -198,12 +181,12 @@ export class Storage {
         image: ArtworkImage,
         previousFileName: string | undefined,
         valid: () => boolean,
-      ) => this.#saveArtworkImage(identity, id, image, previousFileName, valid),
+      ) => this.#saveArtworkImage(id, image, previousFileName, valid),
     };
   }
 
-  async #readArtwork(account: Account, valid: () => boolean) {
-    let catalog = (await (await this.#artworkFile(account)).read()) ?? emptyArtworkCatalog(account);
+  async #readArtwork(valid: () => boolean) {
+    let catalog = (await (await this.#artworkFile()).read()) ?? emptyArtworkCatalog(this.account);
     const directory = await this.#imageDirectory();
     const missing = new Set<string>();
     let next = 0;
@@ -230,7 +213,6 @@ export class Storage {
       try {
         catalog =
           (await this.#updateArtwork(
-            account,
             (latest) => ({
               ...latest,
               images: latest.images.filter((image) => !missing.has(image.fileName)),
@@ -246,7 +228,6 @@ export class Storage {
   }
 
   async #saveArtworkImage(
-    account: Account,
     id: string,
     image: ArtworkImage,
     previousFileName: string | undefined,
@@ -271,18 +252,14 @@ export class Storage {
       writable = await handle.createWritable();
       await writable.write(blob);
       await writable.close();
-      const catalog = await this.#updateArtwork(
-        account,
-        (latest) => {
-          const current = latest.images.find((image) => image.id === id);
-          if (current && current.fileName !== previousFileName) return latest;
-          return {
-            ...latest,
-            images: [...latest.images.filter((image) => image.id !== id), record],
-          };
-        },
-        valid,
-      );
+      const catalog = await this.#updateArtwork((latest) => {
+        const current = latest.images.find((image) => image.id === id);
+        if (current && current.fileName !== previousFileName) return latest;
+        return {
+          ...latest,
+          images: [...latest.images.filter((image) => image.id !== id), record],
+        };
+      }, valid);
       committed = catalog?.images.some((image) => image.fileName === record.fileName) ?? false;
       if (catalog && valid())
         return {
@@ -297,38 +274,39 @@ export class Storage {
     }
   }
 
-  #queueFile({ host, username }: Account) {
-    const key = `${host}\n${username}`;
-    let file = this.#queueFiles.get(key);
-    if (!file) {
-      file = jsonFileName(key)
+  #queueFile() {
+    if (!this.#queueFilePromise) {
+      const { host, username } = this.account;
+      const key = `${host}\n${username}`;
+      this.#queueFilePromise = jsonFileName(key)
         .then(
           (fileName) =>
             new OpfsJsonStore({
               directory: "queue",
               fileName,
               lockName: `music-web-queue:${fileName}`,
-              parse: (value) => parseQueueRecord(value, { host, username }),
+              parse: (value) => parseQueueRecord(value, this.account),
             }),
         )
         .catch((error) => {
-          this.#queueFiles.delete(key);
+          this.#queueFilePromise = undefined;
           throw error;
         });
-      this.#queueFiles.set(key, file);
     }
-    return file;
+    return this.#queueFilePromise;
   }
 
-  queue(account?: Account) {
-    const identity = this.#identity(account);
+  queue() {
     return {
-      account: identity,
-      read: async () => (await this.#queueFile(identity)).read(),
+      account: this.account,
+      read: async () => (await this.#queueFile()).read(),
       save: async (record: QueueRecord) => {
-        if (record.account.host !== identity.host || record.account.username !== identity.username)
+        if (
+          record.account.host !== this.account.host ||
+          record.account.username !== this.account.username
+        )
           throw new Error("The queue belongs to a different account.");
-        const file = await this.#queueFile(identity);
+        const file = await this.#queueFile();
         return file.update(
           (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
           // Preserve the queue's existing repair-on-write policy.
@@ -338,11 +316,11 @@ export class Storage {
     };
   }
 
-  #metadataFile({ host, username }: Account) {
-    const key = `${host}\n${username}`;
-    let file = this.#metadataFiles.get(key);
-    if (!file) {
-      file = jsonFileName(key)
+  #metadataFile() {
+    if (!this.#metadataFilePromise) {
+      const { host, username } = this.account;
+      const key = `${host}\n${username}`;
+      this.#metadataFilePromise = jsonFileName(key)
         .then(
           (fileName) =>
             new OpfsJsonStore({
@@ -351,39 +329,39 @@ export class Storage {
               lockName: `music-web-metadata:${fileName}`,
               parse: (value) => {
                 const snapshot = parseSnapshot(value);
-                if (snapshot.account.host !== host || snapshot.account.username !== username)
+                if (
+                  snapshot.account.host !== this.account.host ||
+                  snapshot.account.username !== this.account.username
+                )
                   throw new Error("The metadata snapshot belongs to a different account.");
                 return snapshot;
               },
             }),
         )
         .catch((error) => {
-          this.#metadataFiles.delete(key);
+          this.#metadataFilePromise = undefined;
           throw error;
         });
-      this.#metadataFiles.set(key, file);
     }
-    return file;
+    return this.#metadataFilePromise;
   }
 
-  metadata(account?: Account) {
-    const identity = this.#identity(account);
+  metadata() {
     return {
-      account: identity,
-      read: async () => (await this.#metadataFile(identity)).read(),
+      account: this.account,
+      read: async () => (await this.#metadataFile()).read(),
       save: (snapshot: MetadataSnapshot, current?: () => boolean) =>
-        this.#saveMetadata(identity, snapshot, current),
+        this.#saveMetadata(snapshot, current),
     };
   }
 
-  async #saveMetadata(
-    account: Account,
-    snapshot: MetadataSnapshot,
-    current: () => boolean = () => true,
-  ) {
-    if (snapshot.account.host !== account.host || snapshot.account.username !== account.username)
+  async #saveMetadata(snapshot: MetadataSnapshot, current: () => boolean = () => true) {
+    if (
+      snapshot.account.host !== this.account.host ||
+      snapshot.account.username !== this.account.username
+    )
       throw new Error("The metadata snapshot belongs to a different account.");
-    const file = await this.#metadataFile(account);
+    const file = await this.#metadataFile();
     const result = await file.update(
       (existing) => {
         if (
@@ -468,7 +446,8 @@ class AudioStore {
         return [...index.values()];
       })
       .then(({ value }) => {
-        this.#index = new Map(value!.map((record) => [record.key, record]));
+        if (!value) throw new Error("The downloads catalog update returned no value.");
+        this.#index = new Map(value.map((record) => [record.key, record]));
       });
     this.#writes = result.catch(() => {});
     return result;
@@ -494,7 +473,7 @@ class AudioStore {
             latest.delete(record.key);
         }
       });
-    return [...this.#index!.values()];
+    return [...(this.#index ?? index).values()];
   }
 
   async #readFile(directory: FileSystemDirectoryHandle, name: string) {
@@ -558,7 +537,7 @@ class AudioStore {
         const record = this.#index.get(descriptor.key);
         const cached = record ? await this.#readFile(directory, fileName) : null;
         signal.throwIfAborted();
-        if (cached && cached.size === record!.size) return cached;
+        if (cached && record && cached.size === record.size) return cached;
         const handle = await directory.getFileHandle(fileName, { create: true });
         let writable: FileSystemWritableFileStream | undefined;
         try {

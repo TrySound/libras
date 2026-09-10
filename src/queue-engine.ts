@@ -95,9 +95,10 @@ export class QueueEngine {
     };
   }
   #persist(): Promise<void> {
-    if (!this.#account || (!this.#loaded && !this.#dirty) || !this.#needsPersist)
+    if (!this.#account || !this.#storage || (!this.#loaded && !this.#dirty) || !this.#needsPersist)
       return this.#localWrites.then(() => {});
     const account = this.#account;
+    const storage = this.#storage;
     const revision = this.#revision;
     const record: QueueRecord = {
       account,
@@ -109,7 +110,7 @@ export class QueueEngine {
     };
     // Also retain an engine-wide tail so teardown waits for writes to previous accounts.
     const result = this.#localWrites
-      .then(() => this.#storage!.queue().save(record))
+      .then(() => storage.queue().save(record))
       .then(({ written }) => {
         if (this.#account !== account) return;
         if (!written) {
@@ -139,7 +140,6 @@ export class QueueEngine {
   restore(storage: Pick<Storage, "account" | "queue">): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
     const identity = storage.account;
-    if (!identity) throw new Error("Queue storage requires an account.");
     if (this.#account && scope(this.#account) === scope(identity)) return this.#ready;
     void this.#persist();
     this.#clearTimers();

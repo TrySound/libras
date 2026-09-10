@@ -158,7 +158,6 @@ export class CoverEngine {
   restore(storage: Pick<Storage, "account" | "artwork">): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
     const account = storage.account;
-    if (!account) throw new Error("Artwork storage requires an account.");
     if (this.#scope === scope(account)) return this.#ready;
     this.#scope = scope(account);
     this.#storage = storage;
@@ -204,8 +203,9 @@ export class CoverEngine {
 
   async refresh() {
     const account = this.#memory.account;
+    const storage = this.#storage;
     const savedAt = this.#metadata.savedAt;
-    if (!account || savedAt === undefined || this.#destroyed) return;
+    if (!account || !storage || savedAt === undefined || this.#destroyed) return;
     // Capture immutable map references without rebuilding candidate lists on no-op refreshes.
     const { artists, albums, tracks, artistAlbums, albumTracks } = this.#memory;
     await this.#ready;
@@ -236,7 +236,7 @@ export class CoverEngine {
     const refs = references({ artists, albums, tracks, artistAlbums, albumTracks }, savedAt);
     return (this.#reconciling = (async () => {
       try {
-        const catalog = await this.#storage!
+        const catalog = await storage
           .artwork()
           .update(
             (latest) =>
@@ -301,8 +301,9 @@ export class CoverEngine {
     const generation = this.#generation;
     const load = (async () => {
       const account = this.#memory.account;
-      if (!account) return;
-      const blob = await this.#storage!.artwork().readImage(record);
+      const storage = this.#storage;
+      if (!account || !storage) return;
+      const blob = await storage.artwork().readImage(record);
       if (
         this.#destroyed ||
         generation !== this.#generation ||
@@ -360,7 +361,9 @@ export class CoverEngine {
           const images = new Map(this.#memory.images);
           images.delete(id);
           this.#memory.images = images;
-          void this.#storage!
+          const storage = this.#storage;
+          if (!storage) return;
+          void storage
             .artwork()
             .update(
               (catalog) => ({
@@ -382,7 +385,10 @@ export class CoverEngine {
     entry.selected = entry.candidates[0];
     const connection = this.#networkConnection();
     entry.network = !!(entry.selected && entry.allowNetwork && connection);
-    entry.source = entry.network ? connection!.url(entry.selected!, 500) : undefined;
+    entry.source =
+      entry.network && connection && entry.selected
+        ? connection.url(entry.selected, 500)
+        : undefined;
     this.#notify();
   }
 
@@ -399,7 +405,7 @@ export class CoverEngine {
 
   #cache(id: string) {
     const connection = this.#networkConnection();
-    if (!connection || this.#destroyed) return;
+    if (!connection || !this.#storage || this.#destroyed) return;
     const key = `${scope(connection.account)}\n${id}`;
     if (this.#downloads.has(key)) return;
     const generation = this.#generation;
@@ -422,6 +428,8 @@ export class CoverEngine {
   }
 
   async #download(id: string, connection: ArtworkConnection, valid: () => boolean) {
+    const storage = this.#storage;
+    if (!storage) return;
     const cached = this.#memory.images.get(id);
     if (cached && !cached.etag && !cached.lastModified) return;
     const result = await connection.read(id, {
@@ -430,7 +438,7 @@ export class CoverEngine {
       lastModified: cached?.lastModified,
     });
     if (!valid() || !result) return;
-    const saved = await this.#storage!.artwork().saveImage(id, result, cached?.fileName, valid);
+    const saved = await storage.artwork().saveImage(id, result, cached?.fileName, valid);
     if (saved && valid()) await this.#apply(saved.catalog, saved.image);
   }
 
