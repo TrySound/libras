@@ -1,5 +1,4 @@
 import type { Storage, QueueRecord } from "./storage";
-import { createSubscriber } from "svelte/reactivity";
 import type { QueueConnection } from "./network.svelte";
 import type { Memory } from "./memory.svelte";
 import type { Account } from "./schema";
@@ -35,18 +34,11 @@ export class QueueEngine {
   #ready: Promise<void> = Promise.resolve();
   #localWrites: Promise<unknown> = Promise.resolve();
   #serverWrites: Promise<unknown> = Promise.resolve();
-  #error: unknown;
-  #storageError: unknown;
+  #error = $state.raw<unknown>();
+  #storageError = $state.raw<unknown>();
   #saveTimer?: ReturnType<typeof setTimeout>;
   #localTimer?: ReturnType<typeof setTimeout>;
   #listeners = new Set<() => void>();
-  #update = () => {};
-  #subscribe = createSubscriber((update) => {
-    this.#update = update;
-    return () => {
-      this.#update = () => {};
-    };
-  });
 
   subscribe(listener: () => void) {
     this.#listeners.add(listener);
@@ -55,15 +47,12 @@ export class QueueEngine {
     };
   }
   #notify() {
-    this.#update();
     for (const listener of this.#listeners) listener();
   }
   get error() {
-    this.#subscribe();
     return this.#error;
   }
   get storageError() {
-    this.#subscribe();
     return this.#storageError;
   }
   #publish(state: QueueState) {
@@ -123,9 +112,6 @@ export class QueueEngine {
       })
       .catch((error) => {
         if (this.#account === account) this.#storageError = error;
-      })
-      .finally(() => {
-        if (!this.#destroyed && this.#account === account) this.#update();
       });
     this.#localWrites = result;
     return result;
@@ -168,7 +154,6 @@ export class QueueEngine {
         if (generation === this.#accountGeneration && !this.#destroyed) {
           this.#loaded = true;
           if (revision !== this.#revision) await this.#persist();
-          this.#update();
         }
       }
     })());
@@ -180,7 +165,6 @@ export class QueueEngine {
     const epoch = this.#epoch;
     const revision = this.#revision;
     this.#error = undefined;
-    this.#update();
     try {
       const queue = await connection.read();
       if (
@@ -219,7 +203,6 @@ export class QueueEngine {
         return;
       this.#error = error;
     }
-    this.#update();
   }
 
   #sync(): Promise<void> {
@@ -241,7 +224,6 @@ export class QueueEngine {
       const revision = this.#revision;
       const state = this.#state();
       this.#error = undefined;
-      this.#update();
       try {
         await connection.write({
           trackIds: state.tracks,
@@ -259,7 +241,6 @@ export class QueueEngine {
         if (epoch !== this.#epoch || this.#destroyed || connection.signal.aborted) return;
         this.#error = error;
       }
-      this.#update();
     });
     this.#serverWrites = result.catch(() => {});
     return result;
@@ -326,7 +307,6 @@ export class QueueEngine {
     this.#connection = connection;
     this.#epoch++;
     this.#clearTimers();
-    this.#update();
   }
   async synchronize() {
     const epoch = this.#epoch;

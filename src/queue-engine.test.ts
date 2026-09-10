@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { QueueEngine } from "./queue-engine";
+import { QueueEngine } from "./queue.svelte";
 import { Storage } from "./storage";
 import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";

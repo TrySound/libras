@@ -1,6 +1,6 @@
 import type { CoverEngine } from "./cover-engine";
 import { PlayerMediaSession } from "./media-session";
-import type { QueueEngine } from "./queue-engine";
+import type { QueueEngine } from "./queue.svelte";
 import type { MemoryView } from "./memory.svelte";
 import type { TrackEngine } from "./track-engine";
 

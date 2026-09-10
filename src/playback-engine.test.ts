@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlaybackEngine } from "./playback.svelte";
 import { flushSync } from "svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
-import { QueueEngine } from "./queue-engine";
+import { QueueEngine } from "./queue.svelte";
 import { Storage } from "./storage";
 import type { Track } from "./schema";
 import type { TrackSource } from "./track-engine";

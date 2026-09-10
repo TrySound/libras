@@ -16,7 +16,7 @@
   type Album = Immutable<AlbumRecord>;
   type Artist = Immutable<ArtistRecord>;
   type Track = Immutable<TrackRecord>;
-  import { QueueEngine } from "./queue-engine";
+  import { QueueEngine } from "./queue.svelte";
   import { type RouteParams } from "./router-engine";
   import { Session } from "./session.svelte";
   import { Network } from "./network.svelte";

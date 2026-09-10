@@ -9,7 +9,7 @@ import {
   type PasswordAuth,
 } from "./network.svelte";
 import type { PlaybackEngine } from "./playback.svelte";
-import type { QueueEngine } from "./queue-engine";
+import type { QueueEngine } from "./queue.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track-engine";
 import { Storage as AccountStorage } from "./storage";
