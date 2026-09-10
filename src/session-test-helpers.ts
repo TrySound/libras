@@ -99,7 +99,7 @@ export function createSession(saved = false, storage = createStorage()) {
     synchronize: vi.fn(async () => {}),
     flush: vi.fn(async () => {}),
   };
-  const tracks = { setConnection: vi.fn() };
+  const tracks = { restore: vi.fn(async () => {}), setConnection: vi.fn() };
   const playback = { suspend: vi.fn(), suspendNetwork: vi.fn() };
   const network = new Network();
   const session = new Session({

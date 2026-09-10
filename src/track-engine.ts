@@ -26,7 +26,7 @@ export interface TrackSourceOptions {
 export type TrackStatus = "idle" | "queued" | "downloading" | "downloaded";
 export interface TrackEngineOptions {
   memory: DownloadMemory;
-  storage: Pick<Storage, "audio">;
+  storage?: Pick<Storage, "account" | "audio">;
   connection?: AudioConnection;
   concurrency?: number;
 }
@@ -51,15 +51,15 @@ export class TrackEngine {
   #connection?: AudioConnection;
   #jobs = new Map<string, DownloadJob>();
   #memory: DownloadMemory;
-  #ready: Promise<void>;
+  #ready: Promise<void> = Promise.resolve();
   #concurrency: number;
   #destroyed = false;
   #catalogRequest = 0;
-  #loading = true;
+  #loading = false;
   #error: unknown;
   #mediaProbe = document.createElement("audio");
   #sourceRequest = 0;
-  #storage: Pick<Storage, "audio">;
+  #storage?: Pick<Storage, "account" | "audio">;
   #update = () => {};
   #subscribe = createSubscriber((update) => {
     this.#update = update;
@@ -70,12 +70,26 @@ export class TrackEngine {
 
   constructor(options: TrackEngineOptions) {
     this.#memory = options.memory;
-    this.#storage = options.storage;
+    if (options.storage) this.restore(options.storage);
     if (options.connection) this.setConnection(options.connection);
     this.#concurrency = options.concurrency ?? 3;
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1)
       throw new Error("Download concurrency must be a positive integer.");
+  }
+
+  restore(storage: Pick<Storage, "account" | "audio">) {
+    if (!storage.account) throw new Error("Audio storage requires an account.");
+    if (this.#storage === storage) return this.#ready;
+    if (this.#storage) {
+      this.#sourceRequest++;
+      this.#cancelDownloads();
+      this.#clearObjectUrl();
+    }
+    this.#storage = storage;
+    this.#loading = true;
     this.#ready = this.#refreshCatalog(true);
+    this.#update();
+    return this.#ready;
   }
 
   ready() {
@@ -110,7 +124,7 @@ export class TrackEngine {
   async #refreshCatalog(validate = false) {
     const request = ++this.#catalogRequest;
     try {
-      const audio = this.#storage.audio();
+      const audio = this.#storage!.audio();
       const entries = await (validate ? audio.list() : audio.entries());
       if (this.#destroyed || request !== this.#catalogRequest) return;
       this.#memory.downloads = new Map(entries.map((entry) => [entry.key, entry]));
@@ -135,11 +149,16 @@ export class TrackEngine {
     };
   }
   #key(id: string, format: "raw" | "mp3") {
-    return `${this.#memory.account?.host}\n${this.#memory.account?.username}\n${id}\n${format}-v1`;
+    return `${this.#storage?.account?.host}\n${this.#storage?.account?.username}\n${id}\n${format}-v1`;
   }
   #describe(track: EngineTrack, options: TrackSourceOptions = {}): TrackFileDescriptor {
-    const account = this.#memory.account;
-    if (!account) throw new Error("No music account selected.");
+    const account = this.#storage?.account;
+    if (!account) throw new Error("No music storage selected.");
+    if (
+      account.host !== this.#memory.account?.host ||
+      account.username !== this.#memory.account.username
+    )
+      throw new Error("Audio storage belongs to a different account.");
     const format =
       !options.forceTranscode &&
       track.contentType &&
@@ -210,11 +229,11 @@ export class TrackEngine {
   async #download(job: DownloadJob) {
     const { descriptor, track, connection, signal } = job;
     try {
-      let file = await this.#storage.audio().read(descriptor, track);
+      let file = await this.#storage!.audio().read(descriptor, track);
       signal.throwIfAborted();
       if (!file) {
         const response = await connection.read(track.id, { format: descriptor.format, signal });
-        file = await this.#storage.audio().save(descriptor, track, response, signal);
+        file = await this.#storage!.audio().save(descriptor, track, response, signal);
       }
       signal.throwIfAborted();
       await this.#refreshCatalog();
@@ -260,7 +279,7 @@ export class TrackEngine {
 
   async #cached(track: EngineTrack, descriptor: TrackFileDescriptor) {
     const metadata = this.#track(track);
-    const file = await this.#storage.audio().read(descriptor, metadata);
+    const file = await this.#storage!.audio().read(descriptor, metadata);
     if (file) return { file, contentType: descriptor.contentType };
     // A codec retry may have downloaded MP3 even when canPlayType claims raw support.
     if (descriptor.format === "raw") {
@@ -270,7 +289,7 @@ export class TrackEngine {
         format: "mp3",
         contentType: "audio/mpeg",
       };
-      const mp3 = await this.#storage.audio().read(fallback, metadata);
+      const mp3 = await this.#storage!.audio().read(fallback, metadata);
       if (mp3) return { file: mp3, contentType: fallback.contentType };
     }
     return null;
@@ -278,9 +297,9 @@ export class TrackEngine {
 
   async scanCached(tracks: EngineTrack[]) {
     let next = 0;
-    const account = this.#memory.account;
+    const storage = this.#storage;
     const worker = async () => {
-      while (next < tracks.length && !this.#destroyed && this.#memory.account === account) {
+      while (next < tracks.length && !this.#destroyed && this.#storage === storage) {
         const track = tracks[next++];
         await this.#cached(track, this.#describe(track));
       }
@@ -291,7 +310,12 @@ export class TrackEngine {
 
   getStatus(trackId: string): TrackStatus {
     this.#subscribe();
-    if (!this.#memory.account) return "idle";
+    if (
+      !this.#storage?.account ||
+      this.#storage.account.host !== this.#memory.account?.host ||
+      this.#storage.account.username !== this.#memory.account.username
+    )
+      return "idle";
     const keys = [this.#key(trackId, "raw"), this.#key(trackId, "mp3")];
     const jobs = keys.map((key) => this.#jobs.get(key));
     if (jobs.some((job) => job?.status === "downloading")) return "downloading";
@@ -305,14 +329,14 @@ export class TrackEngine {
   ): Promise<TrackSource> {
     if (this.#destroyed) throw new DOMException("Playback stopped.", "AbortError");
     const request = ++this.#sourceRequest;
-    const account = this.#memory.account;
+    const storage = this.#storage;
     const descriptor = this.#describe(track, options);
     const cached = await this.#cached(track, descriptor);
     await this.#refreshCatalog();
     if (
       request !== this.#sourceRequest ||
       this.#destroyed ||
-      this.#memory.account !== account ||
+      this.#storage !== storage ||
       !this.#matchesAccount(descriptor)
     )
       throw new DOMException("Source request superseded.", "AbortError");

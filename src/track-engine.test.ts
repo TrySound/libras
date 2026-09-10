@@ -10,6 +10,7 @@ const auth = {
   token: "token",
   salt: "salt",
 };
+const account = { host: auth.host, username: auth.username };
 
 /** TrackEngine consumes an already selected workspace; Session owns this in the app. */
 class Memory extends AppMemory {
@@ -152,7 +153,7 @@ describe("track engine", () => {
       read: vi.fn(async () => file),
       save: vi.fn(async () => file),
     };
-    const storage = { audio: vi.fn(() => audio) };
+    const storage = { account: auth, audio: vi.fn(() => audio) };
     const memory = new Memory();
     memory.account = { host: auth.host, username: auth.username };
     const engine = new TrackEngine({ memory, storage });
@@ -177,7 +178,7 @@ describe("track engine", () => {
     const memory = new Memory();
 
     const writer = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: memory,
       connection: createConnection(auth),
     });
@@ -198,7 +199,7 @@ describe("track engine", () => {
     const restoredMemory = new Memory();
     restoredMemory.account = { host: auth.host, username: auth.username };
 
-    const reader = new TrackEngine({ storage: new Storage(), memory: restoredMemory });
+    const reader = new TrackEngine({ storage: new Storage(account), memory: restoredMemory });
     await reader.ready();
     expect([...restoredMemory.downloads.values()]).toEqual([completed]);
     expect(reader.getStatus(track.id)).toBe("downloaded");
@@ -227,7 +228,7 @@ describe("track engine", () => {
     const memory = new Memory();
 
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: memory,
       connection: createConnection(auth),
     });
@@ -259,7 +260,7 @@ describe("track engine", () => {
     const memory = new Memory();
 
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: memory,
       connection: createConnection(auth),
     });
@@ -268,7 +269,7 @@ describe("track engine", () => {
     memory.account = { host: auth.host, username: "other" };
     expect(engine.getStatus("same-id")).toBe("idle");
     await expect(engine.getSource({ id: "same-id" })).rejects.toThrow(
-      "Connect to its music server",
+      "Audio storage belongs to a different account",
     );
     expect(fetcher).not.toHaveBeenCalled();
     expect(memory.downloads.size).toBe(1);
@@ -286,7 +287,7 @@ describe("track engine", () => {
     const memory = new Memory();
     memory.account = { host: auth.host, username: auth.username };
 
-    const storage = new Storage();
+    const storage = new Storage(account);
     const engine = new TrackEngine({ storage, memory: memory });
     await engine.ready();
     let resolve!: (file: File) => void;
@@ -309,8 +310,8 @@ describe("track engine", () => {
   it("reuses another writer's completed file even when the later response has failed", async () => {
     const files = installOpfs();
     installTrackLocks();
-    const first = new Storage().audio();
-    const second = new Storage().audio();
+    const first = new Storage(account).audio();
+    const second = new Storage(account).audio();
     const { descriptor, track } = download();
     const signal = new AbortController().signal;
     expect(await first.read(descriptor, track)).toBeNull();
@@ -334,8 +335,8 @@ describe("track engine", () => {
     async (locks) => {
       const files = installOpfs(null, "", true);
       if (locks) installTrackLocks();
-      const first = new Storage().audio();
-      const second = new Storage().audio();
+      const first = new Storage(account).audio();
+      const second = new Storage(account).audio();
       const { descriptor, track } = download();
       const signal = new AbortController().signal;
       await expect(first.save(descriptor, track, new Response("complete"), signal)).rejects.toThrow(
@@ -361,7 +362,7 @@ describe("track engine", () => {
   it("does not mistake a rejected truncated file for a completed concurrent download", async () => {
     const files = installOpfs();
     installTrackLocks();
-    const store = new Storage().audio();
+    const store = new Storage(account).audio();
     const { descriptor, track } = download();
     const signal = new AbortController().signal;
     await store.save(descriptor, track, new Response("complete"), signal);
@@ -380,8 +381,8 @@ describe("track engine", () => {
       const audioWrite = vi.fn();
       const files = installOpfs(null, "", false, audioWrite);
       const request = installTrackLocks();
-      const first = new Storage().audio();
-      const second = new Storage().audio();
+      const first = new Storage(account).audio();
+      const second = new Storage(account).audio();
       const { descriptor, track } = download();
       const signal = new AbortController().signal;
       let controller!: ReadableStreamDefaultController<Uint8Array>;
@@ -447,7 +448,7 @@ describe("track engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
@@ -472,7 +473,7 @@ describe("track engine", () => {
     engine.destroy();
     const restoredMemory = new Memory();
     const restored = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: restoredMemory,
       connection: createConnection(auth),
     });
@@ -488,7 +489,7 @@ describe("track engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
@@ -514,7 +515,7 @@ describe("track engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
       concurrency: 1,
@@ -542,7 +543,7 @@ describe("track engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
@@ -551,7 +552,7 @@ describe("track engine", () => {
     for (const name of files.keys()) if (name.endsWith(".audio")) files.delete(name);
     const restoredMemory = new Memory();
     const restored = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: restoredMemory,
       connection: createConnection(auth),
     });
@@ -562,7 +563,7 @@ describe("track engine", () => {
     files.set("downloads.json", new File(["not-json"], "downloads.json"));
     const brokenMemory = new Memory();
     const broken = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: brokenMemory,
       connection: createConnection(auth),
     });
@@ -580,7 +581,7 @@ describe("track engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
@@ -599,7 +600,7 @@ describe("track engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
@@ -618,13 +619,13 @@ describe("track engine", () => {
     );
     const firstMemory = new Memory();
     const first = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: firstMemory,
       connection: createConnection(auth),
     });
     const secondMemory = new Memory();
     const second = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: secondMemory,
       connection: createConnection(auth),
     });
@@ -638,7 +639,7 @@ describe("track engine", () => {
       expect(request.mock.calls.some(([name]) => name === "music-web-downloads-index")).toBe(true);
       const restoredMemory = new Memory();
       const restored = new TrackEngine({
-        storage: new Storage(),
+        storage: new Storage(account),
         memory: restoredMemory,
         connection: createConnection(auth),
       });
@@ -664,7 +665,7 @@ describe("track engine", () => {
       );
       const engineMemory = new Memory();
       const engine = new TrackEngine({
-        storage: new Storage(),
+        storage: new Storage(account),
         memory: engineMemory,
         connection: createConnection(auth),
       });
@@ -689,7 +690,7 @@ describe("track engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
@@ -709,12 +710,14 @@ describe("track engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
     await engine.cache({ id: "one" });
-    engineMemory.account = { host: auth.host, username: "other" };
+    const other = { host: auth.host, username: "other" };
+    engineMemory.account = other;
+    await engine.restore(new Storage(other));
     engine.setConnection(createConnection({ ...auth, username: "other" }));
     expect(engine.getStatus("one")).toBe("idle");
     await engine.cache({ id: "one" });
@@ -739,7 +742,7 @@ describe("track engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
       concurrency: 1,
@@ -783,7 +786,7 @@ describe("track engine", () => {
       vi.stubGlobal("fetch", fetcher);
       const engineMemory = new Memory();
       const engine = new TrackEngine({
-        storage: new Storage(),
+        storage: new Storage(account),
         memory: engineMemory,
         connection: createConnection(auth),
         concurrency: 1,
@@ -822,7 +825,7 @@ describe("track engine", () => {
     network.accept(client);
     const memory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory,
       connection: network.audio(client),
       concurrency: 1,
@@ -859,7 +862,7 @@ describe("track engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const memory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory,
       connection: createConnection(auth),
     });
@@ -890,12 +893,16 @@ describe("track engine", () => {
     );
     const connection = createConnection(auth);
     const engineMemory = new Memory();
-    const engine = new TrackEngine({ storage: new Storage(), memory: engineMemory, connection });
+    const engine = new TrackEngine({
+      storage: new Storage(account),
+      memory: engineMemory,
+      connection,
+    });
     await engine.cache({ id: "saved" });
     engine.destroy();
     const restoredMemory = new Memory();
     const restored = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: restoredMemory,
       connection,
     });
@@ -924,7 +931,7 @@ describe("track engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
@@ -956,7 +963,7 @@ describe("track engine", () => {
       installOpfs(null, support);
       const memory = new Memory();
       const engine = new TrackEngine({
-        storage: new Storage(),
+        storage: new Storage(account),
         memory,
         connection: createConnection(auth),
       });
@@ -979,7 +986,7 @@ describe("track engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
@@ -1003,7 +1010,7 @@ describe("track engine", () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cached-track");
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
@@ -1025,7 +1032,7 @@ describe("track engine", () => {
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     const memory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory,
       connection: createConnection(auth),
     });
@@ -1054,7 +1061,7 @@ describe("track engine", () => {
     installOpfs(new File(["cached"], "track.audio"));
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });
@@ -1073,7 +1080,7 @@ describe("track engine", () => {
     });
     const engineMemory = new Memory();
     const engine = new TrackEngine({
-      storage: new Storage(),
+      storage: new Storage(account),
       memory: engineMemory,
       connection: createConnection(auth),
     });

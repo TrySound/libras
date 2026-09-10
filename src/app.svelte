@@ -6,7 +6,6 @@
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
   import { MetadataEngine } from "./metadata-engine";
-  import { Storage } from "./storage";
   import type {
     Album as AlbumRecord,
     Artist as ArtistRecord,
@@ -29,7 +28,6 @@
   const appUpdate = $derived(updater?.getStatus());
 
   const memory = new Memory();
-  const storage = new Storage();
   const metadataEngine = new MetadataEngine(memory);
   const queueEngine = new QueueEngine(memory);
   let navigate = $state<RouterNavigate>(() => {});
@@ -43,7 +41,7 @@
     }),
   );
   const coverEngine = new CoverEngine(memory, metadataEngine);
-  const trackEngine = new TrackEngine({ memory, storage });
+  const trackEngine = new TrackEngine({ memory });
   const downloads = $derived.by(() => {
     const jobs = trackEngine.downloadJobs;
     const activeKeys = new Set(jobs.map((job) => job.key));

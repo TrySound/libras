@@ -167,6 +167,17 @@ describe("audio storage", () => {
     contentType: "audio/mpeg",
   });
 
+  it("refreshes a configured instance after another workspace updates the shared catalog", async () => {
+    installStorage();
+    const first = new Storage(account).audio();
+    const second = new Storage({ ...account, username: "other" }).audio();
+    const saved = descriptor({ ...account, username: "other" });
+
+    expect(await first.list()).toEqual([]);
+    await second.save(saved, track, new Response("audio"), new AbortController().signal);
+    expect(await first.list()).toEqual([expect.objectContaining({ key: saved.key })]);
+  });
+
   it("shares a lazy cross-account catalog and streams files through the existing locks", async () => {
     const disk = installStorage();
     const storage = new Storage();

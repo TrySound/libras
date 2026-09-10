@@ -36,7 +36,7 @@ interface SessionOptions {
   >;
   covers: Pick<CoverEngine, "restore" | "refresh" | "setConnection">;
   queue: Pick<QueueEngine, "restore" | "setConnection" | "synchronize" | "flush">;
-  tracks: Pick<TrackEngine, "setConnection">;
+  tracks: Pick<TrackEngine, "restore" | "setConnection">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
   preferences: Pick<Storage, "getItem" | "setItem">;
 }
@@ -165,10 +165,14 @@ export class Session {
   }
 
   async #restore(account: Account) {
-    const { metadata, covers, queue } = this.#options;
+    const { metadata, covers, queue, tracks } = this.#options;
     this.#selectAccount(account);
     const storage = this.#storageFor(account);
-    await Promise.all([metadata.restore(storage), covers.restore(storage)]);
+    await Promise.all([
+      metadata.restore(storage),
+      covers.restore(storage),
+      tracks.restore(storage),
+    ]);
     if (this.#destroyed) return;
     // Queue restoration is credential-free even if the metadata cache is missing.
     await queue.restore(this.#storageFor(account));
@@ -184,7 +188,7 @@ export class Session {
       const connection = this.#options.network.prepare(credentials);
       await this.#restoration;
       if (!this.#valid(generation)) return false;
-      const { metadata, queue, covers, auth, preferences } = this.#options;
+      const { metadata, queue, covers, tracks, auth, preferences } = this.#options;
       // Explicit connection may use the network while the offline switch is locked.
       // Do not replace the selected workspace, or attach any other engines, on failure.
       const prepared = await metadata.prepareConnection(this.#options.network.metadata(connection));
@@ -202,6 +206,7 @@ export class Session {
       this.#restoration = Promise.all([
         queue.restore(metadataStorage),
         covers.restore(metadataStorage),
+        tracks.restore(metadataStorage),
       ]).then(() => {});
       metadata.acceptConnection(snapshot, metadataStorage);
       this.auth = credentials;

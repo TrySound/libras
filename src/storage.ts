@@ -475,7 +475,12 @@ class AudioStore {
   }
 
   async list() {
-    const index = await this.#load();
+    // A configured Storage instance may have been idle while another account or
+    // tab updated the shared catalog. Validation always starts from disk.
+    await this.#writes;
+    const records = await this.#catalog.read();
+    const index = new Map(records?.map((record) => [record.key, record]));
+    this.#index = index;
     const directory = await this.#directory();
     const missing: DownloadedFile[] = [];
     for (const record of index.values()) {
