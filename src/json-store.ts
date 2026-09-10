@@ -1,5 +1,5 @@
 interface JsonStoreOptions<T> {
-  directory: string;
+  directory: string | readonly string[];
   fileName: string;
   lockName: string;
   parse: (value: unknown) => T | Promise<T>;
@@ -30,7 +30,10 @@ export class OpfsJsonStore<T> {
   #run<R>(operation: (directory: FileSystemDirectoryHandle) => Promise<R>): Promise<R> {
     const run = async () => {
       const root = await navigator.storage.getDirectory();
-      const directory = await root.getDirectoryHandle(this.#options.directory, { create: true });
+      const path = this.#options.directory;
+      let directory = root;
+      for (const name of typeof path === "string" ? [path] : path)
+        directory = await directory.getDirectoryHandle(name, { create: true });
       return operation(directory);
     };
     const result = this.#operations.then(() =>
