@@ -139,10 +139,9 @@ describe("metadata engine", () => {
       save: vi.fn(async () => winner),
     };
     const memory = new Memory();
-    const storage = { account, metadata: vi.fn(() => store) };
+    const storage = { account, metadata: store };
     const engine = new MetadataEngine(memory);
     await engine.restore(storage);
-    expect(storage.metadata).toHaveBeenCalledWith();
     expect(store.read).toHaveBeenCalledOnce();
     expect(memory.tracks.get("song")?.title).toBe("Song");
     vi.stubGlobal("fetch", serveLibrary());
@@ -517,24 +516,18 @@ describe("metadata engine", () => {
     },
   );
 
-  it.each(["album-artist", "track-album", "track-artist", "account"])(
-    "rejects invalid snapshot references: %s",
-    async (reference) => {
-      const storage = installMetadataStorage();
-      const data = snapshot();
-      if (reference === "album-artist") data.albums[0].artistId = "missing";
-      if (reference === "track-album") data.tracks[0].albumId = "missing";
-      if (reference === "track-artist") data.tracks[0].artistId = "missing";
-      if (reference === "account") data.account = { ...account, username: "other" };
-      await storage.seed(account, data);
-      const engineMemory = new Memory();
-      const engine = new MetadataEngine(engineMemory);
-      await engine.restore(new Storage(account));
-      expect(engine.status).toBe("error");
-      expect(engine.error).toBeInstanceOf(Error);
-      engine.destroy();
-    },
-  );
+  it("rejects a persisted snapshot belonging to another account", async () => {
+    const storage = installMetadataStorage();
+    const data = snapshot();
+    data.account = { ...account, username: "other" };
+    await storage.seed(account, data);
+    const engineMemory = new Memory();
+    const engine = new MetadataEngine(engineMemory);
+    await engine.restore(new Storage(account));
+    expect(engine.status).toBe("error");
+    expect(engine.error).toBeInstanceOf(Error);
+    engine.destroy();
+  });
 
   it("aborts an in-progress snapshot write after destruction", async () => {
     const storage = installMetadataStorage();

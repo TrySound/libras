@@ -1,6 +1,6 @@
 import type { Memory } from "./memory.svelte";
 import type { Artist, Album, Track, Account } from "./schema";
-import { entityMap, parseSnapshot, type MetadataSnapshot, type Storage } from "./storage";
+import type { MetadataSnapshot, Storage } from "./storage";
 import { createSubscriber } from "svelte/reactivity";
 import type { MetadataConnection, RemoteAlbum, RemoteArtist, RemoteTrack } from "./network.svelte";
 
@@ -9,7 +9,16 @@ type MetadataMemory = Pick<
   "artists" | "albums" | "tracks" | "artistAlbums" | "albumTracks"
 >;
 
-function normalizeLibrary(
+function entityMap<T extends { id: string }>(items: readonly T[]) {
+  const map = new Map<string, T>();
+  for (const item of items) {
+    if (map.has(item.id)) throw new Error(`Duplicate metadata ID: ${item.id}`);
+    map.set(item.id, item);
+  }
+  return map;
+}
+
+function createSnapshot(
   account: Account,
   sourceArtists: readonly RemoteArtist[],
   sourceAlbums: readonly RemoteAlbum[],
@@ -27,7 +36,6 @@ function normalizeLibrary(
       artworkId: source.artworkId,
       genres: source.genres,
     };
-    if (artists.has(artist.id)) throw new Error(`Duplicate artist ID: ${artist.id}`);
     artists.set(artist.id, artist);
     byName.set(artist.name, artist);
   }
@@ -53,11 +61,7 @@ function normalizeLibrary(
       year: source.year,
       genres: source.genres,
     });
-    const albumTracks = songs.get(source.id);
-    if (!albumTracks) throw new Error(`Missing tracks for album ${source.id}.`);
-    for (const song of albumTracks) {
-      if (song.albumId && song.albumId !== source.id)
-        throw new Error(`Unexpected album for track ${song.id}.`);
+    for (const song of songs.get(source.id) ?? []) {
       tracks.push({
         id: song.id,
         title: song.title,
@@ -72,14 +76,14 @@ function normalizeLibrary(
       });
     }
   }
-  return parseSnapshot({
+  return {
     account: { host: account.host, username: account.username },
     lastModified,
     savedAt,
     artists: [...artists.values()],
     albums,
     tracks,
-  });
+  };
 }
 
 function prepareMetadata(snapshot?: MetadataSnapshot) {
@@ -206,8 +210,7 @@ export class MetadataEngine {
     this.#error = undefined;
     this.#warning = undefined;
     this.#update();
-    return (this.#restoring = storage
-      .metadata()
+    return (this.#restoring = storage.metadata
       .read()
       .then((snapshot) => {
         if (generation !== this.#generation || this.#destroyed) return;
@@ -238,7 +241,7 @@ export class MetadataEngine {
     try {
       const library = await connection.readLibrary(controller.signal);
       if (!valid()) throw new DOMException("Metadata request superseded.", "AbortError");
-      return normalizeLibrary(
+      return createSnapshot(
         connection.account,
         library.artists,
         library.albums,
@@ -295,7 +298,7 @@ export class MetadataEngine {
       }
       const snapshot = await this.#fetchLibrary(connection, valid, modified);
       if (!valid()) return;
-      const committed = await storage.metadata().save(snapshot, valid);
+      const committed = await storage.metadata.save(snapshot, valid);
       if (!valid() || !committed) return;
       this.#publish(committed);
       this.#status = "ready";
@@ -350,7 +353,7 @@ export class MetadataEngine {
       throw new Error("Metadata storage belongs to a different account.");
     const generation = this.#invalidate();
     const valid = () => !this.#destroyed && generation === this.#generation && !signal.aborted;
-    const committed = await storage.metadata().save(snapshot, valid);
+    const committed = await storage.metadata.save(snapshot, valid);
     if (!valid() || !committed) throw new DOMException("Connection superseded.", "AbortError");
     return committed;
   }

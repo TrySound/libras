@@ -198,12 +198,11 @@ describe("cover engine", () => {
       readImage: vi.fn(async () => new Blob(["image"], { type: "image/jpeg" })),
       saveImage: vi.fn(async () => undefined),
     };
-    const storage = { account, artwork: vi.fn(() => access) };
+    const storage = { account, artwork: access };
     const covers = engine(library(), false);
     await covers.restore(storage);
     const cover = covers.ensureAlbumCover("album", offline);
     await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
-    expect(storage.artwork).toHaveBeenCalledWith();
     expect(access.read).toHaveBeenCalledOnce();
     expect(access.readImage).toHaveBeenCalledWith(data.images[0]);
     expect(navigator.storage.getDirectory).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as v from "valibot";
-import { OpfsJsonStore, jsonFileName } from "./json-store";
+import { OpfsJsonStore, hashedFileName } from "./json-store";
 
 function setup(locks = false) {
   const files = new Map<string, string>();
@@ -218,7 +218,7 @@ describe("OPFS JSON store", () => {
   });
 
   it("keeps the existing SHA-256 account filename format", async () => {
-    expect(await jsonFileName("account")).toBe(
+    expect(await hashedFileName("account", ".json")).toBe(
       "9af211329b2fc82e5efe906062c730082819b23fe8394bc435e0b1bf0458eb54.json",
     );
   });

@@ -153,7 +153,7 @@ describe("track engine", () => {
       read: vi.fn(async () => file),
       save: vi.fn(async () => file),
     };
-    const storage = { account: auth, audio: vi.fn(() => audio) };
+    const storage = { account: auth, audio };
     const memory = new Memory();
     memory.account = { host: auth.host, username: auth.username };
     const engine = new TrackEngine({ memory, storage });
@@ -291,7 +291,7 @@ describe("track engine", () => {
     const engine = new TrackEngine({ storage, memory: memory });
     await engine.ready();
     let resolve!: (file: File) => void;
-    vi.spyOn(storage.audio(), "read").mockImplementationOnce(
+    vi.spyOn(storage.audio, "read").mockImplementationOnce(
       () =>
         new Promise<File>((done) => {
           resolve = done;
@@ -310,8 +310,8 @@ describe("track engine", () => {
   it("reuses another writer's completed file even when the later response has failed", async () => {
     const files = installOpfs();
     installTrackLocks();
-    const first = new Storage(account).audio();
-    const second = new Storage(account).audio();
+    const first = new Storage(account).audio;
+    const second = new Storage(account).audio;
     const { descriptor, track } = download();
     const signal = new AbortController().signal;
     expect(await first.read(descriptor, track)).toBeNull();
@@ -335,8 +335,8 @@ describe("track engine", () => {
     async (locks) => {
       const files = installOpfs(null, "", true);
       if (locks) installTrackLocks();
-      const first = new Storage(account).audio();
-      const second = new Storage(account).audio();
+      const first = new Storage(account).audio;
+      const second = new Storage(account).audio;
       const { descriptor, track } = download();
       const signal = new AbortController().signal;
       await expect(first.save(descriptor, track, new Response("complete"), signal)).rejects.toThrow(
@@ -362,7 +362,7 @@ describe("track engine", () => {
   it("does not mistake a rejected truncated file for a completed concurrent download", async () => {
     const files = installOpfs();
     installTrackLocks();
-    const store = new Storage(account).audio();
+    const store = new Storage(account).audio;
     const { descriptor, track } = download();
     const signal = new AbortController().signal;
     await store.save(descriptor, track, new Response("complete"), signal);
@@ -381,8 +381,8 @@ describe("track engine", () => {
       const audioWrite = vi.fn();
       const files = installOpfs(null, "", false, audioWrite);
       const request = installTrackLocks();
-      const first = new Storage(account).audio();
-      const second = new Storage(account).audio();
+      const first = new Storage(account).audio;
+      const second = new Storage(account).audio;
       const { descriptor, track } = download();
       const signal = new AbortController().signal;
       let controller!: ReadableStreamDefaultController<Uint8Array>;

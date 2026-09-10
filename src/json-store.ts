@@ -10,9 +10,12 @@ interface JsonUpdateOptions<T> {
   recoverReadError?: (error: unknown) => T | null;
 }
 
-export async function jsonFileName(key: string) {
+export async function hashedFileName(key: string, extension: `.${string}`) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
-  return `${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}.json`;
+  const hash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `${hash}${extension}`;
 }
 
 // One instance owns one file. Values are validated JSON records, not runtime indexes.

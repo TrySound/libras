@@ -12,7 +12,7 @@ import {
   type ImageRecord,
   type Account,
 } from "./schema";
-import { OpfsJsonStore, jsonFileName } from "./json-store";
+import { OpfsJsonStore, hashedFileName } from "./json-store";
 
 const timestamp = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000));
 const snapshotSchema = v.strictObject({
@@ -25,31 +25,7 @@ const snapshotSchema = v.strictObject({
 });
 export type MetadataSnapshot = v.InferOutput<typeof snapshotSchema>;
 
-export function entityMap<T extends { id: string }>(items: readonly T[]) {
-  const map = new Map<string, T>();
-  for (const item of items) {
-    if (map.has(item.id)) throw new Error(`Duplicate metadata ID: ${item.id}`);
-    map.set(item.id, item);
-  }
-  return map;
-}
-
-/** Validate the same complete graph whether it came from normalization or storage. */
-export function parseSnapshot(value: unknown): MetadataSnapshot {
-  const snapshot = v.parse(snapshotSchema, value);
-  const artists = entityMap(snapshot.artists);
-  const albums = entityMap(snapshot.albums);
-  entityMap(snapshot.tracks);
-  for (const album of albums.values()) {
-    if (!artists.has(album.artistId)) throw new Error(`Unknown artist for album ${album.id}.`);
-  }
-  for (const track of snapshot.tracks) {
-    if (!artists.has(track.artistId) || !albums.has(track.albumId)) {
-      throw new Error(`Invalid metadata references for track ${track.id}.`);
-    }
-  }
-  return snapshot;
-}
+const audioCatalogSchema = v.array(downloadSchema);
 
 const queueRecordSchema = v.strictObject({
   account: v.strictObject({ host: v.string(), username: v.string() }),
@@ -105,89 +81,155 @@ function parseArtworkCatalog(value: unknown, account: Account) {
   return catalog;
 }
 
-/** Application-owned persistence services; acquiring account access does not perform I/O. */
-export class Storage {
+function retryable<T>(create: () => Promise<T>) {
+  let pending: Promise<T> | undefined;
+  return () =>
+    (pending ??= create().catch((error) => {
+      pending = undefined;
+      throw error;
+    }));
+}
+
+function accountFile<T>(
+  account: Readonly<Account>,
+  directory: string,
+  lock: string,
+  parse: (value: unknown) => T | Promise<T>,
+) {
+  return retryable(async () => {
+    const key = `${account.host}\n${account.username}`;
+    const fileName = await hashedFileName(key, ".json");
+    return new OpfsJsonStore({
+      directory,
+      fileName,
+      lockName: `music-web-${lock}:${fileName}`,
+      parse,
+    });
+  });
+}
+
+export type MetadataStorage = Pick<MetadataStore, "account" | "read" | "save">;
+export type QueueStorage = Pick<QueueStore, "account" | "read" | "save">;
+export type ArtworkStorage = Pick<
+  ArtworkStore,
+  "account" | "read" | "update" | "readImage" | "saveImage"
+>;
+export type AudioStorage = Pick<AudioStore, "read" | "save" | "list" | "entries">;
+
+class MetadataStore {
   readonly account: Readonly<Account>;
-  #audio = new AudioStore();
+  readonly #file: () => Promise<OpfsJsonStore<MetadataSnapshot>>;
 
-  constructor(account: Account) {
-    this.account = Object.freeze(v.parse(accountSchema, account));
+  constructor(account: Readonly<Account>) {
+    this.account = account;
+    this.#file = accountFile(account, "metadata", "metadata", (value) => {
+      const snapshot = v.parse(snapshotSchema, value);
+      if (snapshot.account.host !== account.host || snapshot.account.username !== account.username)
+        throw new Error("The metadata snapshot belongs to a different account.");
+      return snapshot;
+    });
   }
 
-  /** One shared catalog spans accounts; individual descriptors carry account identity. */
-  audio(): Pick<AudioStore, "read" | "save" | "list" | "entries"> {
-    return this.#audio;
+  async read() {
+    return (await this.#file()).read();
   }
 
-  #metadataFilePromise?: Promise<OpfsJsonStore<MetadataSnapshot>>;
-  #queueFilePromise?: Promise<OpfsJsonStore<QueueRecord>>;
-  #artworkFilePromise?: Promise<OpfsJsonStore<ArtworkCatalog>>;
+  async save(snapshot: MetadataSnapshot, current: () => boolean = () => true) {
+    if (
+      snapshot.account.host !== this.account.host ||
+      snapshot.account.username !== this.account.username
+    )
+      throw new Error("The metadata snapshot belongs to a different account.");
+    const result = await (
+      await this.#file()
+    ).update(
+      (existing) => {
+        if (
+          existing &&
+          ((existing.lastModified !== null &&
+            snapshot.lastModified !== null &&
+            existing.lastModified > snapshot.lastModified) ||
+            (existing.lastModified === snapshot.lastModified &&
+              existing.savedAt > snapshot.savedAt))
+        )
+          return undefined;
+        return snapshot;
+      },
+      {
+        valid: current,
+        recoverReadError: () => null,
+      },
+    );
+    return current() ? (result.value ?? undefined) : undefined;
+  }
+}
 
-  async #imageDirectory() {
+class QueueStore {
+  readonly account: Readonly<Account>;
+  readonly #file: () => Promise<OpfsJsonStore<QueueRecord>>;
+
+  constructor(account: Readonly<Account>) {
+    this.account = account;
+    this.#file = accountFile(account, "queue", "queue", (value) =>
+      parseQueueRecord(value, account),
+    );
+  }
+
+  async read() {
+    return (await this.#file()).read();
+  }
+
+  async save(record: QueueRecord) {
+    if (
+      record.account.host !== this.account.host ||
+      record.account.username !== this.account.username
+    )
+      throw new Error("The queue belongs to a different account.");
+    return (await this.#file()).update(
+      (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
+      { recoverReadError: () => null },
+    );
+  }
+}
+
+class ArtworkStore {
+  readonly account: Readonly<Account>;
+  readonly #file: () => Promise<OpfsJsonStore<ArtworkCatalog>>;
+
+  constructor(account: Readonly<Account>) {
+    this.account = account;
+    this.#file = accountFile(account, "images", "covers", (value) =>
+      parseArtworkCatalog(value, account),
+    );
+  }
+
+  async #directory() {
     const root = await navigator.storage.getDirectory();
     return root.getDirectoryHandle("images", { create: true });
   }
 
-  #artworkFile() {
-    if (!this.#artworkFilePromise) {
-      const { host, username } = this.account;
-      const key = `${host}\n${username}`;
-      this.#artworkFilePromise = jsonFileName(key)
-        .then(
-          (fileName) =>
-            new OpfsJsonStore({
-              directory: "images",
-              fileName,
-              lockName: `music-web-covers:${fileName}`,
-              parse: (value) => parseArtworkCatalog(value, this.account),
-            }),
-        )
-        .catch((error) => {
-          this.#artworkFilePromise = undefined;
-          throw error;
-        });
-    }
-    return this.#artworkFilePromise;
-  }
-
-  async #updateArtwork(change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) {
-    const file = await this.#artworkFile();
-    const result = await file.update(
-      (catalog) => change(catalog ?? emptyArtworkCatalog(this.account)),
-      { valid },
-    );
-    // Callers must distinguish a completed commit from permission to publish it.
+  async #update(change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) {
+    const result = await (
+      await this.#file()
+    ).update((catalog) => change(catalog ?? emptyArtworkCatalog(this.account)), { valid });
     return result.value ?? undefined;
   }
 
-  artwork() {
-    return {
-      account: this.account,
-      read: (valid: () => boolean) => this.#readArtwork(valid),
-      update: async (change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) => {
-        const catalog = await this.#updateArtwork(change, valid);
-        return valid() ? catalog : undefined;
-      },
-      readImage: async (record: ImageRecord) => {
-        const directory = await this.#imageDirectory();
-        const file = await (await directory.getFileHandle(record.fileName)).getFile();
-        if (file.size !== record.size)
-          throw new DOMException("The cached image is incomplete.", "DataError");
-        // Do not expose mutable OPFS-backed files to browser image consumers.
-        return new Blob([await file.arrayBuffer()], { type: record.type });
-      },
-      saveImage: (
-        id: string,
-        image: ArtworkImage,
-        previousFileName: string | undefined,
-        valid: () => boolean,
-      ) => this.#saveArtworkImage(id, image, previousFileName, valid),
-    };
+  async update(change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) {
+    const catalog = await this.#update(change, valid);
+    return valid() ? catalog : undefined;
   }
 
-  async #readArtwork(valid: () => boolean) {
-    let catalog = (await (await this.#artworkFile()).read()) ?? emptyArtworkCatalog(this.account);
-    const directory = await this.#imageDirectory();
+  async readImage(record: ImageRecord) {
+    const file = await (await (await this.#directory()).getFileHandle(record.fileName)).getFile();
+    if (file.size !== record.size)
+      throw new DOMException("The cached image is incomplete.", "DataError");
+    return new Blob([await file.arrayBuffer()], { type: record.type });
+  }
+
+  async read(valid: () => boolean) {
+    let catalog = (await (await this.#file()).read()) ?? emptyArtworkCatalog(this.account);
+    const directory = await this.#directory();
     const missing = new Set<string>();
     let next = 0;
     const worker = async () => {
@@ -212,7 +254,7 @@ export class Storage {
       };
       try {
         catalog =
-          (await this.#updateArtwork(
+          (await this.#update(
             (latest) => ({
               ...latest,
               images: latest.images.filter((image) => !missing.has(image.fileName)),
@@ -220,21 +262,20 @@ export class Storage {
             valid,
           )) ?? catalog;
       } catch (cause) {
-        // Still return the filtered catalog when persisting repairs fails.
         error = cause;
       }
     }
     return valid() ? { catalog, error } : undefined;
   }
 
-  async #saveArtworkImage(
+  async saveImage(
     id: string,
     image: ArtworkImage,
     previousFileName: string | undefined,
     valid: () => boolean,
   ) {
     const { blob } = image;
-    const record = v.parse(imageSchema, {
+    const record: ImageRecord = {
       id,
       fileName: `${crypto.randomUUID()}.image`,
       type: image.type,
@@ -242,9 +283,9 @@ export class Storage {
       cachedAt: Date.now(),
       etag: image.etag,
       lastModified: image.lastModified,
-    });
+    };
     if (!valid()) return;
-    const directory = await this.#imageDirectory();
+    const directory = await this.#directory();
     const handle = await directory.getFileHandle(record.fileName, { create: true });
     let writable: FileSystemWritableFileStream | undefined;
     let committed = false;
@@ -252,15 +293,15 @@ export class Storage {
       writable = await handle.createWritable();
       await writable.write(blob);
       await writable.close();
-      const catalog = await this.#updateArtwork((latest) => {
-        const current = latest.images.find((image) => image.id === id);
+      const catalog = await this.#update((latest) => {
+        const current = latest.images.find((entry) => entry.id === id);
         if (current && current.fileName !== previousFileName) return latest;
         return {
           ...latest,
-          images: [...latest.images.filter((image) => image.id !== id), record],
+          images: [...latest.images.filter((entry) => entry.id !== id), record],
         };
       }, valid);
-      committed = catalog?.images.some((image) => image.fileName === record.fileName) ?? false;
+      committed = catalog?.images.some((entry) => entry.fileName === record.fileName) ?? false;
       if (catalog && valid())
         return {
           catalog,
@@ -273,123 +314,12 @@ export class Storage {
       }
     }
   }
-
-  #queueFile() {
-    if (!this.#queueFilePromise) {
-      const { host, username } = this.account;
-      const key = `${host}\n${username}`;
-      this.#queueFilePromise = jsonFileName(key)
-        .then(
-          (fileName) =>
-            new OpfsJsonStore({
-              directory: "queue",
-              fileName,
-              lockName: `music-web-queue:${fileName}`,
-              parse: (value) => parseQueueRecord(value, this.account),
-            }),
-        )
-        .catch((error) => {
-          this.#queueFilePromise = undefined;
-          throw error;
-        });
-    }
-    return this.#queueFilePromise;
-  }
-
-  queue() {
-    return {
-      account: this.account,
-      read: async () => (await this.#queueFile()).read(),
-      save: async (record: QueueRecord) => {
-        if (
-          record.account.host !== this.account.host ||
-          record.account.username !== this.account.username
-        )
-          throw new Error("The queue belongs to a different account.");
-        const file = await this.#queueFile();
-        return file.update(
-          (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
-          // Preserve the queue's existing repair-on-write policy.
-          { recoverReadError: () => null },
-        );
-      },
-    };
-  }
-
-  #metadataFile() {
-    if (!this.#metadataFilePromise) {
-      const { host, username } = this.account;
-      const key = `${host}\n${username}`;
-      this.#metadataFilePromise = jsonFileName(key)
-        .then(
-          (fileName) =>
-            new OpfsJsonStore({
-              directory: "metadata",
-              fileName,
-              lockName: `music-web-metadata:${fileName}`,
-              parse: (value) => {
-                const snapshot = parseSnapshot(value);
-                if (
-                  snapshot.account.host !== this.account.host ||
-                  snapshot.account.username !== this.account.username
-                )
-                  throw new Error("The metadata snapshot belongs to a different account.");
-                return snapshot;
-              },
-            }),
-        )
-        .catch((error) => {
-          this.#metadataFilePromise = undefined;
-          throw error;
-        });
-    }
-    return this.#metadataFilePromise;
-  }
-
-  metadata() {
-    return {
-      account: this.account,
-      read: async () => (await this.#metadataFile()).read(),
-      save: (snapshot: MetadataSnapshot, current?: () => boolean) =>
-        this.#saveMetadata(snapshot, current),
-    };
-  }
-
-  async #saveMetadata(snapshot: MetadataSnapshot, current: () => boolean = () => true) {
-    if (
-      snapshot.account.host !== this.account.host ||
-      snapshot.account.username !== this.account.username
-    )
-      throw new Error("The metadata snapshot belongs to a different account.");
-    const file = await this.#metadataFile();
-    const result = await file.update(
-      (existing) => {
-        if (
-          existing &&
-          ((existing.lastModified !== null &&
-            snapshot.lastModified !== null &&
-            existing.lastModified > snapshot.lastModified) ||
-            (existing.lastModified === snapshot.lastModified &&
-              existing.savedAt > snapshot.savedAt))
-        )
-          return undefined;
-        return snapshot;
-      },
-      {
-        valid: current,
-        // Preserve metadata's existing policy: a fresh server snapshot may repair a bad cache.
-        recoverReadError: () => null,
-      },
-    );
-    return current() ? result.value : undefined;
-  }
 }
-
-const audioCatalogSchema = v.array(downloadSchema);
 
 // Audio files keep their original hashed names. The catalog contains no credentials
 // and only publishes files after their writable stream has closed successfully.
 class AudioStore {
+  #account: Readonly<Account>;
   #index?: Map<string, DownloadedFile>;
   #loading?: Promise<Map<string, DownloadedFile>>;
   #writes: Promise<unknown> = Promise.resolve();
@@ -411,6 +341,17 @@ class AudioStore {
     },
   });
 
+  constructor(account: Readonly<Account>) {
+    this.#account = account;
+  }
+
+  #check(descriptor: TrackFileDescriptor, track: DownloadTrack) {
+    if (descriptor.host !== this.#account.host || descriptor.username !== this.#account.username)
+      throw new Error("The audio descriptor belongs to a different account.");
+    const key = `${descriptor.host}\n${descriptor.username}\n${track.id}\n${descriptor.format}-v1`;
+    if (descriptor.key !== key) throw new Error("The audio descriptor key is invalid.");
+  }
+
   async #directory() {
     const root = await navigator.storage.getDirectory();
     return root.getDirectoryHandle("tracks", { create: true });
@@ -419,8 +360,7 @@ class AudioStore {
   async #fileName(key: string) {
     const existing = this.#names.get(key);
     if (existing) return existing;
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
-    const name = `${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}.audio`;
+    const name = await hashedFileName(key, ".audio");
     this.#names.set(key, name);
     return name;
   }
@@ -487,6 +427,7 @@ class AudioStore {
   }
 
   async read(descriptor: TrackFileDescriptor, track: DownloadTrack) {
+    this.#check(descriptor, track);
     const index = await this.#load();
     const record = index.get(descriptor.key);
     const fileName = record?.fileName ?? (await this.#fileName(descriptor.key));
@@ -503,17 +444,16 @@ class AudioStore {
     if (!record) {
       // Migrate pre-catalog downloads without downloading the audio again.
       await this.#mutate((latest) => {
-        if (!latest.has(descriptor.key))
-          latest.set(
-            descriptor.key,
-            v.parse(downloadSchema, {
-              ...descriptor,
-              track,
-              fileName,
-              size: file.size,
-              downloadedAt: file.lastModified,
-            }),
-          );
+        if (!latest.has(descriptor.key)) {
+          const record: DownloadedFile = {
+            ...descriptor,
+            track,
+            fileName,
+            size: file.size,
+            downloadedAt: file.lastModified,
+          };
+          latest.set(descriptor.key, record);
+        }
       });
     }
     return file;
@@ -526,6 +466,7 @@ class AudioStore {
     signal: AbortSignal,
   ) {
     try {
+      this.#check(descriptor, track);
       const fileName = await this.#fileName(descriptor.key);
       const write = async () => {
         signal.throwIfAborted();
@@ -551,16 +492,14 @@ class AudioStore {
           const file = await handle.getFile();
           if (!file.size) throw new Error("The downloaded audio file is empty.");
           await this.#mutate((index) => {
-            index.set(
-              descriptor.key,
-              v.parse(downloadSchema, {
-                ...descriptor,
-                track,
-                fileName,
-                size: file.size,
-                downloadedAt: Date.now(),
-              }),
-            );
+            const record: DownloadedFile = {
+              ...descriptor,
+              track,
+              fileName,
+              size: file.size,
+              downloadedAt: Date.now(),
+            };
+            index.set(descriptor.key, record);
           });
           return file;
         } catch (error) {
@@ -586,5 +525,22 @@ class AudioStore {
   async entries() {
     await this.#writes;
     return [...(await this.#load()).values()];
+  }
+}
+
+/** Account-configured persistence capabilities; construction performs no I/O. */
+export class Storage {
+  readonly account: Readonly<Account>;
+  readonly metadata: MetadataStorage;
+  readonly queue: QueueStorage;
+  readonly artwork: ArtworkStorage;
+  readonly audio: AudioStorage;
+
+  constructor(account: Account) {
+    this.account = Object.freeze({ ...account });
+    this.metadata = new MetadataStore(this.account);
+    this.queue = new QueueStore(this.account);
+    this.artwork = new ArtworkStore(this.account);
+    this.audio = new AudioStore(this.account);
   }
 }

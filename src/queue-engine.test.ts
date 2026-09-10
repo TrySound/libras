@@ -119,11 +119,10 @@ describe("queue engine", () => {
         value: { ...saved, updatedAt: Date.now() + 1000 },
       })),
     };
-    const disk = { account, queue: vi.fn(() => store) };
+    const disk = { account, queue: store };
     const memory = new Memory();
     const queue = engine(memory);
     await queue.restore(disk);
-    expect(disk.queue).toHaveBeenCalledWith();
     expect(store.read).toHaveBeenCalledOnce();
     expect(memory.queueIndex).toBe(2);
     queue.update({ tracks: ["edited"], index: 0, position: 2 });

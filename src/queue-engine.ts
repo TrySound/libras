@@ -110,7 +110,7 @@ export class QueueEngine {
     };
     // Also retain an engine-wide tail so teardown waits for writes to previous accounts.
     const result = this.#localWrites
-      .then(() => storage.queue().save(record))
+      .then(() => storage.queue.save(record))
       .then(({ written }) => {
         if (this.#account !== account) return;
         if (!written) {
@@ -162,7 +162,7 @@ export class QueueEngine {
     this.#publish({ tracks: [], position: 0 });
     return (this.#ready = (async () => {
       try {
-        const record = await storage.queue().read();
+        const record = await storage.queue.read();
         if (generation !== this.#accountGeneration || this.#destroyed) return;
         if (record && revision === this.#revision) {
           this.#dirty = record.pendingSync;

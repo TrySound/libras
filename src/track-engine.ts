@@ -126,7 +126,7 @@ export class TrackEngine {
     const storage = this.#storage;
     if (!storage) return;
     try {
-      const audio = storage.audio();
+      const audio = storage.audio;
       const entries = await (validate ? audio.list() : audio.entries());
       if (this.#destroyed || request !== this.#catalogRequest) return;
       this.#memory.downloads = new Map(entries.map((entry) => [entry.key, entry]));
@@ -231,11 +231,11 @@ export class TrackEngine {
   async #download(job: DownloadJob) {
     const { descriptor, track, connection, storage, signal } = job;
     try {
-      let file = await storage.audio().read(descriptor, track);
+      let file = await storage.audio.read(descriptor, track);
       signal.throwIfAborted();
       if (!file) {
         const response = await connection.read(track.id, { format: descriptor.format, signal });
-        file = await storage.audio().save(descriptor, track, response, signal);
+        file = await storage.audio.save(descriptor, track, response, signal);
       }
       signal.throwIfAborted();
       await this.#refreshCatalog();
@@ -281,7 +281,7 @@ export class TrackEngine {
     const storage = this.#storage;
     if (!storage) throw new Error("No music storage selected.");
     const metadata = this.#track(track);
-    const file = await storage.audio().read(descriptor, metadata);
+    const file = await storage.audio.read(descriptor, metadata);
     if (file) return { file, contentType: descriptor.contentType };
     // A codec retry may have downloaded MP3 even when canPlayType claims raw support.
     if (descriptor.format === "raw") {
@@ -291,7 +291,7 @@ export class TrackEngine {
         format: "mp3",
         contentType: "audio/mpeg",
       };
-      const mp3 = await storage.audio().read(fallback, metadata);
+      const mp3 = await storage.audio.read(fallback, metadata);
       if (mp3) return { file: mp3, contentType: fallback.contentType };
     }
     return null;

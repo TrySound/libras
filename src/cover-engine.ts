@@ -187,7 +187,7 @@ export class CoverEngine {
     this.#notify();
     return (this.#ready = (async () => {
       try {
-        const result = await storage.artwork().read(valid);
+        const result = await storage.artwork.read(valid);
         if (result && valid()) {
           this.#error = result.error;
           await this.#apply(result.catalog);
@@ -236,13 +236,10 @@ export class CoverEngine {
     const refs = references({ artists, albums, tracks, artistAlbums, albumTracks }, savedAt);
     return (this.#reconciling = (async () => {
       try {
-        const catalog = await storage
-          .artwork()
-          .update(
-            (latest) =>
-              (latest.metadataSavedAt ?? -1) > savedAt ? latest : { ...latest, ...refs },
-            valid,
-          );
+        const catalog = await storage.artwork.update(
+          (latest) => ((latest.metadataSavedAt ?? -1) > savedAt ? latest : { ...latest, ...refs }),
+          valid,
+        );
         if (catalog && valid()) {
           this.#error = undefined;
           await this.#apply(catalog);
@@ -303,7 +300,7 @@ export class CoverEngine {
       const account = this.#memory.account;
       const storage = this.#storage;
       if (!account || !storage) return;
-      const blob = await storage.artwork().readImage(record);
+      const blob = await storage.artwork.readImage(record);
       if (
         this.#destroyed ||
         generation !== this.#generation ||
@@ -363,8 +360,7 @@ export class CoverEngine {
           this.#memory.images = images;
           const storage = this.#storage;
           if (!storage) return;
-          void storage
-            .artwork()
+          void storage.artwork
             .update(
               (catalog) => ({
                 ...catalog,
@@ -438,7 +434,7 @@ export class CoverEngine {
       lastModified: cached?.lastModified,
     });
     if (!valid() || !result) return;
-    const saved = await storage.artwork().saveImage(id, result, cached?.fileName, valid);
+    const saved = await storage.artwork.saveImage(id, result, cached?.fileName, valid);
     if (saved && valid()) await this.#apply(saved.catalog, saved.image);
   }
 
