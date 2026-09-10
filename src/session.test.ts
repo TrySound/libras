@@ -25,6 +25,44 @@ afterEach(() => {
 const input = { host: credentials.host, username: credentials.username, password: "password" };
 
 describe("session", () => {
+  it("hydrates local data before a pending background refresh completes", async () => {
+    const { session, metadata, memory, queue } = setup(true);
+    const refresh = deferred();
+    metadata.revalidate.mockReturnValueOnce(refresh.promise);
+    session.start();
+    await vi.waitFor(() => expect(session.syncing).toBe(true));
+    expect(session.localReady).toBe(true);
+    expect(session.busy).toBe(false);
+    expect(memory.artists.size).toBe(1);
+    expect(queue.restore).toHaveBeenCalledOnce();
+    refresh.resolve();
+    await vi.waitFor(() => expect(session.syncing).toBe(false));
+  });
+
+  it("finishes local hydration even when startup revalidation fails", async () => {
+    const { session, metadata, memory } = setup(true);
+    metadata.revalidate.mockRejectedValueOnce(new Error("Server unavailable"));
+    session.start();
+    await vi.waitFor(() => expect(session.refreshError).toContain("Server unavailable"));
+    expect(session.localReady).toBe(true);
+    expect(session.syncing).toBe(false);
+    expect(session.error).toBe("");
+    expect(memory.artists.size).toBe(1);
+  });
+
+  it("keeps local data and connection state after a background refresh failure", async () => {
+    const { session, metadata, memory } = await connected();
+    const artists = memory.artists;
+    metadata.refresh.mockRejectedValueOnce(new Error("Server unavailable"));
+    await session.refresh();
+    expect(session.localReady).toBe(true);
+    expect(session.syncing).toBe(false);
+    expect(session.status).toBe("connected");
+    expect(session.error).toBe("");
+    expect(session.refreshError).toContain("Server unavailable");
+    expect(memory.artists).toBe(artists);
+  });
+
   it("migrates saved credentials to a non-secret account and refreshes without reconnecting", async () => {
     const { session, storage, metadata, tracks, queue } = await connected();
     expect(JSON.parse(storage.getItem("navidrome-account")!)).toEqual({
@@ -37,7 +75,9 @@ describe("session", () => {
     const pending = session.refresh();
     await session.refresh();
     expect(metadata.refresh).toHaveBeenCalledOnce();
-    expect(session.busy).toBe(true);
+    expect(session.busy).toBe(false);
+    expect(session.syncing).toBe(true);
+    expect(session.localReady).toBe(true);
     refresh.resolve();
     await pending;
     expect(metadata.revalidate).toHaveBeenCalledOnce();
@@ -70,6 +110,8 @@ describe("session", () => {
     metadata.refresh.mockReturnValueOnce(refresh.promise);
     const pending = session.refresh();
     session.disconnect();
+    expect(session.syncing).toBe(false);
+    expect(session.localReady).toBe(true);
     expect(client.signal.aborted).toBe(true);
     expect(auth.load()).toBeNull();
     expect(session.auth).toBeNull();

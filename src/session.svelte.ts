@@ -52,6 +52,8 @@ export class Session {
   status = $state<ConnectionStatus>("disconnected");
   error = $state("");
   refreshError = $state("");
+  localReady = $state(false);
+  syncing = $state(false);
 
   #options: SessionOptions;
   #restoration: Promise<void> = Promise.resolve();
@@ -98,6 +100,7 @@ export class Session {
   #begin() {
     this.error = "";
     this.refreshError = "";
+    this.syncing = false;
     return ++this.#generation;
   }
 
@@ -157,7 +160,7 @@ export class Session {
             else this.status = "disconnected";
           })
           .catch((error) => this.#fail(error, generation));
-      }
+      } else this.localReady = true;
     } catch (error) {
       this.#fail(error, generation);
     }
@@ -166,6 +169,7 @@ export class Session {
 
   async #restore(account: Account) {
     const { metadata, covers, queue, tracks } = this.#options;
+    this.localReady = false;
     this.#selectAccount(account);
     const storage = this.#storageFor(account);
     await Promise.all([
@@ -177,6 +181,7 @@ export class Session {
     // Queue restoration is credential-free even if the metadata cache is missing.
     await queue.restore(this.#storageFor(account));
     if (!this.#destroyed) await covers.refresh();
+    if (!this.#destroyed) this.localReady = true;
   }
 
   async connect(input: PasswordAuth): Promise<boolean> {
@@ -202,6 +207,7 @@ export class Session {
       const activeConnection = this.#options.network.accept(connection);
       this.#options.playback.suspend();
       this.#selectAccount(snapshot.account);
+      this.localReady = false;
       // Clear foreign queue/artwork synchronously before publishing new metadata.
       this.#restoration = Promise.all([
         queue.restore(metadataStorage),
@@ -213,6 +219,7 @@ export class Session {
       this.#attach(activeConnection);
       await this.#restoration;
       if (!this.#valid(generation)) return false;
+      this.localReady = true;
       await covers.refresh();
       if (!this.#valid(generation)) return false;
       this.status = "connected";
@@ -247,34 +254,35 @@ export class Session {
   #report(generation: number) {
     if (!this.#valid(generation)) return;
     const { metadata } = this.#options;
-    if (metadata.status === "error") this.#fail(metadata.error, generation);
-    else if (metadata.warning) {
-      this.status = "error";
-      this.refreshError = `Background refresh failed: ${connectionError(metadata.warning)}`;
-    } else this.status = "connected";
+    const error = metadata.status === "error" ? metadata.error : metadata.warning;
+    if (error) this.refreshError = `Background refresh failed: ${connectionError(error)}`;
   }
 
   async #resumeOnline(generation: number) {
     if (!this.auth || !this.#valid(generation)) return;
-    this.status = "connecting";
     this.#attach(this.#options.network.open(this.auth));
-    await this.#options.metadata.revalidate();
-    if (!this.#valid(generation)) return;
-    await this.#options.covers.refresh();
-    this.#report(generation);
+    this.status = "connected";
+    await this.#synchronize(generation, false);
   }
 
   async refresh() {
-    if (!this.auth || this.offlineMode || this.busy || this.#destroyed) return;
-    const generation = this.#begin();
-    this.status = "connecting";
+    if (!this.auth || this.offlineMode || this.busy || this.syncing || this.#destroyed) return;
+    await this.#synchronize(this.#begin(), true);
+  }
+
+  async #synchronize(generation: number, force: boolean) {
+    this.syncing = true;
     try {
-      await this.#options.metadata.refresh();
+      if (force) await this.#options.metadata.refresh();
+      else await this.#options.metadata.revalidate();
       if (!this.#valid(generation)) return;
       await this.#options.covers.refresh();
       this.#report(generation);
     } catch (error) {
-      this.#fail(error, generation);
+      if (this.#valid(generation))
+        this.refreshError = `Background refresh failed: ${connectionError(error)}`;
+    } finally {
+      if (this.#valid(generation)) this.syncing = false;
     }
   }
 
@@ -300,6 +308,7 @@ export class Session {
   destroy() {
     this.#destroyed = true;
     this.#generation++;
+    this.syncing = false;
     this.#detach();
   }
 }

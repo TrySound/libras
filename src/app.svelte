@@ -85,7 +85,7 @@
   );
   let downloadingCollection = $state("");
   const offlineScanning = $derived(offlineMode && trackEngine.downloadsLoading);
-  let loading = $derived(metadataEngine.status === "loading");
+  let loading = $derived(!session.localReady);
 
   onMount(() => installLongPress());
   onMount(() => playback.mount());
@@ -356,12 +356,12 @@
               class="icon-button"
               data-size="md"
               data-variant="neutral"
-              aria-label={session.busy ? "Refreshing…" : "Refresh library"}
-              title={session.busy ? "Refreshing…" : "Refresh library"}
-              disabled={session.offlineMode || session.busy}
+              aria-label={session.syncing ? "Refreshing…" : "Refresh library"}
+              title={session.syncing ? "Refreshing…" : "Refresh library"}
+              disabled={session.offlineMode || session.busy || session.syncing}
               onclick={() => void session.refresh()}
             >
-              {@render icon(session.busy ? "loading" : "refresh")}
+              {@render icon(session.syncing ? "loading" : "refresh")}
             </button>
             <button
               class="icon-button"
