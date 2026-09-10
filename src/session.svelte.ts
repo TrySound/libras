@@ -4,6 +4,7 @@ import type { Memory, MemoryView } from "./memory.svelte";
 import type { MetadataEngine } from "./metadata-engine";
 import {
   NetworkTransportError,
+  type ActiveNetworkConnection,
   type Network,
   type NetworkConnection,
   type PasswordAuth,
@@ -118,12 +119,12 @@ export class Session {
     void queue.flush();
   }
 
-  #attach(connection: NetworkConnection) {
+  #attach(connection: ActiveNetworkConnection) {
     const { metadata, queue, covers, tracks } = this.#options;
-    metadata.setConnection(this.#options.network.metadata(connection));
-    queue.setConnection(this.#options.network.queue(connection));
-    covers.setConnection(this.#options.network.artwork(connection));
-    tracks.setConnection(this.#options.network.audio(connection));
+    metadata.setConnection(connection.metadata);
+    queue.setConnection(connection.queue);
+    covers.setConnection(connection.artwork);
+    tracks.setConnection(connection.audio);
     void queue.synchronize();
   }
 
@@ -191,7 +192,7 @@ export class Session {
       const { metadata, queue, covers, tracks, auth, preferences } = this.#options;
       // Explicit connection may use the network while the offline switch is locked.
       // Do not replace the selected workspace, or attach any other engines, on failure.
-      const prepared = await metadata.prepareConnection(this.#options.network.metadata(connection));
+      const prepared = await metadata.prepareConnection(connection.metadata);
       if (!this.#valid(generation)) return false;
       auth.save(credentials);
       auth.saveAccount(prepared.account);
@@ -199,7 +200,7 @@ export class Session {
       const metadataStorage = this.#storageFor(prepared.account);
       const snapshot = await metadata.saveConnection(prepared, metadataStorage, connection.signal);
       if (!this.#valid(generation)) return false;
-      this.#options.network.accept(connection);
+      const activeConnection = this.#options.network.accept(connection);
       this.#options.playback.suspend();
       this.#selectAccount(snapshot.account);
       // Clear foreign queue/artwork synchronously before publishing new metadata.
@@ -210,7 +211,7 @@ export class Session {
       ]).then(() => {});
       metadata.acceptConnection(snapshot, metadataStorage);
       this.auth = credentials;
-      this.#attach(connection);
+      this.#attach(activeConnection);
       await this.#restoration;
       if (!this.#valid(generation)) return false;
       await covers.refresh();

@@ -13,8 +13,8 @@ describe("Network connection lifecycle", () => {
     "classifies rejected %s fetches at the transport boundary",
     async (operation) => {
       const network = new Network();
-      const connection = network.prepare(auth);
-      network.accept(connection);
+      const candidate = network.prepare(auth);
+      const connection = network.accept(candidate);
       const cause = new TypeError("Failed to fetch");
       vi.stubGlobal(
         "fetch",
@@ -24,12 +24,12 @@ describe("Network connection lifecycle", () => {
       );
       const signal = new AbortController().signal;
       const operations = {
-        modified: () => network.metadata(connection).getModifiedAt(),
-        library: () => network.metadata(connection).readLibrary(signal),
-        queueRead: () => network.queue(connection).read(),
-        queueWrite: () => network.queue(connection).write({ trackIds: [], position: 0 }),
-        artwork: () => network.artwork(connection).read("cover", { size: 500 }),
-        audio: () => network.audio(connection).read("track", { format: "raw", signal }),
+        modified: () => connection.metadata.getModifiedAt(),
+        library: () => connection.metadata.readLibrary(signal),
+        queueRead: () => connection.queue.read(),
+        queueWrite: () => connection.queue.write({ trackIds: [], position: 0 }),
+        artwork: () => connection.artwork.read("cover", { size: 500 }),
+        audio: () => connection.audio.read("track", { format: "raw", signal }),
       };
       try {
         const result = operations[operation]();
@@ -65,7 +65,7 @@ describe("Network connection lifecycle", () => {
         vi.fn(async () => response),
       );
       try {
-        const result = network.metadata(connection).getModifiedAt();
+        const result = connection.metadata.getModifiedAt();
         await expect(result).rejects.not.toBeInstanceOf(NetworkTransportError);
         if (kind === "http") await expect(result).rejects.toThrow("HTTP 503");
         if (kind === "protocol") await expect(result).rejects.toThrow("Denied");
@@ -96,7 +96,7 @@ describe("Network connection lifecycle", () => {
         }),
       );
       try {
-        const result = network.metadata(connection).getModifiedAt();
+        const result = connection.metadata.getModifiedAt();
         await expect(result).rejects.toBe(
           kind === "exception" ? cancelled : connection.signal.reason,
         );
@@ -157,7 +157,7 @@ describe("Network connection lifecycle", () => {
     expect(client.signal.aborted).toBe(false);
     network.setMode("offline");
     expect(client.signal.aborted).toBe(true);
-    expect(() => network.audio(client)).toThrowError(/abort/i);
+    expect(() => client.audio.url("track", { format: "raw" })).toThrowError(/abort/i);
   });
 
   it("allows isolated login preparation while offline, enabling access only on acceptance", () => {
@@ -200,16 +200,19 @@ describe("Network connection lifecycle", () => {
   it("exposes only frozen, credential-free connection identity", () => {
     const network = new Network();
     const connection = network.prepare(auth);
-    expect(Object.keys(connection).sort()).toEqual(["account", "signal"]);
+    expect(Object.keys(connection).sort()).toEqual(["account", "metadata", "signal"]);
     expect(connection.account).toEqual({ host: auth.host, username: auth.username });
     expect(Object.isFrozen(connection)).toBe(true);
     expect(Object.isFrozen(connection.account)).toBe(true);
-    expect(network.metadata(connection).account).toBe(connection.account);
-    network.accept(connection);
-    for (const feature of ["queue", "artwork", "audio"] as const) {
-      expect(network[feature](connection).account).toBe(connection.account);
-      expect(network[feature](connection).signal).toBe(connection.signal);
-    }
+    expect(Object.isFrozen(connection.metadata)).toBe(true);
+    expect(connection.metadata.account).toBe(connection.account);
+    const active = network.accept(connection);
+    expect(active.queue.account).toBe(connection.account);
+    expect(active.queue.signal).toBe(connection.signal);
+    expect(active.artwork.account).toBe(connection.account);
+    expect(active.artwork.signal).toBe(connection.signal);
+    expect(active.audio.account).toBe(connection.account);
+    expect(active.audio.signal).toBe(connection.signal);
     network.setMode("offline");
   });
 
@@ -220,11 +223,8 @@ describe("Network connection lifecycle", () => {
     const candidate = network.prepare(auth);
     const other = new Network();
     const foreign = other.prepare(auth);
-    for (const connection of [foreign, { ...candidate }, network.metadata(candidate)]) {
+    for (const connection of [foreign, { ...candidate }]) {
       expect(() => network.accept(connection)).toThrow("Connection superseded");
-      for (const feature of ["metadata", "queue", "artwork", "audio"] as const) {
-        expect(() => network[feature](connection)).toThrow("Connection superseded");
-      }
     }
     expect(active.signal.aborted).toBe(false);
     expect(candidate.signal.aborted).toBe(false);
@@ -268,7 +268,7 @@ describe("Network connection lifecycle", () => {
     vi.stubGlobal("fetch", fetch);
     try {
       const candidate = network.prepare(auth);
-      const metadata = network.metadata(candidate);
+      const metadata = candidate.metadata;
       expect(metadata.account).toEqual({ host: auth.host, username: auth.username });
       expect(network.mode).toBe("offline");
       await expect(metadata.readLibrary(new AbortController().signal)).resolves.toEqual({
@@ -294,8 +294,9 @@ describe("Network connection lifecycle", () => {
         name: "AbortError",
       });
       expect(fetch).toHaveBeenCalledTimes(requests);
-      expect(() => network.metadata(candidate)).toThrowError(/abort/i);
-      expect(network.metadata(replacement).account.username).toBe("other");
+      expect(candidate.metadata).toBe(metadata);
+      expect(candidate.metadata.signal.aborted).toBe(true);
+      expect(replacement.metadata.account.username).toBe("other");
     } finally {
       network.setMode("offline");
       vi.unstubAllGlobals();
@@ -320,7 +321,7 @@ describe("Network connection lifecycle", () => {
       );
       vi.stubGlobal("fetch", fetcher);
       try {
-        const result = network.metadata(connection).readLibrary(workflow.signal);
+        const result = connection.metadata.readLibrary(workflow.signal);
         const rejected = expect(result).rejects.toMatchObject({ name: "AbortError" });
         await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
         if (action === "offline") network.setMode("offline");
@@ -340,7 +341,7 @@ describe("Network connection lifecycle", () => {
   it("cancels sibling library requests on failure without closing the connection", async () => {
     const network = new Network();
     const candidate = network.prepare(auth);
-    const metadata = network.metadata(candidate);
+    const metadata = candidate.metadata;
     const aborted = vi.fn();
     const requested: string[] = [];
     const fetcher = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
@@ -389,14 +390,15 @@ describe("Network connection lifecycle", () => {
     }
   });
 
-  it("does not expose remote queue access for an unaccepted login candidate", () => {
+  it("exposes configured queue access only after acceptance", async () => {
     const network = new Network();
     const candidate = network.prepare(auth);
-    expect(() => network.queue(candidate)).toThrow("Connection superseded");
-    network.accept(candidate);
-    expect(network.queue(candidate).account.username).toBe(auth.username);
+    expect(Object.keys(candidate)).not.toContain("queue");
+    const active = network.accept(candidate);
+    expect(active.queue.account.username).toBe(auth.username);
+    expect(Object.isFrozen(active.queue)).toBe(true);
     network.setMode("offline");
-    expect(() => network.queue(candidate)).toThrowError(/abort/i);
+    await expect(active.queue.read()).rejects.toThrowError(/abort/i);
   });
 
   it("maps queue IDs and seconds while preserving SDK POST and cancellation semantics", async () => {
@@ -419,8 +421,7 @@ describe("Network connection lifecycle", () => {
     vi.stubGlobal("fetch", fetch);
     try {
       const client = network.prepare(auth);
-      network.accept(client);
-      const queue = network.queue(client);
+      const queue = network.accept(client).queue;
       const state = { trackIds: ["a", "b", "a"], currentTrackId: "a", position: 3.5 };
       await expect(queue.read()).resolves.toEqual(state);
       await queue.write(state);
@@ -453,9 +454,8 @@ describe("Network connection lifecycle", () => {
   it("binds artwork URLs to an accepted connection and revokes them on replacement", () => {
     const network = new Network();
     const client = network.prepare(auth);
-    expect(() => network.artwork(client)).toThrow("Connection superseded");
-    network.accept(client);
-    const artwork = network.artwork(client);
+    expect(Object.keys(client)).not.toContain("artwork");
+    const artwork = network.accept(client).artwork;
     const url = new URL(artwork.url("cover", 500));
     expect(url.origin).toBe(auth.host);
     expect(url.pathname).toContain("getCoverArt");
@@ -468,9 +468,8 @@ describe("Network connection lifecycle", () => {
     });
     const replacement = network.prepare({ ...auth, host: "https://other.example" });
     expect(artwork.url("cover", 500)).toBe(url.href);
-    network.accept(replacement);
+    const next = network.accept(replacement).artwork;
     expect(() => artwork.url("cover", 500)).toThrowError(/abort/i);
-    const next = network.artwork(replacement);
     expect(new URL(next.url("cover", 500)).origin).toBe("https://other.example");
     network.setMode("offline");
     expect(() => next.url("cover", 500)).toThrowError(/abort/i);
@@ -479,7 +478,7 @@ describe("Network connection lifecycle", () => {
   it("normalizes artwork replies and sends conditional validators", async () => {
     const network = new Network();
     const client = network.prepare(auth);
-    network.accept(client);
+    const artwork = network.accept(client).artwork;
     const fetcher = vi.fn(
       async (..._args: Parameters<typeof fetch>) =>
         new Response("image", {
@@ -492,7 +491,6 @@ describe("Network connection lifecycle", () => {
     );
     vi.stubGlobal("fetch", fetcher);
     try {
-      const artwork = network.artwork(client);
       const options = { size: 500, etag: '"old"', lastModified: "earlier" };
       const result = await artwork.read("cover", options);
       expect(result).toMatchObject({ type: "image/png", etag: '"new"', lastModified: "yesterday" });
@@ -515,7 +513,7 @@ describe("Network connection lifecycle", () => {
   it("rejects image bytes arriving after disconnect and prevents stale artwork fetches", async () => {
     const network = new Network();
     const client = network.prepare(auth);
-    network.accept(client);
+    const artwork = network.accept(client).artwork;
     let resolve!: (blob: Blob) => void;
     const response = new Response("image");
     const body = vi.spyOn(response, "blob").mockImplementation(
@@ -527,7 +525,6 @@ describe("Network connection lifecycle", () => {
     const fetcher = vi.fn(async () => response);
     vi.stubGlobal("fetch", fetcher);
     try {
-      const artwork = network.artwork(client);
       const pending = artwork.read("cover", { size: 500 });
       await vi.waitFor(() => expect(body).toHaveBeenCalledOnce());
       network.setMode("offline");
@@ -547,9 +544,8 @@ describe("Network connection lifecycle", () => {
   it("exposes accepted audio URLs and hands off an unbuffered download response", async () => {
     const network = new Network();
     const client = network.prepare(auth);
-    expect(() => network.audio(client)).toThrow("Connection superseded");
-    network.accept(client);
-    const audio = network.audio(client);
+    expect(Object.keys(client)).not.toContain("audio");
+    const audio = network.accept(client).audio;
     const url = new URL(audio.url("track", { format: "mp3", position: 42 }));
     expect(Object.fromEntries(url.searchParams)).toMatchObject({
       id: "track",
@@ -589,7 +585,7 @@ describe("Network connection lifecycle", () => {
     async (failure) => {
       const network = new Network();
       const client = network.prepare(auth);
-      network.accept(client);
+      const audio = network.accept(client).audio;
       const controller = new AbortController();
       let resolve!: (response: Response) => void;
       const fetcher = vi.fn(
@@ -600,9 +596,7 @@ describe("Network connection lifecycle", () => {
       );
       vi.stubGlobal("fetch", fetcher);
       try {
-        const pending = network
-          .audio(client)
-          .read("track", { format: "mp3", signal: controller.signal });
+        const pending = audio.read("track", { format: "mp3", signal: controller.signal });
         if (failure === "job") controller.abort();
         if (failure === "connection") network.setMode("offline");
         const response = new Response("unused", { status: failure === "http" ? 500 : 200 });
@@ -632,7 +626,7 @@ describe("Network connection lifecycle", () => {
     try {
       network.setMode("online");
       const client = network.open(auth);
-      const request = network.metadata(client).getModifiedAt();
+      const request = client.metadata.getModifiedAt();
       const rejection = expect(request).rejects.toMatchObject({ name: "AbortError" });
       expect(fetch.mock.calls[0]).toEqual([expect.any(String), { signal: client.signal }]);
       network.setMode("offline");

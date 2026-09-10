@@ -8,8 +8,7 @@ import { Memory } from "./memory.svelte";
 function createConnection(credentials: Parameters<Network["prepare"]>[0]) {
   const network = new Network();
   const client = network.prepare(credentials);
-  network.accept(client);
-  return { ...network.artwork(client), abort: () => network.setMode("offline") };
+  return { ...network.accept(client).artwork, abort: () => network.setMode("offline") };
 }
 
 const account = { host: "https://music.example.com", username: "listener" };

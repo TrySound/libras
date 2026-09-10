@@ -18,7 +18,7 @@ export interface PasswordAuth {
 }
 
 /** Credential-free identity for one connection lifetime, owned by its Network. */
-export interface NetworkConnection {
+interface NetworkIdentity {
   readonly account: Readonly<Account>;
   readonly signal: AbortSignal;
 }
@@ -38,9 +38,19 @@ type RemoteLibrary = {
 };
 
 /** One captured connection for a complete metadata workflow, including login preparation. */
-export interface MetadataConnection extends NetworkConnection {
+export interface MetadataConnection extends NetworkIdentity {
   getModifiedAt(since?: number): Promise<number | null>;
   readLibrary(signal: AbortSignal): Promise<RemoteLibrary>;
+}
+
+export interface NetworkConnection extends NetworkIdentity {
+  readonly metadata: MetadataConnection;
+}
+
+export interface ActiveNetworkConnection extends NetworkConnection {
+  readonly queue: QueueConnection;
+  readonly artwork: ArtworkConnection;
+  readonly audio: AudioConnection;
 }
 
 type RemoteQueue = {
@@ -51,14 +61,14 @@ type RemoteQueue = {
   position: number;
 };
 
-export interface QueueConnection extends NetworkConnection {
+export interface QueueConnection extends NetworkIdentity {
   read(): Promise<RemoteQueue>;
   write(queue: RemoteQueue): Promise<void>;
 }
 
 type AudioFormat = "raw" | "mp3";
 
-export interface AudioConnection extends NetworkConnection {
+export interface AudioConnection extends NetworkIdentity {
   /** Browser playback must release network media explicitly on detachment. Position is seconds. */
   url(id: string, options: { format: AudioFormat; position?: number }): string;
   /** The consumer streams the body to storage and must cancel any unused response. */
@@ -68,7 +78,7 @@ export interface AudioConnection extends NetworkConnection {
 type ArtworkValidators = { etag?: string; lastModified?: string };
 type RemoteArtwork = ArtworkValidators & { blob: Blob; type: string };
 
-export interface ArtworkConnection extends NetworkConnection {
+export interface ArtworkConnection extends NetworkIdentity {
   /** Browser image requests must be released by the consumer on detachment. */
   url(id: string, size: number): string;
   /** Null means the cached image is unchanged. */
@@ -85,13 +95,13 @@ function genres(item: { genre?: string; genres?: { name: string }[] }) {
   );
 }
 
-type ConnectionEntry = { handle: NetworkConnection; client: SubsonicClient };
+type CandidateConnection = { handle: NetworkConnection; client: SubsonicClient };
 
 /** Application server access, connection ownership, and cancellation policy. */
 export class Network {
   #mode = $state<"online" | "offline">("offline");
-  #active?: ConnectionEntry;
-  #candidate?: ConnectionEntry;
+  #active?: SubsonicClient;
+  #candidate?: CandidateConnection;
 
   get mode() {
     return this.#mode;
@@ -100,7 +110,7 @@ export class Network {
   setMode(mode: "online" | "offline") {
     this.#mode = mode;
     if (mode === "online") return;
-    this.#active?.client.abort();
+    this.#active?.abort();
     this.#candidate?.client.abort();
     this.#active = undefined;
     this.#candidate = undefined;
@@ -126,38 +136,115 @@ export class Network {
       fetch: (input, init) => this.#fetch(input, init),
     });
     this.#candidate?.client.abort();
-    const connection = Object.freeze({
-      account: Object.freeze({ host: candidate.host, username: candidate.username }),
+    const account = Object.freeze({ host: candidate.host, username: candidate.username });
+    const metadata = Object.freeze({
+      account,
       signal: candidate.signal,
+      getModifiedAt: (since?: number) =>
+        this.#request(candidate, () => candidate.getIndexes(since), true),
+      readLibrary: (signal: AbortSignal) => this.#readLibrary(candidate, signal),
     });
+    const connection = Object.freeze({ account, signal: candidate.signal, metadata });
     this.#candidate = { handle: connection, client: candidate };
     return connection;
   }
 
   /** Accept only the live candidate; stale login work must never restore access. */
-  accept(connection: NetworkConnection) {
+  accept(connection: NetworkConnection): ActiveNetworkConnection {
     connection.signal.throwIfAborted();
     const candidate = this.#candidate;
     if (!candidate || candidate.handle !== connection) {
       throw new DOMException("Connection superseded.", "AbortError");
     }
-    this.#active?.client.abort();
-    this.#active = candidate;
+    const { client } = candidate;
+    const queue = Object.freeze({
+      account: connection.account,
+      signal: connection.signal,
+      read: () =>
+        this.#request(client, async () => {
+          const value = await client.getPlayQueue();
+          return {
+            trackIds: value.tracks,
+            currentTrackId: value.current,
+            position: value.position,
+          };
+        }),
+      write: (value: RemoteQueue) =>
+        this.#request(client, () =>
+          client.savePlayQueue({
+            tracks: value.trackIds,
+            current: value.currentTrackId,
+            position: value.position,
+          }),
+        ),
+    });
+    const artwork = Object.freeze({
+      account: connection.account,
+      signal: connection.signal,
+      url: (id: string, size: number) => {
+        this.#check(client);
+        return client.getCoverArtUrl(id, size);
+      },
+      read: (id: string, options: ArtworkValidators & { size: number }) =>
+        this.#request(client, async () => {
+          const headers = new Headers();
+          if (options.etag) headers.set("If-None-Match", options.etag);
+          if (options.lastModified) headers.set("If-Modified-Since", options.lastModified);
+          const response = await this.#fetch(client.getCoverArtUrl(id, options.size), {
+            headers,
+            signal: client.signal,
+          });
+          this.#check(client);
+          if (response.status === 304 && (options.etag || options.lastModified)) return null;
+          if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
+          const blob = await response.blob();
+          return {
+            blob,
+            type: response.headers.get("Content-Type")?.split(";")[0] ?? "image/jpeg",
+            etag: response.headers.get("ETag") ?? undefined,
+            lastModified: response.headers.get("Last-Modified") ?? undefined,
+          };
+        }),
+    });
+    const audioUrl = (id: string, options: { format: AudioFormat; position?: number }) => {
+      this.#check(client);
+      return client.getStreamUrl(id, {
+        format: options.format,
+        estimateContentLength: true,
+        timeOffset: options.position,
+      });
+    };
+    const audio = Object.freeze({
+      account: connection.account,
+      signal: connection.signal,
+      url: audioUrl,
+      read: async (id: string, options: { format: AudioFormat; signal: AbortSignal }) => {
+        const signal = AbortSignal.any([client.signal, options.signal]);
+        signal.throwIfAborted();
+        const response = await this.#fetch(audioUrl(id, { format: options.format }), { signal });
+        try {
+          this.#check(client);
+          signal.throwIfAborted();
+          if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
+          return response;
+        } catch (error) {
+          await response.body?.cancel().catch(() => {});
+          throw error;
+        }
+      },
+    });
+    const active = Object.freeze({ ...connection, queue, artwork, audio });
+    this.#active?.abort();
+    this.#active = client;
     this.#candidate = undefined;
     this.#mode = "online";
-  }
-
-  #resolve(connection: NetworkConnection) {
-    connection.signal.throwIfAborted();
-    if (this.#active?.handle === connection) return this.#active.client;
-    if (this.#candidate?.handle === connection) return this.#candidate.client;
-    throw new DOMException("Connection superseded.", "AbortError");
+    return active;
   }
 
   #check(client: SubsonicClient, allowCandidate = false) {
     client.signal.throwIfAborted();
     if (allowCandidate && client === this.#candidate?.client) return;
-    if (client !== this.#active?.client || this.#mode !== "online") {
+    if (client !== this.#active || this.#mode !== "online") {
       throw new DOMException("Connection superseded.", "AbortError");
     }
   }
@@ -177,18 +264,6 @@ export class Network {
     const result = await run();
     this.#check(client, allowCandidate);
     return result;
-  }
-
-  /** Capture metadata operations without exposing SDK requests to the metadata engine. */
-  metadata(connection: NetworkConnection): MetadataConnection {
-    const client = this.#resolve(connection);
-    this.#check(client, true);
-    return {
-      account: connection.account,
-      signal: connection.signal,
-      getModifiedAt: (since) => this.#request(client, () => client.getIndexes(since), true),
-      readLibrary: (signal) => this.#readLibrary(client, signal),
-    };
   }
 
   async #readLibrary(client: SubsonicClient, workflowSignal: AbortSignal): Promise<RemoteLibrary> {
@@ -273,103 +348,10 @@ export class Network {
     }
   }
 
-  /** Queue access is available only after accepting a connection, never during login staging. */
-  queue(connection: NetworkConnection): QueueConnection {
-    const client = this.#resolve(connection);
-    this.#check(client);
-    return {
-      account: connection.account,
-      signal: connection.signal,
-      read: () =>
-        this.#request(client, async () => {
-          const queue = await client.getPlayQueue();
-          return {
-            trackIds: queue.tracks,
-            currentTrackId: queue.current,
-            position: queue.position,
-          };
-        }),
-      write: (queue) =>
-        this.#request(client, () =>
-          client.savePlayQueue({
-            tracks: queue.trackIds,
-            current: queue.currentTrackId,
-            position: queue.position,
-          }),
-        ),
-    };
-  }
-
-  artwork(connection: NetworkConnection): ArtworkConnection {
-    const client = this.#resolve(connection);
-    this.#check(client);
-    return {
-      account: connection.account,
-      signal: connection.signal,
-      url: (id, size) => {
-        this.#check(client);
-        return client.getCoverArtUrl(id, size);
-      },
-      read: (id, options) =>
-        this.#request(client, async () => {
-          const headers = new Headers();
-          if (options.etag) headers.set("If-None-Match", options.etag);
-          if (options.lastModified) headers.set("If-Modified-Since", options.lastModified);
-          const response = await this.#fetch(client.getCoverArtUrl(id, options.size), {
-            headers,
-            signal: client.signal,
-          });
-          this.#check(client);
-          if (response.status === 304 && (options.etag || options.lastModified)) return null;
-          if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-          const blob = await response.blob();
-          return {
-            blob,
-            type: response.headers.get("Content-Type")?.split(";")[0] ?? "image/jpeg",
-            etag: response.headers.get("ETag") ?? undefined,
-            lastModified: response.headers.get("Last-Modified") ?? undefined,
-          };
-        }),
-    };
-  }
-
-  audio(connection: NetworkConnection): AudioConnection {
-    const client = this.#resolve(connection);
-    this.#check(client);
-    const url = (id: string, options: { format: AudioFormat; position?: number }) => {
-      this.#check(client);
-      return client.getStreamUrl(id, {
-        format: options.format,
-        estimateContentLength: true,
-        timeOffset: options.position,
-      });
-    };
-    return {
-      account: connection.account,
-      signal: connection.signal,
-      url,
-      read: async (id, options) => {
-        const signal = AbortSignal.any([client.signal, options.signal]);
-        signal.throwIfAborted();
-        const response = await this.#fetch(url(id, { format: options.format }), { signal });
-        try {
-          this.#check(client);
-          signal.throwIfAborted();
-          if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-          return response;
-        } catch (error) {
-          await response.body?.cancel().catch(() => {});
-          throw error;
-        }
-      },
-    };
-  }
-
   /** Resume an authenticated session after access has explicitly been enabled. */
   open(auth: Auth) {
     if (this.#mode === "offline") throw new Error("Network access is offline.");
     const connection = this.prepare(auth);
-    this.accept(connection);
-    return connection;
+    return this.accept(connection);
   }
 }

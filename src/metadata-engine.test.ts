@@ -78,7 +78,7 @@ function createConnection(credentials = auth) {
   const network = new Network();
   const client = network.prepare(credentials);
   network.accept(client);
-  return { ...network.metadata(client), abort: () => network.setMode("offline") };
+  return { ...client.metadata, abort: () => network.setMode("offline") };
 }
 function response(data: Record<string, unknown>) {
   return new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...data } }));
@@ -168,7 +168,7 @@ describe("metadata engine", () => {
     const network = new Network();
     const client = network.prepare({ ...auth, username: "other" });
     vi.stubGlobal("fetch", serveLibrary());
-    const prepared = await engine.prepareConnection(network.metadata(client));
+    const prepared = await engine.prepareConnection(client.metadata);
     expect(network.mode).toBe("offline");
     expect(memory.tracks).toBe(previous);
     expect(memory.account).toEqual(account);
@@ -180,7 +180,7 @@ describe("metadata engine", () => {
     network.accept(client);
     memory.account = saved.account;
     engine.acceptConnection(saved, nextStorage);
-    engine.setConnection(network.metadata(client));
+    engine.setConnection(client.metadata);
     expect(network.mode).toBe("online");
     expect(memory.account).toEqual({ host: auth.host, username: "other" });
     expect(memory.tracks).not.toBe(previous);

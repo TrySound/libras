@@ -9,8 +9,7 @@ const auth = { ...account, token: "token", salt: "salt" };
 function createConnection(credentials = auth) {
   const network = new Network();
   const connection = network.prepare(credentials);
-  network.accept(connection);
-  return { ...network.queue(connection), abort: () => network.setMode("offline") };
+  return { ...network.accept(connection).queue, abort: () => network.setMode("offline") };
 }
 const record = () => ({
   account,
@@ -428,12 +427,11 @@ describe("queue engine", () => {
   it("keeps a cancelled upload pending and retries through a fresh Network connection", async () => {
     await storage.seed({ ...record(), pendingSync: true });
     const network = new Network();
-    const client = network.prepare(auth);
-    network.accept(client);
+    const client = network.accept(network.prepare(auth));
     const memory = new Memory();
     const queue = engine(memory);
     await queue.restore(new Storage(account));
-    queue.setConnection(network.queue(client));
+    queue.setConnection(client.queue);
     let respond!: (value: Response) => void;
     vi.stubGlobal(
       "fetch",
@@ -457,7 +455,7 @@ describe("queue engine", () => {
     const fetcher = vi.fn(async () => response());
     vi.stubGlobal("fetch", fetcher);
     network.setMode("online");
-    queue.setConnection(network.queue(network.open(auth)));
+    queue.setConnection(network.open(auth).queue);
     await queue.synchronize();
     expect(fetcher).toHaveBeenCalledOnce();
     expect(fetcher.mock.calls[0]).toEqual([

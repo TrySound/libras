@@ -821,13 +821,12 @@ describe("track engine", () => {
     const fetcher = vi.fn(async () => new Response(body));
     vi.stubGlobal("fetch", fetcher);
     const network = new Network();
-    const client = network.prepare(auth);
-    network.accept(client);
+    const client = network.accept(network.prepare(auth));
     const memory = new Memory();
     const engine = new TrackEngine({
       storage: new Storage(account),
       memory,
-      connection: network.audio(client),
+      connection: client.audio,
       concurrency: 1,
     });
     const result = Promise.allSettled([
@@ -847,7 +846,7 @@ describe("track engine", () => {
     expect(engine.downloadJobs).toEqual([]);
     expect(engine.error).toBeUndefined();
     network.setMode("online");
-    engine.setConnection(network.audio(network.open(auth)));
+    engine.setConnection(network.open(auth).audio);
     fetcher.mockImplementation(async () => new Response("complete"));
     expect(await (await engine.cache({ id: "active" })).text()).toBe("complete");
     expect(memory.downloads.size).toBe(1);
@@ -1092,6 +1091,5 @@ describe("track engine", () => {
 function createConnection(auth: Parameters<Network["prepare"]>[0]) {
   const network = new Network();
   const client = network.prepare(auth);
-  network.accept(client);
-  return network.audio(client);
+  return network.accept(client).audio;
 }

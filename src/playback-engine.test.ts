@@ -263,9 +263,9 @@ describe("playback engine", () => {
       token: "token",
       salt: "salt",
     });
-    network.accept(client);
+    const active = network.accept(client);
     await queue.restore(new Storage(client.account));
-    queue.setConnection(network.queue(client));
+    queue.setConnection(active.queue);
     await queue.synchronize();
     await queue.flush();
     expect(memory.queueTracks).toEqual(["a", "fresh"]);
