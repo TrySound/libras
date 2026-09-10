@@ -87,8 +87,8 @@ function installStorage() {
 }
 let storage: ReturnType<typeof installStorage>;
 const engines: QueueEngine[] = [];
-function engine(memory: Memory, storage: Pick<Storage, "queue"> = new Storage()) {
-  const queue = new QueueEngine(memory, storage);
+function engine(memory: Memory) {
+  const queue = new QueueEngine(memory);
   engines.push(queue);
   return queue;
 }
@@ -103,7 +103,7 @@ afterEach(async () => {
 });
 
 async function connectQueue(queue: QueueEngine, client: ReturnType<typeof createConnection>) {
-  await queue.restore(client.account);
+  await queue.restore(new Storage(client.account));
   queue.setConnection(client);
   await queue.synchronize();
 }
@@ -119,11 +119,11 @@ describe("queue engine", () => {
         value: { ...saved, updatedAt: Date.now() + 1000 },
       })),
     };
-    const disk = { queue: vi.fn(() => store) };
+    const disk = { account, queue: vi.fn(() => store) };
     const memory = new Memory();
-    const queue = engine(memory, disk);
-    await queue.restore(account);
-    expect(disk.queue).toHaveBeenCalledWith(account);
+    const queue = engine(memory);
+    await queue.restore(disk);
+    expect(disk.queue).toHaveBeenCalledWith();
     expect(store.read).toHaveBeenCalledOnce();
     expect(memory.queueIndex).toBe(2);
     queue.update({ tracks: ["edited"], index: 0, position: 2 });
@@ -146,7 +146,7 @@ describe("queue engine", () => {
     await storage.seed();
     const memory = new Memory();
     const queue = engine(memory);
-    await queue.restore(account);
+    await queue.restore(new Storage(account));
     const client = createConnection(auth);
     let resolve!: (value: { trackIds: string[]; currentTrackId: string; position: number }) => void;
     vi.spyOn(client, "read").mockImplementation(
@@ -181,7 +181,7 @@ describe("queue engine", () => {
     queue.setConnection(client);
     expect(getDirectory).not.toHaveBeenCalled();
     expect(load).not.toHaveBeenCalled();
-    await queue.restore(account);
+    await queue.restore(new Storage(account));
     expect(load).not.toHaveBeenCalled();
     await queue.synchronize();
     expect(load).toHaveBeenCalledOnce();
@@ -283,7 +283,7 @@ describe("queue engine", () => {
     const memory = new Memory();
 
     const queue = engine(memory);
-    await queue.restore(account);
+    await queue.restore(new Storage(account));
     expect(memory.queueTracks).toEqual(["a", "b", "a"]);
     expect(memory.queueIndex).toBe(2);
     expect(memory.queuePosition).toBe(12.5);
@@ -294,7 +294,7 @@ describe("queue engine", () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     await queue.setConnection(undefined);
-    await queue.restore(account);
+    await queue.restore(new Storage(account));
     queue.update({ tracks: ["a", "b", "a"], index: 2, position: 30 });
     queue.setPosition(35);
     await queue.flush();
@@ -309,7 +309,7 @@ describe("queue engine", () => {
     expect(JSON.stringify(saved)).not.toMatch(/token|salt|title|playing|https:.*rest/);
     const restoredMemory = new Memory();
     const restored = engine(restoredMemory);
-    await restored.restore(account);
+    await restored.restore(new Storage(account));
     expect(restoredMemory.queueTracks).toEqual(["a", "b", "a"]);
     expect(restoredMemory.queueIndex).toBe(2);
     expect(restoredMemory.queuePosition).toBe(35);
@@ -340,7 +340,7 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.restore(account);
+    await queue.restore(new Storage(account));
     const connected = connectQueue(queue, createConnection(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
     expect(queueMemory.queueIndex).toBe(2);
@@ -419,7 +419,7 @@ describe("queue engine", () => {
     await storage.seed();
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    const restored = queue.restore(account);
+    const restored = queue.restore(new Storage(account));
     queue.update({ tracks: ["local"], index: 0, position: 3 });
     await restored;
     expect(queueMemory.queueTracks[queueMemory.queueIndex]).toBe("local");
@@ -433,7 +433,7 @@ describe("queue engine", () => {
     network.accept(client);
     const memory = new Memory();
     const queue = engine(memory);
-    await queue.restore(account);
+    await queue.restore(new Storage(account));
     queue.setConnection(network.queue(client));
     let respond!: (value: Response) => void;
     vi.stubGlobal(
@@ -522,7 +522,7 @@ describe("queue engine", () => {
     await storage.seed();
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.restore(account);
+    await queue.restore(new Storage(account));
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     for (let i = 1; i <= 21; i++) {
@@ -539,7 +539,7 @@ describe("queue engine", () => {
     await storage.seed();
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.restore(account);
+    await queue.restore(new Storage(account));
     storage.failWrites = true;
     queue.update({ tracks: ["new"], index: 0, position: 2 });
     await queue.flush();
@@ -557,7 +557,7 @@ describe("queue engine", () => {
     await storage.seed(invalid);
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.restore(account);
+    await queue.restore(new Storage(account));
     expect(queue.storageError).toBeInstanceOf(Error);
     expect(queueMemory.queueTracks).toEqual([]);
     expect(queueMemory.queueIndex).toBe(-1);
@@ -580,7 +580,7 @@ describe("queue engine", () => {
     const queue = engine(queueMemory);
     const connected = connectQueue(queue, createConnection(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
-    await queue.restore(other);
+    await queue.restore(new Storage(other));
     resolve(response({ playQueue: { current: "remote", entry: [{ id: "remote" }] } }));
     await connected;
     expect(queueMemory.queueTracks[queueMemory.queueIndex]).toBe("other");
@@ -591,7 +591,7 @@ describe("queue engine", () => {
     await storage.seed();
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    const restored = queue.restore(account);
+    const restored = queue.restore(new Storage(account));
     const offline = queue.setConnection(undefined);
     await Promise.all([restored, offline]);
     expect(queueMemory.queueIndex).toBe(2);
@@ -604,7 +604,7 @@ describe("queue engine", () => {
   it("notifies explicit listeners for queue changes but not persistence bookkeeping", async () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.restore(account);
+    await queue.restore(new Storage(account));
     const listener = vi.fn();
     const unsubscribe = queue.subscribe(listener);
     queue.update({ tracks: ["a"], index: 0, position: 1 });

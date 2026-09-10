@@ -31,7 +31,7 @@
   const memory = new Memory();
   const storage = new Storage();
   const metadataEngine = new MetadataEngine(memory);
-  const queueEngine = new QueueEngine(memory, storage);
+  const queueEngine = new QueueEngine(memory);
   let navigate = $state<RouterNavigate>(() => {});
   let artists = $derived([...memory.artists.values()]);
   let queue = $derived(

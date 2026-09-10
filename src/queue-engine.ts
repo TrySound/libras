@@ -19,14 +19,13 @@ export class QueueEngine {
   #account?: Account;
   #memory: QueueMemory;
 
-  constructor(memory: QueueMemory, storage: Pick<Storage, "queue">) {
+  constructor(memory: QueueMemory) {
     this.#memory = memory;
-    this.#storage = storage;
   }
   #dirty = false;
   #needsPersist = false;
   #conflict = false;
-  #storage: Pick<Storage, "queue">;
+  #storage?: Pick<Storage, "account" | "queue">;
   #connecting?: { epoch: number; promise: Promise<void> };
   #updatedAt = 0;
   #revision = 0;
@@ -110,7 +109,7 @@ export class QueueEngine {
     };
     // Also retain an engine-wide tail so teardown waits for writes to previous accounts.
     const result = this.#localWrites
-      .then(() => this.#storage.queue(account).save(record))
+      .then(() => this.#storage!.queue().save(record))
       .then(({ written }) => {
         if (this.#account !== account) return;
         if (!written) {
@@ -137,13 +136,16 @@ export class QueueEngine {
     return result;
   }
 
-  restore(identity: Account): Promise<void> {
+  restore(storage: Pick<Storage, "account" | "queue">): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
+    const identity = storage.account;
+    if (!identity) throw new Error("Queue storage requires an account.");
     if (this.#account && scope(this.#account) === scope(identity)) return this.#ready;
     void this.#persist();
     this.#clearTimers();
     const account = { host: identity.host, username: identity.username };
     this.#account = account;
+    this.#storage = storage;
     this.#epoch++;
     const generation = ++this.#accountGeneration;
     const revision = ++this.#revision;
@@ -160,7 +162,7 @@ export class QueueEngine {
     this.#publish({ tracks: [], position: 0 });
     return (this.#ready = (async () => {
       try {
-        const record = await this.#storage.queue(account).read();
+        const record = await storage.queue().read();
         if (generation !== this.#accountGeneration || this.#destroyed) return;
         if (record && revision === this.#revision) {
           this.#dirty = record.pendingSync;

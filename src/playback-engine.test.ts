@@ -72,7 +72,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       ...patch,
     });
   };
-  const queue = new QueueEngine(memory, new Storage());
+  const queue = new QueueEngine(memory);
   const audio = new AudioStub();
   const tracks = {
     getSource: vi.fn(
@@ -264,7 +264,7 @@ describe("playback engine", () => {
       salt: "salt",
     });
     network.accept(client);
-    await queue.restore(client.account);
+    await queue.restore(new Storage(client.account));
     queue.setConnection(network.queue(client));
     await queue.synchronize();
     await queue.flush();

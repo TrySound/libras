@@ -89,7 +89,8 @@ export function createSession(saved = false, storage = createStorage()) {
     setConnection: vi.fn(),
   };
   const queue = {
-    restore: vi.fn(async (account: Account) => {
+    restore: vi.fn(async (storage: Pick<Storage, "account">) => {
+      const account = storage.account!;
       memory.queueTracks = [account.username];
       memory.queueIndex = 0;
       memory.queuePosition = 17;
