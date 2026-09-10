@@ -1,5 +1,4 @@
 import type { Storage, ArtworkCatalog } from "./storage";
-import { createSubscriber } from "svelte/reactivity";
 import type { ArtworkConnection } from "./network.svelte";
 import type { ImageRecord, Account } from "./schema";
 import type { Memory, MemoryView } from "./memory.svelte";
@@ -131,15 +130,9 @@ export class CoverEngine {
   #downloads = new Map<string, Promise<void>>();
   #loads = new Map<string, Promise<string | undefined>>();
   #objectUrls = new Map<string, string>();
-  #error: unknown;
+  #error = $state.raw<unknown>();
+  #version = $state(0);
   #listeners = new Set<() => void>();
-  #update = () => {};
-  #subscribe = createSubscriber((update) => {
-    this.#update = update;
-    return () => {
-      this.#update = () => {};
-    };
-  });
 
   subscribe(listener: () => void) {
     this.#listeners.add(listener);
@@ -148,11 +141,11 @@ export class CoverEngine {
     };
   }
   #notify() {
-    this.#update();
+    this.#version++;
     for (const listener of this.#listeners) listener();
   }
   get error() {
-    this.#subscribe();
+    this.#version;
     return this.#error;
   }
   restore(storage: Pick<Storage, "account" | "artwork">): Promise<void> {
@@ -437,7 +430,7 @@ export class CoverEngine {
 
   // Explicit resource acquisition. Reading the returned handle does not schedule I/O.
   #ensureCover(entity: Entity, id: string, options: CoverOptions): Cover {
-    this.#subscribe();
+    this.#version;
     const key = JSON.stringify([entity, id, options.allowNetwork]);
     const existing = this.#covers.get(key);
     if (existing) return existing.cover;
@@ -451,17 +444,17 @@ export class CoverEngine {
       network: false,
       cover: {
         get source() {
-          engine.#subscribe();
+          engine.#version;
           return entry.source;
         },
         get artworkId() {
-          engine.#subscribe();
+          engine.#version;
           return (
             entry.candidates.find((id) => engine.#memory.images.has(id)) ?? entry.candidates[0]
           );
         },
         get cached() {
-          engine.#subscribe();
+          engine.#version;
           return entry.candidates.some((id) => engine.#memory.images.has(id));
         },
         cache() {

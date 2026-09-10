@@ -1,5 +1,5 @@
 import type { Auth, AuthStore } from "./auth";
-import type { CoverEngine } from "./cover-engine";
+import type { CoverEngine } from "./cover.svelte";
 import type { Memory, MemoryView } from "./memory.svelte";
 import type { MetadataEngine } from "./metadata.svelte";
 import {

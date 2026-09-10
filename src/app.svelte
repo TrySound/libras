@@ -4,7 +4,7 @@
   import { PlaybackEngine } from "./playback.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
-  import { CoverEngine } from "./cover-engine";
+  import { CoverEngine } from "./cover.svelte";
   import { MetadataEngine } from "./metadata.svelte";
   import type {
     Album as AlbumRecord,

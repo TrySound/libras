@@ -1,4 +1,4 @@
-import type { CoverEngine } from "./cover-engine";
+import type { CoverEngine } from "./cover.svelte";
 import { PlayerMediaSession } from "./media-session";
 import type { QueueEngine } from "./queue.svelte";
 import type { MemoryView } from "./memory.svelte";
