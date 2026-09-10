@@ -43,7 +43,6 @@ export const downloadTrackSchema = v.object({
   artist: v.string(),
   album: v.string(),
   contentType: v.optional(v.string()),
-  coverArt: v.optional(v.string()),
 });
 
 export const downloadSchema = v.object({

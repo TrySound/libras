@@ -181,10 +181,13 @@ export class Session {
   async #restore(account: Account) {
     const { metadata, covers, queue, tracks } = this.#options;
     this.localReady = false;
-    this.#selectAccount(account);
+    account = this.#selectAccount(account);
     const storage = this.#storageFor(account);
     await Promise.all([
-      metadata.restore(storage),
+      metadata.restore(storage).catch((error) => {
+        if (!this.#destroyed && this.#options.memory.account === account)
+          this.error = `Could not restore library: ${error instanceof Error ? error.message : String(error)}`;
+      }),
       covers.restore(storage),
       tracks.restore(storage),
     ]);
@@ -286,6 +289,7 @@ export class Session {
       try {
         await metadata.refresh(force);
         if (!this.#valid(generation)) return;
+        this.error = "";
         await covers.refresh();
       } catch (error) {
         if (this.#valid(generation)) this.#refreshError = error;

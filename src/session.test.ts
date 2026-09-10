@@ -25,6 +25,32 @@ afterEach(() => {
 const input = { host: credentials.host, username: credentials.username, password: "password" };
 
 describe("session", () => {
+  it("reports failed metadata restoration without preventing offline queue restoration", async () => {
+    const { session, metadata, queue, storage } = setup(true);
+    storage.setItem("navidrome-offline-mode", "true");
+    metadata.restore.mockRejectedValueOnce(new Error("Corrupt library"));
+    session.start();
+    await vi.waitFor(() => expect(session.localReady).toBe(true));
+    expect(session.error).toContain("Could not restore library: Corrupt library");
+    expect(queue.restore).toHaveBeenCalledOnce();
+    expect(metadata.refresh).not.toHaveBeenCalled();
+  });
+
+  it("can recover online after a failed metadata restoration", async () => {
+    const { session, metadata, queue } = setup(true);
+    metadata.restore.mockRejectedValueOnce(new Error("Corrupt library"));
+    const refreshed = deferred();
+    metadata.refresh.mockReturnValueOnce(refreshed.promise);
+    session.start();
+    await vi.waitFor(() => expect(session.syncing).toBe(true));
+    expect(session.error).toContain("Corrupt library");
+    expect(queue.restore).toHaveBeenCalledOnce();
+    refreshed.resolve();
+    await vi.waitFor(() => expect(session.syncing).toBe(false));
+    expect(session.error).toBe("");
+    expect(session.status).toBe("connected");
+  });
+
   it("still refreshes the queue when metadata refresh fails", async () => {
     const { session, metadata, queue, covers } = await connected();
     queue.refresh.mockClear();

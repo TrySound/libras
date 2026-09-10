@@ -308,9 +308,9 @@ describe("cover engine", () => {
     const artist = covers.ensureArtistCover("artist", offline);
     const album = covers.ensureAlbumCover("album", offline);
     const track = covers.ensureTrackCover("one", offline);
-    expect(artist.cached).toBe(true);
-    expect(album.cached).toBe(true);
-    expect(track.artworkId).toBe("album-cover");
+    await vi.waitFor(() => expect(artist.source).toMatch(/^blob:/));
+    await vi.waitFor(() => expect(album.source).toBe(artist.source));
+    await vi.waitFor(() => expect(track.source).toBe(album.source));
     expect(covers.ensureTrackCover("one", offline)).toBe(track);
     await vi.waitFor(() => expect(track.source).toBe("blob:cover-1"));
     expect(artist.source).toBe(track.source);
@@ -422,8 +422,7 @@ describe("cover engine", () => {
     const covers = engine();
     await covers.restore(new Storage(account));
     const cover = covers.ensureAlbumCover("album", offline);
-    await vi.waitFor(() => expect(cover.cached).toBe(false));
-    expect(cover.artworkId).toBe("album-cover");
+    expect(cover.source).toBeUndefined();
     await vi.waitFor(async () => expect((await storage.json()).images).toEqual([]));
     storage.reads.mockClear();
     expect(covers.ensureTrackCover("one", offline).source).toBeUndefined();
@@ -444,7 +443,6 @@ describe("cover engine", () => {
     metadata.publish({ ...snapshot(), savedAt: 200, albums: [], tracks: [] });
     await covers.refresh();
     expect(old.source).toBeUndefined();
-    expect(old.cached).toBe(false);
     expect(metadata.memory.trackArtwork.size).toBe(0);
     expect(previousReferences.has("one")).toBe(true);
     expect(metadata.memory.images).not.toBe(previousImages);
@@ -476,7 +474,7 @@ describe("cover engine", () => {
     track.cache();
     await vi.waitFor(() => expect(cached.source).toBe("blob:cover-1"));
     expect(artist.source).toBe(cached.source);
-    expect(cached.cached).toBe(true);
+    expect(cached.source).toMatch(/^blob:/);
     expect(fetcher).toHaveBeenCalledOnce();
     expect(notify).toHaveBeenCalled();
     unsubscribe();
@@ -494,7 +492,8 @@ describe("cover engine", () => {
     expect(JSON.stringify(saved)).not.toContain("getCoverArt");
     const restored = engine();
     await restored.restore(new Storage(account));
-    expect(restored.ensureTrackCover("two", offline).cached).toBe(true);
+    const restoredCover = restored.ensureTrackCover("two", offline);
+    await vi.waitFor(() => expect(restoredCover.source).toMatch(/^blob:/));
   });
 
   it.each([200, 304])(
@@ -577,7 +576,7 @@ describe("cover engine", () => {
     storage.files.set("old.json", new File(['{"type":"image/jpeg"}'], "old.json"));
     const covers = engine();
     await covers.refresh();
-    expect(covers.ensureAlbumCover("album", offline).cached).toBe(false);
+    expect(covers.ensureAlbumCover("album", offline).source).toBeUndefined();
     expect(storage.files.has("old.image")).toBe(true);
     expect(storage.files.has("old.json")).toBe(true);
     expect((await storage.json()).images).toEqual([]);
@@ -642,8 +641,8 @@ describe("cover engine", () => {
     one.cache();
     two.cache();
     await vi.waitFor(() => {
-      expect(one.cached).toBe(true);
-      expect(two.cached).toBe(true);
+      expect(one.source).toMatch(/^blob:/);
+      expect(two.source).toMatch(/^blob:/);
     });
     expect((await storage.json()).images.map((image: { id: string }) => image.id).sort()).toEqual([
       "album-cover",

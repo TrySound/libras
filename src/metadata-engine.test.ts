@@ -195,7 +195,7 @@ describe("metadata engine", () => {
     await engine.refresh();
     expect(read).toHaveBeenCalledOnce();
     expect(disk.writes).toBe(1);
-    expect(engine.status).toBe("ready");
+
     engine.destroy();
   });
 
@@ -212,7 +212,7 @@ describe("metadata engine", () => {
     engine.setConnection(connection);
     await expect(engine.refresh()).rejects.toBe(error);
     expect(memory.tracks).toBe(previous);
-    expect(engine.status).toBe("ready");
+
     expect(disk.writes).toBe(0);
     engine.destroy();
   });
@@ -331,7 +331,7 @@ describe("metadata engine", () => {
       expect(memory.tracks).toBe(previous);
       expect(memory.account).toEqual(account);
       expect(storage.writes).toBe(0);
-      expect(engine.status).toBe("ready");
+
       engine.destroy();
     },
   );
@@ -350,10 +350,10 @@ describe("metadata engine", () => {
     await engine.restore(new Storage(account));
     expect(fetcher).not.toHaveBeenCalled();
     await engine.refresh(false);
-    expect(engine.status).toBe("ready");
+
     expect(memory.tracks.get("song")).toBeDefined();
     await engine.refresh();
-    expect(engine.status).toBe("ready");
+
     fetcher.mockClear();
     engine.setConnection(undefined);
     engine.setConnection(createConnection(auth));
@@ -401,7 +401,7 @@ describe("metadata engine", () => {
     expect(fetcher).toHaveBeenCalledTimes(3);
     expect(memory.tracks).toBe(previous);
     expect(storage.writes).toBe(0);
-    expect(engine.status).toBe("ready");
+
     vi.stubGlobal("fetch", serveLibrary());
     engine.setConnection(connection);
     await engine.refresh();
@@ -453,7 +453,7 @@ describe("metadata engine", () => {
     expect(trackRequests).toBe(501);
     expect(peak).toBe(6);
     expect(memory.albums.size).toBe(501);
-    expect(engine.status).toBe("ready");
+
     engine.destroy();
   });
 
@@ -485,8 +485,7 @@ describe("metadata engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    loadLibrary(engine, createConnection(auth));
-    await vi.waitFor(() => expect(engine.status).toBe("ready"));
+    await loadLibrary(engine, createConnection(auth));
     expect(engineMemory.albums.get("album")).toEqual({
       id: "album",
       title: "Album",
@@ -578,14 +577,12 @@ describe("metadata engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    loadLibrary(engine, createConnection(auth));
-    await vi.waitFor(() => expect(engine.status).toBe("ready"));
+    await loadLibrary(engine, createConnection(auth));
     const ids = [...engineMemory.artists.values()].map((artist) => artist.id);
     expect(ids).toHaveLength(2);
     expect(ids).toContain(engineMemory.albums.get("album")?.artistId);
     expect(ids).toContain(engineMemory.tracks.get("song")?.artistId);
-    engine.refresh();
-    await vi.waitFor(() => expect(engine.status).toBe("ready"));
+    await engine.refresh();
     expect([...engineMemory.artists.values()].map((artist) => artist.id)).toEqual(ids);
     engine.destroy();
   });
@@ -601,8 +598,7 @@ describe("metadata engine", () => {
       });
       const engineMemory = new Memory();
       const engine = new MetadataEngine(engineMemory);
-      await engine.restore(new Storage(account));
-      expect(engine.status).toBe("error");
+      await expect(engine.restore(new Storage(account))).rejects.toBeInstanceOf(Error);
       expect([...engineMemory.artists.values()]).toEqual([]);
       engine.destroy();
     },
@@ -615,9 +611,7 @@ describe("metadata engine", () => {
     await storage.seed(account, data);
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    await engine.restore(new Storage(account));
-    expect(engine.status).toBe("error");
-    expect(engine.error).toBeInstanceOf(Error);
+    await expect(engine.restore(new Storage(account))).rejects.toBeInstanceOf(Error);
     engine.destroy();
   });
 
@@ -653,12 +647,10 @@ describe("metadata engine", () => {
     await Promise.all([first.restore(new Storage(account)), second.restore(new Storage(account))]);
     expect(request).toHaveBeenCalledTimes(2);
     request.mockClear();
-    loadLibrary(first, createConnection(auth));
-    loadLibrary(second, createConnection(auth));
-    await vi.waitFor(() => {
-      expect(first.status).toBe("ready");
-      expect(second.status).toBe("ready");
-    });
+    await Promise.all([
+      loadLibrary(first, createConnection(auth)),
+      loadLibrary(second, createConnection(auth)),
+    ]);
     expect(request).toHaveBeenCalledTimes(2);
     expect(request.mock.calls[0][0]).toBe(request.mock.calls[1][0]);
     expect(storage.files.size).toBe(1);
@@ -672,10 +664,9 @@ describe("metadata engine", () => {
     vi.stubGlobal("fetch", serveLibrary());
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    await engine.restore(new Storage(account));
-    expect(engine.status).toBe("error");
+    await expect(engine.restore(new Storage(account))).rejects.toBeInstanceOf(Error);
     await loadLibrary(engine, createConnection(auth));
-    expect(engine.status).toBe("ready");
+
     expect(engineMemory.tracks.get("song")?.title).toBe("Song");
     expect(storage.writes).toBe(1);
     expect(JSON.parse(await storage.files.get(await snapshotPath(account))!.text())).toMatchObject({
@@ -703,8 +694,7 @@ describe("metadata engine", () => {
     );
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    loadLibrary(engine, createConnection(auth));
-    await vi.waitFor(() => expect(engine.status).toBe("ready"));
+    await loadLibrary(engine, createConnection(auth));
     expect(engineMemory.tracks.get("song")?.title).toBe("Newer");
     expect(storage.writes).toBe(0);
     engine.destroy();
@@ -741,7 +731,7 @@ describe("metadata engine", () => {
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(new Storage(account));
-    expect(engine.status).toBe("ready");
+
     expect([...engineMemory.artists.values()]).toEqual(snapshot().artists);
     expect(engineMemory.albums.get("album")).toEqual(snapshot().albums[0]);
     expect(engineMemory.tracks.get("song")).toEqual(snapshot().tracks[0]);
@@ -767,12 +757,12 @@ describe("metadata engine", () => {
     await engine.restore(new Storage(account));
     storage.getDirectory.mockClear();
     engine.setConnection(createConnection(auth));
-    void engine.refresh(false);
-    expect(engine.status).toBe("refreshing");
+    const refreshing = engine.refresh(false);
+
     expect(engineMemory.tracks.get("song")?.title).toBe("Song");
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
     resolve(response({ indexes: { lastModified: 10 } }));
-    await vi.waitFor(() => expect(engine.status).toBe("ready"));
+    await refreshing;
     expect(storage.getDirectory).not.toHaveBeenCalled();
     expect(fetcher).toHaveBeenCalledOnce();
     engine.destroy();
@@ -783,8 +773,7 @@ describe("metadata engine", () => {
     vi.stubGlobal("fetch", serveLibrary());
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
-    loadLibrary(engine, createConnection(auth));
-    await vi.waitFor(() => expect(engine.status).toBe("ready"));
+    await loadLibrary(engine, createConnection(auth));
     expect(engineMemory.tracks.get("song")).toMatchObject({
       albumId: "album",
       artistId: "artist",
@@ -825,7 +814,7 @@ describe("metadata engine", () => {
       (map, i) => expect(map).toBe(accepted[i]),
     );
     expect(memory.tracks.get("song")).toEqual(snapshot().tracks[0]);
-    expect(engine.status).toBe("ready");
+
     engine.destroy();
     const restoredMemory = new Memory();
     const restored = new MetadataEngine(restoredMemory);
@@ -843,11 +832,11 @@ describe("metadata engine", () => {
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(new Storage(account));
     await loadLibrary(engine, createConnection(auth));
-    expect(engine.status).toBe("ready");
+
     storage.getDirectory.mockClear();
     fetcher.mockClear();
     engine.setConnection(undefined);
-    expect(engine.status).toBe("ready");
+
     expect(engineMemory.tracks.get("song")).toBeDefined();
     expect(storage.getDirectory).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
@@ -872,12 +861,12 @@ describe("metadata engine", () => {
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(new Storage(account));
     await loadLibrary(engine, createConnection(auth));
-    expect(engine.status).toBe("ready");
+
     expect(storage.writes).toBe(0);
-    engine.refresh();
+    const refreshing = engine.refresh();
     expect(engineMemory.tracks.get("song")).toBeDefined();
-    await vi.waitFor(() => expect(storage.writes).toBe(1));
-    await vi.waitFor(() => expect(engine.status).toBe("ready"));
+    await refreshing;
+    expect(storage.writes).toBe(1);
     expect(engineMemory.tracks.get("song")).toBeUndefined();
     expect((engineMemory.albumTracks.get("album") ?? []).map((track) => track.id)).toEqual([
       "new-song",
@@ -905,7 +894,7 @@ describe("metadata engine", () => {
     resolve(response({ indexes: { lastModified: 20 } }));
     await Promise.resolve();
     await Promise.resolve();
-    expect(engine.status).toBe("ready");
+
     expect(engineMemory.tracks.get("song")).toBeDefined();
     expect(fetcher).toHaveBeenCalledOnce();
     expect(storage.writes).toBe(0);
@@ -920,15 +909,14 @@ describe("metadata engine", () => {
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(new Storage(account));
     await engine.refresh(false);
-    expect(engine.status).toBe("idle");
+
     expect([...engineMemory.artists.values()]).toEqual([]);
     expect(indexedDB.open).not.toHaveBeenCalled();
     engine.destroy();
     await storage.seed(account, { data: [] });
     const invalidMemory = new Memory();
     const invalid = new MetadataEngine(invalidMemory);
-    await invalid.restore(new Storage(account));
-    expect(invalid.status).toBe("error");
+    await expect(invalid.restore(new Storage(account))).rejects.toBeInstanceOf(Error);
     expect([...invalidMemory.artists.values()]).toEqual([]);
     invalid.destroy();
   });

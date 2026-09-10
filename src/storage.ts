@@ -40,10 +40,10 @@ const queueRecordSchema = v.pipe(
     ...queueSnapshotSchema.entries,
     updatedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
     pendingSync: v.optional(v.boolean()),
-    server: v.optional(queueSnapshotSchema),
+    server: v.optional(v.unknown()),
   }),
-  // Legacy upload markers are accepted on read, but never enter current records.
-  v.transform(({ pendingSync: _legacyPendingSync, ...record }) => record),
+  // Obsolete upload markers and server replicas never enter current records.
+  v.transform(({ pendingSync: _legacyPendingSync, server: _legacyServer, ...record }) => record),
 );
 export type QueueRecord = v.InferOutput<typeof queueRecordSchema>;
 
@@ -51,13 +51,8 @@ function parseQueueRecord(value: unknown, account: Account) {
   const record = v.parse(queueRecordSchema, value);
   if (record.account.host !== account.host || record.account.username !== account.username)
     throw new Error("The queue belongs to a different account.");
-  for (const state of [record, record.server]) {
-    if (
-      state &&
-      (state.index >= state.tracks.length || (state.index === -1 && state.position !== 0))
-    )
-      throw new Error("The saved queue selection is invalid.");
-  }
+  if (record.index >= record.tracks.length || (record.index === -1 && record.position !== 0))
+    throw new Error("The saved queue selection is invalid.");
   return record;
 }
 

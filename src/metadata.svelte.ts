@@ -62,8 +62,6 @@ function prepareMetadata(snapshot?: MetadataSnapshot) {
   return { artists, albums, tracks, artistAlbums, albumTracks };
 }
 
-export type MetadataStatus = "idle" | "loading" | "refreshing" | "ready" | "error";
-
 export class MetadataEngine {
   #memory: MetadataMemory;
   #snapshotInfo = $state.raw<Pick<MetadataSnapshot, "lastModified" | "savedAt">>();
@@ -88,18 +86,9 @@ export class MetadataEngine {
     return ++this.#generation;
   }
   #destroyed = false;
-  #status = $state<MetadataStatus>("idle");
-  #error = $state.raw<unknown>();
 
   get savedAt() {
     return this.#snapshotInfo?.savedAt;
-  }
-
-  get status() {
-    return this.#status;
-  }
-  get error() {
-    return this.#error;
   }
 
   #publish(snapshot?: MetadataSnapshot) {
@@ -130,19 +119,15 @@ export class MetadataEngine {
     this.#storage = storage;
     this.#restored = false;
     this.#publish();
-    this.#status = "loading";
-    this.#error = undefined;
     return (this.#restoring = storage.metadata
       .read()
       .then((snapshot) => {
         if (generation !== this.#generation || this.#destroyed) return;
         this.#publish(snapshot ?? undefined);
-        this.#status = snapshot ? "ready" : "idle";
       })
       .catch((error) => {
         if (generation !== this.#generation || this.#destroyed) return;
-        this.#error = error;
-        this.#status = "error";
+        throw error;
       })
       .finally(() => {
         if (generation !== this.#generation || this.#destroyed) return;
@@ -160,7 +145,6 @@ export class MetadataEngine {
     // Attaching network access must not invalidate pending local restoration.
     if (!this.#restoring) {
       this.#invalidate();
-      this.#status = this.#snapshotInfo ? "ready" : "idle";
     }
   }
 
@@ -187,8 +171,6 @@ export class MetadataEngine {
     const signal = AbortSignal.any([controller.signal, connection.signal]);
     const valid = () => !this.#destroyed && generation === this.#generation && !signal.aborted;
     const existing = this.#snapshotInfo;
-    this.#error = undefined;
-    this.#status = existing ? "refreshing" : "loading";
     try {
       const modified =
         (await connection.getModifiedAt(existing?.lastModified ?? undefined)) ??
@@ -203,8 +185,6 @@ export class MetadataEngine {
     } catch (error) {
       if (valid()) throw error;
     } finally {
-      if (generation === this.#generation && !this.#destroyed)
-        this.#status = this.#snapshotInfo ? "ready" : "idle";
       controller.abort();
       if (this.#updateController === controller) this.#updateController = undefined;
     }
@@ -259,8 +239,6 @@ export class MetadataEngine {
     this.#scope = `${snapshot.account.host}\n${snapshot.account.username}`;
     this.#restored = true;
     this.#publish(snapshot);
-    this.#status = "ready";
-    this.#error = undefined;
   }
 
   destroy() {

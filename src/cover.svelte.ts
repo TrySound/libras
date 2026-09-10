@@ -23,17 +23,15 @@ const referenceFields = {
   tracks: "trackArtwork",
 } as const;
 
-export interface CoverOptions {
+interface CoverOptions {
   allowNetwork: boolean;
 }
-export interface Cover {
+interface Cover {
   readonly source: string | undefined;
-  readonly artworkId: string | undefined;
-  readonly cached: boolean;
   readonly cache: () => void;
 }
 
-type Entity = "artists" | "albums" | "tracks" | "image";
+type Entity = "artists" | "albums" | "tracks";
 interface CoverEntry {
   entity: Entity;
   id: string;
@@ -301,10 +299,7 @@ export class CoverEngine {
       request === entry.generation &&
       this.#memory.account !== null &&
       scope(this.#memory.account) === this.#scope;
-    entry.candidates =
-      entry.entity === "image"
-        ? [entry.id]
-        : (this.#memory[referenceFields[entry.entity]].get(entry.id) ?? []);
+    entry.candidates = this.#memory[referenceFields[entry.entity]].get(entry.id) ?? [];
     for (const id of entry.candidates) {
       const record = this.#memory.images.get(id);
       if (!record) continue;
@@ -409,23 +404,13 @@ export class CoverEngine {
       entity,
       id,
       allowNetwork: options.allowNetwork,
-      candidates: entity === "image" ? [id] : (this.#memory[referenceFields[entity]].get(id) ?? []),
+      candidates: this.#memory[referenceFields[entity]].get(id) ?? [],
       generation: 0,
       network: false,
       cover: {
         get source() {
           engine.#version;
           return entry.source;
-        },
-        get artworkId() {
-          engine.#version;
-          return (
-            entry.candidates.find((id) => engine.#memory.images.has(id)) ?? entry.candidates[0]
-          );
-        },
-        get cached() {
-          engine.#version;
-          return entry.candidates.some((id) => engine.#memory.images.has(id));
         },
         cache() {
           if (entry.network && entry.selected && engine.#covers.get(key) === entry)

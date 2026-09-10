@@ -451,7 +451,7 @@ describe("track engine", () => {
       memory: engineMemory,
       connection: createConnection(auth),
     });
-    const track = { id: "one", title: "Song", artist: "Artist", album: "Album", coverArt: "cover" };
+    const track = { id: "one", title: "Song", artist: "Artist", album: "Album" };
     await engine.cache(track);
     const json = await files.get("downloads.json")!.text();
     const records = JSON.parse(json);

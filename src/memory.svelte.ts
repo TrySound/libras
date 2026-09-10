@@ -1,7 +1,5 @@
 import type { Artist, Album, Track, Account, DownloadedFile, ImageRecord } from "./schema";
 
-import type { QueueSnapshot } from "./storage";
-
 /** Consumer-facing records are immutable; engines publish replacements. */
 export type Immutable<T> = T extends object ? { readonly [Key in keyof T]: Immutable<T[Key]> } : T;
 
@@ -25,7 +23,6 @@ export class Memory {
   albumArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
   trackArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
 
-  serverQueue = $state.raw<Immutable<QueueSnapshot> | null>(null);
   queueTracks = $state.raw<readonly string[]>([]);
   queueIndex = $state(-1);
   queuePosition = $state(0);

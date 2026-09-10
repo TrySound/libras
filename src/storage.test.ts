@@ -168,6 +168,25 @@ describe("audio storage", () => {
     contentType: "audio/mpeg",
   });
 
+  it("reads old download records while discarding unused artwork metadata", async () => {
+    const disk = installStorage();
+    const audio = new Storage(account).audio;
+    await audio.save(descriptor(), track, new Response("audio"), new AbortController().signal);
+    const records = await audio.entries();
+    disk.files.set(
+      "tracks/downloads.json",
+      JSON.stringify(
+        records.map((record) => ({
+          ...record,
+          track: { ...record.track, coverArt: "legacy-cover" },
+        })),
+      ),
+    );
+    const restored = await new Storage(account).audio.list();
+    expect(restored).toEqual(records);
+    expect(restored[0].track).not.toHaveProperty("coverArt");
+  });
+
   it("refreshes a configured instance after another workspace updates the shared catalog", async () => {
     installStorage();
     const first = new Storage(account).audio;
@@ -378,6 +397,24 @@ describe("queue storage", () => {
     },
   );
 
+  it("discards a legacy server replica without changing the local queue", async () => {
+    const disk = installStorage();
+    const queue = new Storage(account).queue;
+    const path = `queue/${await hashedFileName(`${account.host}\n${account.username}`, ".json")}`;
+    const legacy = JSON.stringify({
+      ...record(),
+      server: { tracks: ["remote"], index: 0, position: 5 },
+    });
+    disk.files.set(path, legacy);
+    const restored = await queue.read();
+    expect(restored).toEqual(record());
+    expect(restored).not.toHaveProperty("server");
+    expect(disk.files.get(path)).toBe(legacy);
+    if (!restored) throw new Error("Expected a restored queue");
+    await queue.save(restored);
+    expect(JSON.parse(disk.files.get(path) as string)).toEqual(record());
+  });
+
   it("shares Storage with metadata without sharing files", async () => {
     const disk = installStorage();
     const storage = new Storage(account);
@@ -394,7 +431,7 @@ describe("queue storage", () => {
     expect(await storage.metadata.read()).toEqual(snapshot());
   });
 
-  it("serializes shared handles, reports conflicts, and permits equal-timestamp sync acknowledgements", async () => {
+  it("serializes shared handles, reports conflicts, and permits equal-timestamp writes", async () => {
     const disk = installStorage();
     const storage = new Storage(account);
     const first = storage.queue;
@@ -405,10 +442,7 @@ describe("queue storage", () => {
       { written: false, value: newer },
     ]);
     expect(disk.state.writes).toBe(1);
-    const synced = {
-      ...newer,
-      server: { tracks: newer.tracks, index: newer.index, position: newer.position },
-    };
+    const synced = { ...newer, position: 20 };
     expect(await second.save(synced)).toEqual({ written: true, value: synced });
     expect(await first.read()).toEqual(synced);
   });
@@ -436,8 +470,8 @@ describe("queue storage", () => {
     for (const invalid of [
       "broken JSON",
       JSON.stringify({ ...record(), account: { ...account, username: "other" } }),
-      JSON.stringify({ ...record(), server: { tracks: [], index: 0, position: 0 } }),
-      JSON.stringify({ ...record(), server: { tracks: [], index: -1, position: 1 } }),
+      JSON.stringify({ ...record(), tracks: [], index: 0 }),
+      JSON.stringify({ ...record(), index: -1, position: 1 }),
     ]) {
       disk.files.set(path, invalid);
       await expect(queue.read()).rejects.toThrow();

@@ -3,9 +3,9 @@ import type { QueueConnection, RemoteQueue } from "./network.svelte";
 import type { Immutable, Memory } from "./memory.svelte";
 import type { Account } from "./schema";
 
-type QueueMemory = Pick<Memory, "serverQueue" | "queueTracks" | "queueIndex" | "queuePosition">;
+type QueueMemory = Pick<Memory, "queueTracks" | "queueIndex" | "queuePosition">;
 
-export interface QueueState {
+interface QueueState {
   index?: number;
   position: number;
   tracks: readonly string[];
@@ -109,13 +109,6 @@ export class QueueEngine {
       position: this.#memory.queuePosition,
     };
   }
-  #serverState() {
-    const state = this.#memory.serverQueue;
-    return state
-      ? { tracks: [...state.tracks], index: state.index, position: state.position }
-      : undefined;
-  }
-
   #persist(): Promise<void> {
     if (!this.#account || !this.#storage || !this.#needsPersist)
       return this.#localWrites.then(() => {});
@@ -128,15 +121,10 @@ export class QueueEngine {
       index: this.#memory.queueIndex,
       position: this.#memory.queuePosition,
       updatedAt: this.#updatedAt,
-      server: this.#serverState(),
     };
     // Also retain an engine-wide tail so teardown waits for writes to previous accounts.
     const result = this.#localWrites
-      .then(() => {
-        // A queued checkpoint must retain a server snapshot committed ahead of it.
-        if (this.#account === account) record.server = this.#serverState();
-        return storage.queue.save(record);
-      })
+      .then(() => storage.queue.save(record))
       .then(({ written }) => {
         if (this.#account !== account) return;
         if (!written) {
@@ -171,7 +159,6 @@ export class QueueEngine {
     const revision = ++this.#revision;
     this.#playbackActive = false;
     this.#serverWritable = false;
-    this.#memory.serverQueue = null;
     this.#dirty = false;
     this.#needsPersist = false;
     this.#updatedAt = 0;
@@ -187,8 +174,6 @@ export class QueueEngine {
         const record = await storage.queue.read();
         if (generation !== this.#accountGeneration || this.#destroyed) return;
         if (record && revision === this.#revision) {
-          // Older records did not distinguish the server replica from local playback.
-          this.#memory.serverQueue = record.server ?? null;
           this.#updatedAt = record.updatedAt;
           this.#publish(record);
         }
@@ -219,13 +204,13 @@ export class QueueEngine {
         if (!current()) return;
         this.#error = undefined;
         const revision = this.#revision;
-        const valid = () => current() && revision === this.#revision;
+        const valid = () => current() && revision === this.#revision && !this.#playbackActive;
         const local = this.#state();
         const remote = await connection.read();
         if (!valid()) return;
         const queue = fromRemoteQueue(remote, local);
         this.#updatedAt = Math.max(Date.now(), this.#updatedAt + 1);
-        await this.#saveServer(queue, revision, valid, "refresh");
+        await this.#saveRefreshedQueue(queue, valid);
       } catch (error) {
         if (current()) this.#error = error;
       }
@@ -260,7 +245,7 @@ export class QueueEngine {
         this.#error = undefined;
         await connection.write(toRemoteQueue(state));
         if (!valid()) return;
-        await this.#saveServer(state, revision, valid, "acknowledge");
+        if (revision === this.#revision) this.#dirty = false;
       } catch (error) {
         if (valid()) this.#error = error;
       }
@@ -269,28 +254,17 @@ export class QueueEngine {
     return task;
   }
 
-  #saveServer(
-    snapshot: Immutable<QueueSnapshot>,
-    revision: number,
-    valid: () => boolean,
-    mode: "refresh" | "acknowledge",
-  ): Promise<void> {
+  #saveRefreshedQueue(snapshot: QueueSnapshot, valid: () => boolean): Promise<void> {
     const account = this.#account;
     const storage = this.#storage;
     if (!account || !storage) return Promise.resolve();
-    const server = { ...snapshot, tracks: [...snapshot.tracks] };
     const write = this.#localWrites.then(async () => {
       if (!valid()) return;
-      // Refresh may replace an idle queue. Acknowledgement only confirms the sent snapshot.
-      const adopt = mode === "refresh" && !this.#playbackActive;
-      const local = adopt ? server : this.#state();
-      const localRevision = this.#revision;
       try {
         const { written } = await storage.queue.save({
-          ...local,
-          tracks: [...local.tracks],
+          ...snapshot,
+          tracks: [...snapshot.tracks],
           account,
-          server,
           updatedAt: this.#updatedAt,
         });
         if (!valid()) return;
@@ -300,14 +274,11 @@ export class QueueEngine {
           );
           return;
         }
-        this.#memory.serverQueue = server;
         this.#storageError = undefined;
-        if (revision === this.#revision) this.#dirty = false;
-        if (localRevision === this.#revision) this.#needsPersist = false;
-        if (adopt && !this.#playbackActive) {
-          this.#serverWritable = true;
-          this.#publish(server);
-        }
+        this.#dirty = false;
+        this.#needsPersist = false;
+        this.#serverWritable = true;
+        this.#publish(snapshot);
       } catch (error) {
         if (valid()) this.#storageError = error;
       }

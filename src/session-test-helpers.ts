@@ -2,7 +2,6 @@ import { vi } from "vitest";
 import { AuthStore } from "./auth";
 import { Memory } from "./memory.svelte";
 import { Network, type MetadataConnection } from "./network.svelte";
-import type { MetadataStatus } from "./metadata.svelte";
 import { Storage, type MetadataSnapshot } from "./storage";
 import type { Account } from "./schema";
 import { Session } from "./session.svelte";
@@ -59,13 +58,10 @@ export function createSession(saved = false, storage = createStorage()) {
   if (saved) auth.save(credentials);
   const metadata = {
     savedAt: undefined as number | undefined,
-    status: "idle" as MetadataStatus,
-    error: undefined as unknown,
     restore: vi.fn(async (storage: Pick<Storage, "account">) => {
       const account = storage.account;
       memory.artists = new Map(snapshot(account).artists.map((artist) => [artist.id, artist]));
       metadata.savedAt = 100;
-      metadata.status = "ready";
     }),
     prepareConnection: vi.fn(async (connection: MetadataConnection) =>
       snapshot(connection.account),
@@ -76,7 +72,6 @@ export function createSession(saved = false, storage = createStorage()) {
     acceptConnection: vi.fn((value: MetadataSnapshot, _storage: Storage) => {
       memory.artists = new Map(value.artists.map((artist) => [artist.id, artist]));
       metadata.savedAt = value.savedAt;
-      metadata.status = "ready";
     }),
     getModifiedAt: vi.fn(async () => 100),
     readLibrary: vi.fn(async () => ({ artists: [], albums: [], tracks: [] })),

@@ -32,29 +32,15 @@ function installPlaybackShortcuts(toggle: () => void, root: Document = document)
   return () => root.removeEventListener("keydown", keydown);
 }
 
-export type PlaybackStatus =
-  | "idle"
-  | "loading"
-  | "ready"
-  | "buffering"
-  | "seeking"
-  | "ended"
-  | "error";
-export interface PlaybackEngineOptions {
+type PlaybackStatus = "idle" | "loading" | "ready" | "buffering" | "seeking" | "ended" | "error";
+interface PlaybackEngineOptions {
   queue: Pick<
     QueueEngine,
     "select" | "setPosition" | "save" | "flush" | "subscribe" | "setPlaybackActive"
   >;
   memory: Pick<
     MemoryView,
-    | "tracks"
-    | "albums"
-    | "artists"
-    | "queueTracks"
-    | "queueIndex"
-    | "queuePosition"
-    | "trackArtwork"
-    | "images"
+    "tracks" | "albums" | "artists" | "queueTracks" | "queueIndex" | "queuePosition"
   >;
   tracks: Pick<TrackEngine, "getSource" | "releaseSource">;
   covers: Pick<CoverEngine, "ensureTrackCover" | "subscribe">;
@@ -150,13 +136,6 @@ export class PlaybackEngine {
       this.hasPrevious || (!!this.track && this.position > 0),
     );
     this.#media?.setPosition(this.duration, this.position, this.#audio?.playbackRate);
-  }
-
-  get artworkId() {
-    const track = this.track;
-    if (!track) return undefined;
-    const candidates = this.#memory.trackArtwork.get(track.id) ?? [];
-    return candidates.find((id) => this.#memory.images.has(id)) ?? candidates[0];
   }
 
   #artwork = () => {
@@ -382,7 +361,6 @@ export class PlaybackEngine {
       artist: this.#memory.artists.get(track.artistId)?.name,
       album: this.#memory.albums.get(track.albumId)?.title,
       contentType: track.mimeType,
-      coverArt: this.artworkId,
     };
     this.#invalidate();
     const generation = this.#generation;

@@ -196,14 +196,12 @@
   async function downloadTrack(track: Track) {
     try {
       const album = memory.albums.get(track.albumId);
-      const artwork = memory.trackArtwork.get(track.id) ?? [];
       await trackEngine.cache({
         id: track.id,
         title: track.title,
         artist: memory.artists.get(track.artistId)?.name,
         album: album?.title,
         contentType: track.mimeType,
-        coverArt: artwork.find((id) => memory.images.has(id)) ?? artwork[0],
       });
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") return;

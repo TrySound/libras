@@ -267,17 +267,11 @@ describe("playback engine", () => {
       const source = audio.src;
       const loads = audio.load.mock.calls.length;
       await queue.refresh();
-      expect(memory.serverQueue).toEqual({ tracks: ["c"], index: 0, position: 25 });
       expect(memory.queueTracks).toEqual(local.tracks);
       expect(player.track?.id).toBe("a");
       expect(audio.src).toBe(source);
       expect(audio.load).toHaveBeenCalledTimes(loads);
-      expect(save).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          ...local,
-          server: { tracks: ["c"], index: 0, position: 25 },
-        }),
-      );
+      expect(save).not.toHaveBeenCalled();
       player.suspend();
       await queue.refresh();
       expect(player.track?.id).toBe("c");
@@ -492,7 +486,6 @@ describe("playback engine", () => {
         artist: "New artist",
         album: "New album",
         contentType: "audio/flac",
-        coverArt: "a",
       },
       { forceTranscode: false, position: 0 },
     );

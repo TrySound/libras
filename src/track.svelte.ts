@@ -5,13 +5,12 @@ import type { Memory, MemoryView } from "./memory.svelte";
 
 type DownloadMemory = Pick<MemoryView, "account"> & Pick<Memory, "downloads">;
 
-export interface EngineTrack {
+interface EngineTrack {
   id: string;
   title?: string;
   artist?: string;
   album?: string;
   contentType?: string;
-  coverArt?: string;
 }
 export interface TrackSource {
   cached: boolean;
@@ -19,17 +18,17 @@ export interface TrackSource {
   offset?: number;
   nativeSeeking?: boolean;
 }
-export interface TrackSourceOptions {
+interface TrackSourceOptions {
   forceTranscode?: boolean;
 }
-export type TrackStatus = "idle" | "queued" | "downloading" | "downloaded";
-export interface TrackEngineOptions {
+type TrackStatus = "idle" | "queued" | "downloading" | "downloaded";
+interface TrackEngineOptions {
   memory: DownloadMemory;
   storage?: Pick<Storage, "account" | "audio">;
   connection?: AudioConnection;
   concurrency?: number;
 }
-export type DownloadJobInfo = TrackFileDescriptor & {
+type DownloadJobInfo = TrackFileDescriptor & {
   track: DownloadTrack;
   status: "queued" | "downloading";
 };
@@ -132,7 +131,6 @@ export class TrackEngine {
       artist: track.artist ?? "Unknown artist",
       album: track.album ?? "Unknown album",
       contentType: track.contentType,
-      coverArt: track.coverArt,
     };
   }
   #key(id: string, format: "raw" | "mp3") {
