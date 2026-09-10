@@ -4,6 +4,7 @@ import { Storage } from "./storage";
 import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";
 import { deferred } from "./session-test-helpers";
+import { attachQueue, refreshQueue } from "./queue-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
 const auth = { ...account, token: "token", salt: "salt" };
@@ -111,11 +112,32 @@ afterEach(async () => {
 
 async function connectQueue(queue: QueueEngine, client: ReturnType<typeof createConnection>) {
   await queue.restore(new Storage(client.account));
-  queue.setConnection(client);
-  await queue.synchronize();
+  attachQueue(queue, client);
+  return refreshQueue(queue, client);
 }
 
 describe("queue engine", () => {
+  it("publishes a server write acknowledgement only after local persistence", async () => {
+    const memory = new Memory();
+    const queue = engine(memory);
+    const stored = deferred<{ written: boolean; value: ReturnType<typeof record> }>();
+    const save = vi.fn(async () => ({ written: true, value: record() }));
+    save.mockImplementationOnce(async () => ({ written: true, value: record() }));
+    save.mockImplementationOnce(() => stored.promise);
+    await queue.restore({ account, queue: { account, read: async () => record(), save } });
+    const connection = createConnection();
+    const write = vi.spyOn(connection, "write").mockResolvedValue(undefined);
+    attachQueue(queue, connection);
+    queue.update({ tracks: ["new"], index: 0, position: 5 });
+    const pending = queue.flush();
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(write).toHaveBeenCalledOnce();
+    expect(memory.serverQueue).toBeNull();
+    stored.resolve({ written: true, value: record() });
+    await pending;
+    expect(memory.serverQueue).toEqual({ tracks: ["new"], index: 0, position: 5 });
+  });
+
   it("keeps offline playback checkpoints local after reconnecting", async () => {
     const memory = new Memory();
     const queue = engine(memory);
@@ -128,12 +150,12 @@ describe("queue engine", () => {
     const read = vi
       .spyOn(connection, "read")
       .mockResolvedValue({ trackIds: ["server"], currentTrackId: "server", position: 5 });
-    queue.setConnection(connection);
+    attachQueue(queue, connection);
     queue.setPosition(20);
     await queue.flush();
     expect(write).not.toHaveBeenCalled();
     expect(read).not.toHaveBeenCalled();
-    await queue.synchronize();
+    await refreshQueue(queue, connection);
     expect(read).toHaveBeenCalledOnce();
     expect(memory.queueTracks).toEqual(["offline"]);
     expect(memory.serverQueue?.tracks).toEqual(["server"]);
@@ -188,11 +210,11 @@ describe("queue engine", () => {
         currentTrackId: "remote",
         position: 9,
       });
-      queue.setConnection(client);
+      attachQueue(queue, client);
       const notify = vi.fn();
       queue.subscribe(notify);
       store.queue.save.mockReturnValueOnce(committed.promise);
-      const pending = queue.synchronize();
+      const pending = refreshQueue(queue, client);
       await vi.waitFor(() => expect(store.queue.save).toHaveBeenCalledOnce());
       expect(memory.queueTracks).toEqual(record().tracks);
       expect(notify).not.toHaveBeenCalled();
@@ -205,7 +227,7 @@ describe("queue engine", () => {
         }),
       );
       if (outcome === "local edit") queue.update({ tracks: ["local"], index: 0, position: 0 });
-      if (outcome === "detach") queue.setConnection(undefined);
+      if (outcome === "detach") attachQueue(queue, undefined);
       if (outcome === "failure") committed.reject(new Error("Disk unavailable"));
       else committed.resolve({ written: outcome !== "conflict", value: record() });
       await pending;
@@ -270,10 +292,10 @@ describe("queue engine", () => {
           resolve = done;
         }),
     );
-    queue.setConnection(client);
-    const loading = queue.synchronize();
+    attachQueue(queue, client);
+    const loading = refreshQueue(queue, client);
     await vi.waitFor(() => expect(resolve).toBeDefined());
-    queue.setConnection(undefined);
+    attachQueue(queue, undefined);
     client.abort();
     resolve({ trackIds: ["late"], currentTrackId: "late", position: 0 });
     await loading;
@@ -291,18 +313,18 @@ describe("queue engine", () => {
       .mockResolvedValue({ trackIds: ["a"], currentTrackId: "a", position: 0 });
     const memory = new Memory();
     const queue = engine(memory);
-    queue.setConnection(client);
-    queue.setConnection(undefined);
-    queue.setConnection(client);
+    attachQueue(queue, client);
+    attachQueue(queue, undefined);
+    attachQueue(queue, client);
     expect(getDirectory).not.toHaveBeenCalled();
     expect(load).not.toHaveBeenCalled();
     await queue.restore(new Storage(account));
     expect(load).not.toHaveBeenCalled();
-    await queue.synchronize();
+    await refreshQueue(queue, client);
     expect(load).toHaveBeenCalledOnce();
     expect(memory.queueTracks).toEqual(["a"]);
     load.mockResolvedValue({ trackIds: ["b"], currentTrackId: "b", position: 0 });
-    await queue.synchronize();
+    await refreshQueue(queue, client);
     expect(load).toHaveBeenCalledTimes(2);
     expect(memory.queueTracks).toEqual(["b"]);
   });
@@ -408,7 +430,7 @@ describe("queue engine", () => {
   it("persists offline edits and empty queues without credentials or track descriptions", async () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await queue.setConnection(undefined);
+    await attachQueue(queue, undefined);
     await queue.restore(new Storage(account));
     queue.update({ tracks: ["a", "b", "a"], index: 2, position: 30 });
     queue.setPosition(35);
@@ -544,7 +566,7 @@ describe("queue engine", () => {
     const memory = new Memory();
     const queue = engine(memory);
     await queue.restore(new Storage(account));
-    queue.setConnection(client.queue);
+    attachQueue(queue, client.queue);
     let respond!: (value: Response) => void;
     vi.stubGlobal(
       "fetch",
@@ -559,18 +581,18 @@ describe("queue engine", () => {
     const syncing = queue.flush();
     await vi.waitFor(() => expect(respond).toBeDefined());
     network.setMode("offline");
-    queue.setConnection(undefined);
+    attachQueue(queue, undefined);
     respond(response());
     await syncing;
     expect(client.signal.aborted).toBe(true);
-    expect(queue.error).toBeUndefined();
     expect((await storage.json()).pendingSync).toBe(false);
     expect(memory.queueIndex).toBe(2);
     const fetcher = vi.fn(async () => response());
     vi.stubGlobal("fetch", fetcher);
     network.setMode("online");
-    queue.setConnection(network.open(auth).queue);
-    await queue.synchronize();
+    const active = network.open(auth);
+    attachQueue(queue, active.queue);
+    await refreshQueue(queue, active.queue);
     expect(fetcher).toHaveBeenCalledOnce();
     expect(fetcher.mock.calls[0]).toEqual([
       expect.stringContaining("getPlayQueue"),
@@ -578,7 +600,7 @@ describe("queue engine", () => {
     ]);
     expect((await storage.json()).pendingSync).toBe(false);
     network.setMode("offline");
-    queue.setConnection(undefined);
+    attachQueue(queue, undefined);
   });
 
   it("preserves dirty state if a server acknowledgement arrives after another edit", async () => {
@@ -596,7 +618,7 @@ describe("queue engine", () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     await queue.restore(new Storage(account));
-    queue.setConnection(createConnection(auth));
+    attachQueue(queue, createConnection(auth));
     queue.update({ tracks: ["a", "b", "a"], index: 2, position: 15 });
     const pending = queue.flush();
     await vi.waitFor(() => expect(resolve).toBeDefined());
@@ -621,14 +643,14 @@ describe("queue engine", () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     const client = createConnection(auth);
-    await connectQueue(queue, client);
-    expect(queue.error).toBeInstanceOf(Error);
+    const sync = await connectQueue(queue, client);
+    expect(sync.error).toBeInstanceOf(Error);
     expect((await storage.json()).pendingSync).toBe(true);
-    await queue.setConnection(undefined);
+    await attachQueue(queue, undefined);
     const fetcher = vi.fn(async () => response());
     vi.stubGlobal("fetch", fetcher);
-    queue.setConnection(client);
-    await queue.synchronize();
+    attachQueue(queue, client);
+    await refreshQueue(queue, client);
     expect(fetcher).toHaveBeenCalledOnce();
     expect((await storage.json()).pendingSync).toBe(false);
   });
@@ -660,7 +682,6 @@ describe("queue engine", () => {
     queue.update({ tracks: ["new"], index: 0, position: 2 });
     await queue.flush();
     expect(queue.storageError).toBeInstanceOf(Error);
-    expect(queue.error).toBeUndefined();
     expect(await storage.json()).toEqual(record());
     expect(queueMemory.queueTracks[queueMemory.queueIndex]).toBe("new");
   });
@@ -708,7 +729,7 @@ describe("queue engine", () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     const restored = queue.restore(new Storage(account));
-    const offline = queue.setConnection(undefined);
+    const offline = attachQueue(queue, undefined);
     await Promise.all([restored, offline]);
     expect(queueMemory.queueIndex).toBe(2);
     expect(queueMemory.queuePosition).toBe(12.5);

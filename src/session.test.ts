@@ -83,7 +83,7 @@ describe("session", () => {
     expect(metadata.revalidate).toHaveBeenCalledOnce();
     expect(metadata.restore).toHaveBeenCalledOnce();
     expect(tracks.setConnection.mock.calls.at(-1)![0]).toBe(client);
-    expect(queue.synchronize).toHaveBeenCalledTimes(2);
+    expect(queue.prepareServerUpdate).toHaveBeenCalledTimes(2);
     expect(await session.connect(input)).toBe(false);
     expect(metadata.prepareConnection).not.toHaveBeenCalled();
   });
@@ -121,7 +121,7 @@ describe("session", () => {
     fields.forEach((field, index) => expect(memory[field]).toBe(data[index]));
     expect([memory.queueTracks, memory.queueIndex, memory.queuePosition]).toEqual(queueState);
     expect(metadata.setConnection).toHaveBeenLastCalledWith(undefined);
-    expect(queue.setConnection).toHaveBeenLastCalledWith(undefined);
+    expect(queue.setSync).toHaveBeenLastCalledWith();
     expect(covers.setConnection).toHaveBeenLastCalledWith(undefined);
     expect(tracks.setConnection).toHaveBeenLastCalledWith(undefined);
     expect(playback.suspendNetwork).toHaveBeenCalled();
@@ -146,7 +146,7 @@ describe("session", () => {
     expect(storage.getItem("navidrome-offline-mode")).toBe("true");
     expect(metadata.revalidate).not.toHaveBeenCalled();
     expect(metadata.prepareConnection).not.toHaveBeenCalled();
-    expect(queue.synchronize).not.toHaveBeenCalled();
+    expect(queue.prepareServerUpdate).not.toHaveBeenCalled();
   });
 
   it.each([false, true])(
@@ -294,7 +294,7 @@ describe("session", () => {
     expect(memory.queuePosition).toBe(17);
     expect(auth.load()).toBeNull();
     expect(metadata.revalidate).not.toHaveBeenCalled();
-    expect(queue.synchronize).not.toHaveBeenCalled();
+    expect(queue.prepareServerUpdate).not.toHaveBeenCalled();
   });
 
   it("keeps credentials for voluntary offline mode and resumes with a fresh cancellable client", async () => {
@@ -309,10 +309,10 @@ describe("session", () => {
     expect(metadata.restore).toHaveBeenCalledOnce();
     expect(metadata.revalidate).toHaveBeenCalledOnce();
     expect(metadata.refresh).not.toHaveBeenCalled();
-    expect(queue.synchronize).toHaveBeenCalledOnce();
+    expect(queue.prepareServerUpdate).toHaveBeenCalledOnce();
     expect(session.status).toBe("connected");
     await session.refresh();
     expect(metadata.refresh).toHaveBeenCalledOnce();
-    expect(queue.synchronize).toHaveBeenCalledTimes(2);
+    expect(queue.prepareServerUpdate).toHaveBeenCalledTimes(2);
   });
 });

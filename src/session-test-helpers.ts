@@ -90,16 +90,16 @@ export function createSession(saved = false, storage = createStorage()) {
     setConnection: vi.fn(),
   };
   const queue = {
-    error: undefined as unknown,
     storageError: undefined as unknown,
+    setSync: vi.fn(),
+    prepareServerWrite: vi.fn(async () => undefined),
     restore: vi.fn(async (storage: Pick<Storage, "account">) => {
       const account = storage.account;
       memory.queueTracks = [account.username];
       memory.queueIndex = 0;
       memory.queuePosition = 17;
     }),
-    setConnection: vi.fn(),
-    synchronize: vi.fn(async () => {}),
+    prepareServerUpdate: vi.fn(async () => undefined),
     flush: vi.fn(async () => {}),
   };
   const tracks = { restore: vi.fn(async () => {}), setConnection: vi.fn() };

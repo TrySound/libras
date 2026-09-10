@@ -1,5 +1,4 @@
-import type { Storage, QueueRecord } from "./storage";
-import type { QueueConnection } from "./network.svelte";
+import type { Storage, QueueRecord, QueueSnapshot } from "./storage";
 import type { Memory } from "./memory.svelte";
 import type { Account } from "./schema";
 
@@ -13,7 +12,8 @@ export interface QueueState {
 const scope = (account: Account) => `${account.host}\n${account.username}`;
 
 export class QueueEngine {
-  #connection?: QueueConnection;
+  #syncAccount?: Account;
+  #flushServer?: () => Promise<void>;
   #account?: Account;
   #memory: QueueMemory;
 
@@ -31,7 +31,6 @@ export class QueueEngine {
   #needsPersist = false;
   #conflict = false;
   #storage?: Pick<Storage, "account" | "queue">;
-  #connecting?: { epoch: number; promise: Promise<void> };
   #updatedAt = 0;
   #revision = 0;
   #epoch = 0;
@@ -40,8 +39,6 @@ export class QueueEngine {
   #destroyed = false;
   #ready: Promise<void> = Promise.resolve();
   #localWrites: Promise<unknown> = Promise.resolve();
-  #serverWrites: Promise<unknown> = Promise.resolve();
-  #error = $state.raw<unknown>();
   #storageError = $state.raw<unknown>();
   #saveTimer?: ReturnType<typeof setTimeout>;
   #localTimer?: ReturnType<typeof setTimeout>;
@@ -55,9 +52,6 @@ export class QueueEngine {
   }
   #notify() {
     for (const listener of this.#listeners) listener();
-  }
-  get error() {
-    return this.#error;
   }
   get storageError() {
     return this.#storageError;
@@ -156,10 +150,8 @@ export class QueueEngine {
     this.#needsPersist = false;
     this.#conflict = false;
     this.#updatedAt = 0;
-    this.#error = undefined;
     this.#storageError = undefined;
-    if (this.#connection && scope(this.#connection.account) !== scope(account))
-      this.#connection = undefined;
+    if (this.#syncAccount && scope(this.#syncAccount) !== scope(account)) this.setSync();
     this.#publish({ tracks: [], position: 0 });
     return (this.#ready = (async () => {
       try {
@@ -182,41 +174,29 @@ export class QueueEngine {
     })());
   }
 
-  async #load() {
-    const connection = this.#connection;
+  // Capture local ownership before a remote read. The returned commit ignores stale results.
+  async prepareServerUpdate(identity: Account, current: () => boolean) {
+    const epoch = this.#epoch;
+    await this.#ready;
+    if (epoch !== this.#epoch || this.#destroyed || !current()) return;
     const storage = this.#storage;
     const account = this.#account;
-    if (!connection || !storage || !account || connection.signal.aborted || this.#destroyed) return;
-    const epoch = this.#epoch;
+    if (!storage || !account || scope(account) !== scope(identity)) return;
+    await this.#persist();
+    if (epoch !== this.#epoch || this.#destroyed || !current()) return;
     const revision = this.#revision;
     const valid = () =>
-      epoch === this.#epoch &&
-      revision === this.#revision &&
-      !this.#destroyed &&
-      !connection.signal.aborted;
-    this.#error = undefined;
-    try {
-      const queue = await connection.read();
+      epoch === this.#epoch && revision === this.#revision && !this.#destroyed && current();
+    const commit = async (queue: QueueSnapshot) => {
       if (!valid()) return;
       this.#updatedAt = Math.max(Date.now(), this.#updatedAt + 1);
-      // Remote queues identify the selection by ID, so retain our occurrence index
-      // when an unchanged server queue contains the same track more than once.
-      const sameSelection =
-        queue.currentTrackId === this.#memory.queueTracks[this.#memory.queueIndex] &&
-        queue.trackIds.length === this.#memory.queueTracks.length &&
-        queue.trackIds.every((id, index) => id === this.#memory.queueTracks[index]);
-      const index = sameSelection
-        ? this.#memory.queueIndex
-        : queue.currentTrackId
-          ? queue.trackIds.indexOf(queue.currentTrackId)
-          : -1;
       const record: QueueRecord = {
         account,
         pendingSync: false,
         updatedAt: this.#updatedAt,
-        tracks: [...queue.trackIds],
-        index,
-        position: index >= 0 && Number.isFinite(queue.position) ? Math.max(0, queue.position) : 0,
+        tracks: [...queue.tracks],
+        index: queue.index,
+        position: queue.position,
       };
       // Serialize with local checkpoints, but do not expose the remote queue until durable.
       const write = this.#localWrites.then(async () => {
@@ -253,68 +233,78 @@ export class QueueEngine {
       });
       this.#localWrites = write.catch(() => {});
       await write;
-    } catch (error) {
-      if (
-        epoch !== this.#epoch ||
-        revision !== this.#revision ||
-        this.#destroyed ||
-        connection.signal.aborted
-      )
-        return;
-      this.#error = error;
-    }
+    };
+    return { queue: this.#state(), commit };
   }
 
-  #sync(): Promise<void> {
-    const connection = this.#connection;
+  async prepareServerWrite(identity: Account, current: () => boolean) {
     const epoch = this.#epoch;
-    const result = this.#serverWrites.then(async () => {
-      if (
-        !connection ||
-        !this.#account ||
-        scope(connection.account) !== scope(this.#account) ||
-        epoch !== this.#epoch ||
-        connection.signal.aborted ||
-        !this.#loaded ||
-        !this.#dirty ||
-        this.#conflict ||
-        this.#destroyed
-      )
-        return;
-      const revision = this.#revision;
-      const state = this.#state();
-      this.#error = undefined;
-      try {
-        await connection.write({
-          trackIds: state.tracks,
-          currentTrackId: state.tracks[state.index],
-          position: state.position,
+    await this.#ready;
+    await this.#persist();
+    const account = this.#account;
+    const storage = this.#storage;
+    const valid = () => epoch === this.#epoch && !this.#destroyed && current();
+    if (
+      !valid() ||
+      !account ||
+      !storage ||
+      scope(account) !== scope(identity) ||
+      !this.#loaded ||
+      !this.#dirty ||
+      this.#conflict ||
+      this.#storageError
+    )
+      return;
+    const revision = this.#revision;
+    const state = this.#state();
+    return {
+      queue: state,
+      commit: async () => {
+        if (!valid()) return;
+        const server = { ...state, tracks: [...state.tracks] };
+        const write = this.#localWrites.then(async () => {
+          if (!valid()) return;
+          const local = this.#state();
+          const localRevision = this.#revision;
+          try {
+            const result = await storage.queue.save({
+              ...local,
+              tracks: [...local.tracks],
+              account,
+              server,
+              pendingSync: false,
+              updatedAt: this.#updatedAt,
+            });
+            if (!valid()) return;
+            if (!result.written) {
+              this.#conflict = true;
+              this.#storageError = new Error(
+                "A newer queue is already stored. The acknowledgement was not saved.",
+              );
+              return;
+            }
+            this.#memory.serverQueue = server;
+            this.#storageError = undefined;
+            if (revision === this.#revision) this.#dirty = false;
+            if (localRevision === this.#revision) this.#needsPersist = false;
+          } catch (error) {
+            if (valid()) this.#storageError = error;
+          }
         });
-        if (epoch !== this.#epoch || this.#destroyed || connection.signal.aborted) return;
-        this.#memory.serverQueue = { ...state, tracks: [...state.tracks] };
-        if (revision === this.#revision) {
-          this.#dirty = false;
-          this.#needsPersist = true;
-          await this.#persist();
-        }
-        if (epoch !== this.#epoch || this.#destroyed || connection.signal.aborted) return;
-      } catch (error) {
-        if (epoch !== this.#epoch || this.#destroyed || connection.signal.aborted) return;
-        this.#error = error;
-      }
-    });
-    this.#serverWrites = result.catch(() => {});
-    return result;
+        this.#localWrites = write.catch(() => {});
+        await write;
+      },
+    };
   }
 
   #changed() {
     this.#revision++;
     this.#updatedAt = Math.max(Date.now(), this.#updatedAt + 1);
-    this.#dirty = this.#serverWritable && !!this.#connection && !this.#connection.signal.aborted;
+    this.#dirty = this.#serverWritable && !!this.#flushServer;
     this.#needsPersist = true;
   }
   update(state: QueueState) {
-    this.#serverWritable = !!this.#connection && !this.#connection.signal.aborted;
+    this.#serverWritable = !!this.#flushServer;
     this.#changed();
     this.#publish(state);
     this.save();
@@ -355,43 +345,17 @@ export class QueueEngine {
   async flush() {
     this.#clearTimers();
     await this.#persist();
-    await this.#sync();
+    await this.#flushServer?.();
   }
-  #connect() {
-    if (this.#connecting?.epoch === this.#epoch) return this.#connecting.promise;
-    const epoch = this.#epoch;
-    const promise = (async () => {
-      if (!this.#connection || this.#connection.signal.aborted) return;
-      if (this.#dirty) await this.#sync();
-      if (epoch === this.#epoch) await this.#load();
-    })();
-    const connecting = { epoch: this.#epoch, promise };
-    this.#connecting = connecting;
-    return promise.finally(() => {
-      if (this.#connecting === connecting) this.#connecting = undefined;
-    });
-  }
-  setConnection(connection: QueueConnection | undefined) {
-    if ((connection && connection === this.#connection) || this.#destroyed) return;
-    this.#connection = connection;
+  setSync(account?: Account, flush?: () => Promise<void>) {
+    if (this.#destroyed) return;
+    this.#syncAccount = account;
+    this.#flushServer = flush;
     this.#epoch++;
     // Only edits made on this connection may be uploaded.
     this.#dirty = false;
     this.#serverWritable = false;
     this.#clearTimers();
-  }
-  async synchronize() {
-    const epoch = this.#epoch;
-    await this.#ready;
-    if (epoch !== this.#epoch || this.#destroyed) return;
-    if (
-      !this.#account ||
-      !this.#connection ||
-      scope(this.#account) !== scope(this.#connection.account)
-    )
-      return;
-    await this.#persist();
-    if (epoch === this.#epoch && !this.#destroyed) await this.#connect();
   }
   destroy() {
     const persisted = this.#persist();

@@ -719,13 +719,6 @@
               : String(queueEngine.storageError)}.
           </p>
         {/if}
-        {#if queueEngine.error}
-          <p class="error type-small" role="status">
-            Queue synchronization failed: {queueEngine.error instanceof Error
-              ? queueEngine.error.message
-              : String(queueEngine.error)}. Local playback is unaffected.
-          </p>
-        {/if}
       </div>
 
       <div class="player-queue">

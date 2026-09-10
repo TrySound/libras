@@ -50,7 +50,7 @@ export type ActiveNetworkConnection = Readonly<
   }
 >;
 
-type RemoteQueue = {
+export type RemoteQueue = {
   trackIds: readonly string[];
   /** Remote selection is by track ID, not duplicate occurrence index. */
   currentTrackId?: string;

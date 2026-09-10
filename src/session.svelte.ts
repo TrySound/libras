@@ -26,8 +26,8 @@ interface SessionOptions {
     "restore" | "prepareConnection" | "saveConnection" | "acceptConnection" | "setConnection"
   >;
   covers: Pick<CoverEngine, "restore" | "refresh" | "setConnection">;
-  sync: Pick<SyncEngine, "start" | "stop" | "refresh" | "syncing" | "error">;
-  queue: Pick<QueueEngine, "restore" | "setConnection" | "synchronize" | "flush">;
+  sync: Pick<SyncEngine, "start" | "stop" | "refresh" | "refreshQueue" | "syncing" | "error">;
+  queue: Pick<QueueEngine, "restore" | "flush">;
   tracks: Pick<TrackEngine, "restore" | "setConnection">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
   preferences: Pick<Storage, "getItem" | "setItem">;
@@ -62,7 +62,7 @@ export class Session {
 
   get refreshError() {
     const error = this.#options.sync.error;
-    return error ? `Background refresh failed: ${connectionError(error)}` : "";
+    return error ? `Synchronization failed: ${connectionError(error)}` : "";
   }
 
   get busy() {
@@ -112,7 +112,6 @@ export class Session {
     this.#options.sync.stop();
     this.#options.network.setMode("offline");
     metadata.setConnection(undefined);
-    queue.setConnection(undefined);
     covers.setConnection(undefined);
     tracks.setConnection(undefined);
     playback.suspendNetwork();
@@ -120,12 +119,11 @@ export class Session {
   }
 
   #attach(connection: ActiveNetworkConnection) {
-    const { metadata, queue, covers, tracks } = this.#options;
+    const { metadata, covers, tracks } = this.#options;
     metadata.setConnection(connection.metadata);
-    queue.setConnection(connection.queue);
     covers.setConnection(connection.artwork);
     tracks.setConnection(connection.audio);
-    this.#options.sync.start();
+    this.#options.sync.start(connection.queue);
   }
 
   start(): Auth | null {
@@ -222,7 +220,7 @@ export class Session {
       this.localReady = true;
       await covers.refresh();
       if (!this.#valid(generation)) return false;
-      await queue.synchronize();
+      await this.#options.sync.refreshQueue();
       if (!this.#valid(generation)) return false;
       this.status = "connected";
       return true;
