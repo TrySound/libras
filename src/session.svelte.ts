@@ -1,7 +1,7 @@
 import type { Auth, AuthStore } from "./auth";
 import type { CoverEngine } from "./cover-engine";
 import type { Memory, MemoryView } from "./memory.svelte";
-import type { MetadataEngine } from "./metadata-engine";
+import type { MetadataEngine } from "./metadata.svelte";
 import {
   NetworkTransportError,
   type ActiveNetworkConnection,

@@ -5,7 +5,7 @@
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
-  import { MetadataEngine } from "./metadata-engine";
+  import { MetadataEngine } from "./metadata.svelte";
   import type {
     Album as AlbumRecord,
     Artist as ArtistRecord,

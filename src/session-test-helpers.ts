@@ -2,7 +2,7 @@ import { vi } from "vitest";
 import { AuthStore } from "./auth";
 import { Memory } from "./memory.svelte";
 import { Network, type MetadataConnection } from "./network.svelte";
-import type { MetadataStatus } from "./metadata-engine";
+import type { MetadataStatus } from "./metadata.svelte";
 import { Storage, type MetadataSnapshot } from "./storage";
 import type { Account } from "./schema";
 import { Session } from "./session.svelte";

@@ -1,7 +1,6 @@
 import type { Memory } from "./memory.svelte";
 import type { Album, Track } from "./schema";
 import type { MetadataSnapshot, Storage } from "./storage";
-import { createSubscriber } from "svelte/reactivity";
 import type { MetadataConnection } from "./network.svelte";
 
 type MetadataMemory = Pick<
@@ -56,7 +55,7 @@ export type MetadataStatus = "idle" | "loading" | "refreshing" | "ready" | "erro
 
 export class MetadataEngine {
   #memory: MetadataMemory;
-  #snapshotInfo?: Pick<MetadataSnapshot, "lastModified" | "savedAt">;
+  #snapshotInfo = $state.raw<Pick<MetadataSnapshot, "lastModified" | "savedAt">>();
 
   constructor(memory: MetadataMemory) {
     this.#memory = memory;
@@ -75,32 +74,21 @@ export class MetadataEngine {
     return ++this.#generation;
   }
   #destroyed = false;
-  #status: MetadataStatus = "idle";
-  #error: unknown;
-  #warning: unknown;
-  #update = () => {};
-  #subscribe = createSubscriber((update) => {
-    this.#update = update;
-    return () => {
-      this.#update = () => {};
-    };
-  });
+  #status = $state<MetadataStatus>("idle");
+  #error = $state.raw<unknown>();
+  #warning = $state.raw<unknown>();
 
   get savedAt() {
-    this.#subscribe();
     return this.#snapshotInfo?.savedAt;
   }
 
   get status() {
-    this.#subscribe();
     return this.#status;
   }
   get error() {
-    this.#subscribe();
     return this.#error;
   }
   get warning() {
-    this.#subscribe();
     return this.#warning;
   }
 
@@ -110,7 +98,7 @@ export class MetadataEngine {
       lastModified: snapshot.lastModified,
       savedAt: snapshot.savedAt,
     };
-    // No awaits or subscriber notifications between related map assignments.
+    // No awaits between related map assignments.
     this.#memory.artists = prepared.artists;
     this.#memory.albums = prepared.albums;
     this.#memory.tracks = prepared.tracks;
@@ -141,7 +129,6 @@ export class MetadataEngine {
     this.#status = "loading";
     this.#error = undefined;
     this.#warning = undefined;
-    this.#update();
     return (this.#restoring = storage.metadata
       .read()
       .then((snapshot) => {
@@ -158,7 +145,6 @@ export class MetadataEngine {
         if (generation !== this.#generation || this.#destroyed) return;
         this.#restoring = undefined;
         this.#restored = true;
-        this.#update();
       }));
   }
 
@@ -194,7 +180,6 @@ export class MetadataEngine {
       this.#status = this.#snapshotInfo ? "ready" : "error";
       if (!this.#snapshotInfo)
         this.#error = new Error("No library is available offline. Reconnect to download metadata.");
-      this.#update();
       return;
     }
     const storage = this.#storage;
@@ -214,7 +199,6 @@ export class MetadataEngine {
       connection === this.#connection &&
       !connection.signal.aborted;
     this.#status = existing ? "refreshing" : "loading";
-    this.#update();
     try {
       const modified =
         (await connection.getModifiedAt(existing?.lastModified ?? undefined)) ??
@@ -223,7 +207,6 @@ export class MetadataEngine {
       if (!valid()) return;
       if (!force && existing && modified !== null && modified === existing.lastModified) {
         this.#status = "ready";
-        this.#update();
         return;
       }
       const snapshot = await this.#fetchLibrary(connection, valid, modified);
@@ -232,7 +215,6 @@ export class MetadataEngine {
       if (!valid() || !committed) return;
       this.#publish(committed);
       this.#status = "ready";
-      this.#update();
     } catch (error) {
       if (!valid()) return;
       if (existing) {
@@ -242,7 +224,6 @@ export class MetadataEngine {
         this.#status = "error";
         this.#error = error;
       }
-      this.#update();
     }
   }
 
@@ -255,7 +236,6 @@ export class MetadataEngine {
     const valid = () =>
       !this.#destroyed && generation === this.#generation && !connection.signal.aborted;
     this.#status = this.#snapshotInfo ? "refreshing" : "loading";
-    this.#update();
     try {
       const modified = await connection.getModifiedAt();
       const snapshot = await this.#fetchLibrary(connection, valid, modified);
@@ -264,7 +244,6 @@ export class MetadataEngine {
     } finally {
       if (valid()) {
         this.#status = this.#snapshotInfo ? "ready" : "idle";
-        this.#update();
       }
     }
   }
@@ -304,7 +283,6 @@ export class MetadataEngine {
     this.#status = "ready";
     this.#error = undefined;
     this.#warning = undefined;
-    this.#update();
   }
 
   refresh() {
@@ -321,7 +299,6 @@ export class MetadataEngine {
     if (!this.#restoring) {
       this.#invalidate();
       this.#status = this.#snapshotInfo ? "ready" : "idle";
-      this.#update();
     }
   }
 
