@@ -16,7 +16,7 @@ async function readMetadataSnapshot(
 }
 
 interface SyncOptions {
-  metadata: Pick<MetadataEngine, "prepareRefresh">;
+  metadata: Pick<MetadataEngine, "setConnection" | "refresh">;
   covers: Pick<CoverEngine, "refresh">;
   queue: Pick<QueueEngine, "setConnection" | "refresh" | "error" | "storageError">;
 }
@@ -27,8 +27,6 @@ export class SyncEngine {
   #enabled = false;
   #generation = 0;
   #pending?: Promise<void>;
-  #metadataConnection?: MetadataConnection;
-  #metadataController?: AbortController;
   #candidateController?: AbortController;
   #syncing = $state(false);
   #error = $state.raw<unknown>();
@@ -47,7 +45,7 @@ export class SyncEngine {
 
   start(queueConnection: QueueConnection, metadataConnection?: MetadataConnection) {
     this.stop();
-    this.#metadataConnection = metadataConnection;
+    this.#options.metadata.setConnection(metadataConnection);
     this.#enabled = true;
     this.#options.queue.setConnection(queueConnection);
   }
@@ -57,9 +55,7 @@ export class SyncEngine {
     this.#enabled = false;
     this.#candidateController?.abort();
     this.#candidateController = undefined;
-    this.#metadataController?.abort();
-    this.#metadataController = undefined;
-    this.#metadataConnection = undefined;
+    this.#options.metadata.setConnection(undefined);
     this.#options.queue.setConnection(undefined);
     this.#generation++;
     this.#pending = undefined;
@@ -83,40 +79,6 @@ export class SyncEngine {
     }
   }
 
-  async #refreshMetadata(force: boolean, current: () => boolean) {
-    const connection = this.#metadataConnection;
-    if (!connection || connection.signal.aborted || !current()) return;
-    const prepared = await this.#options.metadata.prepareRefresh(connection.account);
-    if (!prepared) return;
-    if (!current()) {
-      prepared.finish();
-      return;
-    }
-    const controller = new AbortController();
-    controller.signal.addEventListener("abort", prepared.finish, { once: true });
-    this.#metadataController = controller;
-    const signal = AbortSignal.any([controller.signal, connection.signal, prepared.signal]);
-    const valid = () => current() && !signal.aborted;
-    try {
-      if (!valid()) return;
-      const existing = prepared.existing;
-      const modified =
-        (await connection.getModifiedAt(existing?.lastModified ?? undefined)) ??
-        existing?.lastModified ??
-        null;
-      if (!valid()) return;
-      if (!force && existing && modified !== null && modified === existing.lastModified) return;
-      const snapshot = await readMetadataSnapshot(connection, modified, signal);
-      if (!valid()) return;
-      await prepared.commit(snapshot, valid);
-    } catch (error) {
-      if (valid()) throw error;
-    } finally {
-      controller.abort();
-      if (this.#metadataController === controller) this.#metadataController = undefined;
-    }
-  }
-
   refresh(force = true): Promise<void> {
     if (!this.#enabled) return Promise.resolve();
     if (this.#pending) return this.#pending;
@@ -126,7 +88,7 @@ export class SyncEngine {
     this.#error = undefined;
     return (this.#pending = (async () => {
       try {
-        await this.#refreshMetadata(force, valid);
+        await this.#options.metadata.refresh(force);
         if (!valid()) return;
         await this.#options.covers.refresh();
       } catch (error) {

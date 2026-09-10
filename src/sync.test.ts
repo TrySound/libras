@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { SyncEngine } from "./sync.svelte";
-import type { MetadataEngine } from "./metadata.svelte";
 import type { MetadataConnection } from "./network.svelte";
 import { deferred } from "./session-test-helpers";
 
@@ -21,12 +20,8 @@ function setup() {
       albums: [],
       tracks: [],
     })),
-    prepareRefresh: vi.fn<MetadataEngine["prepareRefresh"]>(async () => ({
-      existing: undefined as { lastModified: number | null; savedAt: number } | undefined,
-      signal: new AbortController().signal,
-      commit: vi.fn(async () => {}),
-      finish: vi.fn(),
-    })),
+    setConnection: vi.fn(),
+    refresh: vi.fn(async (_force = true) => {}),
   };
   const covers = { refresh: vi.fn(async () => {}) };
   const queue = {
@@ -51,7 +46,7 @@ describe("sync engine", () => {
       albums: [],
       tracks: [],
     });
-    expect(metadata.prepareRefresh).not.toHaveBeenCalled();
+    expect(metadata.refresh).not.toHaveBeenCalled();
     expect(queue.refresh).not.toHaveBeenCalled();
     expect(queue.setConnection).not.toHaveBeenCalled();
     expect(covers.refresh).not.toHaveBeenCalled();
@@ -73,7 +68,7 @@ describe("sync engine", () => {
     expect(signal.aborted).toBe(true);
     response.resolve();
     await rejected;
-    expect(metadata.prepareRefresh).not.toHaveBeenCalled();
+    expect(metadata.refresh).not.toHaveBeenCalled();
     expect(sync.error).toBeUndefined();
   });
 
@@ -90,68 +85,10 @@ describe("sync engine", () => {
     expect(metadata.readLibrary).toHaveBeenCalledOnce();
   });
 
-  it("skips unchanged metadata during startup but fetches it on manual refresh", async () => {
-    const { sync, metadata } = setup();
-    const commit = vi.fn(async () => {});
-    metadata.prepareRefresh.mockImplementation(async () => ({
-      existing: { savedAt: 100, lastModified: 10 },
-      signal: new AbortController().signal,
-      commit,
-      finish: () => {},
-    }));
-    sync.start(connection, metadata);
-    await sync.refresh(false);
-    expect(metadata.getModifiedAt).toHaveBeenCalledWith(10);
-    expect(metadata.readLibrary).not.toHaveBeenCalled();
-    expect(commit).not.toHaveBeenCalled();
-    await sync.refresh();
-    expect(metadata.readLibrary).toHaveBeenCalledOnce();
-    expect(commit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        account: metadata.account,
-        lastModified: 10,
-        savedAt: expect.any(Number),
-        artists: [],
-        albums: [],
-        tracks: [],
-      }),
-      expect.any(Function),
-    );
-  });
-
-  it("aborts a metadata workflow and finishes local state immediately when stopped", async () => {
-    const { sync, metadata } = setup();
-    const pending = deferred();
-    const finish = vi.fn();
-    const commit = vi.fn(async () => {});
-    metadata.prepareRefresh.mockResolvedValueOnce({
-      existing: undefined,
-      signal: new AbortController().signal,
-      commit,
-      finish,
-    });
-    metadata.readLibrary.mockImplementationOnce(async () => {
-      await pending.promise;
-      return { artists: [], albums: [], tracks: [] };
-    });
-    sync.start(connection, metadata);
-    const refresh = sync.refresh();
-    await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
-    const call = metadata.readLibrary.mock.calls[0];
-    expect(call[0].aborted).toBe(false);
-    sync.stop();
-    expect(call[0].aborted).toBe(true);
-    expect(finish).toHaveBeenCalledOnce();
-    pending.resolve();
-    await refresh;
-    expect(commit).not.toHaveBeenCalled();
-    expect(finish).toHaveBeenCalledOnce();
-  });
-
   it("refreshes the queue after metadata even if the library request fails", async () => {
     const { sync, metadata, queue } = setup();
     const error = new Error("Library unavailable");
-    metadata.readLibrary.mockRejectedValueOnce(error);
+    metadata.refresh.mockRejectedValueOnce(error);
     sync.start(connection, metadata);
     await sync.refresh();
     expect(queue.refresh).toHaveBeenCalledOnce();
@@ -170,12 +107,12 @@ describe("sync engine", () => {
   it("does no work until enabled and reconciles covers after metadata", async () => {
     const { sync, metadata, covers } = setup();
     await sync.refresh();
-    expect(metadata.readLibrary).not.toHaveBeenCalled();
+    expect(metadata.refresh).not.toHaveBeenCalled();
     sync.start(connection, metadata);
     const pending = deferred();
-    metadata.getModifiedAt.mockImplementationOnce(async () => {
+    metadata.refresh.mockImplementationOnce(async () => {
       await pending.promise;
-      return 10;
+      return;
     });
     const refresh = sync.refresh(false);
     expect(sync.syncing).toBe(true);
@@ -190,24 +127,24 @@ describe("sync engine", () => {
     const { sync, metadata } = setup();
     sync.start(connection, metadata);
     const pending = deferred();
-    metadata.readLibrary.mockImplementationOnce(async () => {
+    metadata.refresh.mockImplementationOnce(async () => {
       await pending.promise;
-      return { artists: [], albums: [], tracks: [] };
+      return;
     });
     const first = sync.refresh();
     expect(sync.refresh()).toBe(first);
-    await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(metadata.refresh).toHaveBeenCalledOnce());
     pending.resolve();
     await first;
     await sync.refresh();
-    expect(metadata.readLibrary).toHaveBeenCalledTimes(2);
+    expect(metadata.refresh).toHaveBeenCalledTimes(2);
   });
 
   it("reports metadata failures and clears them on a successful retry", async () => {
     const { sync, metadata } = setup();
     sync.start(connection, metadata);
     const error = new Error("Refresh failed");
-    metadata.readLibrary.mockRejectedValueOnce(error);
+    metadata.refresh.mockRejectedValueOnce(error);
     await sync.refresh();
     expect(sync.error).toBe(error);
     await sync.refresh();
@@ -218,14 +155,14 @@ describe("sync engine", () => {
     const { sync, metadata } = setup();
     sync.start(connection, metadata);
     const error = new Error("Failed");
-    metadata.readLibrary.mockImplementationOnce(() => {
+    metadata.refresh.mockImplementationOnce(() => {
       throw error;
     });
     await sync.refresh();
     expect(sync.error).toBe(error);
     expect(sync.syncing).toBe(false);
     await sync.refresh();
-    expect(metadata.readLibrary).toHaveBeenCalledTimes(2);
+    expect(metadata.refresh).toHaveBeenCalledTimes(2);
     expect(sync.error).toBeUndefined();
   });
 
@@ -233,9 +170,9 @@ describe("sync engine", () => {
     const { sync, metadata, covers, queue } = setup();
     sync.start(connection, metadata);
     const pending = deferred();
-    metadata.readLibrary.mockImplementationOnce(async () => {
+    metadata.refresh.mockImplementationOnce(async () => {
       await pending.promise;
-      return { artists: [], albums: [], tracks: [] };
+      return;
     });
     const refresh = sync.refresh();
     sync.stop();
@@ -251,19 +188,19 @@ describe("sync engine", () => {
     const { sync, metadata, covers } = setup();
     sync.start(connection, metadata);
     const old = deferred();
-    metadata.readLibrary.mockImplementationOnce(async () => {
+    metadata.refresh.mockImplementationOnce(async () => {
       await old.promise;
-      return { artists: [], albums: [], tracks: [] };
+      return;
     });
     const first = sync.refresh();
-    await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(metadata.refresh).toHaveBeenCalledOnce());
     sync.stop();
     expect(sync.syncing).toBe(false);
     sync.start(connection, metadata);
     const current = deferred();
-    metadata.readLibrary.mockImplementationOnce(async () => {
+    metadata.refresh.mockImplementationOnce(async () => {
       await current.promise;
-      return { artists: [], albums: [], tracks: [] };
+      return;
     });
     const second = sync.refresh();
     old.reject(new Error("Old connection failed"));

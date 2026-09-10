@@ -1,5 +1,6 @@
+import type { MetadataConnection } from "./network.svelte";
 import type { Memory } from "./memory.svelte";
-import type { Account, Album, Track } from "./schema";
+import type { Album, Track } from "./schema";
 import type { MetadataSnapshot, Storage } from "./storage";
 
 type MetadataMemory = Pick<
@@ -60,6 +61,7 @@ export class MetadataEngine {
     this.#memory = memory;
   }
   #storage?: Pick<Storage, "account" | "metadata">;
+  #connection?: MetadataConnection;
   #scope = "";
   #restored = false;
   #restoring?: Promise<void>;
@@ -135,36 +137,66 @@ export class MetadataEngine {
       }));
   }
 
-  async prepareRefresh(account: Account) {
+  setConnection(connection: MetadataConnection | undefined) {
+    if (this.#destroyed || connection === this.#connection) return;
+    this.#connection = connection;
+    // Attaching network access must not invalidate pending local restoration.
+    if (!this.#restoring) {
+      this.#invalidate();
+      this.#status = this.#snapshotInfo ? "ready" : "idle";
+    }
+  }
+
+  async refresh(force = true) {
+    const connection = this.#connection;
     if (this.#restoring) await this.#restoring;
-    if (this.#destroyed) return;
+    if (
+      !connection ||
+      connection !== this.#connection ||
+      connection.signal.aborted ||
+      this.#destroyed
+    )
+      return;
     const storage = this.#storage;
-    if (!this.#restored || !storage || this.#scope !== `${account.host}\n${account.username}`)
+    if (
+      !this.#restored ||
+      !storage ||
+      this.#scope !== `${connection.account.host}\n${connection.account.username}`
+    )
       throw new Error("Restore the account before refreshing metadata.");
     const generation = this.#invalidate();
     const controller = new AbortController();
     this.#updateController = controller;
-    const valid = () =>
-      !this.#destroyed && generation === this.#generation && !controller.signal.aborted;
+    const signal = AbortSignal.any([controller.signal, connection.signal]);
+    const valid = () => !this.#destroyed && generation === this.#generation && !signal.aborted;
     const existing = this.#snapshotInfo;
     this.#error = undefined;
     this.#status = existing ? "refreshing" : "loading";
-    return {
-      existing,
-      signal: controller.signal,
-      commit: async (snapshot: MetadataSnapshot, current: () => boolean) => {
-        const canCommit = () => valid() && current();
-        if (!canCommit()) return;
-        const committed = await storage.metadata.save(snapshot, canCommit);
-        if (committed && canCommit()) this.#publish(committed);
-      },
-      finish: () => {
-        if (generation === this.#generation && !this.#destroyed)
-          this.#status = this.#snapshotInfo ? "ready" : "idle";
-        controller.abort();
-        if (this.#updateController === controller) this.#updateController = undefined;
-      },
-    };
+    try {
+      const modified =
+        (await connection.getModifiedAt(existing?.lastModified ?? undefined)) ??
+        existing?.lastModified ??
+        null;
+      if (!valid()) return;
+      if (!force && existing && modified !== null && modified === existing.lastModified) return;
+      const library = await connection.readLibrary(signal);
+      if (!valid()) return;
+      const snapshot = {
+        ...library,
+        account: connection.account,
+        lastModified: modified,
+        savedAt: Date.now(),
+      };
+      const committed = await storage.metadata.save(snapshot, valid);
+      if (committed && valid()) this.#publish(committed);
+    } catch (error) {
+      if (valid()) throw error;
+    } finally {
+      if (generation === this.#generation && !this.#destroyed)
+        this.#status = this.#snapshotInfo ? "ready" : "idle";
+      controller.abort();
+      if (this.#updateController === controller) this.#updateController = undefined;
+    }
   }
 
   async saveConnection(

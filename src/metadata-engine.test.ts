@@ -133,6 +133,45 @@ async function loadLibrary(engine: MetadataEngine, client: ReturnType<typeof cre
 }
 
 describe("metadata engine", () => {
+  it("revalidates or forces a refresh directly without a commit protocol", async () => {
+    const disk = installMetadataStorage();
+    await disk.seed(account, snapshot());
+    const memory = new Memory();
+    const engine = new MetadataEngine(memory);
+    await engine.restore(new Storage(account));
+    const connection = createConnection(auth);
+    const modified = vi.spyOn(connection, "getModifiedAt").mockResolvedValue(10);
+    const read = vi.spyOn(connection, "readLibrary").mockResolvedValue(snapshot());
+    engine.setConnection(connection);
+    await engine.refresh(false);
+    expect(modified).toHaveBeenCalledWith(10);
+    expect(read).not.toHaveBeenCalled();
+    expect(disk.writes).toBe(0);
+    await engine.refresh();
+    expect(read).toHaveBeenCalledOnce();
+    expect(disk.writes).toBe(1);
+    expect(engine.status).toBe("ready");
+    engine.destroy();
+  });
+
+  it("keeps restored data and reports a direct refresh failure to its caller", async () => {
+    const disk = installMetadataStorage();
+    await disk.seed(account, snapshot());
+    const memory = new Memory();
+    const engine = new MetadataEngine(memory);
+    await engine.restore(new Storage(account));
+    const previous = memory.tracks;
+    const connection = createConnection(auth);
+    const error = new Error("Server unavailable");
+    vi.spyOn(connection, "getModifiedAt").mockRejectedValue(error);
+    engine.setConnection(connection);
+    await expect(engine.refresh()).rejects.toBe(error);
+    expect(memory.tracks).toBe(previous);
+    expect(engine.status).toBe("ready");
+    expect(disk.writes).toBe(0);
+    engine.destroy();
+  });
+
   it("uses injected storage and publishes the snapshot returned by its write", async () => {
     const disk = installMetadataStorage();
     const stored = snapshot();

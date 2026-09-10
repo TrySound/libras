@@ -78,12 +78,11 @@ export function createSession(saved = false, storage = createStorage()) {
     }),
     getModifiedAt: vi.fn(async () => 100),
     readLibrary: vi.fn(async () => ({ artists: [], albums: [], tracks: [] })),
-    prepareRefresh: vi.fn(async () => ({
-      existing: { savedAt: 100, lastModified: 100 },
-      signal: new AbortController().signal,
-      commit: async () => {},
-      finish: () => {},
-    })),
+    setConnection: vi.fn(),
+    refresh: vi.fn(async (force = true) => {
+      await metadata.getModifiedAt();
+      if (force) await metadata.readLibrary();
+    }),
   };
   const covers = {
     restore: vi.fn(async () => {}),
