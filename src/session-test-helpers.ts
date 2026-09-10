@@ -62,16 +62,12 @@ export function createSession(saved = false, storage = createStorage()) {
     savedAt: undefined as number | undefined,
     status: "idle" as MetadataStatus,
     error: undefined as unknown,
-    warning: undefined as unknown,
     restore: vi.fn(async (storage: Pick<Storage, "account">) => {
       const account = storage.account;
       memory.artists = new Map(snapshot(account).artists.map((artist) => [artist.id, artist]));
       metadata.savedAt = 100;
       metadata.status = "ready";
     }),
-    prepareConnection: vi.fn(async (connection: MetadataConnection) =>
-      snapshot(connection.account),
-    ),
     saveConnection: vi.fn(
       async (value: MetadataSnapshot, _storage: Storage, _signal: AbortSignal) => value,
     ),
@@ -80,9 +76,14 @@ export function createSession(saved = false, storage = createStorage()) {
       metadata.savedAt = value.savedAt;
       metadata.status = "ready";
     }),
-    revalidate: vi.fn(async () => {}),
-    refresh: vi.fn(async () => {}),
-    setConnection: vi.fn(),
+    getModifiedAt: vi.fn(async () => 100),
+    readLibrary: vi.fn(async () => ({ artists: [], albums: [], tracks: [] })),
+    prepareRefresh: vi.fn(async () => ({
+      existing: { savedAt: 100, lastModified: 100 },
+      signal: new AbortController().signal,
+      commit: async () => {},
+      finish: () => {},
+    })),
   };
   const covers = {
     restore: vi.fn(async () => {}),
@@ -105,7 +106,23 @@ export function createSession(saved = false, storage = createStorage()) {
   const tracks = { restore: vi.fn(async () => {}), setConnection: vi.fn() };
   const playback = { suspend: vi.fn(), suspendNetwork: vi.fn() };
   const network = new Network();
+  const accept = network.accept.bind(network);
+  vi.spyOn(network, "accept").mockImplementation((candidate) => {
+    const active = accept(candidate);
+    return {
+      ...active,
+      metadata: {
+        account: active.account,
+        signal: active.signal,
+        getModifiedAt: metadata.getModifiedAt,
+        readLibrary: metadata.readLibrary,
+      },
+    };
+  });
   const sync = new SyncEngine({ metadata, covers, queue });
+  const prepareConnection = vi
+    .spyOn(sync, "prepareConnection")
+    .mockImplementation(async (connection: MetadataConnection) => snapshot(connection.account));
   const session = new Session({
     sync,
     memory,
@@ -118,5 +135,17 @@ export function createSession(saved = false, storage = createStorage()) {
     playback,
     preferences: storage,
   });
-  return { session, network, memory, auth, metadata, covers, queue, tracks, playback, storage };
+  return {
+    session,
+    network,
+    memory,
+    auth,
+    metadata,
+    covers,
+    queue,
+    tracks,
+    playback,
+    storage,
+    prepareConnection,
+  };
 }

@@ -87,12 +87,15 @@ describe("app settings", () => {
     expect(target.textContent).toContain(credentials.username);
     expect(target.querySelector("form")).toBeNull();
     const refresh = deferred();
-    metadata.refresh.mockReturnValueOnce(refresh.promise);
+    metadata.readLibrary.mockImplementationOnce(async () => {
+      await refresh.promise;
+      return { artists: [], albums: [], tracks: [] };
+    });
     button("Refresh library").click();
     flushSync();
     expect(button("Refreshing…").disabled).toBe(true);
     button("Refreshing…").click();
-    expect(metadata.refresh).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
     button("Disconnect").click();
     flushSync();
     expect(auth.load()).toBeNull();
@@ -108,11 +111,12 @@ describe("app settings", () => {
   });
 
   it("keeps Connect usable while forced offline, reports failures, and unlocks online mode on success", async () => {
-    const { target, metadata, fill, button, offline, session, navigate } = await setup();
+    const { target, metadata, fill, button, offline, session, navigate, prepareConnection } =
+      await setup();
     expect(offline().checked).toBe(true);
     expect(offline().disabled).toBe(true);
     expect(button("Connect").disabled).toBe(false);
-    metadata.prepareConnection.mockRejectedValueOnce(new Error("Unauthorized"));
+    prepareConnection.mockRejectedValueOnce(new Error("Unauthorized"));
     fill();
     await vi.waitFor(() =>
       expect(target.querySelector('[role="alert"]')?.textContent).toBe("Unauthorized"),

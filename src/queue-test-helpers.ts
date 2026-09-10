@@ -13,13 +13,7 @@ export function attachQueue(queue: QueueEngine, connection?: QueueConnection) {
   if (!connection) return;
   const sync = new SyncEngine({
     queue,
-    metadata: {
-      refresh: async () => {},
-      revalidate: async () => {},
-      status: "ready",
-      error: undefined,
-      warning: undefined,
-    },
+    metadata: { prepareRefresh: async () => undefined },
     covers: { refresh: async () => {} },
   });
   sync.start(connection);

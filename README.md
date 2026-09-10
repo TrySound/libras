@@ -37,7 +37,7 @@ Installation options vary by browser and device. Offline storage and background 
 
 Open Libras online first and download the music you want to keep. Use **Offline Library** mode to listen to downloaded tracks without a connection.
 
-In Settings, **Refresh library** updates your connected server's metadata. **Disconnect** removes saved credentials but keeps your library, artwork, downloaded audio, and queue—including after restarting the app. Offline mode stays on until you successfully connect again. To change servers, disconnect first; each server/account keeps its own offline library.
+Library metadata and the server queue refresh at online startup or when you choose **Refresh library** in Settings. Cached data stays available during refresh; refreshing the server queue does not interrupt active playback. **Disconnect** removes saved credentials but keeps your library, artwork, downloaded audio, and queue—including after restarting the app. Offline mode stays on until you successfully connect again. To change servers, disconnect first; each server/account keeps its own offline library.
 
 Downloads and saved app data live in your browser on that device. Clearing site data removes them, and they don't automatically transfer to another browser or app address.
 

@@ -1,3 +1,4 @@
+import { attachMetadata, metadataSync } from "./metadata-test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MetadataEngine } from "./metadata.svelte";
 import { Storage, type MetadataSnapshot } from "./storage";
@@ -127,8 +128,8 @@ afterEach(() => {
 
 async function loadLibrary(engine: MetadataEngine, client: ReturnType<typeof createConnection>) {
   await engine.restore(new Storage(client.account));
-  engine.setConnection(client);
-  await engine.revalidate();
+  attachMetadata(engine, client);
+  await metadataSync(engine).refresh(false);
 }
 
 describe("metadata engine", () => {
@@ -152,8 +153,8 @@ describe("metadata engine", () => {
     expect(store.read).toHaveBeenCalledOnce();
     expect(memory.tracks.get("song")?.title).toBe("Song");
     vi.stubGlobal("fetch", serveLibrary());
-    engine.setConnection(createConnection(auth));
-    await engine.refresh();
+    attachMetadata(engine, createConnection(auth));
+    await metadataSync(engine).refresh();
     expect(store.save).toHaveBeenCalledWith(
       expect.objectContaining({ lastModified: 20 }),
       expect.any(Function),
@@ -175,7 +176,7 @@ describe("metadata engine", () => {
     const network = new Network();
     const client = network.prepare({ ...auth, username: "other" });
     vi.stubGlobal("fetch", serveLibrary());
-    const prepared = await engine.prepareConnection(client.metadata);
+    const prepared = await metadataSync(engine).prepareConnection(client.metadata);
     expect(network.mode).toBe("offline");
     expect(memory.tracks).toBe(previous);
     expect(memory.account).toEqual(account);
@@ -187,7 +188,7 @@ describe("metadata engine", () => {
     network.accept(client);
     memory.account = saved.account;
     engine.acceptConnection(saved, nextStorage);
-    engine.setConnection(client.metadata);
+    attachMetadata(engine, client.metadata);
     expect(network.mode).toBe("online");
     expect(memory.account).toEqual({ host: auth.host, username: "other" });
     expect(memory.tracks).not.toBe(previous);
@@ -232,10 +233,10 @@ describe("metadata engine", () => {
         ),
       );
       const client = createConnection(auth);
-      const preparing = engine.prepareConnection(client);
+      const preparing = metadataSync(engine).prepareConnection(client);
       if (abort) {
         client.abort();
-        engine.setConnection(undefined);
+        attachMetadata(engine, undefined);
       }
       resolve(
         abort
@@ -257,23 +258,23 @@ describe("metadata engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const memory = new Memory();
     const engine = new MetadataEngine(memory);
-    engine.setConnection(createConnection(auth));
-    engine.setConnection(undefined);
-    engine.setConnection(createConnection(auth));
+    attachMetadata(engine, createConnection(auth));
+    attachMetadata(engine, undefined);
+    attachMetadata(engine, createConnection(auth));
     expect(storage.getDirectory).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
     await engine.restore(new Storage(account));
     expect(fetcher).not.toHaveBeenCalled();
-    await engine.revalidate();
+    await metadataSync(engine).refresh(false);
     expect(engine.status).toBe("ready");
     expect(memory.tracks.get("song")).toBeDefined();
-    await engine.refresh();
+    await metadataSync(engine).refresh();
     expect(engine.status).toBe("ready");
     fetcher.mockClear();
-    engine.setConnection(undefined);
-    engine.setConnection(createConnection(auth));
+    attachMetadata(engine, undefined);
+    attachMetadata(engine, createConnection(auth));
     expect(fetcher).not.toHaveBeenCalled();
-    await engine.revalidate();
+    await metadataSync(engine).refresh(false);
     expect(fetcher).toHaveBeenCalled();
     engine.destroy();
   });
@@ -286,7 +287,7 @@ describe("metadata engine", () => {
     await engine.restore(new Storage(account));
     const previous = memory.tracks;
     const connection = createConnection(auth);
-    engine.setConnection(connection);
+    attachMetadata(engine, connection);
     let resolve!: (response: Response) => void;
     let signal: AbortSignal | null | undefined;
     const fetcher = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
@@ -300,9 +301,9 @@ describe("metadata engine", () => {
       });
     });
     vi.stubGlobal("fetch", fetcher);
-    const refreshing = engine.refresh();
+    const refreshing = metadataSync(engine).refresh();
     await vi.waitFor(() => expect(resolve).toBeDefined());
-    engine.setConnection(undefined);
+    attachMetadata(engine, undefined);
     expect(signal?.aborted).toBe(true);
     expect(connection.signal.aborted).toBe(false);
     resolve(
@@ -318,8 +319,8 @@ describe("metadata engine", () => {
     expect(storage.writes).toBe(0);
     expect(engine.status).toBe("ready");
     vi.stubGlobal("fetch", serveLibrary());
-    engine.setConnection(connection);
-    await engine.refresh();
+    attachMetadata(engine, connection);
+    await metadataSync(engine).refresh();
     expect(memory.tracks.get("song")?.title).toBe("Song");
     engine.destroy();
   });
@@ -499,7 +500,7 @@ describe("metadata engine", () => {
     expect(ids).toHaveLength(2);
     expect(ids).toContain(engineMemory.albums.get("album")?.artistId);
     expect(ids).toContain(engineMemory.tracks.get("song")?.artistId);
-    engine.refresh();
+    metadataSync(engine).refresh();
     await vi.waitFor(() => expect(engine.status).toBe("ready"));
     expect([...engineMemory.artists.values()].map((artist) => artist.id)).toEqual(ids);
     engine.destroy();
@@ -681,8 +682,8 @@ describe("metadata engine", () => {
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(new Storage(account));
     storage.getDirectory.mockClear();
-    engine.setConnection(createConnection(auth));
-    void engine.revalidate();
+    attachMetadata(engine, createConnection(auth));
+    void metadataSync(engine).refresh(false);
     expect(engine.status).toBe("refreshing");
     expect(engineMemory.tracks.get("song")?.title).toBe("Song");
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
@@ -736,7 +737,7 @@ describe("metadata engine", () => {
       memory.albumTracks,
     ];
     loadLibrary(engine, createConnection(auth));
-    await vi.waitFor(() => expect(engine.warning).toBeInstanceOf(Error));
+    await vi.waitFor(() => expect(metadataSync(engine).error).toBeInstanceOf(Error));
     [memory.artists, memory.albums, memory.tracks, memory.artistAlbums, memory.albumTracks].forEach(
       (map, i) => expect(map).toBe(accepted[i]),
     );
@@ -758,11 +759,11 @@ describe("metadata engine", () => {
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(new Storage(account));
-    loadLibrary(engine, createConnection(auth));
-    await vi.waitFor(() => expect(engine.status).toBe("ready"));
+    await loadLibrary(engine, createConnection(auth));
+    expect(engine.status).toBe("ready");
     storage.getDirectory.mockClear();
     fetcher.mockClear();
-    engine.setConnection(undefined);
+    attachMetadata(engine, undefined);
     expect(engine.status).toBe("ready");
     expect(engineMemory.tracks.get("song")).toBeDefined();
     expect(storage.getDirectory).not.toHaveBeenCalled();
@@ -787,10 +788,10 @@ describe("metadata engine", () => {
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(new Storage(account));
-    loadLibrary(engine, createConnection(auth));
-    await vi.waitFor(() => expect(engine.status).toBe("ready"));
+    await loadLibrary(engine, createConnection(auth));
+    expect(engine.status).toBe("ready");
     expect(storage.writes).toBe(0);
-    engine.refresh();
+    metadataSync(engine).refresh();
     expect(engineMemory.tracks.get("song")).toBeDefined();
     await vi.waitFor(() => expect(storage.writes).toBe(1));
     await vi.waitFor(() => expect(engine.status).toBe("ready"));
@@ -817,7 +818,7 @@ describe("metadata engine", () => {
     await engine.restore(new Storage(account));
     loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
-    engine.setConnection(undefined);
+    attachMetadata(engine, undefined);
     resolve(response({ indexes: { lastModified: 20 } }));
     await Promise.resolve();
     await Promise.resolve();
@@ -835,8 +836,8 @@ describe("metadata engine", () => {
     const engineMemory = new Memory();
     const engine = new MetadataEngine(engineMemory);
     await engine.restore(new Storage(account));
-    await engine.revalidate();
-    expect(engine.status).toBe("error");
+    await metadataSync(engine).refresh(false);
+    expect(engine.status).toBe("idle");
     expect([...engineMemory.artists.values()]).toEqual([]);
     expect(indexedDB.open).not.toHaveBeenCalled();
     engine.destroy();

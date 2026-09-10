@@ -1,7 +1,6 @@
 import type { Memory } from "./memory.svelte";
-import type { Album, Track } from "./schema";
+import type { Account, Album, Track } from "./schema";
 import type { MetadataSnapshot, Storage } from "./storage";
-import type { MetadataConnection } from "./network.svelte";
 
 type MetadataMemory = Pick<
   Memory,
@@ -61,22 +60,20 @@ export class MetadataEngine {
     this.#memory = memory;
   }
   #storage?: Pick<Storage, "account" | "metadata">;
-  #connection?: MetadataConnection;
   #scope = "";
   #restored = false;
   #restoring?: Promise<void>;
   #generation = 0;
-  #libraryController?: AbortController;
+  #updateController?: AbortController;
 
   #invalidate() {
-    this.#libraryController?.abort();
-    this.#libraryController = undefined;
+    this.#updateController?.abort();
+    this.#updateController = undefined;
     return ++this.#generation;
   }
   #destroyed = false;
   #status = $state<MetadataStatus>("idle");
   #error = $state.raw<unknown>();
-  #warning = $state.raw<unknown>();
 
   get savedAt() {
     return this.#snapshotInfo?.savedAt;
@@ -87,9 +84,6 @@ export class MetadataEngine {
   }
   get error() {
     return this.#error;
-  }
-  get warning() {
-    return this.#warning;
   }
 
   #publish(snapshot?: MetadataSnapshot) {
@@ -119,16 +113,9 @@ export class MetadataEngine {
     this.#scope = scope;
     this.#storage = storage;
     this.#restored = false;
-    if (
-      this.#connection &&
-      (this.#connection.account.host !== account.host ||
-        this.#connection.account.username !== account.username)
-    )
-      this.#connection = undefined;
     this.#publish();
     this.#status = "loading";
     this.#error = undefined;
-    this.#warning = undefined;
     return (this.#restoring = storage.metadata
       .read()
       .then((snapshot) => {
@@ -148,104 +135,36 @@ export class MetadataEngine {
       }));
   }
 
-  async #fetchLibrary(
-    connection: MetadataConnection,
-    valid: () => boolean,
-    lastModified: number | null,
-  ) {
-    if (!valid()) throw new DOMException("Metadata request superseded.", "AbortError");
-    const controller = new AbortController();
-    this.#libraryController = controller;
-    try {
-      const library = await connection.readLibrary(controller.signal);
-      if (!valid()) throw new DOMException("Metadata request superseded.", "AbortError");
-      return {
-        account: connection.account,
-        lastModified,
-        savedAt: Date.now(),
-        ...library,
-      };
-    } finally {
-      controller.abort();
-      if (this.#libraryController === controller) this.#libraryController = undefined;
-    }
-  }
-
-  async #refresh(force: boolean) {
-    const connection = this.#connection;
+  async prepareRefresh(account: Account) {
+    if (this.#restoring) await this.#restoring;
     if (this.#destroyed) return;
-    if (this.#restoring) await this.#restoring;
-    if (connection !== this.#connection || this.#destroyed) return;
-    if (!connection || connection.signal.aborted) {
-      this.#status = this.#snapshotInfo ? "ready" : "error";
-      if (!this.#snapshotInfo)
-        this.#error = new Error("No library is available offline. Reconnect to download metadata.");
-      return;
-    }
     const storage = this.#storage;
-    if (
-      !this.#restored ||
-      !storage ||
-      this.#scope !== `${connection.account.host}\n${connection.account.username}`
-    )
-      throw new Error("Restore the connection's account before refreshing metadata.");
+    if (!this.#restored || !storage || this.#scope !== `${account.host}\n${account.username}`)
+      throw new Error("Restore the account before refreshing metadata.");
     const generation = this.#invalidate();
-    this.#error = undefined;
-    this.#warning = undefined;
+    const controller = new AbortController();
+    this.#updateController = controller;
+    const valid = () =>
+      !this.#destroyed && generation === this.#generation && !controller.signal.aborted;
     const existing = this.#snapshotInfo;
-    const valid = () =>
-      !this.#destroyed &&
-      generation === this.#generation &&
-      connection === this.#connection &&
-      !connection.signal.aborted;
+    this.#error = undefined;
     this.#status = existing ? "refreshing" : "loading";
-    try {
-      const modified =
-        (await connection.getModifiedAt(existing?.lastModified ?? undefined)) ??
-        existing?.lastModified ??
-        null;
-      if (!valid()) return;
-      if (!force && existing && modified !== null && modified === existing.lastModified) {
-        this.#status = "ready";
-        return;
-      }
-      const snapshot = await this.#fetchLibrary(connection, valid, modified);
-      if (!valid()) return;
-      const committed = await storage.metadata.save(snapshot, valid);
-      if (!valid() || !committed) return;
-      this.#publish(committed);
-      this.#status = "ready";
-    } catch (error) {
-      if (!valid()) return;
-      if (existing) {
-        this.#status = "ready";
-        this.#warning = error;
-      } else {
-        this.#status = "error";
-        this.#error = error;
-      }
-    }
-  }
-
-  /** Validate a candidate without changing the selected library or its saved snapshot. */
-  async prepareConnection(connection: MetadataConnection): Promise<MetadataSnapshot> {
-    if (this.#restoring) await this.#restoring;
-    connection.signal.throwIfAborted();
-    if (this.#destroyed) throw new DOMException("Metadata stopped.", "AbortError");
-    const generation = this.#invalidate();
-    const valid = () =>
-      !this.#destroyed && generation === this.#generation && !connection.signal.aborted;
-    this.#status = this.#snapshotInfo ? "refreshing" : "loading";
-    try {
-      const modified = await connection.getModifiedAt();
-      const snapshot = await this.#fetchLibrary(connection, valid, modified);
-      if (!valid()) throw new DOMException("Connection superseded.", "AbortError");
-      return snapshot;
-    } finally {
-      if (valid()) {
-        this.#status = this.#snapshotInfo ? "ready" : "idle";
-      }
-    }
+    return {
+      existing,
+      signal: controller.signal,
+      commit: async (snapshot: MetadataSnapshot, current: () => boolean) => {
+        const canCommit = () => valid() && current();
+        if (!canCommit()) return;
+        const committed = await storage.metadata.save(snapshot, canCommit);
+        if (committed && canCommit()) this.#publish(committed);
+      },
+      finish: () => {
+        if (generation === this.#generation && !this.#destroyed)
+          this.#status = this.#snapshotInfo ? "ready" : "idle";
+        controller.abort();
+        if (this.#updateController === controller) this.#updateController = undefined;
+      },
+    };
   }
 
   async saveConnection(
@@ -282,24 +201,6 @@ export class MetadataEngine {
     this.#publish(snapshot);
     this.#status = "ready";
     this.#error = undefined;
-    this.#warning = undefined;
-  }
-
-  refresh() {
-    return this.#refresh(true);
-  }
-
-  revalidate() {
-    return this.#refresh(false);
-  }
-
-  setConnection(connection: MetadataConnection | undefined) {
-    if ((connection && connection === this.#connection) || this.#destroyed) return;
-    this.#connection = connection;
-    if (!this.#restoring) {
-      this.#invalidate();
-      this.#status = this.#snapshotInfo ? "ready" : "idle";
-    }
   }
 
   destroy() {

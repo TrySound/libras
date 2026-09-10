@@ -29,13 +29,11 @@ export class QueueEngine {
 
   #dirty = false;
   #needsPersist = false;
-  #conflict = false;
   #storage?: Pick<Storage, "account" | "queue">;
   #updatedAt = 0;
   #revision = 0;
   #epoch = 0;
   #accountGeneration = 0;
-  #loaded = false;
   #destroyed = false;
   #ready: Promise<void> = Promise.resolve();
   #localWrites: Promise<unknown> = Promise.resolve();
@@ -111,14 +109,12 @@ export class QueueEngine {
       .then(({ written }) => {
         if (this.#account !== account) return;
         if (!written) {
-          this.#conflict = true;
           this.#storageError = new Error(
             "A newer queue was saved in another tab. This queue has not been saved.",
           );
           return;
         }
         if (revision === this.#revision) {
-          this.#conflict = false;
           this.#storageError = undefined;
           this.#needsPersist = false;
         }
@@ -142,13 +138,11 @@ export class QueueEngine {
     this.#epoch++;
     const generation = ++this.#accountGeneration;
     const revision = ++this.#revision;
-    this.#loaded = false;
     this.#playbackActive = false;
     this.#serverWritable = false;
     this.#memory.serverQueue = null;
     this.#dirty = false;
     this.#needsPersist = false;
-    this.#conflict = false;
     this.#updatedAt = 0;
     this.#storageError = undefined;
     if (this.#syncAccount && scope(this.#syncAccount) !== scope(account)) this.setSync();
@@ -167,7 +161,6 @@ export class QueueEngine {
         if (generation === this.#accountGeneration) this.#storageError = error;
       } finally {
         if (generation === this.#accountGeneration && !this.#destroyed) {
-          this.#loaded = true;
           if (revision !== this.#revision) await this.#persist();
         }
       }
@@ -220,7 +213,6 @@ export class QueueEngine {
           }
           this.#dirty = false;
           this.#needsPersist = false;
-          this.#conflict = false;
           this.#storageError = undefined;
           this.#memory.serverQueue = server;
           if (!this.#playbackActive && !preservePlayback) {
@@ -249,9 +241,7 @@ export class QueueEngine {
       !account ||
       !storage ||
       scope(account) !== scope(identity) ||
-      !this.#loaded ||
       !this.#dirty ||
-      this.#conflict ||
       this.#storageError
     )
       return;
@@ -277,7 +267,6 @@ export class QueueEngine {
             });
             if (!valid()) return;
             if (!result.written) {
-              this.#conflict = true;
               this.#storageError = new Error(
                 "A newer queue is already stored. The acknowledgement was not saved.",
               );

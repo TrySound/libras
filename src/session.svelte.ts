@@ -21,12 +21,12 @@ interface SessionOptions {
   memory: MemoryView & Pick<Memory, "account">;
   network: Network;
   auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
-  metadata: Pick<
-    MetadataEngine,
-    "restore" | "prepareConnection" | "saveConnection" | "acceptConnection" | "setConnection"
-  >;
+  metadata: Pick<MetadataEngine, "restore" | "saveConnection" | "acceptConnection">;
   covers: Pick<CoverEngine, "restore" | "refresh" | "setConnection">;
-  sync: Pick<SyncEngine, "start" | "stop" | "refresh" | "refreshQueue" | "syncing" | "error">;
+  sync: Pick<
+    SyncEngine,
+    "start" | "stop" | "prepareConnection" | "refresh" | "refreshQueue" | "syncing" | "error"
+  >;
   queue: Pick<QueueEngine, "restore" | "flush">;
   tracks: Pick<TrackEngine, "restore" | "setConnection">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
@@ -108,10 +108,9 @@ export class Session {
   }
 
   #detach() {
-    const { metadata, queue, covers, tracks, playback } = this.#options;
+    const { queue, covers, tracks, playback } = this.#options;
     this.#options.sync.stop();
     this.#options.network.setMode("offline");
-    metadata.setConnection(undefined);
     covers.setConnection(undefined);
     tracks.setConnection(undefined);
     playback.suspendNetwork();
@@ -119,11 +118,10 @@ export class Session {
   }
 
   #attach(connection: ActiveNetworkConnection) {
-    const { metadata, covers, tracks } = this.#options;
-    metadata.setConnection(connection.metadata);
+    const { covers, tracks } = this.#options;
     covers.setConnection(connection.artwork);
     tracks.setConnection(connection.audio);
-    this.#options.sync.start(connection.queue);
+    this.#options.sync.start(connection.queue, connection.metadata);
   }
 
   start(): Auth | null {
@@ -194,7 +192,7 @@ export class Session {
       const { metadata, queue, covers, tracks, auth, preferences } = this.#options;
       // Explicit connection may use the network while the offline switch is locked.
       // Do not replace the selected workspace, or attach any other engines, on failure.
-      const prepared = await metadata.prepareConnection(connection.metadata);
+      const prepared = await this.#options.sync.prepareConnection(connection.metadata);
       if (!this.#valid(generation)) return false;
       auth.save(credentials);
       auth.saveAccount(prepared.account);
