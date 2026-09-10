@@ -100,7 +100,7 @@ describe("configured storage", () => {
     expect(disk.getDirectory).not.toHaveBeenCalled();
     expect(await storage.metadata.read()).toBeNull();
     expect(await storage.queue.read()).toBeNull();
-    expect((await storage.artwork.read(() => true))?.catalog.account).toEqual(account);
+    expect((await storage.artwork.read()).account).toEqual(account);
   });
 
   it("copies its typed account before freezing it", () => {
@@ -242,8 +242,8 @@ describe("artwork storage", () => {
     const storage = new Storage(account);
     const artwork = storage.artwork;
     expect(disk.getDirectory).not.toHaveBeenCalled();
-    const empty = await artwork.read(valid);
-    expect(empty?.catalog.images).toEqual([]);
+    const empty = await artwork.read();
+    expect(empty.images).toEqual([]);
     await artwork.update(
       (catalog) => ({
         ...catalog,
@@ -262,14 +262,12 @@ describe("artwork storage", () => {
     const name = await hashedFileName(`${account.host}\n${account.username}`, ".json");
     expect(disk.files.has(`images/${name}`)).toBe(true);
     expect(disk.lock).toHaveBeenCalledWith(`music-web-covers:${name}`, expect.any(Function));
-    expect((await artwork.read(valid))?.catalog.albums).toEqual([
-      { id: "album", candidates: ["cover"] },
-    ]);
+    expect((await artwork.read()).albums).toEqual([{ id: "album", candidates: ["cover"] }]);
     const other = new Storage({ ...account, username: "other" });
-    expect((await other.artwork.read(valid))?.catalog.images).toEqual([]);
+    expect((await other.artwork.read()).images).toEqual([]);
   });
 
-  it("filters missing and truncated files even when persisting repairs fails", async () => {
+  it("restores the catalog without eagerly opening image files", async () => {
     const disk = installStorage();
     const artwork = new Storage(account).artwork;
     await artwork.update(
@@ -287,15 +285,9 @@ describe("artwork storage", () => {
       valid,
     );
     disk.files.set("images/b.image", "x");
-    disk.state.fail = true;
-    const result = await artwork.read(valid);
-    expect(result?.catalog.images).toEqual([]);
-    expect(result?.catalog.albums[0].candidates).toEqual(["a", "b"]);
-    expect(result?.error).toBeInstanceOf(Error);
-    disk.state.fail = false;
-    const repaired = await artwork.read(valid);
-    expect(repaired?.error).toBeUndefined();
-    expect(repaired?.catalog.images).toEqual([]);
+    const catalog = await artwork.read();
+    expect(catalog.images.map((image) => image.id)).toEqual(["a", "b"]);
+    expect(catalog.albums[0].candidates).toEqual(["a", "b"]);
     expect(disk.files.get("images/b.image")).toBe("x");
   });
 
@@ -310,10 +302,10 @@ describe("artwork storage", () => {
     ]);
     expect(results.filter((result) => result?.image)).toHaveLength(1);
     expect([...disk.files.keys()].filter((name) => name.endsWith(".image"))).toHaveLength(1);
-    const read = await first.read(valid);
-    expect(read?.catalog.images).toHaveLength(1);
+    const catalog = await first.read();
+    expect(catalog.images).toHaveLength(1);
     const winner = results.find((result) => result?.image)!;
-    expect(await (await second.readImage(read!.catalog.images[0])).text()).toBe(
+    expect(await (await second.readImage(catalog.images[0])).text()).toBe(
       await winner.image!.blob.text(),
     );
   });
@@ -337,7 +329,7 @@ describe("artwork storage", () => {
       await artwork.saveImage("cover", image("late"), previous.fileName, () => current),
     ).toBeUndefined();
     disk.state.beforeWrite = () => {};
-    expect((await artwork.read(valid))?.catalog).toEqual(original!.catalog);
+    expect(await artwork.read()).toEqual(original!.catalog);
     expect(await (await artwork.readImage(previous)).text()).toBe("image");
     expect([...disk.files.keys()].filter((name) => name.endsWith(".image"))).toEqual([
       `images/${previous.fileName}`,
@@ -350,7 +342,7 @@ describe("artwork storage", () => {
     const path = `images/${await hashedFileName(`${account.host}\n${account.username}`, ".json")}`;
     disk.files.set(path, "broken JSON");
     disk.files.set("images/legacy.image", "legacy");
-    await expect(artwork.read(valid)).rejects.toThrow();
+    await expect(artwork.read()).rejects.toThrow();
     await expect(artwork.update((catalog) => catalog, valid)).rejects.toThrow();
     await expect(artwork.saveImage("cover", image(), undefined, valid)).rejects.toThrow();
     expect(disk.files.get(path)).toBe("broken JSON");
@@ -431,17 +423,6 @@ describe("queue storage", () => {
       expect(await queue.read()).toEqual(record());
     }
   });
-
-  it.each([{ index: 3 }, { index: -1, position: 2 }, { position: -1 }])(
-    "rejects invalid selection %j without replacing the saved queue",
-    async (invalid) => {
-      installStorage();
-      const queue = new Storage(account).queue;
-      await queue.save(record());
-      await expect(queue.save({ ...record(), ...invalid })).rejects.toThrow();
-      expect(await queue.read()).toEqual(record());
-    },
-  );
 
   it("preserves the complete queue on write failure and allows later writes", async () => {
     const disk = installStorage();

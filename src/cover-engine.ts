@@ -187,11 +187,8 @@ export class CoverEngine {
     this.#notify();
     return (this.#ready = (async () => {
       try {
-        const result = await storage.artwork.read(valid);
-        if (result && valid()) {
-          this.#error = result.error;
-          await this.#apply(result.catalog);
-        }
+        const catalog = await storage.artwork.read();
+        if (valid()) await this.#apply(catalog);
       } catch (error) {
         if (valid()) {
           this.#error = error;

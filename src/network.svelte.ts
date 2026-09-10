@@ -80,7 +80,16 @@ function genres(item: { genre?: string; genres?: { name: string }[] }) {
 }
 
 type Request = <T>(run: () => Promise<T>) => Promise<T>;
-type NetworkFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+async function networkFetch(input: RequestInfo | URL, init?: RequestInit) {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    init?.signal?.throwIfAborted();
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    throw new NetworkTransportError(error);
+  }
+}
 
 class MetadataAccess {
   readonly account: Readonly<Account>;
@@ -217,19 +226,12 @@ class ArtworkAccess {
   readonly signal: AbortSignal;
   readonly #client: SubsonicClient;
   readonly #request: Request;
-  readonly #fetch: NetworkFetch;
 
-  constructor(
-    account: Readonly<Account>,
-    client: SubsonicClient,
-    request: Request,
-    fetch: NetworkFetch,
-  ) {
+  constructor(account: Readonly<Account>, client: SubsonicClient, request: Request) {
     this.account = account;
     this.signal = client.signal;
     this.#client = client;
     this.#request = request;
-    this.#fetch = fetch;
   }
 
   url(id: string, size: number) {
@@ -242,7 +244,7 @@ class ArtworkAccess {
       const headers = new Headers();
       if (options.etag) headers.set("If-None-Match", options.etag);
       if (options.lastModified) headers.set("If-Modified-Since", options.lastModified);
-      const response = await this.#fetch(this.#client.getCoverArtUrl(id, options.size), {
+      const response = await networkFetch(this.#client.getCoverArtUrl(id, options.size), {
         headers,
         signal: this.signal,
       });
@@ -265,19 +267,12 @@ class AudioAccess {
   readonly signal: AbortSignal;
   readonly #client: SubsonicClient;
   readonly #request: Request;
-  readonly #fetch: NetworkFetch;
 
-  constructor(
-    account: Readonly<Account>,
-    client: SubsonicClient,
-    request: Request,
-    fetch: NetworkFetch,
-  ) {
+  constructor(account: Readonly<Account>, client: SubsonicClient, request: Request) {
     this.account = account;
     this.signal = client.signal;
     this.#client = client;
     this.#request = request;
-    this.#fetch = fetch;
   }
 
   url(id: string, options: { format: AudioFormat; position?: number }) {
@@ -295,7 +290,7 @@ class AudioAccess {
     let response: Response | undefined;
     try {
       return await this.#request(async () => {
-        response = await this.#fetch(this.url(id, { format: options.format }), { signal });
+        response = await networkFetch(this.url(id, { format: options.format }), { signal });
         signal.throwIfAborted();
         if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
         return response;
@@ -344,12 +339,10 @@ export class Network {
 
   /** Explicit login validation is allowed while normal access remains offline. */
   prepare(auth: Auth): NetworkConnection {
-    const client = new SubsonicClient(auth, {
-      fetch: (input, init) => this.#fetch(input, init),
-    });
+    const client = new SubsonicClient(auth, { fetch: networkFetch });
     this.#candidate?.client.abort();
     const account = Object.freeze({ host: client.host, username: client.username });
-    const request: Request = (run) => this.#request(client, run, true);
+    const request: Request = (run) => this.#request(client, run);
     const metadata = Object.freeze(new MetadataAccess(account, client, request));
     const connection = Object.freeze({ account, signal: client.signal, metadata });
     this.#candidate = { handle: connection, client };
@@ -365,10 +358,9 @@ export class Network {
     }
     const { client } = candidate;
     const request: Request = (run) => this.#request(client, run);
-    const fetch: NetworkFetch = (input, init) => this.#fetch(input, init);
     const queue = Object.freeze(new QueueAccess(connection.account, client, request));
-    const artwork = Object.freeze(new ArtworkAccess(connection.account, client, request, fetch));
-    const audio = Object.freeze(new AudioAccess(connection.account, client, request, fetch));
+    const artwork = Object.freeze(new ArtworkAccess(connection.account, client, request));
+    const audio = Object.freeze(new AudioAccess(connection.account, client, request));
     const active = Object.freeze({ ...connection, queue, artwork, audio });
     this.#active?.abort();
     this.#active = client;
@@ -377,28 +369,10 @@ export class Network {
     return active;
   }
 
-  #check(client: SubsonicClient, allowCandidate = false) {
+  async #request<T>(client: SubsonicClient, run: () => Promise<T>) {
     client.signal.throwIfAborted();
-    if (allowCandidate && client === this.#candidate?.client) return;
-    if (client !== this.#active || this.#mode !== "online") {
-      throw new DOMException("Connection superseded.", "AbortError");
-    }
-  }
-
-  async #fetch(input: RequestInfo | URL, init?: RequestInit) {
-    try {
-      return await fetch(input, init);
-    } catch (error) {
-      init?.signal?.throwIfAborted();
-      if (error instanceof Error && error.name === "AbortError") throw error;
-      throw new NetworkTransportError(error);
-    }
-  }
-
-  async #request<T>(client: SubsonicClient, run: () => Promise<T>, allowCandidate = false) {
-    this.#check(client, allowCandidate);
     const result = await run();
-    this.#check(client, allowCandidate);
+    client.signal.throwIfAborted();
     return result;
   }
 

@@ -227,45 +227,8 @@ class ArtworkStore {
     return new Blob([await file.arrayBuffer()], { type: record.type });
   }
 
-  async read(valid: () => boolean) {
-    let catalog = (await (await this.#file()).read()) ?? emptyArtworkCatalog(this.account);
-    const directory = await this.#directory();
-    const missing = new Set<string>();
-    let next = 0;
-    const worker = async () => {
-      while (next < catalog.images.length && valid()) {
-        const record = catalog.images[next++];
-        try {
-          const file = await (await directory.getFileHandle(record.fileName)).getFile();
-          if (file.size !== record.size) missing.add(record.fileName);
-        } catch (error) {
-          if (!(error instanceof DOMException && error.name === "NotFoundError")) throw error;
-          missing.add(record.fileName);
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(6, catalog.images.length) }, worker));
-    if (!valid()) return;
-    let error: unknown;
-    if (missing.size) {
-      catalog = {
-        ...catalog,
-        images: catalog.images.filter((image) => !missing.has(image.fileName)),
-      };
-      try {
-        catalog =
-          (await this.#update(
-            (latest) => ({
-              ...latest,
-              images: latest.images.filter((image) => !missing.has(image.fileName)),
-            }),
-            valid,
-          )) ?? catalog;
-      } catch (cause) {
-        error = cause;
-      }
-    }
-    return valid() ? { catalog, error } : undefined;
+  async read() {
+    return (await (await this.#file()).read()) ?? emptyArtworkCatalog(this.account);
   }
 
   async saveImage(

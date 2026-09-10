@@ -63,14 +63,12 @@ export class OpfsJsonStore<T> {
     return this.#run(async (directory) => {
       const existing = await this.#read(directory).catch((error) => {
         if (!options.recoverReadError) throw error;
-        const recovered = options.recoverReadError(error);
-        return recovered === null ? null : this.#options.parse(recovered);
+        return options.recoverReadError(error);
       });
       const skipped = { written: false, value: existing };
       if (options.valid && !options.valid()) return skipped;
-      const next = change(existing);
-      if (next === undefined) return skipped;
-      const value = await this.#options.parse(next);
+      const value = change(existing);
+      if (value === undefined) return skipped;
       if (options.valid && !options.valid()) return skipped;
       const handle = await directory.getFileHandle(this.#options.fileName, { create: true });
       let writable: FileSystemWritableFileStream | undefined;

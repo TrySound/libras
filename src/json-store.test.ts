@@ -80,14 +80,12 @@ afterEach(() => {
 });
 
 describe("OPFS JSON store", () => {
-  it("returns null for missing files and validates stored and outgoing data", async () => {
-    const { store, files } = setup();
+  it("returns null for missing files and validates stored data", async () => {
+    const { store } = setup();
     const file = store();
     expect(await file.read()).toBeNull();
     expect(await file.update(() => ({ count: 1 }))).toEqual({ written: true, value: { count: 1 } });
     expect(await file.read()).toEqual({ count: 1 });
-    await expect(file.update(() => ({ count: "invalid" as unknown as number }))).rejects.toThrow();
-    expect(JSON.parse(files.get("test/state.json")!)).toEqual({ count: 1 });
   });
 
   it.each(["not-json", '{"count":"invalid"}'])(
@@ -106,18 +104,19 @@ describe("OPFS JSON store", () => {
     },
   );
 
-  it("awaits asynchronous validation before committing", async () => {
-    const { files } = setup();
+  it("awaits asynchronous parsing only when reading persisted data", async () => {
+    setup();
+    const parse = vi.fn(async (value) => v.parse(v.object({ count: v.number() }), value));
     const file = new OpfsJsonStore({
       directory: "test",
       fileName: "state.json",
       lockName: "existing-lock",
-      parse: async (value) => v.parse(v.object({ count: v.number() }), value),
+      parse,
     });
     await file.update(() => ({ count: 1 }));
+    expect(parse).not.toHaveBeenCalled();
     expect(await file.read()).toEqual({ count: 1 });
-    await expect(file.update(() => ({ count: "invalid" as unknown as number }))).rejects.toThrow();
-    expect(files.get("test/state.json")).toBe('{"count":1}');
+    expect(parse).toHaveBeenCalledOnce();
   });
 
   it("propagates read failures without treating an inaccessible file as empty", async () => {

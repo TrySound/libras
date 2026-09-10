@@ -199,7 +199,7 @@ describe("cover engine", () => {
     const data = catalog();
     const access = {
       account,
-      read: vi.fn(async () => ({ catalog: data, error: undefined })),
+      read: vi.fn(async () => data),
       update: vi.fn(async () => data),
       readImage: vi.fn(async () => new Blob(["image"], { type: "image/jpeg" })),
       saveImage: vi.fn(async () => undefined),
@@ -416,14 +416,15 @@ describe("cover engine", () => {
     ]);
   });
 
-  it("removes missing-file records once at startup, retaining references", async () => {
+  it("removes missing-file records on first access, retaining references", async () => {
     const storage = installOpfs();
     await storage.seed();
     const covers = engine();
     await covers.restore(new Storage(account));
-    expect(covers.ensureAlbumCover("album", offline).cached).toBe(false);
-    expect(covers.ensureAlbumCover("album", offline).artworkId).toBe("album-cover");
-    expect((await storage.json()).images).toEqual([]);
+    const cover = covers.ensureAlbumCover("album", offline);
+    await vi.waitFor(() => expect(cover.cached).toBe(false));
+    expect(cover.artworkId).toBe("album-cover");
+    await vi.waitFor(async () => expect((await storage.json()).images).toEqual([]));
     storage.reads.mockClear();
     expect(covers.ensureTrackCover("one", offline).source).toBeUndefined();
     expect(storage.reads).not.toHaveBeenCalled();
