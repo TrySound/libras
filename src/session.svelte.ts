@@ -6,7 +6,6 @@ import {
   NetworkTransportError,
   type ActiveNetworkConnection,
   type Network,
-  type NetworkConnection,
   type PasswordAuth,
 } from "./network.svelte";
 import type { PlaybackEngine } from "./playback-engine";

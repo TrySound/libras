@@ -9,7 +9,14 @@ const auth = { ...account, token: "token", salt: "salt" };
 function createConnection(credentials = auth) {
   const network = new Network();
   const connection = network.prepare(credentials);
-  return { ...network.accept(connection).queue, abort: () => network.setMode("offline") };
+  const queue = network.accept(connection).queue;
+  return {
+    account: queue.account,
+    signal: queue.signal,
+    read: () => queue.read(),
+    write: (value: Parameters<typeof queue.write>[0]) => queue.write(value),
+    abort: () => network.setMode("offline"),
+  };
 }
 const record = () => ({
   account,

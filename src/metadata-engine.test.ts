@@ -78,7 +78,14 @@ function createConnection(credentials = auth) {
   const network = new Network();
   const client = network.prepare(credentials);
   network.accept(client);
-  return { ...client.metadata, abort: () => network.setMode("offline") };
+  const { metadata } = client;
+  return {
+    account: metadata.account,
+    signal: metadata.signal,
+    getModifiedAt: (since?: number) => metadata.getModifiedAt(since),
+    readLibrary: (signal: AbortSignal) => metadata.readLibrary(signal),
+    abort: () => network.setMode("offline"),
+  };
 }
 function response(data: Record<string, unknown>) {
   return new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...data } }));
