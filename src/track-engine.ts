@@ -2,9 +2,9 @@ import { createSubscriber } from "svelte/reactivity";
 import type { AudioConnection } from "./network.svelte";
 import type { Storage } from "./storage";
 import type { DownloadTrack, TrackFileDescriptor } from "./schema";
-import type { Memory } from "./memory.svelte";
+import type { Memory, MemoryView } from "./memory.svelte";
 
-type DownloadMemory = Pick<Memory, "account" | "downloads">;
+type DownloadMemory = Pick<MemoryView, "account"> & Pick<Memory, "downloads">;
 
 export interface EngineTrack {
   id: string;
@@ -351,14 +351,8 @@ export class TrackEngine {
     this.#sourceRequest++;
     this.#cancelDownloads();
     this.#connection = connection;
-    if (connection) {
-      const { host, username } = connection.account;
-      if (this.#memory.account?.host !== host || this.#memory.account?.username !== username) {
-        this.#clearObjectUrl();
-        this.#memory.account = { host, username };
-      }
-    }
-    // Detaching credentials preserves account identity and completed downloads.
+    // Connection changes never select a workspace. Session owns account identity;
+    // descriptor checks prevent a mismatched connection from being used.
     this.#update();
   }
   #cancelDownloads() {

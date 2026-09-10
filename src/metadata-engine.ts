@@ -6,7 +6,7 @@ import type { MetadataConnection, RemoteAlbum, RemoteArtist, RemoteTrack } from 
 
 type MetadataMemory = Pick<
   Memory,
-  "account" | "artists" | "albums" | "tracks" | "artistAlbums" | "albumTracks"
+  "artists" | "albums" | "tracks" | "artistAlbums" | "albumTracks"
 >;
 
 function normalizeLibrary(
@@ -201,7 +201,6 @@ export class MetadataEngine {
     )
       this.#connection = undefined;
     this.#publish();
-    this.#memory.account = { host: account.host, username: account.username };
     this.#status = "loading";
     this.#error = undefined;
     this.#warning = undefined;
@@ -350,7 +349,6 @@ export class MetadataEngine {
     this.#invalidate();
     this.#scope = `${snapshot.account.host}\n${snapshot.account.username}`;
     this.#restored = true;
-    this.#memory.account = { ...snapshot.account };
     this.#publish(snapshot);
     this.#status = "ready";
     this.#error = undefined;

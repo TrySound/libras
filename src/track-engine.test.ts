@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Network } from "./network.svelte";
 import { TrackEngine } from "./track-engine";
 import { Storage } from "./storage";
-import { Memory } from "./memory.svelte";
+import { Memory as AppMemory } from "./memory.svelte";
 
 const auth = {
   host: "https://music.example.com",
@@ -10,6 +10,14 @@ const auth = {
   token: "token",
   salt: "salt",
 };
+
+/** TrackEngine consumes an already selected workspace; Session owns this in the app. */
+class Memory extends AppMemory {
+  constructor() {
+    super();
+    this.account = { host: auth.host, username: auth.username };
+  }
+}
 
 function installOpfs(
   initialFile: File | null = null,
@@ -706,6 +714,7 @@ describe("track engine", () => {
       connection: createConnection(auth),
     });
     await engine.cache({ id: "one" });
+    engineMemory.account = { host: auth.host, username: "other" };
     engine.setConnection(createConnection({ ...auth, username: "other" }));
     expect(engine.getStatus("one")).toBe("idle");
     await engine.cache({ id: "one" });
@@ -899,8 +908,10 @@ describe("track engine", () => {
     await restored.ready();
     expect(restored.getStatus("saved")).toBe("downloaded");
     expect(storage).not.toHaveBeenCalled();
+    restoredMemory.account = { host: auth.host, username: "other" };
     restored.setConnection(createConnection({ ...auth, username: "other" }));
     expect(restored.getStatus("saved")).toBe("idle");
+    restoredMemory.account = { host: auth.host, username: auth.username };
     restored.setConnection(connection);
     expect(restored.getStatus("saved")).toBe("downloaded");
     expect(storage).not.toHaveBeenCalled();

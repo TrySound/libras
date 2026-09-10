@@ -2,21 +2,21 @@ import type { Storage, ArtworkCatalog } from "./storage";
 import { createSubscriber } from "svelte/reactivity";
 import type { ArtworkConnection } from "./network.svelte";
 import type { ImageRecord, MetadataAccount } from "./schema";
-import type { Memory } from "./memory.svelte";
+import type { Memory, MemoryView } from "./memory.svelte";
 
-type CoverMemory = Pick<
-  Memory,
-  | "account"
-  | "artists"
-  | "albums"
-  | "tracks"
-  | "artistAlbums"
-  | "albumTracks"
-  | "images"
-  | "artistArtwork"
-  | "albumArtwork"
-  | "trackArtwork"
->;
+type CoverMemory = Pick<MemoryView, "account"> &
+  Pick<
+    Memory,
+    | "artists"
+    | "albums"
+    | "tracks"
+    | "artistAlbums"
+    | "albumTracks"
+    | "images"
+    | "artistArtwork"
+    | "albumArtwork"
+    | "trackArtwork"
+  >;
 
 const referenceFields = {
   artists: "artistArtwork",
@@ -175,7 +175,6 @@ export class CoverEngine {
     this.#releaseObjectUrls();
     this.#loads.clear();
     this.#reconcileKey = "";
-    this.#memory.account = { host: account.host, username: account.username };
     this.#metadataSavedAt = null;
     this.#memory.images = new Map();
     this.#memory.artistArtwork = new Map();

@@ -63,7 +63,6 @@ export function createSession(saved = false, storage = createStorage()) {
     error: undefined as unknown,
     warning: undefined as unknown,
     restore: vi.fn(async (account: MetadataAccount) => {
-      memory.account = { ...account };
       memory.artists = new Map(snapshot(account).artists.map((artist) => [artist.id, artist]));
       metadata.savedAt = 100;
       metadata.status = "ready";
@@ -73,7 +72,6 @@ export function createSession(saved = false, storage = createStorage()) {
     ),
     saveConnection: vi.fn(async (value: MetadataSnapshot, _signal: AbortSignal) => value),
     acceptConnection: vi.fn((value: MetadataSnapshot) => {
-      memory.account = value.account;
       memory.artists = new Map(value.artists.map((artist) => [artist.id, artist]));
       metadata.savedAt = value.savedAt;
       metadata.status = "ready";

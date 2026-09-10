@@ -1,6 +1,6 @@
 import type { Auth, AuthStore } from "./auth";
 import type { CoverEngine } from "./cover-engine";
-import type { MemoryView } from "./memory.svelte";
+import type { Memory, MemoryView } from "./memory.svelte";
 import type { MetadataEngine } from "./metadata-engine";
 import {
   NetworkTransportError,
@@ -16,7 +16,7 @@ import type { TrackEngine } from "./track-engine";
 const offlineModeStorageKey = "navidrome-offline-mode";
 
 interface SessionOptions {
-  memory: MemoryView;
+  memory: MemoryView & Pick<Memory, "account">;
   network: Network;
   auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
   metadata: Pick<
@@ -72,6 +72,15 @@ export class Session {
 
   #valid(generation: number) {
     return !this.#destroyed && generation === this.#generation;
+  }
+
+  #selectAccount(account: MetadataAccount) {
+    const current = this.#options.memory.account;
+    if (current?.host === account.host && current.username === account.username) return current;
+    return (this.#options.memory.account = Object.freeze({
+      host: account.host,
+      username: account.username,
+    }));
   }
 
   #begin() {
@@ -145,6 +154,7 @@ export class Session {
 
   async #restore(account: MetadataAccount) {
     const { metadata, covers, queue } = this.#options;
+    this.#selectAccount(account);
     await Promise.all([metadata.restore(account), covers.restore(account)]);
     if (this.#destroyed) return;
     // Queue restoration is credential-free even if the metadata cache is missing.
@@ -173,6 +183,7 @@ export class Session {
       if (!this.#valid(generation)) return false;
       this.#options.network.accept(connection);
       this.#options.playback.suspend();
+      this.#selectAccount(snapshot.account);
       // Clear foreign queue/artwork synchronously before publishing new metadata.
       this.#restoration = Promise.all([
         queue.restore(snapshot.account),

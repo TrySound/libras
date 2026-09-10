@@ -162,6 +162,7 @@ describe("metadata engine", () => {
     const storage = installMetadataStorage();
     await storage.seed(account, snapshot());
     const memory = new Memory();
+    memory.account = account;
     const engine = new MetadataEngine(memory, new Storage());
     await engine.restore(account);
     const previous = memory.tracks;
@@ -177,6 +178,7 @@ describe("metadata engine", () => {
     expect(storage.files.size).toBe(2);
     expect(memory.tracks).toBe(previous);
     network.accept(client);
+    memory.account = saved.account;
     engine.acceptConnection(saved);
     engine.setConnection(network.metadata(client));
     expect(network.mode).toBe("online");
@@ -208,6 +210,7 @@ describe("metadata engine", () => {
       const storage = installMetadataStorage();
       await storage.seed(account, snapshot());
       const memory = new Memory();
+      memory.account = account;
       const engine = new MetadataEngine(memory, new Storage());
       await engine.restore(account);
       const previous = memory.tracks;
@@ -625,10 +628,11 @@ describe("metadata engine", () => {
     const storage = installMetadataStorage();
     await storage.seed(account, snapshot());
     const memory = new Memory();
+    memory.account = account;
 
     const engine = new MetadataEngine(memory, new Storage());
     await engine.restore(account);
-    expect(memory.account).toEqual(account);
+    expect(memory.account).toBe(account);
     expect(memory.tracks.get("song")).toEqual(snapshot().tracks[0]);
 
     expect(memory.albumTracks.get("album")?.[0]).toBe(memory.tracks.get("song"));
@@ -863,10 +867,12 @@ describe("metadata engine", () => {
       ),
     );
     const memory = new Memory();
+    memory.account = account;
 
     const engine = new MetadataEngine(memory, new Storage());
     loadLibrary(engine, createConnection(auth));
     await vi.waitFor(() => expect(resolve).toBeDefined());
+    memory.account = other;
     await engine.restore(other);
     const accepted = memory.artists;
     expect(memory.account).toEqual(other);

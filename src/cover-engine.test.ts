@@ -133,6 +133,8 @@ function installOpfs() {
 const engines: CoverEngine[] = [];
 function library(data?: MetadataSnapshot) {
   const memory = new Memory();
+  // CoverEngine consumes the workspace selected by Session.
+  memory.account = data?.account ?? account;
   let savedAt: number | undefined;
   const publish = (data: MetadataSnapshot) => {
     memory.account = data.account;
