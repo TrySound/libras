@@ -42,7 +42,7 @@
         : [];
     }),
   );
-  const coverEngine = new CoverEngine(memory, metadataEngine, storage);
+  const coverEngine = new CoverEngine(memory, metadataEngine);
   const trackEngine = new TrackEngine({ memory, storage });
   const downloads = $derived.by(() => {
     const jobs = trackEngine.downloadJobs;

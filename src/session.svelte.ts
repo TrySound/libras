@@ -167,7 +167,8 @@ export class Session {
   async #restore(account: Account) {
     const { metadata, covers, queue } = this.#options;
     this.#selectAccount(account);
-    await Promise.all([metadata.restore(this.#storageFor(account)), covers.restore(account)]);
+    const storage = this.#storageFor(account);
+    await Promise.all([metadata.restore(storage), covers.restore(storage)]);
     if (this.#destroyed) return;
     // Queue restoration is credential-free even if the metadata cache is missing.
     await queue.restore(this.#storageFor(account));
@@ -200,7 +201,7 @@ export class Session {
       // Clear foreign queue/artwork synchronously before publishing new metadata.
       this.#restoration = Promise.all([
         queue.restore(metadataStorage),
-        covers.restore(snapshot.account),
+        covers.restore(metadataStorage),
       ]).then(() => {});
       metadata.acceptConnection(snapshot, metadataStorage);
       this.auth = credentials;

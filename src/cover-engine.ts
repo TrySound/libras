@@ -115,14 +115,9 @@ export class CoverEngine {
   #metadata: { readonly savedAt: number | undefined };
   #connection?: ArtworkConnection;
 
-  constructor(
-    memory: CoverMemory,
-    metadata: { readonly savedAt: number | undefined },
-    storage: Pick<Storage, "artwork">,
-  ) {
+  constructor(memory: CoverMemory, metadata: { readonly savedAt: number | undefined }) {
     this.#memory = memory;
     this.#metadata = metadata;
-    this.#storage = storage;
   }
   #metadataSavedAt: number | null = null;
   #scope = "";
@@ -131,7 +126,7 @@ export class CoverEngine {
   #destroyed = false;
   #reconcileKey = "";
   #reconciling: Promise<void> = Promise.resolve();
-  #storage: Pick<Storage, "artwork">;
+  #storage?: Pick<Storage, "account" | "artwork">;
   #covers = new Map<string, CoverEntry>();
   #downloads = new Map<string, Promise<void>>();
   #loads = new Map<string, Promise<string | undefined>>();
@@ -160,10 +155,13 @@ export class CoverEngine {
     this.#subscribe();
     return this.#error;
   }
-  restore(account: Account): Promise<void> {
+  restore(storage: Pick<Storage, "account" | "artwork">): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
+    const account = storage.account;
+    if (!account) throw new Error("Artwork storage requires an account.");
     if (this.#scope === scope(account)) return this.#ready;
     this.#scope = scope(account);
+    this.#storage = storage;
     const generation = ++this.#generation;
     const valid = () =>
       generation === this.#generation &&
@@ -190,7 +188,7 @@ export class CoverEngine {
     this.#notify();
     return (this.#ready = (async () => {
       try {
-        const result = await this.#storage.artwork(account).read(valid);
+        const result = await storage.artwork().read(valid);
         if (result && valid()) {
           this.#error = result.error;
           await this.#apply(result.catalog);
@@ -210,7 +208,7 @@ export class CoverEngine {
     if (!account || savedAt === undefined || this.#destroyed) return;
     // Capture immutable map references without rebuilding candidate lists on no-op refreshes.
     const { artists, albums, tracks, artistAlbums, albumTracks } = this.#memory;
-    await this.restore(account);
+    await this.#ready;
     if (
       this.#destroyed ||
       this.#scope !== scope(account) ||
@@ -238,8 +236,8 @@ export class CoverEngine {
     const refs = references({ artists, albums, tracks, artistAlbums, albumTracks }, savedAt);
     return (this.#reconciling = (async () => {
       try {
-        const catalog = await this.#storage
-          .artwork(account)
+        const catalog = await this.#storage!
+          .artwork()
           .update(
             (latest) =>
               (latest.metadataSavedAt ?? -1) > savedAt ? latest : { ...latest, ...refs },
@@ -304,7 +302,7 @@ export class CoverEngine {
     const load = (async () => {
       const account = this.#memory.account;
       if (!account) return;
-      const blob = await this.#storage.artwork(account).readImage(record);
+      const blob = await this.#storage!.artwork().readImage(record);
       if (
         this.#destroyed ||
         generation !== this.#generation ||
@@ -362,9 +360,8 @@ export class CoverEngine {
           const images = new Map(this.#memory.images);
           images.delete(id);
           this.#memory.images = images;
-          const account = this.#memory.account!;
-          void this.#storage
-            .artwork(account)
+          void this.#storage!
+            .artwork()
             .update(
               (catalog) => ({
                 ...catalog,
@@ -433,9 +430,7 @@ export class CoverEngine {
       lastModified: cached?.lastModified,
     });
     if (!valid() || !result) return;
-    const saved = await this.#storage
-      .artwork(connection.account)
-      .saveImage(id, result, cached?.fileName, valid);
+    const saved = await this.#storage!.artwork().saveImage(id, result, cached?.fileName, valid);
     if (saved && valid()) await this.#apply(saved.catalog, saved.image);
   }
 
@@ -508,7 +503,7 @@ export class CoverEngine {
       this.#notify();
       return;
     }
-    void this.restore(connection.account).then(() => {
+    void this.#ready.then(() => {
       if (this.#connection === connection && !this.#destroyed) {
         for (const entry of this.#covers.values()) void this.#resolve(entry, true);
       }

@@ -138,7 +138,7 @@ describe("session", () => {
     expect(memory.account).toEqual(next);
     expect(memory.artists.get("artist")?.name).toBe("other");
     expect(memory.queueTracks).toEqual(["other"]);
-    expect(covers.restore).toHaveBeenLastCalledWith(next);
+    expect(covers.restore).toHaveBeenLastCalledWith(expect.objectContaining({ account: next }));
     expect(queue.restore).toHaveBeenLastCalledWith(expect.objectContaining({ account: next }));
     expect(session.auth).toMatchObject(next);
     expect(auth.load()).toEqual(session.auth);
