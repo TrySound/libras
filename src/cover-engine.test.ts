@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoverEngine } from "./cover-engine";
 import { Storage, type MetadataSnapshot } from "./storage";
-import type { MetadataAccount } from "./schema";
+import type { Account } from "./schema";
 import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";
 
@@ -595,7 +595,7 @@ describe("cover engine", () => {
     const old = covers.ensureAlbumCover("album", online);
     await vi.waitFor(() => expect(old.source).toBeDefined());
     old.cache();
-    const other: MetadataAccount = { ...account, username: "other" };
+    const other: Account = { ...account, username: "other" };
     metadata.publish({ ...snapshot(), account: other });
     await covers.refresh();
     resolve(new Response("image", { headers: { "Content-Type": "image/jpeg" } }));

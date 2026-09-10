@@ -10,7 +10,7 @@ import {
   type DownloadTrack,
   type TrackFileDescriptor,
   type ImageRecord,
-  type MetadataAccount,
+  type Account,
 } from "./schema";
 import { OpfsJsonStore, jsonFileName } from "./json-store";
 
@@ -61,7 +61,7 @@ const queueRecordSchema = v.strictObject({
 });
 export type QueueRecord = v.InferOutput<typeof queueRecordSchema>;
 
-function parseQueueRecord(value: unknown, account: MetadataAccount) {
+function parseQueueRecord(value: unknown, account: Account) {
   const record = v.parse(queueRecordSchema, value);
   if (record.account.host !== account.host || record.account.username !== account.username)
     throw new Error("The queue belongs to a different account.");
@@ -84,7 +84,7 @@ const artworkCatalogSchema = v.strictObject({
 export type ArtworkCatalog = v.InferOutput<typeof artworkCatalogSchema>;
 type ArtworkImage = { blob: Blob; type: string; etag?: string; lastModified?: string };
 
-function emptyArtworkCatalog(account: MetadataAccount): ArtworkCatalog {
+function emptyArtworkCatalog(account: Account): ArtworkCatalog {
   return {
     account: { ...account },
     metadataSavedAt: null,
@@ -94,7 +94,7 @@ function emptyArtworkCatalog(account: MetadataAccount): ArtworkCatalog {
     images: [],
   };
 }
-function parseArtworkCatalog(value: unknown, account: MetadataAccount) {
+function parseArtworkCatalog(value: unknown, account: Account) {
   const catalog = v.parse(artworkCatalogSchema, value);
   if (catalog.account.host !== account.host || catalog.account.username !== account.username)
     throw new Error("The cover catalog belongs to a different account.");
@@ -107,7 +107,24 @@ function parseArtworkCatalog(value: unknown, account: MetadataAccount) {
 
 /** Application-owned persistence services; acquiring account access does not perform I/O. */
 export class Storage {
+  readonly account?: Readonly<Account>;
   #audio = new AudioStore();
+
+  constructor(account?: Account) {
+    this.account = account && Object.freeze(v.parse(accountSchema, account));
+  }
+
+  #identity(account?: Account) {
+    const identity = account ?? this.account;
+    if (!identity) throw new Error("Storage requires an account.");
+    if (
+      account &&
+      this.account &&
+      (account.host !== this.account.host || account.username !== this.account.username)
+    )
+      throw new Error("Storage is configured for a different account.");
+    return this.account ?? Object.freeze({ host: identity.host, username: identity.username });
+  }
 
   /** One shared catalog spans accounts; individual descriptors carry account identity. */
   audio(): Pick<AudioStore, "read" | "save" | "list" | "entries"> {
@@ -123,7 +140,7 @@ export class Storage {
     return root.getDirectoryHandle("images", { create: true });
   }
 
-  #artworkFile({ host, username }: MetadataAccount) {
+  #artworkFile({ host, username }: Account) {
     const key = `${host}\n${username}`;
     let file = this.#artworkFiles.get(key);
     if (!file) {
@@ -147,7 +164,7 @@ export class Storage {
   }
 
   async #updateArtwork(
-    account: MetadataAccount,
+    account: Account,
     change: (catalog: ArtworkCatalog) => ArtworkCatalog,
     valid: () => boolean,
   ) {
@@ -159,8 +176,8 @@ export class Storage {
     return result.value ?? undefined;
   }
 
-  artwork(account: MetadataAccount) {
-    const identity = Object.freeze({ host: account.host, username: account.username });
+  artwork(account?: Account) {
+    const identity = this.#identity(account);
     return {
       account: identity,
       read: (valid: () => boolean) => this.#readArtwork(identity, valid),
@@ -185,7 +202,7 @@ export class Storage {
     };
   }
 
-  async #readArtwork(account: MetadataAccount, valid: () => boolean) {
+  async #readArtwork(account: Account, valid: () => boolean) {
     let catalog = (await (await this.#artworkFile(account)).read()) ?? emptyArtworkCatalog(account);
     const directory = await this.#imageDirectory();
     const missing = new Set<string>();
@@ -229,7 +246,7 @@ export class Storage {
   }
 
   async #saveArtworkImage(
-    account: MetadataAccount,
+    account: Account,
     id: string,
     image: ArtworkImage,
     previousFileName: string | undefined,
@@ -280,7 +297,7 @@ export class Storage {
     }
   }
 
-  #queueFile({ host, username }: MetadataAccount) {
+  #queueFile({ host, username }: Account) {
     const key = `${host}\n${username}`;
     let file = this.#queueFiles.get(key);
     if (!file) {
@@ -303,8 +320,8 @@ export class Storage {
     return file;
   }
 
-  queue(account: MetadataAccount) {
-    const identity = Object.freeze({ host: account.host, username: account.username });
+  queue(account?: Account) {
+    const identity = this.#identity(account);
     return {
       account: identity,
       read: async () => (await this.#queueFile(identity)).read(),
@@ -321,7 +338,7 @@ export class Storage {
     };
   }
 
-  #metadataFile({ host, username }: MetadataAccount) {
+  #metadataFile({ host, username }: Account) {
     const key = `${host}\n${username}`;
     let file = this.#metadataFiles.get(key);
     if (!file) {
@@ -349,8 +366,8 @@ export class Storage {
     return file;
   }
 
-  metadata(account: MetadataAccount) {
-    const identity = Object.freeze({ host: account.host, username: account.username });
+  metadata(account?: Account) {
+    const identity = this.#identity(account);
     return {
       account: identity,
       read: async () => (await this.#metadataFile(identity)).read(),
@@ -360,7 +377,7 @@ export class Storage {
   }
 
   async #saveMetadata(
-    account: MetadataAccount,
+    account: Account,
     snapshot: MetadataSnapshot,
     current: () => boolean = () => true,
   ) {

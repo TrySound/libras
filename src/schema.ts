@@ -79,7 +79,7 @@ export type TrackFileDescriptor = Pick<
   "key" | "host" | "username" | "format" | "contentType"
 >;
 
-export type MetadataAccount = v.InferOutput<typeof accountSchema>;
+export type Account = v.InferOutput<typeof accountSchema>;
 
 export type Artist = v.InferOutput<typeof artistSchema>;
 

@@ -10,8 +10,9 @@ import {
 } from "./network.svelte";
 import type { PlaybackEngine } from "./playback-engine";
 import type { QueueEngine } from "./queue-engine";
-import type { ConnectionStatus, MetadataAccount } from "./schema";
+import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track-engine";
+import { Storage as AccountStorage } from "./storage";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -37,7 +38,7 @@ interface SessionOptions {
   queue: Pick<QueueEngine, "restore" | "setConnection" | "synchronize" | "flush">;
   tracks: Pick<TrackEngine, "setConnection">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
-  storage: Pick<Storage, "getItem" | "setItem">;
+  preferences: Pick<Storage, "getItem" | "setItem">;
 }
 
 function connectionError(error: unknown) {
@@ -55,6 +56,7 @@ export class Session {
   #options: SessionOptions;
   #restoration: Promise<void> = Promise.resolve();
   #generation = 0;
+  #workspaces = new Map<string, AccountStorage>();
   #started = false;
   #destroyed = false;
 
@@ -74,13 +76,23 @@ export class Session {
     return !this.#destroyed && generation === this.#generation;
   }
 
-  #selectAccount(account: MetadataAccount) {
+  #selectAccount(account: Account) {
     const current = this.#options.memory.account;
     if (current?.host === account.host && current.username === account.username) return current;
     return (this.#options.memory.account = Object.freeze({
       host: account.host,
       username: account.username,
     }));
+  }
+
+  #storageFor(account: Account) {
+    const key = `${account.host}\n${account.username}`;
+    let storage = this.#workspaces.get(key);
+    if (!storage) {
+      storage = new AccountStorage(account);
+      this.#workspaces.set(key, storage);
+    }
+    return storage;
   }
 
   #begin() {
@@ -129,10 +141,10 @@ export class Session {
         ? { host: this.auth.host, username: this.auth.username }
         : this.#options.auth.loadAccount();
       const offlineMode =
-        !this.auth || this.#options.storage.getItem(offlineModeStorageKey) === "true";
+        !this.auth || this.#options.preferences.getItem(offlineModeStorageKey) === "true";
       this.#detach();
       this.#options.network.setMode(offlineMode ? "offline" : "online");
-      if (this.offlineMode) this.#options.storage.setItem(offlineModeStorageKey, "true");
+      if (this.offlineMode) this.#options.preferences.setItem(offlineModeStorageKey, "true");
       if (account) {
         // Migrate existing installations before credentials can be removed.
         this.#options.auth.saveAccount(account);
@@ -152,10 +164,10 @@ export class Session {
     return this.auth;
   }
 
-  async #restore(account: MetadataAccount) {
+  async #restore(account: Account) {
     const { metadata, covers, queue } = this.#options;
     this.#selectAccount(account);
-    await Promise.all([metadata.restore(account), covers.restore(account)]);
+    await Promise.all([metadata.restore(this.#storageFor(account)), covers.restore(account)]);
     if (this.#destroyed) return;
     // Queue restoration is credential-free even if the metadata cache is missing.
     await queue.restore(account);
@@ -171,15 +183,16 @@ export class Session {
       const connection = this.#options.network.prepare(credentials);
       await this.#restoration;
       if (!this.#valid(generation)) return false;
-      const { metadata, queue, covers, auth, storage } = this.#options;
+      const { metadata, queue, covers, auth, preferences } = this.#options;
       // Explicit connection may use the network while the offline switch is locked.
       // Do not replace the selected workspace, or attach any other engines, on failure.
       const prepared = await metadata.prepareConnection(this.#options.network.metadata(connection));
       if (!this.#valid(generation)) return false;
       auth.save(credentials);
       auth.saveAccount(prepared.account);
-      storage.setItem(offlineModeStorageKey, "false");
-      const snapshot = await metadata.saveConnection(prepared, connection.signal);
+      preferences.setItem(offlineModeStorageKey, "false");
+      const metadataStorage = this.#storageFor(prepared.account);
+      const snapshot = await metadata.saveConnection(prepared, metadataStorage, connection.signal);
       if (!this.#valid(generation)) return false;
       this.#options.network.accept(connection);
       this.#options.playback.suspend();
@@ -189,7 +202,7 @@ export class Session {
         queue.restore(snapshot.account),
         covers.restore(snapshot.account),
       ]).then(() => {});
-      metadata.acceptConnection(snapshot);
+      metadata.acceptConnection(snapshot, metadataStorage);
       this.auth = credentials;
       this.#attach(connection);
       await this.#restoration;
@@ -215,7 +228,7 @@ export class Session {
     this.status = "disconnected";
     try {
       this.#options.auth.clear();
-      this.#options.storage.setItem(offlineModeStorageKey, "true");
+      this.#options.preferences.setItem(offlineModeStorageKey, "true");
       const account = this.#options.memory.account;
       if (account) this.#options.auth.saveAccount(account);
       return true;
@@ -268,7 +281,7 @@ export class Session {
         this.#detach();
         this.status = "disconnected";
       }
-      this.#options.storage.setItem(offlineModeStorageKey, String(enabled));
+      this.#options.preferences.setItem(offlineModeStorageKey, String(enabled));
       if (!enabled) {
         await this.#restoration;
         if (this.#valid(generation)) await this.#resumeOnline(generation);

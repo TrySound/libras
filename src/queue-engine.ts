@@ -2,6 +2,7 @@ import type { Storage, QueueRecord } from "./storage";
 import { createSubscriber } from "svelte/reactivity";
 import type { QueueConnection } from "./network.svelte";
 import type { Memory } from "./memory.svelte";
+import type { Account } from "./schema";
 
 type QueueMemory = Pick<Memory, "queueTracks" | "queueIndex" | "queuePosition">;
 
@@ -10,7 +11,6 @@ export interface QueueState {
   position: number;
   tracks: readonly string[];
 }
-type Account = { host: string; username: string };
 const scope = (account: Account) => `${account.host}\n${account.username}`;
 export type QueueEngineStatus = "idle" | "loading" | "ready" | "saving" | "error";
 

@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { accountSchema, type MetadataAccount } from "./schema";
+import { accountSchema, type Account } from "./schema";
 
 export const authSchema = v.object({
   host: v.pipe(v.string(), v.url()),
@@ -37,7 +37,7 @@ export class AuthStore {
     this.#storage.removeItem(this.#key);
   }
 
-  loadAccount(): MetadataAccount | null {
+  loadAccount(): Account | null {
     const value = this.#storage.getItem("navidrome-account");
     if (!value) return null;
     try {
@@ -48,7 +48,7 @@ export class AuthStore {
     }
   }
 
-  saveAccount(account: MetadataAccount) {
+  saveAccount(account: Account) {
     this.#storage.setItem(
       "navidrome-account",
       JSON.stringify(

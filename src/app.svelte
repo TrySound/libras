@@ -30,7 +30,7 @@
 
   const memory = new Memory();
   const storage = new Storage();
-  const metadataEngine = new MetadataEngine(memory, storage);
+  const metadataEngine = new MetadataEngine(memory);
   const queueEngine = new QueueEngine(memory, storage);
   let navigate = $state<RouterNavigate>(() => {});
   let artists = $derived([...memory.artists.values()]);
@@ -70,7 +70,7 @@
     covers: coverEngine,
     tracks: trackEngine,
     playback,
-    storage: localStorage,
+    preferences: localStorage,
   });
   const libraryAvailable = $derived(metadataEngine.savedAt !== undefined);
   const offlineMode = $derived(session.offlineMode);

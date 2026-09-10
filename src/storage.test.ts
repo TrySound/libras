@@ -90,6 +90,29 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("configured storage", () => {
+  it("binds domain utilities to one immutable account without performing I/O", async () => {
+    const disk = installStorage();
+    const storage = new Storage(account);
+
+    expect(storage.account).toEqual(account);
+    expect(Object.isFrozen(storage.account)).toBe(true);
+    expect(disk.getDirectory).not.toHaveBeenCalled();
+    expect(await storage.metadata().read()).toBeNull();
+    expect(await storage.queue().read()).toBeNull();
+    expect((await storage.artwork().read(() => true))?.catalog.account).toEqual(account);
+  });
+
+  it("does not allow a configured instance to drift to another account", () => {
+    const storage = new Storage(account);
+    const other = { ...account, username: "other" };
+
+    expect(() => storage.metadata(other)).toThrow("different account");
+    expect(() => storage.queue(other)).toThrow("different account");
+    expect(() => storage.artwork(other)).toThrow("different account");
+  });
+});
+
 it("preserves committed artwork when cancellation arrives during catalog close", async () => {
   const disk = installStorage();
   let valid = true;

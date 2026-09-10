@@ -1,7 +1,7 @@
 import type { Storage, ArtworkCatalog } from "./storage";
 import { createSubscriber } from "svelte/reactivity";
 import type { ArtworkConnection } from "./network.svelte";
-import type { ImageRecord, MetadataAccount } from "./schema";
+import type { ImageRecord, Account } from "./schema";
 import type { Memory, MemoryView } from "./memory.svelte";
 
 type CoverMemory = Pick<MemoryView, "account"> &
@@ -47,7 +47,7 @@ interface CoverEntry {
   network: boolean;
 }
 
-function scope(account: MetadataAccount) {
+function scope(account: Account) {
   return `${account.host}\n${account.username}`;
 }
 function candidates(values: readonly (string | undefined)[]) {
@@ -160,7 +160,7 @@ export class CoverEngine {
     this.#subscribe();
     return this.#error;
   }
-  restore(account: MetadataAccount): Promise<void> {
+  restore(account: Account): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
     if (this.#scope === scope(account)) return this.#ready;
     this.#scope = scope(account);

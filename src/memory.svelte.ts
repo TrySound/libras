@@ -1,4 +1,4 @@
-import type { Artist, Album, Track, MetadataAccount, DownloadedFile, ImageRecord } from "./schema";
+import type { Artist, Album, Track, Account, DownloadedFile, ImageRecord } from "./schema";
 
 /** Consumer-facing records are immutable; engines publish replacements. */
 export type Immutable<T> = T extends object ? { readonly [Key in keyof T]: Immutable<T[Key]> } : T;
@@ -27,7 +27,7 @@ export class Memory {
   queueIndex = $state(-1);
   queuePosition = $state(0);
 
-  account = $state.raw<Readonly<MetadataAccount> | null>(null);
+  account = $state.raw<Readonly<Account> | null>(null);
 }
 
 /** UI consumers read this view; each engine receives only its writable fields. */

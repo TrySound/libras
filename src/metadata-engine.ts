@@ -1,5 +1,5 @@
 import type { Memory } from "./memory.svelte";
-import type { Artist, Album, Track, MetadataAccount } from "./schema";
+import type { Artist, Album, Track, Account } from "./schema";
 import { entityMap, parseSnapshot, type MetadataSnapshot, type Storage } from "./storage";
 import { createSubscriber } from "svelte/reactivity";
 import type { MetadataConnection, RemoteAlbum, RemoteArtist, RemoteTrack } from "./network.svelte";
@@ -10,7 +10,7 @@ type MetadataMemory = Pick<
 >;
 
 function normalizeLibrary(
-  account: MetadataAccount,
+  account: Account,
   sourceArtists: readonly RemoteArtist[],
   sourceAlbums: readonly RemoteAlbum[],
   songs: ReadonlyMap<string, readonly RemoteTrack[]>,
@@ -122,11 +122,10 @@ export class MetadataEngine {
   #memory: MetadataMemory;
   #snapshotInfo?: Pick<MetadataSnapshot, "lastModified" | "savedAt">;
 
-  constructor(memory: MetadataMemory, storage: Pick<Storage, "metadata">) {
+  constructor(memory: MetadataMemory) {
     this.#memory = memory;
-    this.#storage = storage;
   }
-  #storage: Pick<Storage, "metadata">;
+  #storage?: Pick<Storage, "account" | "metadata">;
   #connection?: MetadataConnection;
   #scope = "";
   #restored = false;
@@ -184,8 +183,10 @@ export class MetadataEngine {
   }
 
   // Startup restoration needs only account identity, not an authenticated connection.
-  restore(account: MetadataAccount): Promise<void> {
+  restore(storage: Pick<Storage, "account" | "metadata">): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
+    const account = storage.account;
+    if (!account) throw new Error("Metadata storage requires an account.");
     const scope = `${account.host}\n${account.username}`;
     if (scope === this.#scope) {
       if (this.#restoring) return this.#restoring;
@@ -193,6 +194,7 @@ export class MetadataEngine {
     }
     const generation = this.#invalidate();
     this.#scope = scope;
+    this.#storage = storage;
     this.#restored = false;
     if (
       this.#connection &&
@@ -205,8 +207,8 @@ export class MetadataEngine {
     this.#error = undefined;
     this.#warning = undefined;
     this.#update();
-    return (this.#restoring = this.#storage
-      .metadata(account)
+    return (this.#restoring = storage
+      .metadata()
       .read()
       .then((snapshot) => {
         if (generation !== this.#generation || this.#destroyed) return;
@@ -292,7 +294,7 @@ export class MetadataEngine {
       }
       const snapshot = await this.#fetchLibrary(connection, valid, modified);
       if (!valid()) return;
-      const committed = await this.#storage.metadata(snapshot.account).save(snapshot, valid);
+      const committed = await this.#storage!.metadata().save(snapshot, valid);
       if (!valid() || !committed) return;
       this.#publish(committed);
       this.#status = "ready";
@@ -333,20 +335,35 @@ export class MetadataEngine {
     }
   }
 
-  async saveConnection(snapshot: MetadataSnapshot, signal: AbortSignal) {
+  async saveConnection(
+    snapshot: MetadataSnapshot,
+    storage: Pick<Storage, "account" | "metadata">,
+    signal: AbortSignal,
+  ) {
     signal.throwIfAborted();
     if (this.#destroyed) throw new DOMException("Metadata stopped.", "AbortError");
+    if (
+      storage.account?.host !== snapshot.account.host ||
+      storage.account.username !== snapshot.account.username
+    )
+      throw new Error("Metadata storage belongs to a different account.");
     const generation = this.#invalidate();
     const valid = () => !this.#destroyed && generation === this.#generation && !signal.aborted;
-    const committed = await this.#storage.metadata(snapshot.account).save(snapshot, valid);
+    const committed = await storage.metadata().save(snapshot, valid);
     if (!valid() || !committed) throw new DOMException("Connection superseded.", "AbortError");
     return committed;
   }
 
   /** Publish only after Session has accepted a successfully prepared connection. */
-  acceptConnection(snapshot: MetadataSnapshot) {
+  acceptConnection(snapshot: MetadataSnapshot, storage: Pick<Storage, "account" | "metadata">) {
     if (this.#destroyed) return;
+    if (
+      storage.account?.host !== snapshot.account.host ||
+      storage.account.username !== snapshot.account.username
+    )
+      throw new Error("Metadata storage belongs to a different account.");
     this.#invalidate();
+    this.#storage = storage;
     this.#scope = `${snapshot.account.host}\n${snapshot.account.username}`;
     this.#restored = true;
     this.#publish(snapshot);

@@ -3,8 +3,8 @@ import { AuthStore } from "./auth";
 import { Memory } from "./memory.svelte";
 import { Network, type MetadataConnection } from "./network.svelte";
 import type { MetadataStatus } from "./metadata-engine";
-import type { MetadataSnapshot } from "./storage";
-import type { MetadataAccount } from "./schema";
+import { Storage, type MetadataSnapshot } from "./storage";
+import type { Account } from "./schema";
 import { Session } from "./session.svelte";
 
 export const credentials = {
@@ -24,7 +24,7 @@ export function deferred<T = void>() {
   return { promise, resolve, reject };
 }
 
-export function snapshot(account: MetadataAccount): MetadataSnapshot {
+export function snapshot(account: Account): MetadataSnapshot {
   return {
     account: { host: account.host, username: account.username },
     savedAt: 100,
@@ -62,7 +62,8 @@ export function createSession(saved = false, storage = createStorage()) {
     status: "idle" as MetadataStatus,
     error: undefined as unknown,
     warning: undefined as unknown,
-    restore: vi.fn(async (account: MetadataAccount) => {
+    restore: vi.fn(async (storage: Pick<Storage, "account">) => {
+      const account = storage.account!;
       memory.artists = new Map(snapshot(account).artists.map((artist) => [artist.id, artist]));
       metadata.savedAt = 100;
       metadata.status = "ready";
@@ -70,8 +71,10 @@ export function createSession(saved = false, storage = createStorage()) {
     prepareConnection: vi.fn(async (connection: MetadataConnection) =>
       snapshot(connection.account),
     ),
-    saveConnection: vi.fn(async (value: MetadataSnapshot, _signal: AbortSignal) => value),
-    acceptConnection: vi.fn((value: MetadataSnapshot) => {
+    saveConnection: vi.fn(
+      async (value: MetadataSnapshot, _storage: Storage, _signal: AbortSignal) => value,
+    ),
+    acceptConnection: vi.fn((value: MetadataSnapshot, _storage: Storage) => {
       memory.artists = new Map(value.artists.map((artist) => [artist.id, artist]));
       metadata.savedAt = value.savedAt;
       metadata.status = "ready";
@@ -86,7 +89,7 @@ export function createSession(saved = false, storage = createStorage()) {
     setConnection: vi.fn(),
   };
   const queue = {
-    restore: vi.fn(async (account: MetadataAccount) => {
+    restore: vi.fn(async (account: Account) => {
       memory.queueTracks = [account.username];
       memory.queueIndex = 0;
       memory.queuePosition = 17;
@@ -107,7 +110,7 @@ export function createSession(saved = false, storage = createStorage()) {
     queue,
     tracks,
     playback,
-    storage,
+    preferences: storage,
   });
   return { session, network, memory, auth, metadata, covers, queue, tracks, playback, storage };
 }

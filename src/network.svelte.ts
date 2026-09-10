@@ -1,7 +1,7 @@
 import { SubsonicClient, createSubsonicAuth } from "./subsonic-client";
 import { authSchema, type Auth } from "./auth";
 import * as v from "valibot";
-import type { Album, Artist, Track, MetadataAccount } from "./schema";
+import type { Album, Artist, Track, Account } from "./schema";
 
 /** Fetch failed before returning a response; browsers do not expose a reliable CORS diagnosis. */
 export class NetworkTransportError extends Error {
@@ -19,7 +19,7 @@ export interface PasswordAuth {
 
 /** Credential-free identity for one connection lifetime, owned by its Network. */
 export interface NetworkConnection {
-  readonly account: Readonly<MetadataAccount>;
+  readonly account: Readonly<Account>;
   readonly signal: AbortSignal;
 }
 
