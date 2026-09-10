@@ -60,7 +60,11 @@
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
   });
   const network = new Network();
-  const sync = new SyncEngine({ metadata: metadataEngine, covers: coverEngine });
+  const sync = new SyncEngine({
+    metadata: metadataEngine,
+    covers: coverEngine,
+    queue: queueEngine,
+  });
   const session = new Session({
     sync,
     memory,

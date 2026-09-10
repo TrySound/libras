@@ -83,7 +83,7 @@ describe("session", () => {
     expect(metadata.revalidate).toHaveBeenCalledOnce();
     expect(metadata.restore).toHaveBeenCalledOnce();
     expect(tracks.setConnection.mock.calls.at(-1)![0]).toBe(client);
-    expect(queue.synchronize).toHaveBeenCalledOnce();
+    expect(queue.synchronize).toHaveBeenCalledTimes(2);
     expect(await session.connect(input)).toBe(false);
     expect(metadata.prepareConnection).not.toHaveBeenCalled();
   });
@@ -298,7 +298,7 @@ describe("session", () => {
   });
 
   it("keeps credentials for voluntary offline mode and resumes with a fresh cancellable client", async () => {
-    const { session, tracks, metadata, auth } = await connected();
+    const { session, tracks, metadata, auth, queue } = await connected();
     const client = tracks.setConnection.mock.calls.at(-1)![0];
     await session.setOfflineMode(true);
     expect(client.signal.aborted).toBe(true);
@@ -309,8 +309,10 @@ describe("session", () => {
     expect(metadata.restore).toHaveBeenCalledOnce();
     expect(metadata.revalidate).toHaveBeenCalledOnce();
     expect(metadata.refresh).not.toHaveBeenCalled();
+    expect(queue.synchronize).toHaveBeenCalledOnce();
     expect(session.status).toBe("connected");
     await session.refresh();
     expect(metadata.refresh).toHaveBeenCalledOnce();
+    expect(queue.synchronize).toHaveBeenCalledTimes(2);
   });
 });

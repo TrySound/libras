@@ -1,9 +1,11 @@
 import type { CoverEngine } from "./cover.svelte";
 import type { MetadataEngine } from "./metadata.svelte";
+import type { QueueEngine } from "./queue.svelte";
 
 interface SyncOptions {
   metadata: Pick<MetadataEngine, "refresh" | "revalidate" | "status" | "error" | "warning">;
   covers: Pick<CoverEngine, "refresh">;
+  queue: Pick<QueueEngine, "synchronize" | "error" | "storageError">;
 }
 
 /** Coordinates background work; domain engines own persistence and publication. */
@@ -58,6 +60,14 @@ export class SyncEngine {
         if (valid()) this.#error = metadata.status === "error" ? metadata.error : metadata.warning;
       } catch (error) {
         if (valid()) this.#error = error;
+      }
+      if (!valid()) return;
+      try {
+        const { queue } = this.#options;
+        await queue.synchronize();
+        if (valid()) this.#error ??= queue.error ?? queue.storageError;
+      } catch (error) {
+        if (valid()) this.#error ??= error;
       }
     })().finally(() => {
       if (valid()) {

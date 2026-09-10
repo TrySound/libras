@@ -27,13 +27,19 @@ export type MetadataSnapshot = v.InferOutput<typeof snapshotSchema>;
 
 const audioCatalogSchema = v.array(downloadSchema);
 
-const queueRecordSchema = v.strictObject({
-  account: v.strictObject({ host: v.string(), username: v.string() }),
+const queueSnapshotSchema = v.strictObject({
   tracks: v.array(v.pipe(v.string(), v.minLength(1))),
   index: v.pipe(v.number(), v.integer(), v.minValue(-1)),
   position: v.pipe(v.number(), v.finite(), v.minValue(0)),
+});
+export type QueueSnapshot = v.InferOutput<typeof queueSnapshotSchema>;
+
+const queueRecordSchema = v.strictObject({
+  account: v.strictObject({ host: v.string(), username: v.string() }),
+  ...queueSnapshotSchema.entries,
   updatedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
   pendingSync: v.boolean(),
+  server: v.optional(queueSnapshotSchema),
 });
 export type QueueRecord = v.InferOutput<typeof queueRecordSchema>;
 
@@ -41,8 +47,13 @@ function parseQueueRecord(value: unknown, account: Account) {
   const record = v.parse(queueRecordSchema, value);
   if (record.account.host !== account.host || record.account.username !== account.username)
     throw new Error("The queue belongs to a different account.");
-  if (record.index >= record.tracks.length || (record.index === -1 && record.position !== 0))
-    throw new Error("The saved queue selection is invalid.");
+  for (const state of [record, record.server]) {
+    if (
+      state &&
+      (state.index >= state.tracks.length || (state.index === -1 && state.position !== 0))
+    )
+      throw new Error("The saved queue selection is invalid.");
+  }
   return record;
 }
 

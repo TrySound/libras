@@ -237,6 +237,53 @@ describe("playback engine", () => {
     expect(session.metadata).toBeNull();
   });
 
+  it.each([false, true])(
+    "keeps a playback session when refreshing the server queue (paused: %s)",
+    async (paused) => {
+      const { player, queue, audio, memory } = setup();
+      const account = { host: "https://music.example.com", username: "listener" };
+      const local = { tracks: ["a", "b"], index: 0, position: 0 };
+      const save = vi.fn(async (value: import("./storage").QueueRecord) => ({
+        written: true,
+        value,
+      }));
+      await queue.restore({
+        account,
+        queue: {
+          account,
+          read: async () => ({ ...local, account, pendingSync: false, updatedAt: 1 }),
+          save,
+        },
+      });
+      queue.setConnection({
+        account,
+        signal: new AbortController().signal,
+        read: async () => ({ trackIds: ["c"], currentTrackId: "c", position: 25 }),
+        write: async () => {},
+      });
+      await player.play();
+      if (paused) player.pause();
+      const source = audio.src;
+      const loads = audio.load.mock.calls.length;
+      await queue.synchronize();
+      expect(memory.serverQueue).toEqual({ tracks: ["c"], index: 0, position: 25 });
+      expect(memory.queueTracks).toEqual(local.tracks);
+      expect(player.track?.id).toBe("a");
+      expect(audio.src).toBe(source);
+      expect(audio.load).toHaveBeenCalledTimes(loads);
+      expect(save).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          ...local,
+          server: { tracks: ["c"], index: 0, position: 25 },
+        }),
+      );
+      player.suspend();
+      await queue.synchronize();
+      expect(player.track?.id).toBe("c");
+      expect(memory.queuePosition).toBe(25);
+    },
+  );
+
   it("does not upload deletions when a server queue arrives before fresh metadata", async () => {
     const { player, queue, audio, restoreTrack, memory } = setup();
     const { Network } = await import("./network.svelte");

@@ -126,7 +126,6 @@ export class Session {
     covers.setConnection(connection.artwork);
     tracks.setConnection(connection.audio);
     this.#options.sync.start();
-    void queue.synchronize();
   }
 
   start(): Auth | null {
@@ -222,6 +221,8 @@ export class Session {
       if (!this.#valid(generation)) return false;
       this.localReady = true;
       await covers.refresh();
+      if (!this.#valid(generation)) return false;
+      await queue.synchronize();
       if (!this.#valid(generation)) return false;
       this.status = "connected";
       return true;

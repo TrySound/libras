@@ -3,7 +3,7 @@ import type { QueueConnection } from "./network.svelte";
 import type { Memory } from "./memory.svelte";
 import type { Account } from "./schema";
 
-type QueueMemory = Pick<Memory, "queueTracks" | "queueIndex" | "queuePosition">;
+type QueueMemory = Pick<Memory, "serverQueue" | "queueTracks" | "queueIndex" | "queuePosition">;
 
 export interface QueueState {
   index?: number;
@@ -20,6 +20,13 @@ export class QueueEngine {
   constructor(memory: QueueMemory) {
     this.#memory = memory;
   }
+  #playbackActive = false;
+  #serverWritable = false;
+
+  setPlaybackActive(active: boolean) {
+    this.#playbackActive = active;
+  }
+
   #dirty = false;
   #needsPersist = false;
   #conflict = false;
@@ -77,8 +84,15 @@ export class QueueEngine {
       position: this.#memory.queuePosition,
     };
   }
+  #serverState() {
+    const state = this.#memory.serverQueue;
+    return state
+      ? { tracks: [...state.tracks], index: state.index, position: state.position }
+      : undefined;
+  }
+
   #persist(): Promise<void> {
-    if (!this.#account || !this.#storage || (!this.#loaded && !this.#dirty) || !this.#needsPersist)
+    if (!this.#account || !this.#storage || !this.#needsPersist)
       return this.#localWrites.then(() => {});
     const account = this.#account;
     const storage = this.#storage;
@@ -88,23 +102,28 @@ export class QueueEngine {
       tracks: [...this.#memory.queueTracks],
       index: this.#memory.queueIndex,
       position: this.#memory.queuePosition,
-      pendingSync: this.#dirty,
+      // Retain the legacy field for file compatibility, never as an upload outbox.
+      pendingSync: false,
       updatedAt: this.#updatedAt,
+      server: this.#serverState(),
     };
     // Also retain an engine-wide tail so teardown waits for writes to previous accounts.
     const result = this.#localWrites
-      .then(() => storage.queue.save(record))
+      .then(() => {
+        // A queued checkpoint must retain a server snapshot committed ahead of it.
+        if (this.#account === account) record.server = this.#serverState();
+        return storage.queue.save(record);
+      })
       .then(({ written }) => {
         if (this.#account !== account) return;
         if (!written) {
           this.#conflict = true;
-          this.#dirty = true;
           this.#storageError = new Error(
             "A newer queue was saved in another tab. This queue has not been saved.",
           );
           return;
         }
-        if (revision === this.#revision && record.pendingSync === this.#dirty) {
+        if (revision === this.#revision) {
           this.#conflict = false;
           this.#storageError = undefined;
           this.#needsPersist = false;
@@ -130,6 +149,9 @@ export class QueueEngine {
     const generation = ++this.#accountGeneration;
     const revision = ++this.#revision;
     this.#loaded = false;
+    this.#playbackActive = false;
+    this.#serverWritable = false;
+    this.#memory.serverQueue = null;
     this.#dirty = false;
     this.#needsPersist = false;
     this.#conflict = false;
@@ -144,7 +166,8 @@ export class QueueEngine {
         const record = await storage.queue.read();
         if (generation !== this.#accountGeneration || this.#destroyed) return;
         if (record && revision === this.#revision) {
-          this.#dirty = record.pendingSync;
+          // Older records did not distinguish the server replica from local playback.
+          this.#memory.serverQueue = record.server ?? null;
           this.#updatedAt = record.updatedAt;
           this.#publish(record);
         }
@@ -199,7 +222,15 @@ export class QueueEngine {
       const write = this.#localWrites.then(async () => {
         if (!valid()) return;
         try {
-          const result = await storage.queue.save(record);
+          const server = { tracks: record.tracks, index: record.index, position: record.position };
+          const preservePlayback = this.#playbackActive;
+          const saved = {
+            ...record,
+            ...(preservePlayback ? this.#state() : {}),
+            tracks: [...(preservePlayback ? this.#memory.queueTracks : record.tracks)],
+            server,
+          };
+          const result = await storage.queue.save(saved);
           if (!valid()) return;
           if (!result.written) {
             this.#storageError = new Error(
@@ -211,7 +242,11 @@ export class QueueEngine {
           this.#needsPersist = false;
           this.#conflict = false;
           this.#storageError = undefined;
-          this.#publish(record);
+          this.#memory.serverQueue = server;
+          if (!this.#playbackActive && !preservePlayback) {
+            this.#serverWritable = true;
+            this.#publish(record);
+          }
         } catch (error) {
           if (valid()) this.#storageError = error;
         }
@@ -256,6 +291,7 @@ export class QueueEngine {
           position: state.position,
         });
         if (epoch !== this.#epoch || this.#destroyed || connection.signal.aborted) return;
+        this.#memory.serverQueue = { ...state, tracks: [...state.tracks] };
         if (revision === this.#revision) {
           this.#dirty = false;
           this.#needsPersist = true;
@@ -274,12 +310,19 @@ export class QueueEngine {
   #changed() {
     this.#revision++;
     this.#updatedAt = Math.max(Date.now(), this.#updatedAt + 1);
-    this.#dirty = true;
+    this.#dirty = this.#serverWritable && !!this.#connection && !this.#connection.signal.aborted;
     this.#needsPersist = true;
   }
   update(state: QueueState) {
+    this.#serverWritable = !!this.#connection && !this.#connection.signal.aborted;
     this.#changed();
     this.#publish(state);
+    this.save();
+  }
+  select(index: number) {
+    // Navigation belongs to the existing session, including an offline-only queue.
+    this.#changed();
+    this.#publish({ tracks: this.#memory.queueTracks, index, position: 0 });
     this.save();
   }
   setPosition(position: number) {
@@ -316,10 +359,11 @@ export class QueueEngine {
   }
   #connect() {
     if (this.#connecting?.epoch === this.#epoch) return this.#connecting.promise;
+    const epoch = this.#epoch;
     const promise = (async () => {
       if (!this.#connection || this.#connection.signal.aborted) return;
       if (this.#dirty) await this.#sync();
-      else await this.#load();
+      if (epoch === this.#epoch) await this.#load();
     })();
     const connecting = { epoch: this.#epoch, promise };
     this.#connecting = connecting;
@@ -331,6 +375,9 @@ export class QueueEngine {
     if ((connection && connection === this.#connection) || this.#destroyed) return;
     this.#connection = connection;
     this.#epoch++;
+    // Only edits made on this connection may be uploaded.
+    this.#dirty = false;
+    this.#serverWritable = false;
     this.#clearTimers();
   }
   async synchronize() {

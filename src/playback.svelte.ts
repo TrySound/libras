@@ -41,7 +41,10 @@ export type PlaybackStatus =
   | "ended"
   | "error";
 export interface PlaybackEngineOptions {
-  queue: Pick<QueueEngine, "update" | "setPosition" | "save" | "flush" | "subscribe">;
+  queue: Pick<
+    QueueEngine,
+    "select" | "setPosition" | "save" | "flush" | "subscribe" | "setPlaybackActive"
+  >;
   memory: Pick<
     MemoryView,
     | "tracks"
@@ -180,6 +183,7 @@ export class PlaybackEngine {
   }
 
   #unload() {
+    this.#queue.setPlaybackActive(false);
     this.#invalidate();
     this.#intent = false;
     this.#audio?.pause();
@@ -369,6 +373,7 @@ export class PlaybackEngine {
     const audio = this.#audio;
     const track = this.track;
     if (!audio || !track || !this.#canPlay(this.#memory.queueIndex)) return;
+    this.#queue.setPlaybackActive(true);
     this.#id = track.id;
     this.#artwork();
     const download = {
@@ -483,11 +488,7 @@ export class PlaybackEngine {
 
   async playIndex(index: number) {
     if (!Number.isInteger(index) || !this.#canPlay(index)) return;
-    this.#queue.update({
-      tracks: this.#memory.queueTracks,
-      index,
-      position: 0,
-    });
+    this.#queue.select(index);
     await this.#load(0, true);
   }
 
@@ -554,7 +555,7 @@ export class PlaybackEngine {
   stop() {
     this.#unload();
     this.#error = undefined;
-    this.#queue.update({ tracks: this.#memory.queueTracks, position: 0 });
+    this.#queue.select(-1);
     this.#syncMediaSession();
   }
 

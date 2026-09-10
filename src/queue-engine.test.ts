@@ -116,6 +116,57 @@ async function connectQueue(queue: QueueEngine, client: ReturnType<typeof create
 }
 
 describe("queue engine", () => {
+  it("keeps offline playback checkpoints local after reconnecting", async () => {
+    const memory = new Memory();
+    const queue = engine(memory);
+    await queue.restore(new Storage(account));
+    queue.update({ tracks: ["offline"], index: 0, position: 10 });
+    queue.setPlaybackActive(true);
+    await queue.flush();
+    const connection = createConnection();
+    const write = vi.spyOn(connection, "write").mockResolvedValue(undefined);
+    const read = vi
+      .spyOn(connection, "read")
+      .mockResolvedValue({ trackIds: ["server"], currentTrackId: "server", position: 5 });
+    queue.setConnection(connection);
+    queue.setPosition(20);
+    await queue.flush();
+    expect(write).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+    await queue.synchronize();
+    expect(read).toHaveBeenCalledOnce();
+    expect(memory.queueTracks).toEqual(["offline"]);
+    expect(memory.serverQueue?.tracks).toEqual(["server"]);
+    queue.select(0);
+    queue.setPosition(30);
+    await queue.flush();
+    expect(write).not.toHaveBeenCalled();
+    // An explicit new online queue is a server command, unlike session navigation.
+    queue.update({ tracks: ["online"], index: 0, position: 0 });
+    await queue.flush();
+    expect(write).toHaveBeenCalledOnce();
+  });
+
+  it("restores the server replica separately and retains it through local checkpoints", async () => {
+    const server = { tracks: ["server"], index: 0, position: 30 };
+    await storage.seed({ ...record(), server });
+    const memory = new Memory();
+    const queue = engine(memory);
+    await queue.restore(new Storage(account));
+    expect(memory.serverQueue).toEqual(server);
+    expect(memory.queueTracks).toEqual(record().tracks);
+    queue.setPosition(45);
+    await queue.flush();
+    expect(await storage.json()).toMatchObject({ position: 45, server });
+    const restoredMemory = new Memory();
+    const restored = engine(restoredMemory);
+    await restored.restore(new Storage(account));
+    expect(restoredMemory.serverQueue).toEqual(server);
+    expect(restoredMemory.queuePosition).toBe(45);
+    await restored.restore(new Storage({ ...account, username: "other" }));
+    expect(restoredMemory.serverQueue).toBeNull();
+  });
+
   it.each(["success", "failure", "conflict", "local edit", "detach"])(
     "waits for durable server state before publication: %s",
     async (outcome) => {
@@ -198,7 +249,7 @@ describe("queue engine", () => {
         tracks: ["edited"],
         index: 0,
         position: 2,
-        pendingSync: true,
+        pendingSync: false,
       }),
     );
     expect(queue.storageError).toBeInstanceOf(Error);
@@ -368,7 +419,7 @@ describe("queue engine", () => {
       tracks: ["a", "b", "a"],
       index: 2,
       position: 35,
-      pendingSync: true,
+      pendingSync: false,
     });
     expect(JSON.stringify(saved)).not.toMatch(/token|salt|title|playing|https:.*rest/);
     const restoredMemory = new Memory();
@@ -385,7 +436,7 @@ describe("queue engine", () => {
       tracks: [],
       index: -1,
       position: 0,
-      pendingSync: true,
+      pendingSync: false,
     });
     expect(JSON.stringify(empty)).not.toMatch(/token|salt|title|playing|https:.*rest/);
   });
@@ -439,7 +490,7 @@ describe("queue engine", () => {
     expect((await storage.json()).index).toBe(2);
   });
 
-  it("uploads unsynced local changes on reconnect instead of restoring the server queue", async () => {
+  it("ignores legacy pending uploads and restores the server queue", async () => {
     await storage.seed({ ...record(), pendingSync: true });
     const fetcher = vi.fn(async () => response());
     vi.stubGlobal("fetch", fetcher);
@@ -447,13 +498,9 @@ describe("queue engine", () => {
     const queue = engine(queueMemory);
     await connectQueue(queue, createConnection(auth));
     expect(fetcher).toHaveBeenCalledOnce();
-    const [url, options] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toContain("savePlayQueue");
-    const body = new URLSearchParams(String(options.body));
-    expect(body.getAll("id")).toEqual(["a", "b", "a"]);
-    expect(body.get("current")).toBe("a");
-    expect(body.get("position")).toBe("12500");
-    expect(queueMemory.queueIndex).toBe(2);
+    const [url] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain("getPlayQueue");
+    expect(queueMemory.queueIndex).toBe(-1);
     expect((await storage.json()).pendingSync).toBe(false);
   });
 
@@ -487,10 +534,10 @@ describe("queue engine", () => {
     queue.update({ tracks: ["local"], index: 0, position: 3 });
     await restored;
     expect(queueMemory.queueTracks[queueMemory.queueIndex]).toBe("local");
-    expect(await storage.json()).toMatchObject({ tracks: ["local"], pendingSync: true });
+    expect(await storage.json()).toMatchObject({ tracks: ["local"], pendingSync: false });
   });
 
-  it("keeps a cancelled upload pending and retries through a fresh Network connection", async () => {
+  it("does not replay a cancelled upload through a fresh connection", async () => {
     await storage.seed({ ...record(), pendingSync: true });
     const network = new Network();
     const client = network.accept(network.prepare(auth));
@@ -508,7 +555,8 @@ describe("queue engine", () => {
           }),
       ),
     );
-    const syncing = queue.synchronize();
+    queue.update({ tracks: ["a", "b", "a"], index: 2, position: 15 });
+    const syncing = queue.flush();
     await vi.waitFor(() => expect(respond).toBeDefined());
     network.setMode("offline");
     queue.setConnection(undefined);
@@ -516,7 +564,7 @@ describe("queue engine", () => {
     await syncing;
     expect(client.signal.aborted).toBe(true);
     expect(queue.error).toBeUndefined();
-    expect((await storage.json()).pendingSync).toBe(true);
+    expect((await storage.json()).pendingSync).toBe(false);
     expect(memory.queueIndex).toBe(2);
     const fetcher = vi.fn(async () => response());
     vi.stubGlobal("fetch", fetcher);
@@ -525,8 +573,8 @@ describe("queue engine", () => {
     await queue.synchronize();
     expect(fetcher).toHaveBeenCalledOnce();
     expect(fetcher.mock.calls[0]).toEqual([
-      expect.stringContaining("savePlayQueue"),
-      expect.objectContaining({ method: "POST" }),
+      expect.stringContaining("getPlayQueue"),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     ]);
     expect((await storage.json()).pendingSync).toBe(false);
     network.setMode("offline");
@@ -547,17 +595,22 @@ describe("queue engine", () => {
     );
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    const connected = connectQueue(queue, createConnection(auth));
+    await queue.restore(new Storage(account));
+    queue.setConnection(createConnection(auth));
+    queue.update({ tracks: ["a", "b", "a"], index: 2, position: 15 });
+    const pending = queue.flush();
     await vi.waitFor(() => expect(resolve).toBeDefined());
     queue.setPosition(20);
     resolve(response());
-    await connected;
-    queue.setConnection(undefined);
+    await pending;
+    const fetcher = vi.fn(async () => response());
+    vi.stubGlobal("fetch", fetcher);
     await queue.flush();
-    expect(await storage.json()).toMatchObject({ position: 20, pendingSync: true });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(await storage.json()).toMatchObject({ position: 20, pendingSync: false });
   });
 
-  it("retains unsynced changes after a failed save and uploads them when online again", async () => {
+  it("retains the local queue after a failed pull and retries the pull explicitly", async () => {
     await storage.seed({ ...record(), pendingSync: true });
     vi.stubGlobal(
       "fetch",

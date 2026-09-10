@@ -90,6 +90,8 @@ export function createSession(saved = false, storage = createStorage()) {
     setConnection: vi.fn(),
   };
   const queue = {
+    error: undefined as unknown,
+    storageError: undefined as unknown,
     restore: vi.fn(async (storage: Pick<Storage, "account">) => {
       const account = storage.account;
       memory.queueTracks = [account.username];
@@ -103,7 +105,7 @@ export function createSession(saved = false, storage = createStorage()) {
   const tracks = { restore: vi.fn(async () => {}), setConnection: vi.fn() };
   const playback = { suspend: vi.fn(), suspendNetwork: vi.fn() };
   const network = new Network();
-  const sync = new SyncEngine({ metadata, covers });
+  const sync = new SyncEngine({ metadata, covers, queue });
   const session = new Session({
     sync,
     memory,

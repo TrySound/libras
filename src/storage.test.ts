@@ -415,6 +415,8 @@ describe("queue storage", () => {
     for (const invalid of [
       "broken JSON",
       JSON.stringify({ ...record(), account: { ...account, username: "other" } }),
+      JSON.stringify({ ...record(), server: { tracks: [], index: 0, position: 0 } }),
+      JSON.stringify({ ...record(), server: { tracks: [], index: -1, position: 1 } }),
     ]) {
       disk.files.set(path, invalid);
       await expect(queue.read()).rejects.toThrow();

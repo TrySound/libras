@@ -11,11 +11,35 @@ function setup() {
     warning: undefined as unknown,
   };
   const covers = { refresh: vi.fn(async () => {}) };
-  const sync = new SyncEngine({ metadata, covers });
-  return { sync, metadata, covers };
+  const queue = {
+    synchronize: vi.fn(async () => {}),
+    error: undefined as unknown,
+    storageError: undefined as unknown,
+  };
+  const sync = new SyncEngine({ metadata, covers, queue });
+  return { sync, metadata, covers, queue };
 }
 
 describe("sync engine", () => {
+  it("refreshes the queue after metadata even if the library request fails", async () => {
+    const { sync, metadata, queue } = setup();
+    const error = new Error("Library unavailable");
+    metadata.refresh.mockRejectedValueOnce(error);
+    sync.start();
+    await sync.refresh();
+    expect(queue.synchronize).toHaveBeenCalledOnce();
+    expect(sync.error).toBe(error);
+  });
+
+  it("reports queue storage failures without treating them as connection failures", async () => {
+    const { sync, queue } = setup();
+    queue.storageError = new Error("Storage unavailable");
+    sync.start();
+    await sync.refresh();
+    expect(sync.error).toBe(queue.storageError);
+    expect(sync.syncing).toBe(false);
+  });
+
   it("does no work until enabled and reconciles covers after metadata", async () => {
     const { sync, metadata, covers } = setup();
     await sync.refresh();
@@ -73,7 +97,7 @@ describe("sync engine", () => {
   });
 
   it("does not reconcile covers after a stopped refresh completes", async () => {
-    const { sync, metadata, covers } = setup();
+    const { sync, metadata, covers, queue } = setup();
     sync.start();
     const pending = deferred();
     metadata.refresh.mockReturnValueOnce(pending.promise);
@@ -82,6 +106,7 @@ describe("sync engine", () => {
     pending.resolve();
     await refresh;
     expect(covers.refresh).not.toHaveBeenCalled();
+    expect(queue.synchronize).not.toHaveBeenCalled();
     expect(sync.syncing).toBe(false);
     expect(sync.error).toBeUndefined();
   });
