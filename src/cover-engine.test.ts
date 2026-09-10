@@ -236,7 +236,8 @@ describe("cover engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const client = createConnection(auth);
     covers.setConnection(client);
-    const remote = covers.ensureCover("remote", online);
+    metadata.memory.albumArtwork = new Map(metadata.memory.albumArtwork).set("remote", ["remote"]);
+    const remote = covers.ensureAlbumCover("remote", online);
     await vi.waitFor(() => expect(remote.source).toContain("getCoverArt"));
     remote.cache();
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
@@ -337,7 +338,7 @@ describe("cover engine", () => {
           resolve = done;
         }),
     );
-    const cover = covers.ensureCover("album-cover", offline);
+    const cover = covers.ensureAlbumCover("album", offline);
     await vi.waitFor(() => expect(resolve).toBeDefined());
     metadata.memory.account = { ...account, username: "other" };
     resolve(new TextEncoder().encode("image").buffer);
@@ -357,7 +358,7 @@ describe("cover engine", () => {
     vi.stubGlobal("fetch", fetcher);
     const covers = engine();
     covers.setConnection(createConnection(auth));
-    const cover = covers.ensureCover("album-cover", online);
+    const cover = covers.ensureAlbumCover("album", online);
     expect(cover.source).toBeUndefined();
     await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
     expect(fetcher).not.toHaveBeenCalled();
@@ -393,7 +394,6 @@ describe("cover engine", () => {
     await replacement;
     expect((await storage.json()).metadataSavedAt).toBe(200);
     expect((await storage.json()).tracks).toEqual([]);
-    expect(covers.error).toBeUndefined();
   });
 
   it("uses candidate priority rather than metadata record order", async () => {
@@ -451,7 +451,6 @@ describe("cover engine", () => {
     expect([...metadata.memory.images.values()]).toEqual([...previousImages.values()]);
     expect((await storage.json()).tracks).toEqual([]);
     expect((await storage.json()).images).toEqual(catalog().images);
-    expect(covers.ensureCover("album-cover", offline).cached).toBe(true);
   });
 
   it("resolves online URLs and shares one download across entity and cache-only handles", async () => {
@@ -543,16 +542,17 @@ describe("cover engine", () => {
     const original = { ...catalog(), images: [{ ...catalog().images[0], etag: '"old"' }] };
     await storage.seed(original);
     storage.image();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("updated", { headers: { "Content-Type": "image/jpeg" } })),
+    const fetcher = vi.fn(
+      async () => new Response("updated", { headers: { "Content-Type": "image/jpeg" } }),
     );
+    vi.stubGlobal("fetch", fetcher);
     const covers = engine();
     await covers.restore(new Storage(account));
     storage.failCatalogWrites = true;
     covers.setConnection(createConnection(auth));
     const cover = covers.ensureAlbumCover("album", online);
-    await vi.waitFor(() => expect(covers.error).toBeInstanceOf(Error));
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(cover.source).toBe("blob:cover-1");
     expect(await storage.json()).toEqual(original);
     expect(await storage.files.get(original.images[0].fileName)!.text()).toBe("image");
@@ -565,7 +565,7 @@ describe("cover engine", () => {
     await storage.seed(foreign);
     const covers = engine();
     await covers.restore(new Storage(account));
-    expect(covers.error).toBeInstanceOf(Error);
+    expect(covers.ensureAlbumCover("album", offline).source).toBeUndefined();
     await covers.refresh();
     expect(storage.writes).toBe(0);
     expect(await storage.json()).toEqual(foreign);
@@ -633,8 +633,8 @@ describe("cover engine", () => {
     await Promise.all([first.refresh(), second.refresh()]);
     first.setConnection(createConnection(auth));
     second.setConnection(createConnection(auth));
-    const one = first.ensureCover("one-cover", online);
-    const two = second.ensureCover("two-cover", online);
+    const one = first.ensureAlbumCover("album", online);
+    const two = second.ensureTrackCover("one", online);
     await vi.waitFor(() => {
       expect(one.source).toBeDefined();
       expect(two.source).toBeDefined();
@@ -646,8 +646,8 @@ describe("cover engine", () => {
       expect(two.cached).toBe(true);
     });
     expect((await storage.json()).images.map((image: { id: string }) => image.id).sort()).toEqual([
-      "one-cover",
-      "two-cover",
+      "album-cover",
+      "track-cover",
     ]);
     expect(new Set(request.mock.calls.map(([name]) => name)).size).toBe(1);
   });

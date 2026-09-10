@@ -84,10 +84,6 @@ export class TrackEngine {
     return this.#ready;
   }
 
-  ready() {
-    return this.#ready;
-  }
-
   get downloadJobs(): readonly DownloadJobInfo[] {
     this.#version;
     const jobs = [...this.#jobs.values()];
@@ -282,19 +278,6 @@ export class TrackEngine {
       if (mp3) return { file: mp3, contentType: fallback.contentType };
     }
     return null;
-  }
-
-  async scanCached(tracks: EngineTrack[]) {
-    let next = 0;
-    const storage = this.#storage;
-    const worker = async () => {
-      while (next < tracks.length && !this.#destroyed && this.#storage === storage) {
-        const track = tracks[next++];
-        await this.#cached(track, this.#describe(track));
-      }
-    };
-    await Promise.allSettled(Array.from({ length: Math.min(8, tracks.length) }, worker));
-    await this.#refreshCatalog();
   }
 
   getStatus(trackId: string): TrackStatus {

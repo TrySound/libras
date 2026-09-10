@@ -130,7 +130,6 @@ export class CoverEngine {
   #downloads = new Map<string, Promise<void>>();
   #loads = new Map<string, Promise<string | undefined>>();
   #objectUrls = new Map<string, string>();
-  #error = $state.raw<unknown>();
   #version = $state(0);
   #listeners = new Set<() => void>();
 
@@ -143,10 +142,6 @@ export class CoverEngine {
   #notify() {
     this.#version++;
     for (const listener of this.#listeners) listener();
-  }
-  get error() {
-    this.#version;
-    return this.#error;
   }
   restore(storage: Pick<Storage, "account" | "artwork">): Promise<void> {
     if (this.#destroyed) return Promise.resolve();
@@ -176,18 +171,12 @@ export class CoverEngine {
       entry.generation++;
     }
     this.#covers.clear();
-    this.#error = undefined;
     this.#notify();
     return (this.#ready = (async () => {
       try {
         const catalog = await storage.artwork.read();
         if (valid()) await this.#apply(catalog);
-      } catch (error) {
-        if (valid()) {
-          this.#error = error;
-          this.#notify();
-        }
-      }
+      } catch {}
     })());
   }
 
@@ -230,15 +219,9 @@ export class CoverEngine {
           (latest) => ((latest.metadataSavedAt ?? -1) > savedAt ? latest : { ...latest, ...refs }),
           valid,
         );
-        if (catalog && valid()) {
-          this.#error = undefined;
-          await this.#apply(catalog);
-        }
-      } catch (error) {
-        if (!valid()) return;
-        this.#reconcileKey = "";
-        this.#error = error;
-        this.#notify();
+        if (catalog && valid()) await this.#apply(catalog);
+      } catch {
+        if (valid()) this.#reconcileKey = "";
       }
     })());
   }
@@ -340,10 +323,8 @@ export class CoverEngine {
         if (
           !(error instanceof DOMException) ||
           (error.name !== "NotFoundError" && error.name !== "DataError")
-        ) {
-          this.#error = error;
+        )
           continue;
-        }
         if (this.#memory.images.get(id)?.fileName === record.fileName) {
           const images = new Map(this.#memory.images);
           images.delete(id);
@@ -358,12 +339,7 @@ export class CoverEngine {
               }),
               () => generation === this.#generation && !this.#destroyed,
             )
-            .catch((error) => {
-              if (valid()) {
-                this.#error = error;
-                this.#notify();
-              }
-            });
+            .catch(() => {});
         }
       }
     }
@@ -399,14 +375,8 @@ export class CoverEngine {
       generation === this.#generation &&
       !this.#destroyed &&
       this.#networkConnection() === connection;
-    this.#error = undefined;
     const task = this.#download(id, connection, valid)
-      .catch((error) => {
-        if (valid()) {
-          this.#error = error;
-          this.#notify();
-        }
-      })
+      .catch(() => {})
       .finally(() => {
         if (this.#downloads.get(key) === task) this.#downloads.delete(key);
       });
@@ -478,10 +448,6 @@ export class CoverEngine {
   ensureTrackCover(id: string, options: CoverOptions) {
     return this.#ensureCover("tracks", id, options);
   }
-  ensureCover(artworkId: string, options: CoverOptions) {
-    return this.#ensureCover("image", artworkId, options);
-  }
-
   setConnection(connection: ArtworkConnection | undefined) {
     if (connection === this.#connection || this.#destroyed) return;
     this.#connection = connection;

@@ -157,7 +157,7 @@ describe("track engine", () => {
     const memory = new Memory();
     memory.account = { host: auth.host, username: auth.username };
     const engine = new TrackEngine({ memory, storage });
-    await engine.ready();
+    await vi.waitFor(() => expect(engine.downloadsLoading).toBe(false));
     const source = await engine.getSource({ id: "one" });
     expect(source.cached).toBe(true);
     expect(audio.list).toHaveBeenCalledOnce();
@@ -200,10 +200,9 @@ describe("track engine", () => {
     restoredMemory.account = { host: auth.host, username: auth.username };
 
     const reader = new TrackEngine({ storage: new Storage(account), memory: restoredMemory });
-    await reader.ready();
+    await vi.waitFor(() => expect(reader.downloadsLoading).toBe(false));
     expect([...restoredMemory.downloads.values()]).toEqual([completed]);
     expect(reader.getStatus(track.id)).toBe("downloaded");
-    await reader.scanCached([track]);
     expect(await reader.getSource(track, { position: 120 })).toEqual({
       cached: true,
       url: "blob:offline",
@@ -232,7 +231,7 @@ describe("track engine", () => {
       memory: memory,
       connection: createConnection(auth),
     });
-    await engine.ready();
+    await vi.waitFor(() => expect(engine.downloadsLoading).toBe(false));
     const emptyCatalog = memory.downloads;
     const pending = engine.cache({ id: "pending" });
     await vi.waitFor(() => expect(resolve).toBeDefined());
@@ -289,7 +288,7 @@ describe("track engine", () => {
 
     const storage = new Storage(account);
     const engine = new TrackEngine({ storage, memory: memory });
-    await engine.ready();
+    await vi.waitFor(() => expect(engine.downloadsLoading).toBe(false));
     let resolve!: (file: File) => void;
     vi.spyOn(storage.audio, "read").mockImplementationOnce(
       () =>
@@ -483,26 +482,6 @@ describe("track engine", () => {
     restored.destroy();
   });
 
-  it("migrates legacy cached audio and remembers its original file date", async () => {
-    const files = installOpfs(new File(["legacy"], "track.audio", { lastModified: 123 }));
-    const fetcher = vi.fn();
-    vi.stubGlobal("fetch", fetcher);
-    const engineMemory = new Memory();
-    const engine = new TrackEngine({
-      storage: new Storage(account),
-      memory: engineMemory,
-      connection: createConnection(auth),
-    });
-    await engine.scanCached([{ id: "legacy", title: "Old song" }]);
-    expect([...engineMemory.downloads.values()][0]).toMatchObject({
-      track: { id: "legacy", title: "Old song" },
-      downloadedAt: 123,
-    });
-    expect(JSON.parse(await files.get("downloads.json")!.text())).toHaveLength(1);
-    expect(fetcher).not.toHaveBeenCalled();
-    engine.destroy();
-  });
-
   it("does not catalog failed or empty downloads and continues the queue", async () => {
     const files = installOpfs();
     vi.stubGlobal(
@@ -644,7 +623,7 @@ describe("track engine", () => {
         connection: createConnection(auth),
       });
       try {
-        await restored.ready();
+        await vi.waitFor(() => expect(restored.downloadsLoading).toBe(false));
         expect(restoredMemory.downloads.size).toBe(2);
       } finally {
         restored.destroy();
@@ -905,13 +884,12 @@ describe("track engine", () => {
       memory: restoredMemory,
       connection,
     });
-    await restored.ready();
+    await vi.waitFor(() => expect(restored.downloadsLoading).toBe(false));
     const storage = vi.spyOn(navigator.storage, "getDirectory");
     storage.mockClear();
     expect(["saved", "missing"].filter((id) => restored.getStatus(id) === "downloaded")).toEqual([
       "saved",
     ]);
-    await restored.ready();
     expect(restored.getStatus("saved")).toBe("downloaded");
     expect(storage).not.toHaveBeenCalled();
     restoredMemory.account = { host: auth.host, username: "other" };
@@ -1054,37 +1032,6 @@ describe("track engine", () => {
       ["blob:second-track"],
       ["blob:third-track"],
     ]);
-  });
-
-  it("loads cached track state without returning storage details", async () => {
-    installOpfs(new File(["cached"], "track.audio"));
-    const engineMemory = new Memory();
-    const engine = new TrackEngine({
-      storage: new Storage(account),
-      memory: engineMemory,
-      connection: createConnection(auth),
-    });
-
-    const result = await engine.scanCached([{ id: "track-1" }, { id: "track-2" }]);
-
-    expect(result).toBeUndefined();
-    expect(engine.getStatus("track-1")).toBe("downloaded");
-    expect(engine.getStatus("track-2")).toBe("downloaded");
-  });
-
-  it("handles unavailable browser storage while scanning", async () => {
-    installOpfs();
-    vi.stubGlobal("navigator", {
-      storage: { getDirectory: async () => Promise.reject(new Error("Storage unavailable")) },
-    });
-    const engineMemory = new Memory();
-    const engine = new TrackEngine({
-      storage: new Storage(account),
-      memory: engineMemory,
-      connection: createConnection(auth),
-    });
-
-    await expect(engine.scanCached([{ id: "track-1" }])).resolves.toBeUndefined();
   });
 });
 
