@@ -23,18 +23,18 @@ interface NetworkIdentity {
   readonly signal: AbortSignal;
 }
 
-export type RemoteArtist = Omit<Artist, "id"> & { id?: string };
-export type RemoteAlbum = Omit<Album, "artistId"> & { artistId?: string; artistName?: string };
-export type RemoteTrack = Omit<Track, "artistId" | "albumId"> & {
+type RemoteArtist = Omit<Artist, "id"> & { id?: string };
+type RemoteAlbum = Omit<Album, "artistId"> & { artistId?: string; artistName?: string };
+type RemoteTrack = Omit<Track, "artistId" | "albumId"> & {
   artistId?: string;
   artistName?: string;
   albumId?: string;
 };
 
-type RemoteLibrary = {
-  artists: readonly RemoteArtist[];
-  albums: readonly RemoteAlbum[];
-  tracksByAlbum: ReadonlyMap<string, readonly RemoteTrack[]>;
+export type Library = {
+  artists: Artist[];
+  albums: Album[];
+  tracks: Track[];
 };
 
 export type MetadataConnection = Pick<
@@ -79,6 +79,64 @@ function genres(item: { genre?: string; genres?: { name: string }[] }) {
   );
 }
 
+function normalizeLibrary(
+  sourceArtists: readonly RemoteArtist[],
+  sourceAlbums: readonly RemoteAlbum[],
+  tracksByAlbum: ReadonlyMap<string, readonly RemoteTrack[]>,
+): Library {
+  const artists = new Map<string, Artist>();
+  const byName = new Map<string, Artist>();
+  const syntheticId = (name: string) => `local:artist:${encodeURIComponent(name)}`;
+  for (const source of sourceArtists) {
+    const artist: Artist = {
+      id: source.id || syntheticId(source.name),
+      name: source.name,
+      artworkId: source.artworkId,
+      genres: source.genres,
+    };
+    artists.set(artist.id, artist);
+    byName.set(artist.name, artist);
+  }
+  const artistFor = (id?: string, name?: string, fallback?: Artist) => {
+    if (!id && !name && fallback) return fallback;
+    const existing = id ? artists.get(id) : name ? byName.get(name) : undefined;
+    if (existing) return existing;
+    const resolvedName = name || "Unknown artist";
+    const artist: Artist = { id: id || syntheticId(resolvedName), name: resolvedName, genres: [] };
+    artists.set(artist.id, artist);
+    byName.set(artist.name, artist);
+    return artist;
+  };
+  const albums: Album[] = [];
+  const tracks: Track[] = [];
+  for (const source of sourceAlbums) {
+    const owner = artistFor(source.artistId, source.artistName);
+    albums.push({
+      id: source.id,
+      title: source.title,
+      artistId: owner.id,
+      artworkId: source.artworkId,
+      year: source.year,
+      genres: source.genres,
+    });
+    for (const sourceTrack of tracksByAlbum.get(source.id) ?? []) {
+      tracks.push({
+        id: sourceTrack.id,
+        title: sourceTrack.title,
+        albumId: source.id,
+        artistId: artistFor(sourceTrack.artistId, sourceTrack.artistName, owner).id,
+        artworkId: sourceTrack.artworkId,
+        number: sourceTrack.number,
+        disc: sourceTrack.disc,
+        duration: sourceTrack.duration,
+        mimeType: sourceTrack.mimeType,
+        genres: sourceTrack.genres,
+      });
+    }
+  }
+  return { artists: [...artists.values()], albums, tracks };
+}
+
 type Request = <T>(run: () => Promise<T>) => Promise<T>;
 
 async function networkFetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -108,7 +166,7 @@ class MetadataAccess {
     return this.#request(() => this.#client.getIndexes(since));
   }
 
-  async readLibrary(workflowSignal: AbortSignal): Promise<RemoteLibrary> {
+  async readLibrary(workflowSignal: AbortSignal): Promise<Library> {
     const controller = new AbortController();
     const signal = AbortSignal.any([workflowSignal, controller.signal]);
     const read = async <T>(run: () => Promise<T>) => {
@@ -181,7 +239,7 @@ class MetadataAccess {
       };
       await Promise.all(Array.from({ length: Math.min(6, albums.length) }, worker));
       signal.throwIfAborted();
-      return { artists, albums, tracksByAlbum };
+      return normalizeLibrary(artists, albums, tracksByAlbum);
     } finally {
       controller.abort();
     }

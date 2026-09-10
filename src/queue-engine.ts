@@ -12,7 +12,6 @@ export interface QueueState {
   tracks: readonly string[];
 }
 const scope = (account: Account) => `${account.host}\n${account.username}`;
-export type QueueEngineStatus = "idle" | "loading" | "ready" | "saving" | "error";
 
 export class QueueEngine {
   #connection?: QueueConnection;
@@ -40,7 +39,6 @@ export class QueueEngine {
   #storageError: unknown;
   #saveTimer?: ReturnType<typeof setTimeout>;
   #localTimer?: ReturnType<typeof setTimeout>;
-  #status: QueueEngineStatus = "idle";
   #listeners = new Set<() => void>();
   #update = () => {};
   #subscribe = createSubscriber((update) => {
@@ -67,10 +65,6 @@ export class QueueEngine {
   get storageError() {
     this.#subscribe();
     return this.#storageError;
-  }
-  get status() {
-    this.#subscribe();
-    return this.#status;
   }
   #publish(state: QueueState) {
     const tracks = [...state.tracks];
@@ -156,7 +150,6 @@ export class QueueEngine {
     this.#updatedAt = 0;
     this.#error = undefined;
     this.#storageError = undefined;
-    this.#status = "idle";
     if (this.#connection && scope(this.#connection.account) !== scope(account))
       this.#connection = undefined;
     this.#publish({ tracks: [], position: 0 });
@@ -187,7 +180,6 @@ export class QueueEngine {
     const epoch = this.#epoch;
     const revision = this.#revision;
     this.#error = undefined;
-    this.#status = "loading";
     this.#update();
     try {
       const queue = await connection.read();
@@ -216,7 +208,6 @@ export class QueueEngine {
             : -1,
         position: queue.position,
       });
-      this.#status = "ready";
       await this.#persist();
     } catch (error) {
       if (
@@ -227,7 +218,6 @@ export class QueueEngine {
       )
         return;
       this.#error = error;
-      this.#status = "error";
     }
     this.#update();
   }
@@ -251,7 +241,6 @@ export class QueueEngine {
       const revision = this.#revision;
       const state = this.#state();
       this.#error = undefined;
-      this.#status = "saving";
       this.#update();
       try {
         await connection.write({
@@ -266,11 +255,9 @@ export class QueueEngine {
           await this.#persist();
         }
         if (epoch !== this.#epoch || this.#destroyed || connection.signal.aborted) return;
-        this.#status = "ready";
       } catch (error) {
         if (epoch !== this.#epoch || this.#destroyed || connection.signal.aborted) return;
         this.#error = error;
-        this.#status = "error";
       }
       this.#update();
     });
@@ -286,7 +273,6 @@ export class QueueEngine {
   }
   update(state: QueueState) {
     this.#changed();
-    this.#status = !this.#connection || this.#connection.signal.aborted ? "idle" : "ready";
     this.#publish(state);
     this.save();
   }
@@ -325,11 +311,7 @@ export class QueueEngine {
   #connect() {
     if (this.#connecting?.epoch === this.#epoch) return this.#connecting.promise;
     const promise = (async () => {
-      if (!this.#connection || this.#connection.signal.aborted) {
-        this.#status = "idle";
-        this.#update();
-        return;
-      }
+      if (!this.#connection || this.#connection.signal.aborted) return;
       if (this.#dirty) await this.#sync();
       else await this.#load();
     })();
@@ -344,7 +326,6 @@ export class QueueEngine {
     this.#connection = connection;
     this.#epoch++;
     this.#clearTimers();
-    this.#status = "idle";
     this.#update();
   }
   async synchronize() {

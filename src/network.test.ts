@@ -274,19 +274,19 @@ describe("Network connection lifecycle", () => {
       await expect(metadata.readLibrary(new AbortController().signal)).resolves.toEqual({
         artists: [],
         albums: [],
-        tracksByAlbum: new Map(),
+        tracks: [],
       });
       network.accept(candidate);
       await expect(metadata.readLibrary(new AbortController().signal)).resolves.toEqual({
         artists: [],
         albums: [],
-        tracksByAlbum: new Map(),
+        tracks: [],
       });
       const replacement = network.prepare({ ...auth, username: "other" });
       await expect(metadata.readLibrary(new AbortController().signal)).resolves.toEqual({
         artists: [],
         albums: [],
-        tracksByAlbum: new Map(),
+        tracks: [],
       });
       network.accept(replacement);
       const requests = fetch.mock.calls.length;

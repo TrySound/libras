@@ -1,8 +1,8 @@
 import type { Memory } from "./memory.svelte";
-import type { Artist, Album, Track, Account } from "./schema";
+import type { Album, Track } from "./schema";
 import type { MetadataSnapshot, Storage } from "./storage";
 import { createSubscriber } from "svelte/reactivity";
-import type { MetadataConnection, RemoteAlbum, RemoteArtist, RemoteTrack } from "./network.svelte";
+import type { MetadataConnection } from "./network.svelte";
 
 type MetadataMemory = Pick<
   Memory,
@@ -16,74 +16,6 @@ function entityMap<T extends { id: string }>(items: readonly T[]) {
     map.set(item.id, item);
   }
   return map;
-}
-
-function createSnapshot(
-  account: Account,
-  sourceArtists: readonly RemoteArtist[],
-  sourceAlbums: readonly RemoteAlbum[],
-  songs: ReadonlyMap<string, readonly RemoteTrack[]>,
-  lastModified: number | null,
-  savedAt: number,
-): MetadataSnapshot {
-  const artists = new Map<string, Artist>();
-  const byName = new Map<string, Artist>();
-  const syntheticId = (name: string) => `local:artist:${encodeURIComponent(name)}`;
-  for (const source of sourceArtists) {
-    const artist: Artist = {
-      id: source.id || syntheticId(source.name),
-      name: source.name,
-      artworkId: source.artworkId,
-      genres: source.genres,
-    };
-    artists.set(artist.id, artist);
-    byName.set(artist.name, artist);
-  }
-  const artistFor = (id?: string, name?: string, fallback?: Artist): Artist => {
-    if (!id && !name && fallback) return fallback;
-    const existing = id ? artists.get(id) : name ? byName.get(name) : undefined;
-    if (existing) return existing;
-    const resolvedName = name || "Unknown artist";
-    const artist: Artist = { id: id || syntheticId(resolvedName), name: resolvedName, genres: [] };
-    artists.set(artist.id, artist);
-    byName.set(artist.name, artist);
-    return artist;
-  };
-  const albums: Album[] = [];
-  const tracks: Track[] = [];
-  for (const source of sourceAlbums) {
-    const owner = artistFor(source.artistId, source.artistName);
-    albums.push({
-      id: source.id,
-      title: source.title,
-      artistId: owner.id,
-      artworkId: source.artworkId,
-      year: source.year,
-      genres: source.genres,
-    });
-    for (const song of songs.get(source.id) ?? []) {
-      tracks.push({
-        id: song.id,
-        title: song.title,
-        albumId: source.id,
-        artistId: artistFor(song.artistId, song.artistName, owner).id,
-        artworkId: song.artworkId,
-        number: song.number,
-        disc: song.disc,
-        duration: song.duration,
-        mimeType: song.mimeType,
-        genres: song.genres,
-      });
-    }
-  }
-  return {
-    account: { host: account.host, username: account.username },
-    lastModified,
-    savedAt,
-    artists: [...artists.values()],
-    albums,
-    tracks,
-  };
 }
 
 function prepareMetadata(snapshot?: MetadataSnapshot) {
@@ -241,14 +173,12 @@ export class MetadataEngine {
     try {
       const library = await connection.readLibrary(controller.signal);
       if (!valid()) throw new DOMException("Metadata request superseded.", "AbortError");
-      return createSnapshot(
-        connection.account,
-        library.artists,
-        library.albums,
-        library.tracksByAlbum,
+      return {
+        account: connection.account,
         lastModified,
-        Date.now(),
-      );
+        savedAt: Date.now(),
+        ...library,
+      };
     } finally {
       controller.abort();
       if (this.#libraryController === controller) this.#libraryController = undefined;
