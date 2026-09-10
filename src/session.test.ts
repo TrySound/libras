@@ -73,13 +73,13 @@ describe("session", () => {
     const refresh = deferred();
     metadata.refresh.mockReturnValueOnce(refresh.promise);
     const pending = session.refresh();
-    await session.refresh();
+    const overlapping = session.refresh();
     expect(metadata.refresh).toHaveBeenCalledOnce();
     expect(session.busy).toBe(false);
     expect(session.syncing).toBe(true);
     expect(session.localReady).toBe(true);
     refresh.resolve();
-    await pending;
+    await Promise.all([pending, overlapping]);
     expect(metadata.revalidate).toHaveBeenCalledOnce();
     expect(metadata.restore).toHaveBeenCalledOnce();
     expect(tracks.setConnection.mock.calls.at(-1)![0]).toBe(client);
@@ -307,7 +307,10 @@ describe("session", () => {
     await session.setOfflineMode(false);
     expect(tracks.setConnection.mock.calls.at(-1)![0]).not.toBe(client);
     expect(metadata.restore).toHaveBeenCalledOnce();
-    expect(metadata.revalidate).toHaveBeenCalledTimes(2);
+    expect(metadata.revalidate).toHaveBeenCalledOnce();
+    expect(metadata.refresh).not.toHaveBeenCalled();
     expect(session.status).toBe("connected");
+    await session.refresh();
+    expect(metadata.refresh).toHaveBeenCalledOnce();
   });
 });

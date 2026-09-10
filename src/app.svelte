@@ -19,6 +19,7 @@
   import { QueueEngine } from "./queue.svelte";
   import { type RouteParams } from "./router-engine";
   import { Session } from "./session.svelte";
+  import { SyncEngine } from "./sync.svelte";
   import { Network } from "./network.svelte";
   import Router, { type RouteControls, type RouterNavigate } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
@@ -59,7 +60,9 @@
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
   });
   const network = new Network();
+  const sync = new SyncEngine({ metadata: metadataEngine, covers: coverEngine });
   const session = new Session({
+    sync,
     memory,
     network,
     auth: new AuthStore(),

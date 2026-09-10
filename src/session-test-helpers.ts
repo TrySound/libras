@@ -6,6 +6,7 @@ import type { MetadataStatus } from "./metadata.svelte";
 import { Storage, type MetadataSnapshot } from "./storage";
 import type { Account } from "./schema";
 import { Session } from "./session.svelte";
+import { SyncEngine } from "./sync.svelte";
 
 export const credentials = {
   host: "https://music.example",
@@ -102,7 +103,9 @@ export function createSession(saved = false, storage = createStorage()) {
   const tracks = { restore: vi.fn(async () => {}), setConnection: vi.fn() };
   const playback = { suspend: vi.fn(), suspendNetwork: vi.fn() };
   const network = new Network();
+  const sync = new SyncEngine({ metadata, covers });
   const session = new Session({
+    sync,
     memory,
     network,
     auth,

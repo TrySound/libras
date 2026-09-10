@@ -13,6 +13,7 @@ import type { QueueEngine } from "./queue.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Storage as AccountStorage } from "./storage";
+import type { SyncEngine } from "./sync.svelte";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -22,19 +23,10 @@ interface SessionOptions {
   auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
   metadata: Pick<
     MetadataEngine,
-    | "restore"
-    | "refresh"
-    | "revalidate"
-    | "prepareConnection"
-    | "saveConnection"
-    | "acceptConnection"
-    | "setConnection"
-    | "savedAt"
-    | "status"
-    | "error"
-    | "warning"
+    "restore" | "prepareConnection" | "saveConnection" | "acceptConnection" | "setConnection"
   >;
   covers: Pick<CoverEngine, "restore" | "refresh" | "setConnection">;
+  sync: Pick<SyncEngine, "start" | "stop" | "refresh" | "syncing" | "error">;
   queue: Pick<QueueEngine, "restore" | "setConnection" | "synchronize" | "flush">;
   tracks: Pick<TrackEngine, "restore" | "setConnection">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
@@ -51,9 +43,7 @@ export class Session {
   auth = $state.raw<Auth | null>(null);
   status = $state<ConnectionStatus>("disconnected");
   error = $state("");
-  refreshError = $state("");
   localReady = $state(false);
-  syncing = $state(false);
 
   #options: SessionOptions;
   #restoration: Promise<void> = Promise.resolve();
@@ -64,6 +54,15 @@ export class Session {
 
   constructor(options: SessionOptions) {
     this.#options = options;
+  }
+
+  get syncing() {
+    return this.#options.sync.syncing;
+  }
+
+  get refreshError() {
+    const error = this.#options.sync.error;
+    return error ? `Background refresh failed: ${connectionError(error)}` : "";
   }
 
   get busy() {
@@ -99,8 +98,6 @@ export class Session {
 
   #begin() {
     this.error = "";
-    this.refreshError = "";
-    this.syncing = false;
     return ++this.#generation;
   }
 
@@ -112,6 +109,7 @@ export class Session {
 
   #detach() {
     const { metadata, queue, covers, tracks, playback } = this.#options;
+    this.#options.sync.stop();
     this.#options.network.setMode("offline");
     metadata.setConnection(undefined);
     queue.setConnection(undefined);
@@ -127,6 +125,7 @@ export class Session {
     queue.setConnection(connection.queue);
     covers.setConnection(connection.artwork);
     tracks.setConnection(connection.audio);
+    this.#options.sync.start();
     void queue.synchronize();
   }
 
@@ -156,8 +155,10 @@ export class Session {
         void this.#restoration
           .then(async () => {
             if (!this.#valid(generation)) return;
-            if (this.auth && !this.offlineMode) await this.#resumeOnline(generation);
-            else this.status = "disconnected";
+            if (this.auth && !this.offlineMode) {
+              this.#resumeOnline(generation);
+              await this.#options.sync.refresh(false);
+            } else this.status = "disconnected";
           })
           .catch((error) => this.#fail(error, generation));
       } else this.localReady = true;
@@ -251,39 +252,16 @@ export class Session {
     }
   }
 
-  #report(generation: number) {
-    if (!this.#valid(generation)) return;
-    const { metadata } = this.#options;
-    const error = metadata.status === "error" ? metadata.error : metadata.warning;
-    if (error) this.refreshError = `Background refresh failed: ${connectionError(error)}`;
-  }
-
-  async #resumeOnline(generation: number) {
+  #resumeOnline(generation: number) {
     if (!this.auth || !this.#valid(generation)) return;
     this.#attach(this.#options.network.open(this.auth));
     this.status = "connected";
-    await this.#synchronize(generation, false);
   }
 
   async refresh() {
-    if (!this.auth || this.offlineMode || this.busy || this.syncing || this.#destroyed) return;
-    await this.#synchronize(this.#begin(), true);
-  }
-
-  async #synchronize(generation: number, force: boolean) {
-    this.syncing = true;
-    try {
-      if (force) await this.#options.metadata.refresh();
-      else await this.#options.metadata.revalidate();
-      if (!this.#valid(generation)) return;
-      await this.#options.covers.refresh();
-      this.#report(generation);
-    } catch (error) {
-      if (this.#valid(generation))
-        this.refreshError = `Background refresh failed: ${connectionError(error)}`;
-    } finally {
-      if (this.#valid(generation)) this.syncing = false;
-    }
+    if (!this.auth || this.offlineMode || this.busy || this.#destroyed) return;
+    this.error = "";
+    await this.#options.sync.refresh();
   }
 
   async setOfflineMode(enabled: boolean) {
@@ -298,7 +276,7 @@ export class Session {
       this.#options.preferences.setItem(offlineModeStorageKey, String(enabled));
       if (!enabled) {
         await this.#restoration;
-        if (this.#valid(generation)) await this.#resumeOnline(generation);
+        if (this.#valid(generation)) this.#resumeOnline(generation);
       }
     } catch (error) {
       this.#fail(error, generation);
@@ -308,7 +286,6 @@ export class Session {
   destroy() {
     this.#destroyed = true;
     this.#generation++;
-    this.syncing = false;
     this.#detach();
   }
 }
