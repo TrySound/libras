@@ -3,6 +3,17 @@ import type { Memory } from "./memory.svelte";
 import type { Album, Track } from "./schema";
 import type { MetadataSnapshot, Storage } from "./storage";
 
+async function readMetadataSnapshot(
+  connection: MetadataConnection,
+  lastModified: number | null,
+  signal: AbortSignal,
+): Promise<MetadataSnapshot> {
+  signal.throwIfAborted();
+  const library = await connection.readLibrary(signal);
+  signal.throwIfAborted();
+  return { ...library, account: connection.account, lastModified, savedAt: Date.now() };
+}
+
 type MetadataMemory = Pick<
   Memory,
   "artists" | "albums" | "tracks" | "artistAlbums" | "albumTracks"
@@ -67,8 +78,11 @@ export class MetadataEngine {
   #restoring?: Promise<void>;
   #generation = 0;
   #updateController?: AbortController;
+  #candidateController?: AbortController;
 
   #invalidate() {
+    this.#candidateController?.abort();
+    this.#candidateController = undefined;
     this.#updateController?.abort();
     this.#updateController = undefined;
     return ++this.#generation;
@@ -138,7 +152,10 @@ export class MetadataEngine {
   }
 
   setConnection(connection: MetadataConnection | undefined) {
-    if (this.#destroyed || connection === this.#connection) return;
+    if (this.#destroyed) return;
+    this.#candidateController?.abort();
+    this.#candidateController = undefined;
+    if (connection === this.#connection) return;
     this.#connection = connection;
     // Attaching network access must not invalidate pending local restoration.
     if (!this.#restoring) {
@@ -179,14 +196,8 @@ export class MetadataEngine {
         null;
       if (!valid()) return;
       if (!force && existing && modified !== null && modified === existing.lastModified) return;
-      const library = await connection.readLibrary(signal);
+      const snapshot = await readMetadataSnapshot(connection, modified, signal);
       if (!valid()) return;
-      const snapshot = {
-        ...library,
-        account: connection.account,
-        lastModified: modified,
-        savedAt: Date.now(),
-      };
       const committed = await storage.metadata.save(snapshot, valid);
       if (committed && valid()) this.#publish(committed);
     } catch (error) {
@@ -196,6 +207,23 @@ export class MetadataEngine {
         this.#status = this.#snapshotInfo ? "ready" : "idle";
       controller.abort();
       if (this.#updateController === controller) this.#updateController = undefined;
+    }
+  }
+
+  /** Fetch a candidate without changing the selected workspace or its local snapshot. */
+  async prepareConnection(connection: MetadataConnection): Promise<MetadataSnapshot> {
+    if (this.#destroyed) throw new DOMException("Metadata stopped.", "AbortError");
+    this.#candidateController?.abort();
+    const controller = new AbortController();
+    this.#candidateController = controller;
+    const signal = AbortSignal.any([connection.signal, controller.signal]);
+    try {
+      signal.throwIfAborted();
+      const modified = await connection.getModifiedAt();
+      return await readMetadataSnapshot(connection, modified, signal);
+    } finally {
+      controller.abort();
+      if (this.#candidateController === controller) this.#candidateController = undefined;
     }
   }
 

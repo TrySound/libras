@@ -13,7 +13,6 @@ import type { QueueEngine } from "./queue.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Storage as AccountStorage } from "./storage";
-import type { SyncEngine } from "./sync.svelte";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -21,10 +20,20 @@ interface SessionOptions {
   memory: MemoryView & Pick<Memory, "account">;
   network: Network;
   auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
-  metadata: Pick<MetadataEngine, "restore" | "saveConnection" | "acceptConnection">;
+  metadata: Pick<
+    MetadataEngine,
+    | "restore"
+    | "prepareConnection"
+    | "saveConnection"
+    | "acceptConnection"
+    | "setConnection"
+    | "refresh"
+  >;
   covers: Pick<CoverEngine, "restore" | "refresh" | "setConnection">;
-  sync: Pick<SyncEngine, "start" | "stop" | "prepareConnection" | "refresh" | "syncing" | "error">;
-  queue: Pick<QueueEngine, "restore" | "refresh" | "flush">;
+  queue: Pick<
+    QueueEngine,
+    "restore" | "refresh" | "flush" | "setConnection" | "error" | "storageError"
+  >;
   tracks: Pick<TrackEngine, "restore" | "setConnection">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
   preferences: Pick<Storage, "getItem" | "setItem">;
@@ -43,6 +52,9 @@ export class Session {
   localReady = $state(false);
 
   #options: SessionOptions;
+  #syncing = $state(false);
+  #refreshError = $state.raw<unknown>();
+  #refreshPending?: Promise<void>;
   #restoration: Promise<void> = Promise.resolve();
   #generation = 0;
   #workspaces = new Map<string, AccountStorage>();
@@ -54,11 +66,12 @@ export class Session {
   }
 
   get syncing() {
-    return this.#options.sync.syncing;
+    return this.#syncing;
   }
 
   get refreshError() {
-    const error = this.#options.sync.error;
+    const error =
+      this.#refreshError ?? this.#options.queue.error ?? this.#options.queue.storageError;
     return error ? `Synchronization failed: ${connectionError(error)}` : "";
   }
 
@@ -105,8 +118,12 @@ export class Session {
   }
 
   #detach() {
-    const { queue, covers, tracks, playback } = this.#options;
-    this.#options.sync.stop();
+    const { metadata, queue, covers, tracks, playback } = this.#options;
+    this.#refreshPending = undefined;
+    this.#syncing = false;
+    this.#refreshError = undefined;
+    metadata.setConnection(undefined);
+    queue.setConnection(undefined);
     this.#options.network.setMode("offline");
     covers.setConnection(undefined);
     tracks.setConnection(undefined);
@@ -115,10 +132,11 @@ export class Session {
   }
 
   #attach(connection: ActiveNetworkConnection) {
-    const { covers, tracks } = this.#options;
+    const { metadata, queue, covers, tracks } = this.#options;
+    metadata.setConnection(connection.metadata);
+    queue.setConnection(connection.queue);
     covers.setConnection(connection.artwork);
     tracks.setConnection(connection.audio);
-    this.#options.sync.start(connection.queue, connection.metadata);
   }
 
   start(): Auth | null {
@@ -149,7 +167,7 @@ export class Session {
             if (!this.#valid(generation)) return;
             if (this.auth && !this.offlineMode) {
               this.#resumeOnline(generation);
-              await this.#options.sync.refresh(false);
+              await this.#refresh(false);
             } else this.status = "disconnected";
           })
           .catch((error) => this.#fail(error, generation));
@@ -189,7 +207,7 @@ export class Session {
       const { metadata, queue, covers, tracks, auth, preferences } = this.#options;
       // Explicit connection may use the network while the offline switch is locked.
       // Do not replace the selected workspace, or attach any other engines, on failure.
-      const prepared = await this.#options.sync.prepareConnection(connection.metadata);
+      const prepared = await metadata.prepareConnection(connection.metadata);
       if (!this.#valid(generation)) return false;
       auth.save(credentials);
       auth.saveAccount(prepared.account);
@@ -255,7 +273,35 @@ export class Session {
   async refresh() {
     if (!this.auth || this.offlineMode || this.busy || this.#destroyed) return;
     this.error = "";
-    await this.#options.sync.refresh();
+    await this.#refresh(true);
+  }
+
+  #refresh(force: boolean): Promise<void> {
+    if (this.#refreshPending) return this.#refreshPending;
+    const generation = this.#generation;
+    const { metadata, covers, queue } = this.#options;
+    this.#syncing = true;
+    this.#refreshError = undefined;
+    return (this.#refreshPending = (async () => {
+      try {
+        await metadata.refresh(force);
+        if (!this.#valid(generation)) return;
+        await covers.refresh();
+      } catch (error) {
+        if (this.#valid(generation)) this.#refreshError = error;
+      }
+      if (!this.#valid(generation)) return;
+      try {
+        await queue.refresh();
+      } catch (error) {
+        if (this.#valid(generation)) this.#refreshError ??= error;
+      }
+    })().finally(() => {
+      if (this.#valid(generation)) {
+        this.#syncing = false;
+        this.#refreshPending = undefined;
+      }
+    }));
   }
 
   async setOfflineMode(enabled: boolean) {

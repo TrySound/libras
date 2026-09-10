@@ -6,7 +6,6 @@ import type { MetadataStatus } from "./metadata.svelte";
 import { Storage, type MetadataSnapshot } from "./storage";
 import type { Account } from "./schema";
 import { Session } from "./session.svelte";
-import { SyncEngine } from "./sync.svelte";
 
 export const credentials = {
   host: "https://music.example",
@@ -68,6 +67,9 @@ export function createSession(saved = false, storage = createStorage()) {
       metadata.savedAt = 100;
       metadata.status = "ready";
     }),
+    prepareConnection: vi.fn(async (connection: MetadataConnection) =>
+      snapshot(connection.account),
+    ),
     saveConnection: vi.fn(
       async (value: MetadataSnapshot, _storage: Storage, _signal: AbortSignal) => value,
     ),
@@ -118,12 +120,8 @@ export function createSession(saved = false, storage = createStorage()) {
       },
     };
   });
-  const sync = new SyncEngine({ metadata, covers, queue });
-  const prepareConnection = vi
-    .spyOn(sync, "prepareConnection")
-    .mockImplementation(async (connection: MetadataConnection) => snapshot(connection.account));
+  const prepareConnection = metadata.prepareConnection;
   const session = new Session({
-    sync,
     memory,
     network,
     auth,

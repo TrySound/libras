@@ -25,6 +25,121 @@ afterEach(() => {
 const input = { host: credentials.host, username: credentials.username, password: "password" };
 
 describe("session", () => {
+  it("still refreshes the queue when metadata refresh fails", async () => {
+    const { session, metadata, queue, covers } = await connected();
+    queue.refresh.mockClear();
+    covers.refresh.mockClear();
+    metadata.refresh.mockRejectedValueOnce(new Error("Library unavailable"));
+    await session.refresh();
+    expect(queue.refresh).toHaveBeenCalledOnce();
+    expect(covers.refresh).not.toHaveBeenCalled();
+    expect(session.refreshError).toContain("Library unavailable");
+    expect(session.status).toBe("connected");
+  });
+
+  it("reports queue storage errors without failing the connection", async () => {
+    const { session, queue } = await connected();
+    queue.storageError = new Error("Storage unavailable");
+    await session.refresh();
+    expect(session.refreshError).toContain("Storage unavailable");
+    expect(session.status).toBe("connected");
+    expect(session.syncing).toBe(false);
+  });
+
+  it("does no refresh offline and orders metadata before covers and queue", async () => {
+    const offline = setup();
+    await offline.session.refresh();
+    expect(offline.metadata.refresh).not.toHaveBeenCalled();
+    const { session, metadata, covers, queue } = await connected();
+    covers.refresh.mockClear();
+    queue.refresh.mockClear();
+    const pending = deferred();
+    metadata.refresh.mockReturnValueOnce(pending.promise);
+    const refresh = session.refresh();
+    expect(session.syncing).toBe(true);
+    expect(covers.refresh).not.toHaveBeenCalled();
+    expect(queue.refresh).not.toHaveBeenCalled();
+    pending.resolve();
+    await refresh;
+    expect(covers.refresh).toHaveBeenCalledOnce();
+    expect(queue.refresh).toHaveBeenCalledOnce();
+    expect(covers.refresh.mock.invocationCallOrder[0]).toBeLessThan(
+      queue.refresh.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("coalesces overlapping refreshes and permits a later refresh", async () => {
+    const { session, metadata } = await connected();
+    metadata.refresh.mockClear();
+    const pending = deferred();
+    metadata.refresh.mockReturnValueOnce(pending.promise);
+    const first = session.refresh();
+    const second = session.refresh();
+    expect(metadata.refresh).toHaveBeenCalledOnce();
+    pending.resolve();
+    await Promise.all([first, second]);
+    await session.refresh();
+    expect(metadata.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears refresh errors after a successful manual retry", async () => {
+    const { session, metadata } = await connected();
+    metadata.refresh.mockRejectedValueOnce(new Error("Failed"));
+    await session.refresh();
+    expect(session.refreshError).toContain("Failed");
+    await session.refresh();
+    expect(session.refreshError).toBe("");
+  });
+
+  it("handles synchronous refresh failures without leaving a stuck request", async () => {
+    const { session, metadata } = await connected();
+    metadata.refresh.mockImplementationOnce(() => {
+      throw new Error("Failed");
+    });
+    await session.refresh();
+    expect(session.syncing).toBe(false);
+    expect(session.refreshError).toContain("Failed");
+    await session.refresh();
+    expect(session.refreshError).toBe("");
+  });
+
+  it("does not refresh covers or queue after disconnecting during metadata refresh", async () => {
+    const { session, metadata, covers, queue } = await connected();
+    covers.refresh.mockClear();
+    queue.refresh.mockClear();
+    const pending = deferred();
+    metadata.refresh.mockReturnValueOnce(pending.promise);
+    const refresh = session.refresh();
+    session.disconnect();
+    pending.resolve();
+    await refresh;
+    expect(covers.refresh).not.toHaveBeenCalled();
+    expect(queue.refresh).not.toHaveBeenCalled();
+    expect(session.syncing).toBe(false);
+  });
+
+  it("ignores an old refresh failure after a new connection starts refreshing", async () => {
+    const { session, metadata, covers } = await connected();
+    covers.refresh.mockClear();
+    const old = deferred();
+    metadata.refresh.mockReturnValueOnce(old.promise);
+    const first = session.refresh();
+    await session.setOfflineMode(true);
+    await session.setOfflineMode(false);
+    const current = deferred();
+    metadata.refresh.mockReturnValueOnce(current.promise);
+    const second = session.refresh();
+    old.reject(new Error("Old connection failed"));
+    await first;
+    expect(session.refreshError).toBe("");
+    expect(session.syncing).toBe(true);
+    expect(covers.refresh).not.toHaveBeenCalled();
+    current.resolve();
+    await second;
+    expect(session.syncing).toBe(false);
+    expect(covers.refresh).toHaveBeenCalledOnce();
+  });
+
   it("hydrates local data before a pending background refresh completes", async () => {
     const { session, metadata, memory, queue } = setup(true);
     const refresh = deferred();
