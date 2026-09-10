@@ -5,7 +5,7 @@ import { observePlayback } from "./playback-reactivity.test.svelte";
 import { QueueEngine } from "./queue.svelte";
 import { Storage } from "./storage";
 import type { Track } from "./schema";
-import type { TrackSource } from "./track-engine";
+import type { TrackSource } from "./track.svelte";
 import { Memory } from "./memory.svelte";
 
 class AudioStub extends EventTarget {

@@ -1,4 +1,3 @@
-import { createSubscriber } from "svelte/reactivity";
 import type { AudioConnection } from "./network.svelte";
 import type { Storage } from "./storage";
 import type { DownloadTrack, TrackFileDescriptor } from "./schema";
@@ -56,18 +55,12 @@ export class TrackEngine {
   #concurrency: number;
   #destroyed = false;
   #catalogRequest = 0;
-  #loading = false;
-  #error: unknown;
+  #loading = $state(false);
+  #error = $state.raw<unknown>();
   #mediaProbe = document.createElement("audio");
   #sourceRequest = 0;
   #storage?: Pick<Storage, "account" | "audio">;
-  #update = () => {};
-  #subscribe = createSubscriber((update) => {
-    this.#update = update;
-    return () => {
-      this.#update = () => {};
-    };
-  });
+  #version = $state(0);
 
   constructor(options: TrackEngineOptions) {
     this.#memory = options.memory;
@@ -88,7 +81,6 @@ export class TrackEngine {
     this.#storage = storage;
     this.#loading = true;
     this.#ready = this.#refreshCatalog(true);
-    this.#update();
     return this.#ready;
   }
 
@@ -97,7 +89,7 @@ export class TrackEngine {
   }
 
   get downloadJobs(): readonly DownloadJobInfo[] {
-    this.#subscribe();
+    this.#version;
     const jobs = [...this.#jobs.values()];
     return [
       ...jobs.filter((job) => job.status === "downloading"),
@@ -113,11 +105,9 @@ export class TrackEngine {
     }));
   }
   get downloadsLoading() {
-    this.#subscribe();
     return this.#loading;
   }
   get error() {
-    this.#subscribe();
     return this.#error;
   }
 
@@ -136,7 +126,6 @@ export class TrackEngine {
     }
     if (!this.#destroyed && request === this.#catalogRequest) {
       this.#loading = false;
-      this.#update();
     }
   }
 
@@ -212,7 +201,6 @@ export class TrackEngine {
       const finish = () => {
         if (this.#jobs.get(job.descriptor.key) === job) this.#jobs.delete(job.descriptor.key);
         this.#drain();
-        this.#update();
       };
       void this.#download(job).then(
         (file) => {
@@ -225,7 +213,7 @@ export class TrackEngine {
         },
       );
     }
-    this.#update();
+    this.#version++;
   }
 
   async #download(job: DownloadJob) {
@@ -243,7 +231,6 @@ export class TrackEngine {
     } catch (error) {
       if (!this.#destroyed && !signal.aborted) {
         this.#error = error;
-        this.#update();
       }
       throw error;
     }
@@ -311,7 +298,7 @@ export class TrackEngine {
   }
 
   getStatus(trackId: string): TrackStatus {
-    this.#subscribe();
+    this.#version;
     if (
       !this.#storage?.account ||
       this.#storage.account.host !== this.#memory.account?.host ||
@@ -379,7 +366,7 @@ export class TrackEngine {
     this.#connection = connection;
     // Connection changes never select a workspace. Session owns account identity;
     // descriptor checks prevent a mismatched connection from being used.
-    this.#update();
+    this.#version++;
   }
   #cancelDownloads() {
     for (const job of this.#jobs.values()) {

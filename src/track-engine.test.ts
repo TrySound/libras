@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Network } from "./network.svelte";
-import { TrackEngine } from "./track-engine";
+import { TrackEngine } from "./track.svelte";
 import { Storage } from "./storage";
 import { Memory as AppMemory } from "./memory.svelte";
 

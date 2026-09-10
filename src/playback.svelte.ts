@@ -2,7 +2,7 @@ import type { CoverEngine } from "./cover.svelte";
 import { PlayerMediaSession } from "./media-session";
 import type { QueueEngine } from "./queue.svelte";
 import type { MemoryView } from "./memory.svelte";
-import type { TrackEngine } from "./track-engine";
+import type { TrackEngine } from "./track.svelte";
 
 const interactive =
   'input, textarea, select, summary, audio, video, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]';

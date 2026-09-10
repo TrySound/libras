@@ -11,7 +11,7 @@ import {
 import type { PlaybackEngine } from "./playback.svelte";
 import type { QueueEngine } from "./queue.svelte";
 import type { Account, ConnectionStatus } from "./schema";
-import type { TrackEngine } from "./track-engine";
+import type { TrackEngine } from "./track.svelte";
 import { Storage as AccountStorage } from "./storage";
 
 const offlineModeStorageKey = "navidrome-offline-mode";

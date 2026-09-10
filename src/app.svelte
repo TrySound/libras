@@ -21,7 +21,7 @@
   import { Session } from "./session.svelte";
   import { Network } from "./network.svelte";
   import Router, { type RouteControls, type RouterNavigate } from "./router.svelte";
-  import { TrackEngine } from "./track-engine";
+  import { TrackEngine } from "./track.svelte";
   import { swipeToDismiss } from "./swipe-to-dismiss";
 
   let updater = $state<ReturnType<typeof WebappUpdater>>();
