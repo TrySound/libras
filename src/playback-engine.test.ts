@@ -7,7 +7,6 @@ import { Storage } from "./storage";
 import type { Track } from "./schema";
 import type { TrackSource } from "./track.svelte";
 import { Memory } from "./memory.svelte";
-import { attachQueue, refreshQueue } from "./queue-test-helpers";
 
 class AudioStub extends EventTarget {
   preload = "";
@@ -252,7 +251,7 @@ describe("playback engine", () => {
         account,
         queue: {
           account,
-          read: async () => ({ ...local, account, pendingSync: false, updatedAt: 1 }),
+          read: async () => ({ ...local, account, updatedAt: 1 }),
           save,
         },
       });
@@ -262,12 +261,12 @@ describe("playback engine", () => {
         read: async () => ({ trackIds: ["c"], currentTrackId: "c", position: 25 }),
         write: async () => {},
       };
-      attachQueue(queue, connection);
+      queue.setConnection(connection);
       await player.play();
       if (paused) player.pause();
       const source = audio.src;
       const loads = audio.load.mock.calls.length;
-      await refreshQueue(queue, connection);
+      await queue.refresh();
       expect(memory.serverQueue).toEqual({ tracks: ["c"], index: 0, position: 25 });
       expect(memory.queueTracks).toEqual(local.tracks);
       expect(player.track?.id).toBe("a");
@@ -280,7 +279,7 @@ describe("playback engine", () => {
         }),
       );
       player.suspend();
-      await refreshQueue(queue, connection);
+      await queue.refresh();
       expect(player.track?.id).toBe("c");
       expect(memory.queuePosition).toBe(25);
     },
@@ -321,8 +320,8 @@ describe("playback engine", () => {
         save: async (record) => ({ written: true, value: record }),
       },
     });
-    attachQueue(queue, active.queue);
-    await refreshQueue(queue, active.queue);
+    queue.setConnection(active.queue);
+    await queue.refresh();
     await queue.flush();
     expect(memory.queueTracks).toEqual(["a", "fresh"]);
     expect(memory.queueIndex).toBe(1);

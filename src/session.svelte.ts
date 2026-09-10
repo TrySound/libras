@@ -23,11 +23,8 @@ interface SessionOptions {
   auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
   metadata: Pick<MetadataEngine, "restore" | "saveConnection" | "acceptConnection">;
   covers: Pick<CoverEngine, "restore" | "refresh" | "setConnection">;
-  sync: Pick<
-    SyncEngine,
-    "start" | "stop" | "prepareConnection" | "refresh" | "refreshQueue" | "syncing" | "error"
-  >;
-  queue: Pick<QueueEngine, "restore" | "flush">;
+  sync: Pick<SyncEngine, "start" | "stop" | "prepareConnection" | "refresh" | "syncing" | "error">;
+  queue: Pick<QueueEngine, "restore" | "refresh" | "flush">;
   tracks: Pick<TrackEngine, "restore" | "setConnection">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
   preferences: Pick<Storage, "getItem" | "setItem">;
@@ -218,7 +215,7 @@ export class Session {
       this.localReady = true;
       await covers.refresh();
       if (!this.#valid(generation)) return false;
-      await this.#options.sync.refreshQueue();
+      await queue.refresh();
       if (!this.#valid(generation)) return false;
       this.status = "connected";
       return true;

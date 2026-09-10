@@ -357,10 +357,28 @@ describe("queue storage", () => {
     index: 2,
     position: 12.5,
     updatedAt: 42,
-    pendingSync: true,
   });
 
-  it("shares Storage with metadata without sharing files or changing queue format", async () => {
+  it.each([true, false])(
+    "discards legacy pendingSync=%s on read and omits it on the next save",
+    async (pendingSync) => {
+      const disk = installStorage();
+      const queue = new Storage(account).queue;
+      const path = `queue/${await hashedFileName(`${account.host}\n${account.username}`, ".json")}`;
+      const legacy = JSON.stringify({ ...record(), pendingSync });
+      disk.files.set(path, legacy);
+      const restored = await queue.read();
+      expect(restored).toEqual(record());
+      expect(restored).not.toHaveProperty("pendingSync");
+      expect(disk.files.get(path)).toBe(legacy);
+      if (!restored) throw new Error("Expected a restored queue");
+      await queue.save(restored);
+      expect(JSON.parse(disk.files.get(path) as string)).toEqual(record());
+      expect(JSON.parse(disk.files.get(path) as string)).not.toHaveProperty("pendingSync");
+    },
+  );
+
+  it("shares Storage with metadata without sharing files", async () => {
     const disk = installStorage();
     const storage = new Storage(account);
     const queue = storage.queue;
@@ -387,7 +405,10 @@ describe("queue storage", () => {
       { written: false, value: newer },
     ]);
     expect(disk.state.writes).toBe(1);
-    const synced = { ...newer, pendingSync: false };
+    const synced = {
+      ...newer,
+      server: { tracks: newer.tracks, index: newer.index, position: newer.position },
+    };
     expect(await second.save(synced)).toEqual({ written: true, value: synced });
     expect(await first.read()).toEqual(synced);
   });

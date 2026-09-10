@@ -68,9 +68,9 @@ The Navidrome server must be reachable **from the phone** and permit the fronten
 | Owner | Responsibility |
 | --- | --- |
 | `Session` | Account selection, account-configured Storage instances, credentials, connection lifecycle, and local hydration |
-| `SyncEngine` | Metadata and queue server I/O, candidate fetching, request ordering, cancellation, and synchronization errors |
+| `SyncEngine` | Metadata server I/O, candidate fetching, and startup/manual refresh coordination |
 | `MetadataEngine` | Local metadata restoration, snapshot persistence, indexing, and Memory publication |
-| `QueueEngine` | Local queue commands/checkpoints, snapshot persistence, revision guards, and playback protection |
+| `QueueEngine` | Complete queue workflow: local commands, server reads/writes, persistence, ordering, and playback protection |
 | `PlaybackEngine` | Audio resources, playback controls, local queue navigation, and Media Session |
 | `CoverEngine` / `TrackEngine` | On-demand artwork/audio fetching, caching, scheduling, and resource ownership |
 | `Network` | Configured connection capabilities, protocol normalization, and transport cancellation |
@@ -83,7 +83,7 @@ Memory contains immutable-by-contract records and map replacements. Metadata pub
 - **Startup:** select the saved account, restore local data, mark `Session.localReady`, then revalidate metadata and refresh the queue when online. Cached data remains usable while `SyncEngine` is running.
 - **Refresh:** startup and Settings → Refresh library are the only routine pull triggers. Manual refresh forces metadata fetching; startup skips an unchanged library. There are no periodic refreshes, focus triggers, or automatic retries. Returning online attaches fresh capabilities without pulling.
 - **First connection:** SyncEngine fetches a candidate library without touching the current workspace. MetadataEngine persists it; Session accepts the connection and selects the account; MetadataEngine publishes it. The queue is then fetched explicitly. Failed candidate preparation leaves the old workspace intact.
-- **Server snapshots:** Network → SyncEngine → domain persistence → Memory → UI. Failed saves do not publish the incoming snapshot. Metadata timestamp checks and queue ID/occurrence-index mapping belong to SyncEngine; Subsonic-specific normalization stays in Network.
+- **Server snapshots:** metadata flows through SyncEngine and MetadataEngine; queue refresh is a direct QueueEngine workflow: fetch → persist → publish. Failed saves do not publish the incoming snapshot. Metadata timestamp checks belong to SyncEngine; queue ID/occurrence-index matching stays beside the queue workflow. Subsonic-specific normalization stays in Network.
 - **Queue commands:** local queue changes publish immediately and are persisted asynchronously. An explicit new online queue enables server writes for that session. Navigation and position updates preserve that permission; they cannot promote an offline queue into an upload after reconnecting. Confirmed server snapshots are persisted before publication to `memory.serverQueue`.
 - **Offline/disconnect:** stop sync, abort connections and detach resource access, flush local checkpoints, and retain the selected workspace. Cached playback can continue. Account switches suspend playback before replacing data.
 
@@ -91,11 +91,11 @@ Memory contains immutable-by-contract records and map replacements. Metadata pub
 
 `memory.queueTracks`, `queueIndex`, and `queuePosition` describe local playback. `memory.serverQueue` is the last persisted, confirmed server snapshot. Refreshing the server snapshot does not replace a playing or paused session; a refresh can adopt it when playback no longer owns the queue. The UI's queue remains the local playback queue.
 
-Pending online writes are connection-scoped, not a durable outbox. Disconnect discards upload eligibility, not local data. Legacy `pendingSync` values are ignored; new records write it as `false` for compatibility. Local edits are optimistic, and position checkpoints can lag live playback. Consequently, Memory is a local projection plus live session state—not a guarantee that every displayed value has already reached disk or the server.
+Pending online writes are connection-scoped, not a durable outbox. Disconnect discards upload eligibility, not local data. Legacy `pendingSync` values are accepted and discarded on read; new records omit the field. Local edits are optimistic, and position checkpoints can lag live playback. Consequently, Memory is a local projection plus live session state—not a guarantee that every displayed value has already reached disk or the server.
 
-The domain `prepare…` methods capture account/revision guards and return commit callbacks. These prevent a delayed response from overwriting newer local work and avoid exposing mutable engine counters to SyncEngine. Keep the distinct guards: account-generation checks protect restoration, revision checks protect edits, connection generations protect network workflows, and Storage locks protect file writes. They are not interchangeable. There is no cross-tab notification/synchronization layer.
+QueueEngine receives a configured queue connection and exposes ordinary `refresh()` and `flush()` commands. Its write ordering and revision checks are private; there is no queue preparation/commit protocol or callback into SyncEngine. Metadata still uses a guarded preparation/commit contract with SyncEngine. Account-generation checks protect restoration, revision checks protect edits, connection generations protect network workflows, and Storage locks protect file writes. They are not interchangeable. There is no cross-tab notification/synchronization layer.
 
-Errors are separate: Session reports connection failures, SyncEngine reports metadata/queue synchronization failures, and domain engines report local storage failures. Background failures retain existing data. Artwork/audio remain on-demand resource operations rather than general server-state synchronization.
+Errors are separate: Session reports connection failures, QueueEngine owns queue network and storage errors, and SyncEngine exposes metadata errors together with queue failures for the UI. Domain engines report local storage failures. Background failures retain existing data. Artwork/audio remain on-demand resource operations rather than general server-state synchronization.
 
 ## Network boundary
 

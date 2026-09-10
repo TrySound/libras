@@ -10,9 +10,9 @@ export function metadataSync(metadata: MetadataEngine) {
       metadata,
       covers: { refresh: async () => {} },
       queue: {
-        setSync: () => {},
-        prepareServerWrite: async () => undefined,
-        prepareServerUpdate: async () => undefined,
+        setConnection: () => {},
+        refresh: async () => {},
+        error: undefined,
         storageError: undefined,
       },
     });

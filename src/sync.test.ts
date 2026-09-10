@@ -30,15 +30,10 @@ function setup() {
   };
   const covers = { refresh: vi.fn(async () => {}) };
   const queue = {
-    prepareServerUpdate: vi.fn(async () => ({
-      queue: { tracks: [] as string[], index: -1, position: 0 },
-      commit: vi.fn(async () => {}),
-    })),
+    setConnection: vi.fn(),
+    refresh: vi.fn(async () => {}),
+    error: undefined as unknown,
     storageError: undefined as unknown,
-    setSync: vi.fn(),
-    prepareServerWrite: vi.fn<import("./queue.svelte").QueueEngine["prepareServerWrite"]>(
-      async () => undefined,
-    ),
   };
   const sync = new SyncEngine({ metadata, covers, queue });
   return { sync, metadata, covers, queue };
@@ -57,8 +52,8 @@ describe("sync engine", () => {
       tracks: [],
     });
     expect(metadata.prepareRefresh).not.toHaveBeenCalled();
-    expect(queue.prepareServerUpdate).not.toHaveBeenCalled();
-    expect(queue.setSync).not.toHaveBeenCalled();
+    expect(queue.refresh).not.toHaveBeenCalled();
+    expect(queue.setConnection).not.toHaveBeenCalled();
     expect(covers.refresh).not.toHaveBeenCalled();
     expect(sync.syncing).toBe(false);
   });
@@ -153,182 +148,13 @@ describe("sync engine", () => {
     expect(finish).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    { ids: ["a", "b", "a"], selected: "a", index: 2, position: 9 },
-    { ids: ["a", "a"], selected: "a", index: 0, position: 9 },
-    { ids: ["a", "b", "a"], selected: "b", index: 1, position: 9 },
-    { ids: ["a", "b", "a"], selected: "missing", index: -1, position: 0 },
-    { ids: [], selected: undefined, index: -1, position: 0 },
-  ])(
-    "maps server selection to a local occurrence: $selected / $index",
-    async ({ ids, selected, index, position }) => {
-      const { sync, queue, metadata } = setup();
-      const commit = vi.fn(async () => {});
-      queue.prepareServerUpdate.mockResolvedValueOnce({
-        queue: { tracks: ["a", "b", "a"], index: 2, position: 3 },
-        commit,
-      });
-      sync.start(
-        {
-          ...connection,
-          read: async () => ({ trackIds: ids, currentTrackId: selected, position: 9 }),
-        },
-        metadata,
-      );
-      await sync.refreshQueue();
-      expect(commit).toHaveBeenCalledWith({ tracks: ids, index, position });
-    },
-  );
-
-  it.each([2, -1])("maps local occurrence %s to a server selection", async (index) => {
-    const { sync, queue, metadata } = setup();
-    queue.prepareServerWrite.mockResolvedValueOnce({
-      queue: { tracks: ["a", "b", "a"], index, position: index >= 0 ? 4 : 0 },
-      commit: async () => {},
-    });
-    const write = vi.fn(async () => {});
-    sync.start({ ...connection, write }, metadata);
-    await sync.writeQueue();
-    expect(write).toHaveBeenCalledWith({
-      trackIds: ["a", "b", "a"],
-      currentTrackId: index >= 0 ? "a" : undefined,
-      position: index >= 0 ? 4 : 0,
-    });
-  });
-
-  it("serializes queue writes and acknowledges them only after server success", async () => {
-    const { sync, queue, metadata } = setup();
-    const response = deferred();
-    const commit = vi.fn(async () => {});
-    queue.prepareServerWrite.mockResolvedValue({
-      queue: { tracks: ["one"], index: 0, position: 2 },
-      commit,
-    });
-    const write = vi.fn(async () => {});
-    write.mockReturnValueOnce(response.promise);
-    sync.start({ ...connection, write }, metadata);
-    const first = sync.writeQueue();
-    const second = sync.writeQueue();
-    await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
-    expect(queue.prepareServerWrite).toHaveBeenCalledOnce();
-    expect(commit).not.toHaveBeenCalled();
-    response.resolve();
-    await Promise.all([first, second]);
-    expect(write).toHaveBeenCalledTimes(2);
-    expect(commit).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not acknowledge failed queue writes and reports the error", async () => {
-    const { sync, queue, metadata } = setup();
-    const commit = vi.fn(async () => {});
-    queue.prepareServerWrite.mockResolvedValue({
-      queue: { tracks: ["one"], index: 0, position: 0 },
-      commit,
-    });
-    const error = new Error("Write failed");
-    sync.start(
-      {
-        ...connection,
-        write: async () => {
-          throw error;
-        },
-      },
-      metadata,
-    );
-    await sync.writeQueue();
-    expect(commit).not.toHaveBeenCalled();
-    expect(sync.error).toBe(error);
-  });
-
-  it("does not replay queued writes or acknowledge old responses after reconnecting", async () => {
-    const { sync, queue, metadata } = setup();
-    const commit = vi.fn(async () => {});
-    queue.prepareServerWrite.mockResolvedValue({
-      queue: { tracks: ["one"], index: 0, position: 0 },
-      commit,
-    });
-    const oldResponse = deferred();
-    const oldWrite = vi.fn(() => oldResponse.promise);
-    sync.start({ ...connection, write: oldWrite }, metadata);
-    const first = sync.writeQueue();
-    const queued = sync.writeQueue();
-    await vi.waitFor(() => expect(oldWrite).toHaveBeenCalledOnce());
-    const newWrite = vi.fn(async () => {});
-    sync.start({ ...connection, write: newWrite }, metadata);
-    await sync.writeQueue();
-    expect(newWrite).toHaveBeenCalledOnce();
-    expect(commit).toHaveBeenCalledOnce();
-    oldResponse.resolve();
-    await Promise.all([first, queued]);
-    expect(oldWrite).toHaveBeenCalledOnce();
-    expect(commit).toHaveBeenCalledOnce();
-    expect(sync.error).toBeUndefined();
-  });
-
-  it("owns queue reads and coalesces requests until local application completes", async () => {
-    const { sync, queue, metadata } = setup();
-    const stored = deferred();
-    const commit = vi.fn(async () => stored.promise);
-    queue.prepareServerUpdate.mockResolvedValueOnce({
-      queue: { tracks: [], index: -1, position: 0 },
-      commit,
-    });
-    const read = vi.fn(async () => ({ trackIds: ["one"], currentTrackId: "one", position: 2 }));
-    sync.start({ ...connection, read }, metadata);
-    expect(read).not.toHaveBeenCalled();
-    const pending = sync.refreshQueue();
-    expect(sync.refreshQueue()).toBe(pending);
-    await vi.waitFor(() => expect(commit).toHaveBeenCalledOnce());
-    expect(queue.prepareServerUpdate).toHaveBeenCalledWith(
-      connection.account,
-      expect.any(Function),
-    );
-    expect(read).toHaveBeenCalledOnce();
-    expect(commit).toHaveBeenCalledWith({ tracks: ["one"], index: 0, position: 2 });
-    expect(sync.refreshQueue()).toBe(pending);
-    stored.resolve();
-    await pending;
-  });
-
-  it.each(["resolve", "reject"])("ignores a stopped queue read that later %ss", async (outcome) => {
-    const { sync, queue, metadata } = setup();
-    const commit = vi.fn(async () => {});
-    queue.prepareServerUpdate.mockResolvedValueOnce({
-      queue: { tracks: [], index: -1, position: 0 },
-      commit,
-    });
-    const remote = deferred<{ trackIds: string[]; position: number }>();
-    const read = vi.fn(() => remote.promise);
-    sync.start({ ...connection, read }, metadata);
-    const pending = sync.refreshQueue();
-    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
-    sync.stop();
-    if (outcome === "resolve") remote.resolve({ trackIds: [], position: 0 });
-    else remote.reject(new Error("Old connection failed"));
-    await pending;
-    expect(commit).not.toHaveBeenCalled();
-    expect(sync.error).toBeUndefined();
-  });
-
-  it("owns queue read errors and clears them on a successful manual refresh", async () => {
-    const { sync, metadata } = setup();
-    const error = new Error("Queue unavailable");
-    const read = vi.fn(async () => ({ trackIds: [], position: 0 }));
-    read.mockRejectedValueOnce(error);
-    sync.start({ ...connection, read }, metadata);
-    await sync.refresh();
-    expect(sync.error).toBe(error);
-    await sync.refresh();
-    expect(sync.error).toBeUndefined();
-  });
-
   it("refreshes the queue after metadata even if the library request fails", async () => {
     const { sync, metadata, queue } = setup();
     const error = new Error("Library unavailable");
     metadata.readLibrary.mockRejectedValueOnce(error);
     sync.start(connection, metadata);
     await sync.refresh();
-    expect(queue.prepareServerUpdate).toHaveBeenCalledOnce();
+    expect(queue.refresh).toHaveBeenCalledOnce();
     expect(sync.error).toBe(error);
   });
 
@@ -416,7 +242,7 @@ describe("sync engine", () => {
     pending.resolve();
     await refresh;
     expect(covers.refresh).not.toHaveBeenCalled();
-    expect(queue.prepareServerUpdate).not.toHaveBeenCalled();
+    expect(queue.refresh).not.toHaveBeenCalled();
     expect(sync.syncing).toBe(false);
     expect(sync.error).toBeUndefined();
   });

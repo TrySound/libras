@@ -4,7 +4,6 @@ import { Storage } from "./storage";
 import { Network } from "./network.svelte";
 import { Memory } from "./memory.svelte";
 import { deferred } from "./session-test-helpers";
-import { attachQueue, refreshQueue } from "./queue-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
 const auth = { ...account, token: "token", salt: "salt" };
@@ -26,7 +25,6 @@ const record = () => ({
   index: 2,
   position: 12.5,
   updatedAt: 42,
-  pendingSync: false,
 });
 function response(data: Record<string, unknown> = {}) {
   return new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...data } }));
@@ -112,11 +110,202 @@ afterEach(async () => {
 
 async function connectQueue(queue: QueueEngine, client: ReturnType<typeof createConnection>) {
   await queue.restore(new Storage(client.account));
-  attachQueue(queue, client);
-  return refreshQueue(queue, client);
+  queue.setConnection(client);
+  await queue.refresh();
 }
 
 describe("queue engine", () => {
+  it.each(["refresh", "acknowledge"])(
+    "retains the confirmed snapshot when %s cannot be persisted",
+    async (mode) => {
+      const server = { tracks: ["confirmed"], index: 0, position: 5 };
+      await storage.seed({ ...record(), server });
+      const memory = new Memory();
+      const queue = engine(memory);
+      await queue.restore(new Storage(account));
+      const previous = memory.serverQueue;
+      const client = createConnection();
+      vi.spyOn(client, "read").mockResolvedValue({
+        trackIds: ["incoming"],
+        currentTrackId: "incoming",
+        position: 10,
+      });
+      vi.spyOn(client, "write").mockImplementation(async () => {
+        // The local command is durable; only the acknowledgement write fails.
+        storage.failWrites = true;
+      });
+      queue.setConnection(client);
+      if (mode === "refresh") {
+        storage.failWrites = true;
+        await queue.refresh();
+        expect(memory.queueTracks).toEqual(record().tracks);
+      } else {
+        queue.update({ tracks: ["edited"], index: 0, position: 0 });
+        await queue.flush();
+        expect(memory.queueTracks).toEqual(["edited"]);
+      }
+      expect(queue.storageError).toBeInstanceOf(Error);
+      expect(memory.serverQueue).toBe(previous);
+      expect((await storage.json()).server).toEqual(server);
+      storage.failWrites = false;
+    },
+  );
+
+  it.each([
+    { ids: ["a", "b", "a"], selected: "a", index: 2, position: 9 },
+    { ids: ["a", "a"], selected: "a", index: 0, position: 9 },
+    { ids: ["a", "b", "a"], selected: "b", index: 1, position: 9 },
+    { ids: ["a", "b", "a"], selected: "missing", index: -1, position: 0 },
+    { ids: [], selected: undefined, index: -1, position: 0 },
+  ])(
+    "maps server selection to local occurrence $index",
+    async ({ ids, selected, index, position }) => {
+      await storage.seed();
+      const memory = new Memory();
+      const queue = engine(memory);
+      const client = createConnection();
+      vi.spyOn(client, "read").mockResolvedValue({
+        trackIds: ids,
+        currentTrackId: selected,
+        position: 9,
+      });
+      await connectQueue(queue, client);
+      expect(memory.serverQueue).toEqual({ tracks: ids, index, position });
+      expect(memory.queueIndex).toBe(index);
+    },
+  );
+
+  it.each([2, -1])("maps local occurrence %s to server selection", async (index) => {
+    const queue = engine(new Memory());
+    await queue.restore(new Storage(account));
+    const client = createConnection();
+    const write = vi.spyOn(client, "write").mockResolvedValue(undefined);
+    queue.setConnection(client);
+    queue.update({ tracks: ["a", "b", "a"], index, position: index >= 0 ? 4 : 0 });
+    await queue.flush();
+    expect(write).toHaveBeenCalledWith({
+      trackIds: ["a", "b", "a"],
+      currentTrackId: index >= 0 ? "a" : undefined,
+      position: index >= 0 ? 4 : 0,
+    });
+  });
+
+  it("serializes writes and preserves an edit made while awaiting acknowledgement", async () => {
+    const memory = new Memory();
+    const queue = engine(memory);
+    await queue.restore(new Storage(account));
+    const client = createConnection();
+    const response = deferred();
+    const write = vi.spyOn(client, "write").mockResolvedValue(undefined);
+    write.mockReturnValueOnce(response.promise);
+    queue.setConnection(client);
+    queue.update({ tracks: ["first"], index: 0, position: 0 });
+    const first = queue.flush();
+    await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+    queue.update({ tracks: ["second"], index: 0, position: 0 });
+    const second = queue.flush();
+    await Promise.resolve();
+    expect(write).toHaveBeenCalledOnce();
+    expect(memory.serverQueue).toBeNull();
+    response.resolve();
+    await Promise.all([first, second]);
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(memory.serverQueue?.tracks).toEqual(["second"]);
+  });
+
+  it("retains the last server snapshot after a rejected write", async () => {
+    const memory = new Memory();
+    const queue = engine(memory);
+    await queue.restore(new Storage(account));
+    const client = createConnection();
+    const error = new Error("Write failed");
+    vi.spyOn(client, "write").mockRejectedValue(error);
+    queue.setConnection(client);
+    queue.update({ tracks: ["local"], index: 0, position: 0 });
+    await queue.flush();
+    expect(queue.error).toBe(error);
+    expect(memory.serverQueue).toBeNull();
+    expect(memory.queueTracks).toEqual(["local"]);
+  });
+
+  it("discards queued writes and stale acknowledgements on connection replacement", async () => {
+    const memory = new Memory();
+    const queue = engine(memory);
+    await queue.restore(new Storage(account));
+    const old = createConnection();
+    const response = deferred();
+    const oldWrite = vi.spyOn(old, "write").mockReturnValue(response.promise);
+    queue.setConnection(old);
+    queue.update({ tracks: ["old"], index: 0, position: 0 });
+    const first = queue.flush();
+    await vi.waitFor(() => expect(oldWrite).toHaveBeenCalledOnce());
+    const queued = queue.flush();
+    const replacement = createConnection();
+    const write = vi.spyOn(replacement, "write").mockResolvedValue(undefined);
+    queue.setConnection(replacement);
+    queue.update({ tracks: ["new"], index: 0, position: 0 });
+    await queue.flush();
+    response.resolve();
+    await Promise.all([first, queued]);
+    expect(oldWrite).toHaveBeenCalledOnce();
+    expect(write).toHaveBeenCalledOnce();
+    expect(memory.serverQueue?.tracks).toEqual(["new"]);
+    expect(queue.error).toBeUndefined();
+  });
+
+  it("coalesces refreshes through persistence completion", async () => {
+    const memory = new Memory();
+    const queue = engine(memory);
+    const stored = deferred<{ written: boolean; value: ReturnType<typeof record> }>();
+    const save = vi.fn(() => stored.promise);
+    await queue.restore({ account, queue: { account, read: async () => record(), save } });
+    const client = createConnection();
+    const read = vi
+      .spyOn(client, "read")
+      .mockResolvedValue({ trackIds: ["remote"], currentTrackId: "remote", position: 0 });
+    queue.setConnection(client);
+    const pending = queue.refresh();
+    expect(queue.refresh()).toBe(pending);
+    await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(queue.refresh()).toBe(pending);
+    expect(read).toHaveBeenCalledOnce();
+    stored.resolve({ written: true, value: record() });
+    await pending;
+    expect(memory.serverQueue?.tracks).toEqual(["remote"]);
+  });
+
+  it.each([false, true])("ignores a detached read (failure: %s)", async (failure) => {
+    const memory = new Memory();
+    const queue = engine(memory);
+    await queue.restore(new Storage(account));
+    const client = createConnection();
+    const response = deferred<{ trackIds: string[]; position: number }>();
+    const read = vi.spyOn(client, "read").mockReturnValue(response.promise);
+    queue.setConnection(client);
+    const pending = queue.refresh();
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    queue.setConnection(undefined);
+    if (failure) response.reject(new Error("Old read failed"));
+    else response.resolve({ trackIds: ["old"], position: 0 });
+    await pending;
+    expect(memory.serverQueue).toBeNull();
+    expect(queue.error).toBeUndefined();
+  });
+
+  it("clears a read error after a successful refresh", async () => {
+    const queue = engine(new Memory());
+    await queue.restore(new Storage(account));
+    const client = createConnection();
+    const error = new Error("Read failed");
+    const read = vi.spyOn(client, "read").mockResolvedValue({ trackIds: [], position: 0 });
+    read.mockRejectedValueOnce(error);
+    queue.setConnection(client);
+    await queue.refresh();
+    expect(queue.error).toBe(error);
+    await queue.refresh();
+    expect(queue.error).toBeUndefined();
+  });
+
   it("publishes a server write acknowledgement only after local persistence", async () => {
     const memory = new Memory();
     const queue = engine(memory);
@@ -127,7 +316,7 @@ describe("queue engine", () => {
     await queue.restore({ account, queue: { account, read: async () => record(), save } });
     const connection = createConnection();
     const write = vi.spyOn(connection, "write").mockResolvedValue(undefined);
-    attachQueue(queue, connection);
+    queue.setConnection(connection);
     queue.update({ tracks: ["new"], index: 0, position: 5 });
     const pending = queue.flush();
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
@@ -150,12 +339,12 @@ describe("queue engine", () => {
     const read = vi
       .spyOn(connection, "read")
       .mockResolvedValue({ trackIds: ["server"], currentTrackId: "server", position: 5 });
-    attachQueue(queue, connection);
+    queue.setConnection(connection);
     queue.setPosition(20);
     await queue.flush();
     expect(write).not.toHaveBeenCalled();
     expect(read).not.toHaveBeenCalled();
-    await refreshQueue(queue, connection);
+    await queue.refresh();
     expect(read).toHaveBeenCalledOnce();
     expect(memory.queueTracks).toEqual(["offline"]);
     expect(memory.serverQueue?.tracks).toEqual(["server"]);
@@ -210,11 +399,11 @@ describe("queue engine", () => {
         currentTrackId: "remote",
         position: 9,
       });
-      attachQueue(queue, client);
+      queue.setConnection(client);
       const notify = vi.fn();
       queue.subscribe(notify);
       store.queue.save.mockReturnValueOnce(committed.promise);
-      const pending = refreshQueue(queue, client);
+      const pending = queue.refresh();
       await vi.waitFor(() => expect(store.queue.save).toHaveBeenCalledOnce());
       expect(memory.queueTracks).toEqual(record().tracks);
       expect(notify).not.toHaveBeenCalled();
@@ -223,11 +412,10 @@ describe("queue engine", () => {
           tracks: ["remote"],
           index: 0,
           position: 9,
-          pendingSync: false,
         }),
       );
       if (outcome === "local edit") queue.update({ tracks: ["local"], index: 0, position: 0 });
-      if (outcome === "detach") attachQueue(queue, undefined);
+      if (outcome === "detach") queue.setConnection(undefined);
       if (outcome === "failure") committed.reject(new Error("Disk unavailable"));
       else committed.resolve({ written: outcome !== "conflict", value: record() });
       await pending;
@@ -271,7 +459,6 @@ describe("queue engine", () => {
         tracks: ["edited"],
         index: 0,
         position: 2,
-        pendingSync: false,
       }),
     );
     expect(queue.storageError).toBeInstanceOf(Error);
@@ -292,10 +479,10 @@ describe("queue engine", () => {
           resolve = done;
         }),
     );
-    attachQueue(queue, client);
-    const loading = refreshQueue(queue, client);
+    queue.setConnection(client);
+    const loading = queue.refresh();
     await vi.waitFor(() => expect(resolve).toBeDefined());
-    attachQueue(queue, undefined);
+    queue.setConnection(undefined);
     client.abort();
     resolve({ trackIds: ["late"], currentTrackId: "late", position: 0 });
     await loading;
@@ -313,18 +500,18 @@ describe("queue engine", () => {
       .mockResolvedValue({ trackIds: ["a"], currentTrackId: "a", position: 0 });
     const memory = new Memory();
     const queue = engine(memory);
-    attachQueue(queue, client);
-    attachQueue(queue, undefined);
-    attachQueue(queue, client);
+    queue.setConnection(client);
+    queue.setConnection(undefined);
+    queue.setConnection(client);
     expect(getDirectory).not.toHaveBeenCalled();
     expect(load).not.toHaveBeenCalled();
     await queue.restore(new Storage(account));
     expect(load).not.toHaveBeenCalled();
-    await refreshQueue(queue, client);
+    await queue.refresh();
     expect(load).toHaveBeenCalledOnce();
     expect(memory.queueTracks).toEqual(["a"]);
     load.mockResolvedValue({ trackIds: ["b"], currentTrackId: "b", position: 0 });
-    await refreshQueue(queue, client);
+    await queue.refresh();
     expect(load).toHaveBeenCalledTimes(2);
     expect(memory.queueTracks).toEqual(["b"]);
   });
@@ -385,7 +572,7 @@ describe("queue engine", () => {
     await queue.flush();
     expect(queue.storageError).toBeUndefined();
     expect(save).toHaveBeenCalledOnce();
-    expect(await storage.json()).toMatchObject({ tracks: ["edited"], pendingSync: false });
+    expect(await storage.json()).toMatchObject({ tracks: ["edited"] });
   });
 
   it("preserves a newer disk queue that appears while a server save is pending", async () => {
@@ -430,7 +617,7 @@ describe("queue engine", () => {
   it("persists offline edits and empty queues without credentials or track descriptions", async () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
-    await attachQueue(queue, undefined);
+    await queue.setConnection(undefined);
     await queue.restore(new Storage(account));
     queue.update({ tracks: ["a", "b", "a"], index: 2, position: 30 });
     queue.setPosition(35);
@@ -441,7 +628,6 @@ describe("queue engine", () => {
       tracks: ["a", "b", "a"],
       index: 2,
       position: 35,
-      pendingSync: false,
     });
     expect(JSON.stringify(saved)).not.toMatch(/token|salt|title|playing|https:.*rest/);
     const restoredMemory = new Memory();
@@ -458,7 +644,6 @@ describe("queue engine", () => {
       tracks: [],
       index: -1,
       position: 0,
-      pendingSync: false,
     });
     expect(JSON.stringify(empty)).not.toMatch(/token|salt|title|playing|https:.*rest/);
   });
@@ -488,7 +673,7 @@ describe("queue engine", () => {
     expect(queueMemory.queueTracks).toEqual(["remote"]);
     expect(queueMemory.queueIndex).toBe(0);
     expect(queueMemory.queuePosition).toBe(9);
-    expect((await storage.json()).pendingSync).toBe(false);
+    expect(await storage.json()).not.toHaveProperty("pendingSync");
   });
 
   it("retains a cached duplicate occurrence when the server queue has not changed", async () => {
@@ -523,7 +708,7 @@ describe("queue engine", () => {
     const [url] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toContain("getPlayQueue");
     expect(queueMemory.queueIndex).toBe(-1);
-    expect((await storage.json()).pendingSync).toBe(false);
+    expect(await storage.json()).not.toHaveProperty("pendingSync");
   });
 
   it("does not overwrite a local selection with a late server restore", async () => {
@@ -556,7 +741,7 @@ describe("queue engine", () => {
     queue.update({ tracks: ["local"], index: 0, position: 3 });
     await restored;
     expect(queueMemory.queueTracks[queueMemory.queueIndex]).toBe("local");
-    expect(await storage.json()).toMatchObject({ tracks: ["local"], pendingSync: false });
+    expect(await storage.json()).toMatchObject({ tracks: ["local"] });
   });
 
   it("does not replay a cancelled upload through a fresh connection", async () => {
@@ -566,7 +751,7 @@ describe("queue engine", () => {
     const memory = new Memory();
     const queue = engine(memory);
     await queue.restore(new Storage(account));
-    attachQueue(queue, client.queue);
+    queue.setConnection(client.queue);
     let respond!: (value: Response) => void;
     vi.stubGlobal(
       "fetch",
@@ -581,26 +766,26 @@ describe("queue engine", () => {
     const syncing = queue.flush();
     await vi.waitFor(() => expect(respond).toBeDefined());
     network.setMode("offline");
-    attachQueue(queue, undefined);
+    queue.setConnection(undefined);
     respond(response());
     await syncing;
     expect(client.signal.aborted).toBe(true);
-    expect((await storage.json()).pendingSync).toBe(false);
+    expect(await storage.json()).not.toHaveProperty("pendingSync");
     expect(memory.queueIndex).toBe(2);
     const fetcher = vi.fn(async () => response());
     vi.stubGlobal("fetch", fetcher);
     network.setMode("online");
     const active = network.open(auth);
-    attachQueue(queue, active.queue);
-    await refreshQueue(queue, active.queue);
+    queue.setConnection(active.queue);
+    await queue.refresh();
     expect(fetcher).toHaveBeenCalledOnce();
     expect(fetcher.mock.calls[0]).toEqual([
       expect.stringContaining("getPlayQueue"),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     ]);
-    expect((await storage.json()).pendingSync).toBe(false);
+    expect(await storage.json()).not.toHaveProperty("pendingSync");
     network.setMode("offline");
-    attachQueue(queue, undefined);
+    queue.setConnection(undefined);
   });
 
   it("preserves dirty state if a server acknowledgement arrives after another edit", async () => {
@@ -618,7 +803,7 @@ describe("queue engine", () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     await queue.restore(new Storage(account));
-    attachQueue(queue, createConnection(auth));
+    queue.setConnection(createConnection(auth));
     queue.update({ tracks: ["a", "b", "a"], index: 2, position: 15 });
     const pending = queue.flush();
     await vi.waitFor(() => expect(resolve).toBeDefined());
@@ -629,7 +814,7 @@ describe("queue engine", () => {
     vi.stubGlobal("fetch", fetcher);
     await queue.flush();
     expect(fetcher).toHaveBeenCalledOnce();
-    expect(await storage.json()).toMatchObject({ position: 20, pendingSync: false });
+    expect(await storage.json()).toMatchObject({ position: 20 });
   });
 
   it("retains the local queue after a failed pull and retries the pull explicitly", async () => {
@@ -643,16 +828,16 @@ describe("queue engine", () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     const client = createConnection(auth);
-    const sync = await connectQueue(queue, client);
-    expect(sync.error).toBeInstanceOf(Error);
+    await connectQueue(queue, client);
+    expect(queue.error).toBeInstanceOf(Error);
     expect((await storage.json()).pendingSync).toBe(true);
-    await attachQueue(queue, undefined);
+    await queue.setConnection(undefined);
     const fetcher = vi.fn(async () => response());
     vi.stubGlobal("fetch", fetcher);
-    attachQueue(queue, client);
-    await refreshQueue(queue, client);
+    queue.setConnection(client);
+    await queue.refresh();
     expect(fetcher).toHaveBeenCalledOnce();
-    expect((await storage.json()).pendingSync).toBe(false);
+    expect(await storage.json()).not.toHaveProperty("pendingSync");
   });
 
   it("checkpoints continuous position changes locally without continuous server saves", async () => {
@@ -729,7 +914,7 @@ describe("queue engine", () => {
     const queueMemory = new Memory();
     const queue = engine(queueMemory);
     const restored = queue.restore(new Storage(account));
-    const offline = attachQueue(queue, undefined);
+    const offline = queue.setConnection(undefined);
     await Promise.all([restored, offline]);
     expect(queueMemory.queueIndex).toBe(2);
     expect(queueMemory.queuePosition).toBe(12.5);

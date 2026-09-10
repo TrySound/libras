@@ -34,13 +34,17 @@ const queueSnapshotSchema = v.strictObject({
 });
 export type QueueSnapshot = v.InferOutput<typeof queueSnapshotSchema>;
 
-const queueRecordSchema = v.strictObject({
-  account: v.strictObject({ host: v.string(), username: v.string() }),
-  ...queueSnapshotSchema.entries,
-  updatedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  pendingSync: v.boolean(),
-  server: v.optional(queueSnapshotSchema),
-});
+const queueRecordSchema = v.pipe(
+  v.strictObject({
+    account: v.strictObject({ host: v.string(), username: v.string() }),
+    ...queueSnapshotSchema.entries,
+    updatedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    pendingSync: v.optional(v.boolean()),
+    server: v.optional(queueSnapshotSchema),
+  }),
+  // Legacy upload markers are accepted on read, but never enter current records.
+  v.transform(({ pendingSync: _legacyPendingSync, ...record }) => record),
+);
 export type QueueRecord = v.InferOutput<typeof queueRecordSchema>;
 
 function parseQueueRecord(value: unknown, account: Account) {
