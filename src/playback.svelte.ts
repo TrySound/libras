@@ -1,4 +1,3 @@
-import { createSubscriber } from "svelte/reactivity";
 import type { CoverEngine } from "./cover-engine";
 import { PlayerMediaSession } from "./media-session";
 import type { QueueEngine } from "./queue-engine";
@@ -72,12 +71,12 @@ export class PlaybackEngine {
   #createAudio: () => HTMLAudioElement;
   #isAvailable: (id: string) => boolean;
   #cleanup?: () => void;
-  #duration = 0;
+  #duration = $state(0);
   #offset = 0;
-  #playing = false;
+  #playing = $state(false);
   #intent = false;
-  #status: PlaybackStatus = "idle";
-  #error: unknown;
+  #status = $state<PlaybackStatus>("idle");
+  #error = $state.raw<unknown>();
   #id?: string;
   #cached = false;
   #nativeSeeking = false;
@@ -86,13 +85,6 @@ export class PlaybackEngine {
   #abort?: AbortController;
   #lastSave = 0;
   #metadataKey = "";
-  #update = () => {};
-  #subscribe = createSubscriber((update) => {
-    this.#update = update;
-    return () => {
-      this.#update = () => {};
-    };
-  });
 
   constructor(options: PlaybackEngineOptions) {
     this.#queue = options.queue;
@@ -123,41 +115,32 @@ export class PlaybackEngine {
   }
 
   get track() {
-    this.#subscribe();
     const current = this.#memory.queueTracks[this.#memory.queueIndex];
     return current ? this.#memory.tracks.get(current) : undefined;
   }
   get position() {
-    this.#subscribe();
     return this.#memory.queuePosition;
   }
   get duration() {
-    this.#subscribe();
     return this.#duration > 0 ? this.#duration : (this.track?.duration ?? 0);
   }
   get playing() {
-    this.#subscribe();
     return this.#playing;
   }
   get status() {
-    this.#subscribe();
     return this.#status;
   }
   get error() {
-    this.#subscribe();
     return this.#error;
   }
   get hasNext() {
-    this.#subscribe();
     return this.#memory.queueIndex >= 0 && this.#nextIndex(this.#memory.queueIndex) >= 0;
   }
   get hasPrevious() {
-    this.#subscribe();
     return this.#previousIndex() >= 0;
   }
 
-  #publish() {
-    this.#update();
+  #syncMediaSession() {
     this.#media?.setPlaybackState(!this.track ? "none" : this.#playing ? "playing" : "paused");
     this.#media?.setNavigation(
       this.hasNext,
@@ -219,7 +202,7 @@ export class PlaybackEngine {
       this.#error = undefined;
     }
     this.#artwork();
-    this.#publish();
+    this.#syncMediaSession();
   };
 
   mount() {
@@ -264,13 +247,13 @@ export class PlaybackEngine {
           : Number.isFinite(audio.duration)
             ? audio.duration
             : 0;
-      this.#publish();
+      this.#syncMediaSession();
     };
     const events: Record<string, () => void> = {
       timeupdate: onTime,
       loadedmetadata: onMetadata,
       durationchange: onMetadata,
-      ratechange: () => this.#publish(),
+      ratechange: () => this.#syncMediaSession(),
       playing: () => {
         if (!this.#intent) {
           audio.pause();
@@ -278,19 +261,19 @@ export class PlaybackEngine {
         }
         this.#playing = true;
         this.#status = "ready";
-        this.#publish();
+        this.#syncMediaSession();
       },
       pause: () => {
         this.#playing = false;
-        this.#publish();
+        this.#syncMediaSession();
       },
       waiting: () => {
         if (this.#intent && this.#status === "ready") this.#status = "buffering";
-        this.#publish();
+        this.#syncMediaSession();
       },
       canplay: () => {
         if (this.#status === "buffering") this.#status = "ready";
-        this.#publish();
+        this.#syncMediaSession();
       },
       ended: () => {
         if (!audio.currentSrc || !this.#intent) return;
@@ -300,7 +283,7 @@ export class PlaybackEngine {
           this.#playing = false;
           this.#status = "ended";
           this.#queue.flush();
-          this.#publish();
+          this.#syncMediaSession();
         }
       },
       error: () => {
@@ -338,7 +321,7 @@ export class PlaybackEngine {
       this.#audio = undefined;
       this.#id = undefined;
       this.#cleanup = undefined;
-      this.#publish();
+      this.#syncMediaSession();
     };
     this.#cleanup = cleanup;
     return cleanup;
@@ -352,7 +335,7 @@ export class PlaybackEngine {
     this.#status = "error";
     this.#intent = false;
     this.#playing = false;
-    this.#publish();
+    this.#syncMediaSession();
   }
 
   #metadata(audio: HTMLAudioElement, signal: AbortSignal) {
@@ -404,7 +387,7 @@ export class PlaybackEngine {
     audio.pause();
     this.#error = undefined;
     this.#status = seeking ? "seeking" : "loading";
-    this.#publish();
+    this.#syncMediaSession();
     const valid = () => generation === this.#generation && this.#audio === audio;
     const prepare = async (transcode: boolean) => {
       const source = await this.#tracks.getSource(download, {
@@ -447,7 +430,7 @@ export class PlaybackEngine {
       }
       if (!valid()) return;
       this.#queue.save();
-      this.#publish();
+      this.#syncMediaSession();
     } catch (error) {
       if (valid()) this.#fail(error);
     }
@@ -490,7 +473,7 @@ export class PlaybackEngine {
     this.#playing = false;
     this.#status = this.track ? "ready" : "idle";
     this.#queue.flush();
-    this.#publish();
+    this.#syncMediaSession();
   }
 
   async toggle() {
@@ -542,7 +525,7 @@ export class PlaybackEngine {
         audio.currentTime = position - this.#offset;
         this.#queue.setPosition(position);
         this.#queue.save();
-        this.#publish();
+        this.#syncMediaSession();
         return;
       } catch (error) {
         if (this.#cached) {
@@ -559,20 +542,20 @@ export class PlaybackEngine {
 
   suspendNetwork() {
     if (!this.#cached || this.#status === "loading" || this.#status === "seeking") this.suspend();
-    else this.#publish();
+    else this.#syncMediaSession();
   }
 
   suspend() {
     this.#unload();
     this.#error = undefined;
-    this.#publish();
+    this.#syncMediaSession();
   }
 
   stop() {
     this.#unload();
     this.#error = undefined;
     this.#queue.update({ tracks: this.#memory.queueTracks, position: 0 });
-    this.#publish();
+    this.#syncMediaSession();
   }
 
   destroy() {

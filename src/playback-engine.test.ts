@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PlaybackEngine } from "./playback-engine";
+import { PlaybackEngine } from "./playback.svelte";
 import { flushSync } from "svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
 import { QueueEngine } from "./queue-engine";

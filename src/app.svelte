@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { installLongPress } from "./long-press";
-  import { PlaybackEngine } from "./playback-engine";
+  import { PlaybackEngine } from "./playback.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover-engine";
