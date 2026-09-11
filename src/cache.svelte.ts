@@ -115,15 +115,15 @@ class Disk {
     void key.catch(() => {});
   }
 
-  async #directory(binary = false) {
+  async #directory() {
     const key = await this.key;
     let directory = await navigator.storage.getDirectory();
-    for (const name of ["accounts", key, ...(binary ? ["files"] : [])])
+    for (const name of ["accounts", key])
       directory = await directory.getDirectoryHandle(name, { create: true });
     return directory;
   }
-  directory() {
-    return this.#directory(true);
+  async files() {
+    return (await this.#directory()).getDirectoryHandle("files", { create: true });
   }
 
   async lockDownload<T>(key: string, signal: AbortSignal, operation: () => Promise<T>) {
@@ -180,7 +180,7 @@ class Disk {
       const skipped = { written: false, value: existing };
       if (options.valid && !options.valid()) return skipped;
       const value = change(existing);
-      if (value === undefined || (options.valid && !options.valid())) return skipped;
+      if (value === undefined) return skipped;
       const handle = await directory.getFileHandle(`${name}.json`, { create: true });
       let writable: FileSystemWritableFileStream | undefined;
       let committed = false;
@@ -194,15 +194,8 @@ class Disk {
         // commit owns its binary files even when they cannot publish locally.
         return { written: true, value };
       } finally {
-        if (!committed) {
-          await writable?.abort().catch(() => {});
-          // This JSON name is shared. Without Web Locks a stale empty-file
-          // observation could delete another tab's freshly committed document.
-          if (navigator.locks) {
-            const file = await handle.getFile().catch(() => null);
-            if (file?.size === 0) await directory.removeEntry(`${name}.json`).catch(() => {});
-          }
-        }
+        // Empty placeholders are harmless: reads treat them as absent.
+        if (!committed) await writable?.abort().catch(() => {});
       }
     });
   }
@@ -507,7 +500,7 @@ class BinaryCatalog<R extends BinaryRecord> {
       signal?.throwIfAborted();
       let record = this.#records.get(key);
       if (!record) return null;
-      const directory = await this.disk?.directory();
+      const directory = await this.disk?.files();
       if (!directory) return null;
       while (record) {
         signal?.throwIfAborted();
@@ -545,7 +538,7 @@ class BinaryCatalog<R extends BinaryRecord> {
     signal?: AbortSignal,
   ): Promise<T | undefined> {
     signal?.throwIfAborted();
-    const directory = await this.disk?.directory();
+    const directory = await this.disk?.files();
     if (!directory) throw new Error("No account selected.");
     let writable: FileSystemWritableFileStream | undefined;
     let committed = false;

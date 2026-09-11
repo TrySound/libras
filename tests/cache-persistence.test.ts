@@ -173,11 +173,16 @@ describe("Cache's internal file operations", () => {
     },
   );
 
-  it.each(["library", "queue", "images", "downloads"] as const)(
-    "retains shared %s placeholders without locks and retries safely",
-    async (domain) => {
+  it.each(
+    (["library", "queue", "images", "downloads"] as const).flatMap((domain) =>
+      [true, false].map((locks) => ({ domain, locks })),
+    ),
+  )(
+    "retains $domain placeholders and retries safely (locks: $locks)",
+    async ({ domain, locks }) => {
       const disk = installDisk();
-      Object.defineProperty(navigator, "locks", { value: undefined, configurable: true });
+      if (!locks)
+        Object.defineProperty(navigator, "locks", { value: undefined, configurable: true });
       const cache = new Cache(account);
       const save = {
         library: () => cache.replaceLibrary(library()),
@@ -203,8 +208,7 @@ describe("Cache's internal file operations", () => {
         if (name.endsWith(`/${domain}.json`)) throw new Error("Close failed");
       };
       await expect(save()).rejects.toThrow("Close failed");
-      // A cleanup read of this shared placeholder could see stale size=0 while
-      // another instance closes its replacement. Do not inspect or delete it.
+      // Empty placeholders need neither inspection nor deletion, with or without locks.
       expect(cleanupReads).toBe(0);
       const path = [...disk.files.keys()].find((name) => name.endsWith(`/${domain}.json`))!;
       expect(disk.files.get(path)).toBe("");
@@ -223,7 +227,7 @@ describe("Cache's internal file operations", () => {
     };
     vi.spyOn(WritableStream.prototype, "abort").mockRejectedValue(new Error("Abort failed"));
     await expect(new Cache(account).replaceLibrary(library())).rejects.toThrow("Write failed");
-    expect(disk.files.size).toBe(0);
+    expect([...disk.files.values()]).toEqual([""]);
   });
 
   it("builds library indexes only once when restoring", async () => {
