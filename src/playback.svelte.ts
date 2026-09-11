@@ -1,7 +1,9 @@
 import type { CoverEngine } from "./cover.svelte";
-import { PlayerMediaSession } from "./media-session";
+import { untrack } from "svelte";
 import type { QueueEngine } from "./queue.svelte";
 import type { CacheSelection } from "./cache.svelte";
+import type Player from "./player.svelte";
+import type { PlayerTrack } from "./player.svelte";
 import type { TrackEngine } from "./track.svelte";
 
 const emptyQueue = { tracks: [] as readonly string[], index: -1, position: 0 };
@@ -34,7 +36,6 @@ function installPlaybackShortcuts(toggle: () => void, root: Document = document)
   return () => root.removeEventListener("keydown", keydown);
 }
 
-type PlaybackStatus = "idle" | "loading" | "ready" | "buffering" | "seeking" | "ended" | "error";
 interface PlaybackEngineOptions {
   queue: Pick<
     QueueEngine,
@@ -43,44 +44,28 @@ interface PlaybackEngineOptions {
   selection: CacheSelection;
   tracks: Pick<TrackEngine, "getSource" | "releaseSource">;
   covers: Pick<CoverEngine, "ensureTrackCover" | "subscribe">;
-  mediaSession?: MediaSession;
-  createAudio?: () => HTMLAudioElement;
   isAvailable?: (id: string) => boolean;
 }
 
 export class PlaybackEngine {
   #queue: PlaybackEngineOptions["queue"];
   #selection: PlaybackEngineOptions["selection"];
-  #tracks: PlaybackEngineOptions["tracks"];
   #covers: PlaybackEngineOptions["covers"];
-  #nativeSession?: MediaSession;
-  #media?: PlayerMediaSession;
-  #audio?: HTMLAudioElement;
-  #createAudio: () => HTMLAudioElement;
+  #options: PlaybackEngineOptions;
+  #player = $state.raw<ReturnType<typeof Player>>();
   #isAvailable: (id: string) => boolean;
   #cleanup?: () => void;
-  #duration = $state(0);
-  #offset = 0;
-  #playing = $state(false);
-  #intent = false;
-  #status = $state<PlaybackStatus>("idle");
-  #error = $state.raw<unknown>();
   #id?: string;
-  #cached = false;
-  #nativeSeeking = false;
-  #forced = false;
-  #generation = 0;
-  #abort?: AbortController;
   #lastSave = 0;
-  #metadataKey = "";
+  #cached = false;
+  #sourceRequest = 0;
+  #command = 0;
 
   constructor(options: PlaybackEngineOptions) {
+    this.#options = options;
     this.#queue = options.queue;
     this.#selection = options.selection;
-    this.#tracks = options.tracks;
     this.#covers = options.covers;
-    this.#nativeSession = options.mediaSession;
-    this.#createAudio = options.createAudio ?? (() => new Audio());
     this.#isAvailable = options.isAvailable ?? (() => true);
   }
 
@@ -112,16 +97,16 @@ export class PlaybackEngine {
     return this.#localQueue.position;
   }
   get duration() {
-    return this.#duration > 0 ? this.#duration : (this.track?.duration ?? 0);
+    return this.#player?.duration || this.track?.duration || 0;
   }
   get playing() {
-    return this.#playing;
+    return this.#player?.playing ?? false;
   }
   get status() {
-    return this.#status;
+    return this.#player?.status ?? "idle";
   }
   get error() {
-    return this.#error;
+    return this.#player?.error;
   }
   get hasNext() {
     return this.#localQueue.index >= 0 && this.#nextIndex(this.#localQueue.index) >= 0;
@@ -130,161 +115,55 @@ export class PlaybackEngine {
     return this.#previousIndex() >= 0;
   }
 
-  #syncMediaSession() {
-    this.#media?.setPlaybackState(!this.track ? "none" : this.#playing ? "playing" : "paused");
-    this.#media?.setNavigation(
-      this.hasNext,
-      this.hasPrevious || (!!this.track && this.position > 0),
-    );
-    this.#media?.setPosition(this.duration, this.position, this.#audio?.playbackRate);
-  }
-
-  #artwork = () => {
-    const selected = this.track;
-    const track = selected && {
-      id: selected.id,
-      title: selected.title,
-      artist: this.#selection.cache?.artists.get(selected.artistId)?.name ?? "Unknown artist",
-      album: this.#selection.cache?.albums.get(selected.albumId)?.title ?? "Unknown album",
-    };
-    const source = selected
-      ? this.#covers.ensureTrackCover(selected.id, { allowNetwork: false }).source
-      : undefined;
-    const key = JSON.stringify([track?.id, track?.title, track?.artist, track?.album, source]);
-    if (this.#metadataKey === key) return;
-    this.#metadataKey = key;
-    this.#media?.setMetadata(track, source);
-  };
-
-  #invalidate() {
-    this.#generation++;
-    this.#abort?.abort();
-    this.#abort = undefined;
-  }
-
-  #unload() {
-    this.#queue.setPlaybackActive(false);
-    this.#invalidate();
-    this.#intent = false;
-    this.#audio?.pause();
-    this.#audio?.removeAttribute("src");
-    this.#audio?.load();
-    this.#tracks.releaseSource();
-    this.#cached = false;
-    this.#forced = false;
-    this.#playing = false;
-    this.#duration = 0;
-    this.#offset = 0;
-    this.#status = "idle";
-  }
-
   #queueChanged = () => {
     const id = this.track?.id;
     if (id !== this.#id) {
       this.#id = id;
-      this.#unload();
-      this.#error = undefined;
+      this.suspend();
     }
-    this.#artwork();
-    this.#syncMediaSession();
   };
 
-  mount() {
+  setPosition(position: number) {
+    if (!this.#player) return;
+    this.#queue.setPosition(position);
+    if (!this.playing) this.#queue.save();
+    else if (Date.now() - this.#lastSave >= 10_000) {
+      this.#lastSave = Date.now();
+      void this.#queue.flush();
+    }
+  }
+
+  ended() {
+    if (!this.#player) return;
+    this.#queue.setPlaybackActive(false);
+    if (this.hasNext) void this.next();
+    else void this.#queue.flush();
+  }
+
+  mount(player: ReturnType<typeof Player>) {
     this.#cleanup?.();
-    const audio = this.#createAudio();
-    audio.preload = "metadata";
-    this.#audio = audio;
-    this.#metadataKey = "";
-    this.#media = new PlayerMediaSession(
-      {
-        play: () => {
-          void this.play();
-        },
-        pause: () => this.pause(),
-        next: () => {
-          void this.next();
-        },
-        previous: () => {
-          void this.previous();
-        },
-        seek: (position) => {
-          void this.seek(position);
-        },
-      },
-      this.#nativeSession,
-    );
-    const onTime = () => {
-      if (!audio.currentSrc) return;
-      this.#queue.setPosition(
-        this.#offset + (Number.isFinite(audio.currentTime) ? audio.currentTime : 0),
-      );
-      if (this.#intent && Date.now() - this.#lastSave >= 10_000) {
-        this.#lastSave = Date.now();
-        this.#queue.flush();
-      }
-    };
-    const onMetadata = () => {
-      this.#duration =
-        this.#offset > 0
-          ? (this.track?.duration ??
-            (Number.isFinite(audio.duration) ? this.#offset + audio.duration : 0))
-          : Number.isFinite(audio.duration)
-            ? audio.duration
-            : 0;
-      this.#syncMediaSession();
-    };
-    const events: Record<string, () => void> = {
-      timeupdate: onTime,
-      loadedmetadata: onMetadata,
-      durationchange: onMetadata,
-      ratechange: () => this.#syncMediaSession(),
-      playing: () => {
-        if (!this.#intent) {
-          audio.pause();
-          return;
-        }
-        this.#playing = true;
-        this.#status = "ready";
-        this.#syncMediaSession();
-      },
-      pause: () => {
-        this.#playing = false;
-        this.#syncMediaSession();
-      },
-      waiting: () => {
-        if (this.#intent && this.#status === "ready") this.#status = "buffering";
-        this.#syncMediaSession();
-      },
-      canplay: () => {
-        if (this.#status === "buffering") this.#status = "ready";
-        this.#syncMediaSession();
-      },
-      ended: () => {
-        if (!audio.currentSrc || !this.#intent) return;
-        if (this.hasNext) void this.next();
-        else {
-          this.#intent = false;
-          this.#playing = false;
-          this.#status = "ended";
-          this.#queue.flush();
-          this.#syncMediaSession();
-        }
-      },
-      error: () => {
-        if (!audio.currentSrc || this.#status === "loading" || this.#status === "seeking") return;
-        if (audio.error?.code === 4 && !this.#forced) {
-          void this.#load(this.position, this.#intent, true);
-        } else this.#fail(new Error(audio.error?.message || "The track could not be played."));
-      },
-    };
-    for (const [event, handler] of Object.entries(events)) audio.addEventListener(event, handler);
+    this.#player = player;
+    const stopEffects = $effect.root(() => {
+      $effect(() => {
+        const status = player.status;
+        const playing = player.playing;
+        // Includes controls invoked by Media Session, not just app commands.
+        untrack(() => {
+          if (playing || status === "loading" || status === "seeking")
+            this.#queue.setPlaybackActive(true);
+          if (status === "ready") {
+            if (playing) this.#queue.save();
+            else void this.#queue.flush();
+          }
+        });
+      });
+    });
     const removeShortcuts = installPlaybackShortcuts(() => {
       void this.toggle();
     });
     const unsubscribeQueue = this.#queue.subscribe(this.#queueChanged);
-    const unsubscribeCovers = this.#covers.subscribe(this.#artwork);
     const hidden = () => {
-      if (document.visibilityState === "hidden") this.#queue.flush();
+      if (document.visibilityState === "hidden") void this.#queue.flush();
     };
     document.addEventListener("visibilitychange", hidden);
     this.#queueChanged();
@@ -292,183 +171,103 @@ export class PlaybackEngine {
     const cleanup = () => {
       if (disposed) return;
       disposed = true;
+      stopEffects();
       removeShortcuts();
       unsubscribeQueue();
-      unsubscribeCovers();
       document.removeEventListener("visibilitychange", hidden);
-      for (const [event, handler] of Object.entries(events))
-        audio.removeEventListener(event, handler);
-      this.#queue.flush();
-      this.#unload();
-      this.#media?.destroy();
-      this.#media = undefined;
-      this.#audio = undefined;
+      void this.#queue.flush();
+      this.suspend();
+      this.#player = undefined;
       this.#id = undefined;
       this.#cleanup = undefined;
-      this.#syncMediaSession();
     };
     this.#cleanup = cleanup;
     return cleanup;
   }
 
-  #fail(error: unknown) {
-    this.#invalidate();
-    this.#intent = false;
-    this.#audio?.pause();
-    this.#error = error;
-    this.#status = "error";
-    this.#intent = false;
-    this.#playing = false;
-    this.#syncMediaSession();
-  }
-
-  #metadata(audio: HTMLAudioElement, signal: AbortSignal) {
-    if (audio.readyState >= 1) return Promise.resolve();
-    return new Promise<void>((resolve, reject) => {
-      const cleanup = () => {
-        audio.removeEventListener("loadedmetadata", loaded);
-        audio.removeEventListener("error", failed);
-        signal.removeEventListener("abort", aborted);
-      };
-      const loaded = () => {
-        cleanup();
-        resolve();
-      };
-      const failed = () => {
-        cleanup();
-        reject(new DOMException("The audio format is unsupported.", "NotSupportedError"));
-      };
-      const aborted = () => {
-        cleanup();
-        reject(new DOMException("Playback cancelled.", "AbortError"));
-      };
-      audio.addEventListener("loadedmetadata", loaded);
-      audio.addEventListener("error", failed);
-      signal.addEventListener("abort", aborted, { once: true });
-      if (signal.aborted) aborted();
-    });
-  }
-
-  async #load(position: number, autoplay: boolean, forceTranscode = false, seeking = false) {
-    const audio = this.#audio;
+  #playerTrack(): PlayerTrack | undefined {
     const track = this.track;
-    if (!audio || !track || !this.#canPlay(this.#localQueue.index)) return;
-    this.#queue.setPlaybackActive(true);
-    this.#id = track.id;
-    this.#artwork();
-    const download = {
+    if (!track || !this.#canPlay(this.#localQueue.index)) return;
+    const descriptor = {
       id: track.id,
       title: track.title,
       artist: this.#selection.cache?.artists.get(track.artistId)?.name,
       album: this.#selection.cache?.albums.get(track.albumId)?.title,
       contentType: track.mimeType,
     };
-    this.#invalidate();
-    const generation = this.#generation;
-    const abort = new AbortController();
-    this.#abort = abort;
-    this.#intent = autoplay;
-    audio.pause();
-    this.#error = undefined;
-    this.#status = seeking ? "seeking" : "loading";
-    this.#syncMediaSession();
-    const valid = () => generation === this.#generation && this.#audio === audio;
-    const prepare = async (transcode: boolean) => {
-      const source = await this.#tracks.getSource(download, {
-        forceTranscode: transcode,
-        position,
-      });
-      if (!valid()) return;
-      this.#cached = source.cached;
-      this.#nativeSeeking = source.nativeSeeking ?? false;
-      this.#offset = source.offset ?? 0;
-      this.#duration = 0;
-      this.#forced = transcode || this.#offset > 0;
-      audio.src = source.url;
-      if (position > 0) {
-        await this.#metadata(audio, abort.signal);
-        if (!valid()) return;
-        audio.currentTime = Math.min(
-          Math.max(0, position - this.#offset),
-          Number.isFinite(audio.duration) ? audio.duration : position,
-        );
-        this.#queue.setPosition(this.#offset + audio.currentTime);
-      }
-      if (autoplay && this.#intent) await audio.play();
-      if (!valid()) return;
-      this.#status = "ready";
-      this.#playing = !audio.paused;
-    };
-    try {
-      try {
-        await prepare(forceTranscode);
-      } catch (error) {
-        if (!valid()) return;
-        if (
-          forceTranscode ||
-          !(error instanceof Error) ||
-          !(error.name === "NotSupportedError" || /supported sources/i.test(error.message))
-        )
+    return {
+      metadata: {
+        title: descriptor.title,
+        artist: descriptor.artist,
+        album: descriptor.album,
+        duration: track.duration,
+        artwork: this.#covers.ensureTrackCover(track.id, { allowNetwork: false }).source,
+      },
+      position: this.position,
+      getSource: async ({ signal, ...options }) => {
+        // TrackEngine owns one source slot. Scope cleanup to this request so a
+        // late component result cannot release a newer request's object URL.
+        const request = ++this.#sourceRequest;
+        const release = () => {
+          signal.removeEventListener("abort", release);
+          if (request !== this.#sourceRequest) return;
+          this.#sourceRequest++;
+          this.#options.tracks.releaseSource();
+        };
+        signal.throwIfAborted();
+        signal.addEventListener("abort", release, { once: true });
+        try {
+          const source = await this.#options.tracks.getSource(descriptor, options);
+          signal.throwIfAborted();
+          if (request !== this.#sourceRequest)
+            throw new DOMException("Source superseded.", "AbortError");
+          signal.removeEventListener("abort", release);
+          this.#cached = source.cached;
+          return {
+            url: source.url,
+            offset: source.offset,
+            seekMode: source.cached ? "full" : source.nativeSeeking ? "seekable" : "buffered",
+            release,
+          };
+        } catch (error) {
+          release();
           throw error;
-        await prepare(true);
-      }
-      if (!valid()) return;
-      this.#queue.save();
-      this.#syncMediaSession();
-    } catch (error) {
-      if (valid()) this.#fail(error);
-    }
+        }
+      },
+    };
   }
 
   async play() {
-    if (!this.#audio) return;
+    if (!this.#player) return;
     if (!this.#canPlay(this.#localQueue.index)) {
       await this.playIndex(this.#nextIndex(-1));
       return;
     }
-    if (!this.track) return;
-    if (this.#status === "loading" || this.#status === "seeking") {
-      await this.#load(this.position, true, this.#forced, this.#status === "seeking");
-      return;
+    const command = ++this.#command;
+    this.#queue.setPlaybackActive(true);
+    if (this.#player.status !== "idle") await this.#player.resume();
+    else {
+      const track = this.#playerTrack();
+      if (!track) return;
+      this.#id = this.track?.id;
+      await this.#player.play(track);
     }
-    if (!this.#audio.currentSrc || this.#status === "error" || this.#status === "ended") {
-      await this.#load(this.#status === "ended" ? 0 : this.position, true);
-      return;
-    }
-    this.#intent = true;
-    const generation = this.#generation;
-    try {
-      await this.#audio.play();
-    } catch (error) {
-      if (generation === this.#generation) this.#fail(error);
-    }
+    if (command === this.#command) this.#queue.save();
   }
-
   pause() {
-    this.#invalidate();
-    this.#intent = false;
-    this.#audio?.pause();
-    if (this.#status === "loading" || this.#status === "seeking") {
-      this.#audio?.removeAttribute("src");
-      this.#audio?.load();
-      this.#tracks.releaseSource();
-      this.#cached = false;
-    }
-    this.#playing = false;
-    this.#status = this.track ? "ready" : "idle";
-    this.#queue.flush();
-    this.#syncMediaSession();
+    this.#command++;
+    this.#player?.pause();
+    void this.#queue.flush();
   }
-
   async toggle() {
-    if (this.#intent) this.pause();
+    if (this.playing || ["loading", "buffering", "seeking"].includes(this.status)) this.pause();
     else await this.play();
   }
-
   async playIndex(index: number) {
     if (!Number.isInteger(index) || !this.#canPlay(index)) return;
     this.#queue.select(index);
-    await this.#load(0, true);
+    this.suspend();
+    await this.play();
   }
 
   async next() {
@@ -481,63 +280,30 @@ export class PlaybackEngine {
   }
 
   async seek(position: number) {
-    if (!Number.isFinite(position) || !this.#audio || !this.#canPlay(this.#localQueue.index))
-      return;
-    const duration = this.duration;
-    position = Math.max(0, duration > 0 ? Math.min(position, duration) : position);
-    const audio = this.#audio;
-    const contains = (ranges: TimeRanges) => {
-      const relative = position - this.#offset;
-      for (let i = 0; i < ranges.length; i++) {
-        if (relative >= ranges.start(i) && relative <= ranges.end(i)) return true;
-      }
-      return false;
-    };
-    const buffered = contains(audio.buffered);
-    const seekable = this.#nativeSeeking && contains(audio.seekable);
-    if (
-      audio.currentSrc &&
-      (this.#cached || buffered || seekable) &&
-      this.#status !== "loading" &&
-      this.#status !== "seeking"
-    ) {
-      try {
-        audio.currentTime = position - this.#offset;
-        this.#queue.setPosition(position);
-        this.#queue.save();
-        this.#syncMediaSession();
-        return;
-      } catch (error) {
-        if (this.#cached) {
-          this.#fail(error);
-          return;
-        }
-        // A server/browser may reject a seek despite advertising a range.
-      }
-    }
-    const resume = this.#intent;
-    this.#queue.setPosition(position);
-    await this.#load(position, resume, false, true);
+    if (!Number.isFinite(position) || !this.#canPlay(this.#localQueue.index)) return;
+    const command = ++this.#command;
+    if (this.status === "idle") {
+      // No track has been supplied to Player yet. Seeking a restored queue only
+      // changes its resume point; it must not start audio or fetch a source.
+      this.#queue.setPosition(
+        Math.max(0, this.duration > 0 ? Math.min(position, this.duration) : position),
+      );
+    } else await this.#player?.seek(position);
+    if (command === this.#command) this.#queue.save();
   }
-
   suspendNetwork() {
-    if (!this.#cached || this.#status === "loading" || this.#status === "seeking") this.suspend();
-    else this.#syncMediaSession();
+    if (!this.#cached || this.status === "loading" || this.status === "seeking") this.suspend();
   }
-
   suspend() {
-    this.#unload();
-    this.#error = undefined;
-    this.#syncMediaSession();
+    this.#command++;
+    this.#player?.unload();
+    this.#cached = false;
+    this.#queue.setPlaybackActive(false);
   }
-
   stop() {
-    this.#unload();
-    this.#error = undefined;
+    this.suspend();
     this.#queue.select(-1);
-    this.#syncMediaSession();
   }
-
   destroy() {
     this.#cleanup?.();
   }

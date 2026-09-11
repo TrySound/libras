@@ -1,6 +1,8 @@
+// @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlaybackEngine } from "../src/playback.svelte";
-import { flushSync } from "svelte";
+import { flushSync, mount as mountComponent, unmount } from "svelte";
+import Player from "../src/player.svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
 import { QueueEngine } from "../src/queue.svelte";
 import { Cache } from "../src/cache.svelte";
@@ -49,8 +51,12 @@ const song = (id: string): Track => ({
 const cleanups: (() => void | Promise<void>)[] = [];
 function setup(mount = true, isAvailable: (id: string) => boolean = () => true) {
   vi.useFakeTimers();
-  const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
-  vi.stubGlobal("document", doc);
+  const doc = document as Document & { visibilityState: string };
+  Object.defineProperty(doc, "visibilityState", {
+    value: "visible",
+    writable: true,
+    configurable: true,
+  });
   vi.stubGlobal(
     "MediaMetadata",
     class {
@@ -114,19 +120,57 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     ),
     setPositionState: vi.fn(),
   };
-  const createAudio = vi.fn(() => audio as unknown as HTMLAudioElement);
+  vi.stubGlobal("navigator", { ...navigator, mediaSession: session });
+  const createAudio = vi.fn(function () {
+    return audio as unknown as HTMLAudioElement;
+  });
+  vi.stubGlobal("Audio", createAudio);
   const player = new PlaybackEngine({
-    createAudio,
     isAvailable,
     queue,
     selection,
     tracks,
     covers,
-    mediaSession: session as unknown as MediaSession,
   });
   queue.update({ tracks: ["a", "b"], index: 0, position: 0 });
-  const detach = mount ? player.mount() : () => {};
+  let detachMounted: (() => void) | undefined;
+  const mountPlayer = () => {
+    detachMounted?.();
+    const component = mountComponent(Player, {
+      target: document.createElement("div"),
+      props: {
+        get hasNext() {
+          return player.hasNext;
+        },
+        get hasPrevious() {
+          return player.hasPrevious || (!!player.track && player.position > 0);
+        },
+        onnext: () => {
+          void player.next();
+        },
+        onprevious: () => {
+          void player.previous();
+        },
+        onposition: (position) => player.setPosition(position),
+        onended: () => player.ended(),
+      },
+    });
+    flushSync();
+    const detachEngine = player.mount(component);
+    flushSync();
+    let disposed = false;
+    const detach = () => {
+      if (disposed) return;
+      disposed = true;
+      detachEngine();
+      void unmount(component);
+    };
+    detachMounted = detach;
+    return detach;
+  };
+  const detach = mount ? mountPlayer() : () => {};
   cleanups.push(async () => {
+    detachMounted?.();
     player.destroy();
     await queue.destroy();
   });
@@ -146,6 +190,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       updateTrack(id, { title });
     },
     player,
+    mountPlayer,
     createAudio,
     queue,
     audio,
@@ -168,8 +213,10 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-class TestElement {
-  constructor(readonly control?: string) {}
+class TestElement extends EventTarget {
+  constructor(readonly control?: string) {
+    super();
+  }
   closest(selector: string) {
     return this.control && selector.split(", ").includes(this.control) ? this : null;
   }
@@ -382,23 +429,21 @@ describe("playback engine", () => {
   });
 
   it("preserves a restored duplicate index and position without autoplay", async () => {
-    const { player, queue, audio, updateTrack, session, selection } = setup(false);
+    const { player, mountPlayer, queue, audio, updateTrack, session, selection } = setup(false);
     updateTrack("a", { duration: 200 });
     queue.update({ tracks: ["a", "b", "a"], index: 2, position: 38 });
-    player.mount();
+    mountPlayer();
     expect(selection.cache!.queue.index).toBe(2);
     expect(player.position).toBe(38);
     expect(player.duration).toBe(200);
     expect(player.position / player.duration).toBe(0.19);
-    expect(session.setPositionState).toHaveBeenLastCalledWith({
-      duration: 200,
-      position: 38,
-      playbackRate: 1,
-    });
+    // The component has no loaded item until an explicit play command.
+    expect(session.metadata).toBeNull();
+    expect(session.setPositionState).toHaveBeenLastCalledWith(undefined);
     expect(player.playing).toBe(false);
     expect(audio.play).not.toHaveBeenCalled();
     audio.dispatchEvent(new Event("loadedmetadata"));
-    expect(player.duration).toBe(120);
+    expect(player.duration).toBe(200);
     await player.play();
     expect(audio.currentTime).toBe(38);
   });
@@ -417,11 +462,11 @@ describe("playback engine", () => {
   it.each([false, true])(
     "preserves unknown IDs and selection before or after mounting (mounted: %s)",
     (mounted) => {
-      const { player, queue, audio, selection } = setup(mounted);
+      const { player, mountPlayer, queue, audio, selection } = setup(mounted);
       queue.update({ tracks: ["missing", "a", "b"], index: 1, position: 12 });
       if (!mounted) {
         expect(selection.cache!.queue.tracks).toEqual(["missing", "a", "b"]);
-        player.mount();
+        mountPlayer();
       }
       expect(selection.cache!.queue.tracks).toEqual(["missing", "a", "b"]);
       expect(selection.cache!.queue.index).toBe(1);
@@ -437,7 +482,7 @@ describe("playback engine", () => {
     },
   );
 
-  it("resolves the selected track directly from metadata and follows metadata refreshes", async () => {
+  it("refreshes app metadata but keeps Media Session metadata fixed until the next play", async () => {
     const { player, selection, renameTrack, audio, session, queue } = setup();
     expect(player.track).toBe(selection.cache!.tracks.get("a"));
     await player.play();
@@ -447,7 +492,7 @@ describe("playback engine", () => {
     expect(session.metadata).toMatchObject({ title: "a" });
     queue.setPosition(1);
     expect(session.metadata).toMatchObject({
-      title: "Updated title",
+      title: "a",
       artist: "Artist",
       album: "Album",
     });
@@ -586,9 +631,9 @@ describe("playback engine", () => {
   });
 
   it("creates audio only when mounted and configures metadata preloading", () => {
-    const { player, createAudio, audio } = setup(false);
+    const { mountPlayer, createAudio, audio } = setup(false);
     expect(createAudio).not.toHaveBeenCalled();
-    player.mount();
+    mountPlayer();
     expect(createAudio).toHaveBeenCalledOnce();
     expect(audio.preload).toBe("metadata");
     expect(audio.play).not.toHaveBeenCalled();
@@ -675,9 +720,11 @@ describe("playback engine", () => {
     expect(tracks.getSource).toHaveBeenCalledTimes(1);
   });
 
-  it("uses cached artwork and updates without a UI subscription", () => {
-    const { artwork, session, covers } = setup();
+  it("supplies cached artwork at play time without subscribing to later changes", async () => {
+    const { player, artwork, session, covers } = setup();
     artwork("data:image/jpeg;base64,bmV3");
+    await player.play();
+    artwork("data:image/jpeg;base64,bGF0ZXI=");
     expect(session.metadata).toMatchObject({
       title: "a",
       artwork: [{ src: "data:image/jpeg;base64,bmV3" }],
@@ -692,6 +739,7 @@ describe("playback engine", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(selection.cache!.queue.tracks[selection.cache!.queue.index]).toBe("b");
+    await vi.waitFor(() => expect(player.playing).toBe(true));
     audio.dispatchEvent(new Event("ended"));
     expect(player.status).toBe("ended");
     expect(player.playing).toBe(false);
@@ -888,14 +936,16 @@ describe("playback engine", () => {
   });
 
   it("cleans up metadata waits and ignores old mount cleanup", async () => {
-    const { player, audio, queue, detach, createAudio } = setup();
+    const { player, mountPlayer, audio, queue, detach, createAudio } = setup();
     queue.setPosition(20);
     audio.readyState = 0;
     const pending = player.play();
     await Promise.resolve();
     const replacement = new AudioStub();
-    createAudio.mockReturnValueOnce(replacement as unknown as HTMLAudioElement);
-    player.mount();
+    createAudio.mockImplementationOnce(function () {
+      return replacement as unknown as HTMLAudioElement;
+    });
+    mountPlayer();
     detach();
     await pending;
     await player.play();

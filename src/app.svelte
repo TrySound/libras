@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import { installLongPress } from "./long-press";
   import { PlaybackEngine } from "./playback.svelte";
+  import Player from "./player.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine } from "./cover.svelte";
@@ -54,6 +55,7 @@
       .map(([key, file]) => ({ ...file, key, status: "downloaded" as const }));
     return [...jobs, ...completed];
   });
+  let player = $state<ReturnType<typeof Player>>();
   const playback: PlaybackEngine = new PlaybackEngine({
     queue: queueEngine,
     selection,
@@ -77,13 +79,16 @@
   const offlineMode = $derived(session.offlineMode);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);
-  let playbackLoading = $derived(["loading", "buffering", "seeking"].includes(playback.status));
+  const playbackDuration = $derived(player?.duration || playback.track?.duration || 0);
+  let playbackLoading = $derived(
+    ["loading", "buffering", "seeking"].includes(player?.status ?? "idle"),
+  );
   let downloadError = $state("");
   let playbackError = $derived(
-    playback.error instanceof Error
-      ? playback.error.message
-      : playback.error
-        ? String(playback.error)
+    player?.error instanceof Error
+      ? player.error.message
+      : player?.error
+        ? String(player.error)
         : "",
   );
   let downloadingCollection = $state("");
@@ -91,7 +96,7 @@
   let loading = $derived(!session.localReady);
 
   onMount(() => installLongPress());
-  onMount(() => playback.mount());
+  onMount(() => playback.mount(player!));
 
   onDestroy(() => {
     session.destroy();
@@ -252,8 +257,8 @@
   }
 
   function playbackPercent() {
-    if (!Number.isFinite(playback.duration) || playback.duration <= 0) return 0;
-    return Math.min(100, Math.max(0, (cachedQueue.position / playback.duration) * 100));
+    if (!Number.isFinite(playbackDuration) || playbackDuration <= 0) return 0;
+    return Math.min(100, Math.max(0, (cachedQueue.position / playbackDuration) * 100));
   }
 
   function formatTime(value: number) {
@@ -290,6 +295,16 @@
     host = username = password = "";
   }
 </script>
+
+<Player
+  bind:this={player}
+  hasPrevious={playback.hasPrevious || (!!playback.track && cachedQueue.position > 0)}
+  hasNext={playback.hasNext}
+  onprevious={() => playback.previous()}
+  onnext={() => playback.next()}
+  onposition={(position) => playback.setPosition(position)}
+  onended={() => playback.ended()}
+/>
 
 <svelte:head>
   <title>Libras</title>
@@ -650,10 +665,10 @@
             class="playback-slider"
             type="range"
             min="0"
-            max={Number.isFinite(playback.duration) ? playback.duration : 0}
+            max={Number.isFinite(playbackDuration) ? playbackDuration : 0}
             step="0.1"
             value={cachedQueue.position}
-            disabled={!playback.duration ||
+            disabled={!playbackDuration ||
               (offlineMode &&
                 playback.track &&
                 trackEngine.getStatus(playback.track.id) !== "downloaded")}
@@ -661,7 +676,7 @@
           />
           <div class="playback-time type-caption">
             <span>{formatTime(cachedQueue.position)}</span>
-            <span>{formatTime(playback.duration)}</span>
+            <span>{formatTime(playbackDuration)}</span>
           </div>
         </div>
 
@@ -680,11 +695,11 @@
             data-variant="primary"
             onclick={() => playback.toggle()}
             disabled={queue.length === 0}
-            title={playback.playing ? "Pause" : "Play"}
+            title={player?.playing ? "Pause" : "Play"}
           >
             {#if playbackLoading}
               {@render icon("loading")}
-            {:else if playback.playing}
+            {:else if player?.playing}
               {@render icon("pause")}
             {:else}
               {@render icon("play")}
@@ -744,7 +759,7 @@
                     <span role="img" aria-label="Loading playback">
                       {@render icon("loading")}
                     </span>
-                  {:else if index === cachedQueue.index && playback.playing}
+                  {:else if index === cachedQueue.index && player?.playing}
                     <span role="img" aria-label="Playing">
                       {@render icon("sound-bars")}
                     </span>
@@ -1243,7 +1258,7 @@
                   <span role="img" aria-label="Loading playback">
                     {@render icon("loading")}
                   </span>
-                {:else if playback.track?.id === track.id && playback.playing}
+                {:else if playback.track?.id === track.id && player?.playing}
                   <span role="img" aria-label="Playing">
                     {@render icon("sound-bars")}
                   </span>
@@ -1444,11 +1459,11 @@
         data-size="md"
         data-variant="primary"
         onclick={() => playback.toggle()}
-        title={playback.playing ? "Pause" : "Play"}
+        title={player?.playing ? "Pause" : "Play"}
       >
         {#if playbackLoading}
           {@render icon("loading")}
-        {:else if playback.playing}
+        {:else if player?.playing}
           {@render icon("pause")}
         {:else}
           {@render icon("play")}

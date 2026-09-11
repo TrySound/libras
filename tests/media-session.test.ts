@@ -1,7 +1,10 @@
+// @vitest-environment happy-dom
+import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PlayerMediaSession } from "../src/media-session";
+import Player, { type PlayerTrack } from "../src/player.svelte";
 
-function setup(unsupported = false) {
+const cleanups: (() => Promise<void>)[] = [];
+function setup(unsupported = false, available = true) {
   vi.stubGlobal(
     "MediaMetadata",
     class {
@@ -20,42 +23,102 @@ function setup(unsupported = false) {
       handlers.set(action, handler);
     }),
   };
-  const controls = {
-    play: vi.fn(),
-    pause: vi.fn(),
-    next: vi.fn(),
-    previous: vi.fn(),
-    seek: vi.fn(),
-  };
-  const player = new PlayerMediaSession(controls, session as unknown as MediaSession);
-  return { player, session, handlers, controls };
+  vi.stubGlobal("navigator", available ? { mediaSession: session } : {});
+  const audio = Object.assign(new EventTarget(), {
+    preload: "",
+    src: "",
+    currentTime: 0,
+    duration: 100,
+    playbackRate: 1,
+    readyState: 1,
+    paused: true,
+    buffered: { length: 0, start: () => 0, end: () => 100 },
+    seekable: { length: 0, start: () => 0, end: () => 100 },
+    play: vi.fn(async () => {
+      audio.paused = false;
+      audio.dispatchEvent(new Event("playing"));
+    }),
+    pause: () => {
+      audio.paused = true;
+      audio.dispatchEvent(new Event("pause"));
+    },
+    load: () => {
+      audio.currentTime = 0;
+    },
+    removeAttribute: () => {
+      audio.src = "";
+    },
+  });
+  Object.defineProperty(audio, "currentSrc", { get: () => audio.src });
+  vi.stubGlobal(
+    "Audio",
+    vi.fn(function () {
+      return audio;
+    }),
+  );
+  const onnext = vi.fn();
+  const onprevious = vi.fn();
+  const player = mount(Player, {
+    target: document.createElement("div"),
+    props: {
+      hasNext: true,
+      hasPrevious: true,
+      onnext,
+      onprevious,
+    },
+  });
+  flushSync();
+  const destroy = () => unmount(player);
+  cleanups.push(destroy);
+  const play = (metadata: PlayerTrack["metadata"], position = 0) =>
+    player.play({
+      metadata,
+      position,
+      getSource: async () => ({ url: "blob:audio", seekMode: "full", release() {} }),
+    });
+  return { player, session, handlers, audio, onnext, onprevious, play, destroy };
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+  vi.unstubAllGlobals();
+});
 
-describe("player media session", () => {
-  it("publishes track metadata and replaces artwork", async () => {
-    const { player, session } = setup();
-    const track = { title: "Song", artist: "Artist", album: "Album" };
-    const url = URL.createObjectURL(new Blob(["image"], { type: "image/jpeg" }));
-    try {
-      await player.setMetadata(track, url);
+describe("Player Media Session integration", () => {
+  it("publishes track metadata and converts local artwork to self-contained bytes", async () => {
+    const { play, session } = setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("image", {
+            headers: { "Content-Type": "image/jpeg" },
+          }),
+      ),
+    );
+    await play({ title: "Song", artist: "Artist", album: "Album", artwork: "blob:cover" });
+    await vi.waitFor(() =>
       expect(session.metadata).toMatchObject({
-        ...track,
+        title: "Song",
+        artist: "Artist",
+        album: "Album",
         artwork: [{ src: "data:image/jpeg;base64,aW1hZ2U=" }],
-      });
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-    player.setMetadata({ ...track, title: "Next song" });
+      }),
+    );
+    await play({ title: "Next song" });
     expect(session.metadata).toMatchObject({ title: "Next song", artwork: [] });
-    player.setPlaybackState("playing");
     expect(session.playbackState).toBe("playing");
   });
 
   it("does not publish stale artwork after a track change or destruction", async () => {
-    const { player, session } = setup();
+    const { play, session, destroy } = setup();
     let resolve!: (response: Response) => void;
+    const arrayBuffer = vi.fn(async () => new TextEncoder().encode("image").buffer);
+    const response = () =>
+      ({
+        ok: true,
+        blob: async () => ({ size: 5, type: "image/jpeg", arrayBuffer }),
+      }) as unknown as Response;
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -65,63 +128,58 @@ describe("player media session", () => {
           }),
       ),
     );
-    const pending = player.setMetadata(
-      { title: "Old", artist: "Artist", album: "Album" },
-      "blob:old",
-    );
-    player.setMetadata({ title: "New", artist: "Artist", album: "Album" });
-    resolve(new Response("image", { headers: { "Content-Type": "image/jpeg" } }));
-    await pending;
+    await play({ title: "Old", artwork: "blob:old" });
+    await play({ title: "New" });
+    resolve(response());
+    await vi.waitFor(() => expect(arrayBuffer).toHaveBeenCalledOnce());
     expect(session.metadata).toMatchObject({ title: "New", artwork: [] });
-    const late = player.setMetadata(
-      { title: "Late", artist: "Artist", album: "Album" },
-      "blob:late",
-    );
-    player.destroy();
-    resolve(new Response("image", { headers: { "Content-Type": "image/jpeg" } }));
-    await late;
+    await play({ title: "Late", artwork: "blob:late" });
+    await destroy();
+    resolve(response());
+    await vi.waitFor(() => expect(arrayBuffer).toHaveBeenCalledTimes(2));
     expect(session.metadata).toBeNull();
   });
 
   it("keeps text metadata when artwork cannot be read", async () => {
-    const { player, session } = setup();
+    const { play, session } = setup();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
         throw new Error("Revoked blob");
       }),
     );
-    await expect(
-      player.setMetadata({ title: "Song", artist: "Artist", album: "Album" }, "blob:missing"),
-    ).resolves.toBeUndefined();
+    await play({ title: "Song", artwork: "blob:missing" });
     expect(session.metadata).toMatchObject({ title: "Song", artwork: [] });
   });
 
-  it("routes transport controls and clamps seeking", () => {
-    const { player, handlers, controls } = setup();
-    for (const [action, name] of [
-      ["play", "play"],
-      ["pause", "pause"],
-      ["nexttrack", "next"],
-      ["previoustrack", "previous"],
-    ] as const) {
-      handlers.get(action)!({ action });
-      expect(controls[name]).toHaveBeenCalledOnce();
-    }
-    player.setPosition(100, 95);
+  it("routes transport controls and clamps seeking", async () => {
+    const { play, player, handlers, audio, onnext, onprevious } = setup();
+    await play({ title: "Song", duration: 100 }, 95);
+    handlers.get("pause")!({ action: "pause" });
+    expect(player.playing).toBe(false);
+    handlers.get("play")!({ action: "play" });
+    expect(audio.play).toHaveBeenCalledTimes(2);
+    handlers.get("nexttrack")!({ action: "nexttrack" });
+    handlers.get("previoustrack")!({ action: "previoustrack" });
+    expect(onnext).toHaveBeenCalledOnce();
+    expect(onprevious).toHaveBeenCalledOnce();
     handlers.get("seekforward")!({ action: "seekforward" });
-    expect(controls.seek).toHaveBeenLastCalledWith(100);
+    expect(player.position).toBe(100);
     handlers.get("seekbackward")!({ action: "seekbackward", seekOffset: 20 });
-    expect(controls.seek).toHaveBeenLastCalledWith(75);
+    expect(player.position).toBe(80);
     handlers.get("seekto")!({ action: "seekto", seekTime: -5 });
-    expect(controls.seek).toHaveBeenLastCalledWith(0);
+    expect(player.position).toBe(0);
   });
 
-  it("clears unavailable position and sanitizes invalid values", () => {
-    const { player, session } = setup();
-    player.setPosition(Infinity, NaN);
+  it("clears unavailable position and sanitizes invalid values", async () => {
+    const { play, session, audio } = setup();
+    await play({ title: "Song", duration: Infinity });
     expect(session.setPositionState).toHaveBeenLastCalledWith(undefined);
-    player.setPosition(100, 200, 0);
+    audio.duration = 100;
+    audio.currentTime = 200;
+    audio.playbackRate = 0;
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    audio.dispatchEvent(new Event("timeupdate"));
     expect(session.setPositionState).toHaveBeenLastCalledWith({
       duration: 100,
       position: 100,
@@ -129,12 +187,19 @@ describe("player media session", () => {
     });
   });
 
-  it("tolerates unsupported actions and cleans up", () => {
-    const { player, session, handlers } = setup(true);
+  it("tolerates unsupported actions and cleans up", async () => {
+    const { play, destroy, session, handlers } = setup(true);
+    await play({ title: "Song" });
     expect(handlers.has("play")).toBe(true);
-    player.destroy();
+    await destroy();
     expect([...handlers.values()].every((handler) => handler === null)).toBe(true);
     expect(session.metadata).toBeNull();
     expect(session.playbackState).toBe("none");
+  });
+
+  it("plays normally without Media Session support", async () => {
+    const { player, play } = setup(false, false);
+    await play({ title: "Song" });
+    expect(player.playing).toBe(true);
   });
 });
