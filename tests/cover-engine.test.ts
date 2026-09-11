@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CoverEngine } from "./cover.svelte";
-import { Cache, type LibrarySnapshot } from "./cache.svelte";
+import { CoverEngine } from "../src/cover.svelte";
+import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
-import { Network } from "./network.svelte";
+import { Network } from "../src/network.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 

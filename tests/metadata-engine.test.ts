@@ -1,10 +1,10 @@
 import { deferred } from "./session-test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MetadataEngine } from "./metadata.svelte";
-import { Cache } from "./cache.svelte";
-import type { MetadataSnapshot } from "./metadata.svelte";
-import type { Account } from "./schema";
-import { Network } from "./network.svelte";
+import { MetadataEngine } from "../src/metadata.svelte";
+import { Cache } from "../src/cache.svelte";
+import type { MetadataSnapshot } from "../src/metadata.svelte";
+import type { Account } from "../src/schema";
+import { Network } from "../src/network.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
 
 const account = { host: "https://music.example.com", username: "listener" };

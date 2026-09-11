@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AuthStore } from "./auth";
+import { AuthStore } from "../src/auth";
 
 class MemoryStorage implements Storage {
   #values = new Map<string, string>();

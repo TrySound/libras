@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync, mount, unmount } from "svelte";
 import { registerSW } from "virtual:pwa-register";
-import WebappUpdater from "./webapp-updater.svelte";
+import WebappUpdater from "../src/webapp-updater.svelte";
 
 vi.mock("virtual:pwa-register", () => ({ registerSW: vi.fn() }));
 

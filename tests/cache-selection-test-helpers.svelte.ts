@@ -1,6 +1,6 @@
 import { vi } from "vitest";
-import type { Cache } from "./cache.svelte";
-import type { Artist, Album, Track } from "./schema";
+import type { Cache } from "../src/cache.svelte";
+import type { Artist, Album, Track } from "../src/schema";
 
 /** Real reactive selection for engine tests; no copied cache collections. */
 export class TestSelection {

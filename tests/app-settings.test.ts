@@ -1,16 +1,16 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import App from "./app.svelte";
+import App from "../src/app.svelte";
 import { createSession, credentials, deferred } from "./session-test-helpers";
 
 const mocks = vi.hoisted(() => ({
-  session: undefined as import("./session.svelte").Session | undefined,
+  session: undefined as import("../src/session.svelte").Session | undefined,
   navigate: vi.fn(),
 }));
 
-vi.mock("./session.svelte", async (importOriginal) => {
-  const { Session } = await importOriginal<typeof import("./session.svelte")>();
+vi.mock("../src/session.svelte", async (importOriginal) => {
+  const { Session } = await importOriginal<typeof import("../src/session.svelte")>();
   return {
     Session: vi.fn(function (options: ConstructorParameters<typeof Session>[0]) {
       return mocks.session ?? new Session(options);
@@ -19,7 +19,7 @@ vi.mock("./session.svelte", async (importOriginal) => {
 });
 
 // Keep these tests on the settings route; router behavior is tested separately.
-vi.mock("./router-engine", () => ({
+vi.mock("../src/router-engine", () => ({
   RouterEngine: class {
     match;
     constructor(routes: { pattern: string }[]) {

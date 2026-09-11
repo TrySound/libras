@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PlayerMediaSession } from "./media-session";
+import { PlayerMediaSession } from "../src/media-session";
 
 function setup(unsupported = false) {
   vi.stubGlobal(

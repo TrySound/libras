@@ -1,21 +1,21 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, expect, it, vi } from "vitest";
-import App from "./app.svelte";
-import { Cache, type LibrarySnapshot } from "./cache.svelte";
+import App from "../src/app.svelte";
+import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 
 const mocks = vi.hoisted(() => ({
-  cache: undefined as import("./cache.svelte").Cache | undefined,
+  cache: undefined as import("../src/cache.svelte").Cache | undefined,
   route: "/library",
   navigate: vi.fn(),
   options: undefined as
-    | ConstructorParameters<typeof import("./session.svelte").Session>[0]
+    | ConstructorParameters<typeof import("../src/session.svelte").Session>[0]
     | undefined,
 }));
 
 // Exercise the real app, metadata engine and cache; session workflows have their own tests.
-vi.mock("./session.svelte", () => ({
+vi.mock("../src/session.svelte", () => ({
   Session: class {
     offlineMode = false;
     localReady = true;
@@ -31,7 +31,7 @@ vi.mock("./session.svelte", () => ({
     destroy() {}
   },
 }));
-vi.mock("./router-engine", () => ({
+vi.mock("../src/router-engine", () => ({
   RouterEngine: class {
     match;
     constructor(routes: { pattern: string }[]) {
@@ -153,7 +153,7 @@ it("renders download records and jobs without duplicates and switches account pr
   expect(target.textContent).toContain("First download");
   expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
   const options = mocks.options!;
-  const tracks = options.tracks as import("./track.svelte").TrackEngine;
+  const tracks = options.tracks as import("../src/track.svelte").TrackEngine;
   const connection = options.network.accept(
     options.network.prepare({ ...first.account!, token: "token", salt: "salt" }),
   );

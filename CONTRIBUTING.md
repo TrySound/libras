@@ -27,6 +27,8 @@ Use `pnpm format` to format the project. The pre-commit hook formats staged HTML
 
 ## CI and GitHub Pages
 
+Tests and test-only helpers live in `tests/`, separate from production code in `src/`. Vitest discovers `tests/**/*.test.ts`; Svelte rune helpers use `.svelte.ts` and are imported by those tests. Type checks include both directories.
+
 The CI workflow (`.github/workflows/ci.yml`) runs type checks, tests, and a production build for pull requests and pushes to `main`. A separate Pages workflow (`.github/workflows/pages.yml`) builds and deploys `main` to https://trysound.github.io/libras/ using a Pages artifact, without a separate branch. Both workflows can also be run manually; Pages deployment runs independently of CI.
 
 In the repository's **Settings → Pages → Build and deployment**, select **GitHub Actions** as the source.

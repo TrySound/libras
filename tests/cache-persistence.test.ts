@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Cache } from "./cache.svelte";
+import { Cache } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 
 const account = { host: "https://music.example", username: "listener" };

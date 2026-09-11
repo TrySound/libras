@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PlaybackEngine } from "./playback.svelte";
+import { PlaybackEngine } from "../src/playback.svelte";
 import { flushSync } from "svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
-import { QueueEngine } from "./queue.svelte";
-import { Cache } from "./cache.svelte";
+import { QueueEngine } from "../src/queue.svelte";
+import { Cache } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
-import type { Track } from "./schema";
-import type { TrackSource } from "./track.svelte";
+import type { Track } from "../src/schema";
+import type { TrackSource } from "../src/track.svelte";
 import { TestSelection, playbackLibrary } from "./cache-selection-test-helpers.svelte";
 
 class AudioStub extends EventTarget {
@@ -303,7 +303,7 @@ describe("playback engine", () => {
 
   it("does not upload deletions when a server queue arrives before fresh metadata", async () => {
     const { player, queue, audio, restoreTrack, selection } = setup();
-    const { Network } = await import("./network.svelte");
+    const { Network } = await import("../src/network.svelte");
     const network = new Network();
     const fetcher = vi.fn(
       async () =>

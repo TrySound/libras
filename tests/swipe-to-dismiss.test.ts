@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { swipeToDismiss } from "./swipe-to-dismiss";
+import { swipeToDismiss } from "../src/swipe-to-dismiss";
 
 class TestElement extends EventTarget {
   open = true;

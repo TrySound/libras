@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Network } from "./network.svelte";
-import { TrackEngine } from "./track.svelte";
-import { Cache, downloadKey } from "./cache.svelte";
+import { Network } from "../src/network.svelte";
+import { TrackEngine } from "../src/track.svelte";
+import { Cache, downloadKey } from "../src/cache.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";

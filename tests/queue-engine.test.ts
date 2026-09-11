@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { QueueEngine } from "./queue.svelte";
-import { Cache, type CachedQueue } from "./cache.svelte";
+import { QueueEngine } from "../src/queue.svelte";
+import { Cache, type CachedQueue } from "../src/cache.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
-import { Network, type RemoteQueue } from "./network.svelte";
+import { Network, type RemoteQueue } from "../src/network.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 

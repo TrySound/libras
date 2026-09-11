@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RouterEngine } from "./router-engine";
+import { RouterEngine } from "../src/router-engine";
 
 class TestURLPattern {
   #expression: RegExp;

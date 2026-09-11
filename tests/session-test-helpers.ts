@@ -1,11 +1,11 @@
 import { vi } from "vitest";
-import { AuthStore } from "./auth";
+import { AuthStore } from "../src/auth";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
-import { Network, type MetadataConnection } from "./network.svelte";
-import type { MetadataSnapshot } from "./metadata.svelte";
-import { Cache } from "./cache.svelte";
-import type { Account } from "./schema";
-import { Session } from "./session.svelte";
+import { Network, type MetadataConnection } from "../src/network.svelte";
+import type { MetadataSnapshot } from "../src/metadata.svelte";
+import { Cache } from "../src/cache.svelte";
+import type { Account } from "../src/schema";
+import { Session } from "../src/session.svelte";
 
 export const credentials = {
   host: "https://music.example",

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
-import { Cache, CacheLoadError, type CachedQueue, type LibrarySnapshot } from "./cache.svelte";
+import { Cache, CacheLoadError, type CachedQueue, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { observeCache } from "./cache-reactivity.test.svelte";
 import { deferred } from "./session-test-helpers";

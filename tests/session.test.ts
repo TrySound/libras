@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MetadataSnapshot } from "./metadata.svelte";
-import { CacheLoadError, Cache } from "./cache.svelte";
+import type { MetadataSnapshot } from "../src/metadata.svelte";
+import { CacheLoadError, Cache } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
-import { NetworkTransportError } from "./network.svelte";
+import { NetworkTransportError } from "../src/network.svelte";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
 const fixtures: ReturnType<typeof createSession>[] = [];

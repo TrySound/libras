@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Network, NetworkTransportError } from "./network.svelte";
+import { Network, NetworkTransportError } from "../src/network.svelte";
 
 const auth = {
   host: "https://music.example",

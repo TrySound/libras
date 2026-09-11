@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installLongPress } from "./long-press";
+import { installLongPress } from "../src/long-press";
 
 class TestElement {
   isConnected = true;

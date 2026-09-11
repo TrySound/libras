@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
 import { observeCache } from "./cache-reactivity.test.svelte";
-import { Cache, type LibrarySnapshot } from "./cache.svelte";
+import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };

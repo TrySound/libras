@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SubsonicClient, createSubsonicAuth } from "./subsonic-client";
+import { SubsonicClient, createSubsonicAuth } from "../src/subsonic-client";
 import { md5 } from "js-md5";
 
 const auth = {
