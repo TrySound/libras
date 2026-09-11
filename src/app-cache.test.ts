@@ -3,7 +3,6 @@ import { flushSync, mount, unmount } from "svelte";
 import { afterEach, expect, it, vi } from "vitest";
 import App from "./app.svelte";
 import { Cache, type LibrarySnapshot } from "./cache.svelte";
-import { OpfsJsonStore } from "./json-store";
 import { installDisk } from "./cache-test-helpers";
 
 const mocks = vi.hoisted(() => ({
@@ -101,11 +100,7 @@ it("uses the empty fallback before account selection and when selection is clear
 });
 
 it("renders the selected cache, reacts to replacements, and stops observing a previous account", async () => {
-  // File durability is covered by cache tests; commit immediately here.
-  vi.spyOn(OpfsJsonStore.prototype, "update").mockImplementation(async (change) => ({
-    written: true,
-    value: change(null) ?? null,
-  }));
+  installDisk();
   const first = new Cache({ host: "https://music.example", username: "first" });
   await first.replaceLibrary(library("First artist", 1));
   mocks.cache = first;

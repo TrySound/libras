@@ -3,7 +3,6 @@ import { QueueEngine } from "./queue.svelte";
 import { Cache, type CachedQueue } from "./cache.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { Network, type RemoteQueue } from "./network.svelte";
-import { hashedFileName } from "./json-store";
 import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
@@ -24,8 +23,14 @@ function client(identity = account) {
   };
 }
 async function path(identity = account) {
-  const name = await hashedFileName(JSON.stringify([identity.host, identity.username]), ".cache");
-  return `accounts/${name.slice(0, -6)}/queue.json`;
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify([identity.host, identity.username])),
+  );
+  const hash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `accounts/${hash}/queue.json`;
 }
 async function seed(queue = local(), identity = account, updatedAt = 42) {
   disk.files.set(await path(identity), JSON.stringify({ account: identity, ...queue, updatedAt }));

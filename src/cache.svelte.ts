@@ -1,5 +1,4 @@
 import * as v from "valibot";
-import { OpfsJsonStore, hashedFileName } from "./json-store";
 import {
   accountSchema,
   artistSchema,
@@ -42,6 +41,11 @@ const queueSchema = v.pipe(
   v.check((queue) => validSelection(queue), "Invalid queue selection."),
 );
 export type CachedQueue = v.InferOutput<typeof queueSchema>;
+// Used only when tracks is the already-validated, immutable cached array.
+const cachedQueueEditSchema = v.pipe(
+  v.strictObject({ ...queueFields, tracks: v.custom<readonly string[]>(Array.isArray) }),
+  v.check((queue) => validSelection(queue), "Invalid queue selection."),
+);
 const queueRecordSchema = v.pipe(
   v.strictObject({ account: accountSchema, ...queueFields, updatedAt: timestamp }),
   v.check((queue) => validSelection(queue), "Invalid queue selection."),
@@ -66,6 +70,7 @@ const cachedDownloadSchema = v.strictObject({
   downloadedAt: timestamp,
 });
 export type CachedDownload = v.InferOutput<typeof cachedDownloadSchema>;
+const downloadInputSchema = v.pick(cachedDownloadSchema, ["track", "format", "contentType"]);
 const downloadsSchema = v.strictObject({
   account: accountSchema,
   downloads: v.array(cachedDownloadSchema),
@@ -78,14 +83,7 @@ function downloadMap(
   records: readonly CachedDownload[],
 ): ReadonlyMap<string, Immutable<CachedDownload>> {
   const map = new Map<string, Immutable<CachedDownload>>();
-  const files = new Set<string>();
-  for (const record of records) {
-    const key = downloadKey(record.track.id, record.format);
-    if (map.has(key) || files.has(record.fileName))
-      throw new Error("Duplicate download references.");
-    map.set(key, record);
-    files.add(record.fileName);
-  }
+  for (const record of records) map.set(downloadKey(record.track.id, record.format), record);
   return map;
 }
 
@@ -112,24 +110,154 @@ export class CacheLoadError extends AggregateError {
   }
 }
 
-async function accountFile<T extends { account: Account }>(
-  account: Readonly<Account>,
-  name: "library" | "queue" | "images" | "downloads",
-  parse: (value: unknown) => T,
-) {
-  // Tuple encoding avoids ambiguous account keys; no legacy filename support.
-  const key = await hashedFileName(JSON.stringify([account.host, account.username]), ".cache");
-  return new OpfsJsonStore({
-    directory: ["accounts", key.slice(0, -6)],
-    fileName: `${name}.json`,
-    lockName: `libras-${name}:${key}`,
-    parse: (value: unknown) => {
-      const record = parse(value);
-      if (record.account.host !== account.host || record.account.username !== account.username)
+// Cache serializes complete domain operations, including publication. File I/O
+// needs cross-tab locks, but not a second layer of per-instance scheduling.
+function serial() {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = tail.then(operation);
+    tail = result.catch(() => {});
+    return result;
+  };
+}
+
+async function hash(key: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+type DocumentName = "library" | "queue" | "images" | "downloads";
+type AccountRecord = { account: Account };
+
+/** Private account namespace and atomic JSON I/O. No data indexes or local queue. */
+class Disk {
+  #key?: Promise<string>;
+  constructor(readonly account: Readonly<Account>) {}
+
+  #accountKey() {
+    return (this.#key ??= hash(JSON.stringify([this.account.host, this.account.username])).catch(
+      (error) => {
+        this.#key = undefined;
+        throw error;
+      },
+    ));
+  }
+  async #directory(binary = false) {
+    const key = await this.#accountKey();
+    let directory = await navigator.storage.getDirectory();
+    for (const name of ["accounts", key, ...(binary ? ["files"] : [])])
+      directory = await directory.getDirectoryHandle(name, { create: true });
+    return directory;
+  }
+  directory() {
+    return this.#directory(true);
+  }
+
+  async #locked<T>(
+    name: DocumentName,
+    operation: (directory: FileSystemDirectoryHandle) => Promise<T>,
+  ) {
+    const key = await this.#accountKey();
+    const run = async () => operation(await this.#directory());
+    return navigator.locks ? navigator.locks.request(`libras-${name}:${key}.cache`, run) : run();
+  }
+  async #read<T extends AccountRecord>(
+    directory: FileSystemDirectoryHandle,
+    name: DocumentName,
+    parse: (value: unknown) => T,
+    repair = false,
+  ): Promise<T | null> {
+    let file: File;
+    try {
+      file = await (await directory.getFileHandle(`${name}.json`)).getFile();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotFoundError") return null;
+      throw error;
+    }
+    // Inaccessible bytes are not corrupt JSON. Never bypass conflict checks by
+    // treating a permission or transient read failure as an empty document.
+    // An interrupted first write can leave a zero-byte placeholder, not a record.
+    if (file.size === 0) return null;
+    const text = await file.text();
+    try {
+      const record = parse(JSON.parse(text));
+      if (
+        record.account.host !== this.account.host ||
+        record.account.username !== this.account.username
+      )
         throw new Error(`The ${name} belongs to a different account.`);
       return record;
-    },
-  });
+    } catch (error) {
+      if (repair) return null;
+      throw error;
+    }
+  }
+  read<T extends AccountRecord>(name: DocumentName, parse: (value: unknown) => T) {
+    return this.#locked(name, (directory) => this.#read(directory, name, parse));
+  }
+  update<T extends AccountRecord>(
+    name: DocumentName,
+    parse: (value: unknown) => T,
+    change: (existing: T | null) => T | undefined,
+    options: { valid?: () => boolean; repair?: boolean } = {},
+  ): Promise<{ written: boolean; value: T | null }> {
+    return this.#locked(name, async (directory) => {
+      const existing = await this.#read(directory, name, parse, options.repair);
+      const skipped = { written: false, value: existing };
+      if (options.valid && !options.valid()) return skipped;
+      const value = change(existing);
+      if (value === undefined || (options.valid && !options.valid())) return skipped;
+      const handle = await directory.getFileHandle(`${name}.json`, { create: true });
+      let writable: FileSystemWritableFileStream | undefined;
+      let committed = false;
+      try {
+        writable = await handle.createWritable();
+        await writable.write(JSON.stringify(value));
+        if (options.valid && !options.valid()) return skipped;
+        await writable.close();
+        committed = true;
+        // Do not throw for cancellation after close: callers must know the disk
+        // commit owns its binary files even when they cannot publish locally.
+        return { written: true, value };
+      } finally {
+        if (!committed) {
+          await writable?.abort().catch(() => {});
+          // This JSON name is shared. Without Web Locks a stale empty-file
+          // observation could delete another tab's freshly committed document.
+          if (navigator.locks) {
+            const file = await handle.getFile().catch(() => null);
+            if (file?.size === 0) await directory.removeEntry(`${name}.json`).catch(() => {});
+          }
+        }
+      }
+    });
+  }
+}
+
+function unique<T>(records: readonly T[], key: (record: T) => string) {
+  if (new Set(records.map(key)).size !== records.length)
+    throw new Error("Duplicate cache references.");
+}
+function parseLibrary(value: unknown) {
+  const record = v.parse(libraryRecordSchema, value);
+  for (const records of [record.artists, record.albums, record.tracks])
+    unique<{ id: string }>(records, (item) => item.id);
+  return record;
+}
+function parseQueue(value: unknown) {
+  return v.parse(queueRecordSchema, value);
+}
+function parseImages(value: unknown) {
+  const catalog = v.parse(imagesSchema, value);
+  unique(catalog.images, (image) => image.id);
+  unique(catalog.images, (image) => image.fileName);
+  return catalog;
+}
+function parseDownloads(value: unknown) {
+  const catalog = v.parse(downloadsSchema, value);
+  unique(catalog.downloads, (item) => downloadKey(item.track.id, item.format));
+  unique(catalog.downloads, (item) => item.fileName);
+  return catalog;
 }
 
 function entityMap<T extends { readonly id: string }>(
@@ -218,7 +346,8 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
     );
   }
   return {
-    snapshot,
+    savedAt: snapshot?.savedAt,
+    lastModified: snapshot?.lastModified,
     artists,
     albums,
     tracks,
@@ -240,25 +369,22 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
 export class Cache {
   readonly account: Readonly<Account> | undefined;
   #library = $state.raw(prepareLibrary(null));
-  #file?: Promise<OpfsJsonStore<v.InferOutput<typeof libraryRecordSchema>>>;
-  #operations: Promise<unknown> = Promise.resolve();
+  #files?: Disk;
+  #runLibrary = serial();
   #queue = $state.raw<Immutable<CachedQueue>>({ tracks: [], index: -1, position: 0 });
   #queueRevision = $state(0);
   #queueSavedRevision = $state(0);
   #queueError = $state.raw<unknown>();
   #queueUpdatedAt = 0;
-  #queueStore?: Promise<OpfsJsonStore<v.InferOutput<typeof queueRecordSchema>>>;
-  #queueOperations: Promise<unknown> = Promise.resolve();
+  #runQueue = serial();
   #queueTimer?: ReturnType<typeof setTimeout>;
   #checkpointTimer?: ReturnType<typeof setTimeout>;
   #images = $state.raw<ReadonlyMap<string, Immutable<ImageRecord>>>(new Map());
   #imagesError = $state.raw<unknown>();
-  #imagesStore?: Promise<OpfsJsonStore<v.InferOutput<typeof imagesSchema>>>;
-  #imageOperations: Promise<unknown> = Promise.resolve();
+  #runImages = serial();
   #downloads = $state.raw<ReadonlyMap<string, Immutable<CachedDownload>>>(new Map());
   #downloadsError = $state.raw<unknown>();
-  #downloadsStore?: Promise<OpfsJsonStore<v.InferOutput<typeof downloadsSchema>>>;
-  #downloadOperations: Promise<unknown> = Promise.resolve();
+  #runDownloads = serial();
   #downloadLoads = $state(0);
 
   /** Omitting the account creates an empty, non-persisting UI fallback. */
@@ -304,51 +430,14 @@ export class Cache {
   }
 
   get lastModified() {
-    return this.#library.snapshot?.lastModified;
+    return this.#library.lastModified;
   }
   get savedAt() {
-    return this.#library.snapshot?.savedAt;
+    return this.#library.savedAt;
   }
 
-  #libraryFile() {
-    return (this.#file ??= accountFile(this.#requireAccount(), "library", (value) => {
-      const record = v.parse(libraryRecordSchema, value);
-      prepareLibrary(record); // Reject duplicate IDs on disk as well as on replacement.
-      return record;
-    }).catch((error) => {
-      this.#file = undefined;
-      throw error;
-    }));
-  }
-
-  #queueFile() {
-    return (this.#queueStore ??= accountFile(this.#requireAccount(), "queue", (value) =>
-      v.parse(queueRecordSchema, value),
-    ).catch((error) => {
-      this.#queueStore = undefined;
-      throw error;
-    }));
-  }
-
-  #imagesFile() {
-    return (this.#imagesStore ??= accountFile(this.#requireAccount(), "images", (value) => {
-      const catalog = v.parse(imagesSchema, value);
-      entityMap(catalog.images);
-      if (new Set(catalog.images.map((image) => image.fileName)).size !== catalog.images.length)
-        throw new Error("Duplicate image file references.");
-      return catalog;
-    }).catch((error) => {
-      this.#imagesStore = undefined;
-      throw error;
-    }));
-  }
-
-  // Serialize publication with persistence, not just file access. A pending load
-  // cannot publish an older snapshot after a later replacement has completed.
-  #run<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.#operations.then(operation);
-    this.#operations = result.catch(() => {});
-    return result;
+  get #disk() {
+    return (this.#files ??= new Disk(this.#requireAccount()));
   }
 
   /** Restore independent local domains, reporting failures after all finish. */
@@ -377,9 +466,9 @@ export class Cache {
   }
 
   #loadLibrary(signal?: AbortSignal): Promise<void> {
-    return this.#run(async () => {
+    return this.#runLibrary(async () => {
       signal?.throwIfAborted();
-      const record = await (await this.#libraryFile()).read();
+      const record = await this.#disk.read("library", parseLibrary);
       signal?.throwIfAborted();
       if (record) {
         const { account: _account, ...snapshot } = record;
@@ -401,18 +490,12 @@ export class Cache {
     return this.#queueError;
   }
 
-  #runQueue<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.#queueOperations.then(operation);
-    this.#queueOperations = result.catch(() => {});
-    return result;
-  }
-
   #loadQueue(signal?: AbortSignal) {
     const revision = this.#queueRevision;
     return this.#runQueue(async () => {
       try {
         signal?.throwIfAborted();
-        const record = await (await this.#queueFile()).read();
+        const record = await this.#disk.read("queue", parseQueue);
         signal?.throwIfAborted();
         // Loading must not discard optimistic edits, including edits made before load().
         if (this.queueDirty || revision !== this.#queueRevision) return;
@@ -432,11 +515,14 @@ export class Cache {
   /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
   setQueue(queue: Immutable<CachedQueue>, options: { checkpoint?: boolean } = {}): number {
     this.#requireAccount();
-    const next = v.parse(queueSchema, queue);
+    const input = { ...queue };
+    const cachedTracks = input.tracks === this.#queue.tracks;
+    const next = cachedTracks ? v.parse(cachedQueueEditSchema, input) : v.parse(queueSchema, input);
     const updatedAt = v.parse(timestamp, Math.max(Date.now(), this.#queueUpdatedAt + 1));
     const sameTracks =
-      next.tracks.length === this.#queue.tracks.length &&
-      next.tracks.every((id, index) => id === this.#queue.tracks[index]);
+      cachedTracks ||
+      (next.tracks.length === this.#queue.tracks.length &&
+        next.tracks.every((id, index) => id === this.#queue.tracks[index]));
     this.#queue = { ...next, tracks: sameTracks ? this.#queue.tracks : next.tracks };
     this.#queueUpdatedAt = updatedAt;
     const revision = ++this.#queueRevision;
@@ -475,10 +561,11 @@ export class Cache {
         updatedAt: this.#queueUpdatedAt,
       };
       try {
-        const file = await this.#queueFile();
-        const result = await file.update(
+        const result = await this.#disk.update(
+          "queue",
+          parseQueue,
           (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
-          { recoverReadError: () => null },
+          { repair: true },
         );
         if (!result.written)
           throw new Error("A newer queue was saved in another tab. This queue has not been saved.");
@@ -502,13 +589,14 @@ export class Cache {
     return this.#runQueue(async () => {
       if (!valid()) return false;
       try {
-        const file = await this.#queueFile();
-        const result = await file.update(
+        const result = await this.#disk.update(
+          "queue",
+          parseQueue,
           (previous) =>
             previous && previous.updatedAt > updatedAt
               ? undefined
               : { account, ...next, updatedAt },
-          { valid, recoverReadError: () => null },
+          { valid, repair: true },
         );
         if (!valid()) {
           // Atomic close cannot be undone. Checkpoint the still-visible local queue
@@ -538,17 +626,11 @@ export class Cache {
     });
   }
 
-  #runImages<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.#imageOperations.then(operation);
-    this.#imageOperations = result.catch(() => {});
-    return result;
-  }
-
   #loadImages(signal?: AbortSignal) {
     return this.#runImages(async () => {
       try {
         signal?.throwIfAborted();
-        const catalog = await (await this.#imagesFile()).read();
+        const catalog = await this.#disk.read("images", parseImages);
         signal?.throwIfAborted();
         this.#images = entityMap(catalog?.images ?? []);
         this.#imagesError = undefined;
@@ -559,15 +641,6 @@ export class Cache {
     });
   }
 
-  async #filesDirectory() {
-    const account = this.#requireAccount();
-    const key = await hashedFileName(JSON.stringify([account.host, account.username]), ".cache");
-    let directory = await navigator.storage.getDirectory();
-    for (const name of ["accounts", key.slice(0, -6), "files"])
-      directory = await directory.getDirectoryHandle(name, { create: true });
-    return directory;
-  }
-
   /** Load bytes on demand. Missing/incomplete files invalidate only their matching record. */
   readImage(id: string, signal?: AbortSignal): Promise<Blob | null> {
     return this.#runImages(async () => {
@@ -575,7 +648,7 @@ export class Cache {
         signal?.throwIfAborted();
         const record = this.#images.get(id);
         if (!record) return null;
-        const directory = await this.#filesDirectory();
+        const directory = await this.#disk.directory();
         try {
           const file = await (await directory.getFileHandle(record.fileName)).getFile();
           if (file.size !== record.size)
@@ -592,9 +665,9 @@ export class Cache {
             throw error;
         }
         signal?.throwIfAborted();
-        const result = await (
-          await this.#imagesFile()
-        ).update(
+        const result = await this.#disk.update(
+          "images",
+          parseImages,
           (catalog) => {
             if (catalog?.images.find((image) => image.id === id)?.fileName !== record.fileName)
               return undefined;
@@ -640,16 +713,16 @@ export class Cache {
       let committed = false;
       try {
         signal?.throwIfAborted();
-        directory = await this.#filesDirectory();
+        directory = await this.#disk.directory();
         const handle = await directory.getFileHandle(record.fileName, { create: true });
         writable = await handle.createWritable();
         await writable.write(blob);
         signal?.throwIfAborted();
         await writable.close();
         signal?.throwIfAborted();
-        const result = await (
-          await this.#imagesFile()
-        ).update(
+        const result = await this.#disk.update(
+          "images",
+          parseImages,
           (catalog) => {
             if (catalog?.images.find((image) => image.id === id)?.fileName !== expected)
               return undefined;
@@ -695,26 +768,11 @@ export class Cache {
     });
   }
 
-  #downloadsFile() {
-    return (this.#downloadsStore ??= accountFile(this.#requireAccount(), "downloads", (value) => {
-      const catalog = v.parse(downloadsSchema, value);
-      downloadMap(catalog.downloads);
-      return catalog;
-    }).catch((error) => {
-      this.#downloadsStore = undefined;
-      throw error;
-    }));
-  }
-  #runDownloads<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.#downloadOperations.then(operation);
-    this.#downloadOperations = result.catch(() => {});
-    return result;
-  }
   #loadDownloads(signal?: AbortSignal) {
     return this.#runDownloads(async () => {
       try {
         signal?.throwIfAborted();
-        const catalog = await (await this.#downloadsFile()).read();
+        const catalog = await this.#disk.read("downloads", parseDownloads);
         signal?.throwIfAborted();
         this.#downloads = downloadMap(catalog?.downloads ?? []);
         this.#downloadsError = undefined;
@@ -737,7 +795,7 @@ export class Cache {
         const key = downloadKey(trackId, format);
         let record = this.#downloads.get(key);
         if (!record) return null;
-        const directory = await this.#filesDirectory();
+        const directory = await this.#disk.directory();
         while (record) {
           signal?.throwIfAborted();
           try {
@@ -751,9 +809,9 @@ export class Cache {
             if (!(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
           }
           const missing = record.fileName;
-          const result = await (
-            await this.#downloadsFile()
-          ).update(
+          const result = await this.#disk.update(
+            "downloads",
+            parseDownloads,
             (catalog) => {
               const current = catalog?.downloads.find(
                 (item) => downloadKey(item.track.id, item.format) === key,
@@ -800,19 +858,9 @@ export class Cache {
     try {
       signal.throwIfAborted();
       const account = this.#requireAccount();
-      const candidate = v.parse(cachedDownloadSchema, {
-        track,
-        format,
-        contentType,
-        fileName: `${crypto.randomUUID()}.audio`,
-        size: 1,
-        downloadedAt: Date.now(),
-      });
+      const candidate = v.parse(downloadInputSchema, { track, format, contentType });
       const key = downloadKey(candidate.track.id, candidate.format);
-      const lock = await hashedFileName(
-        JSON.stringify([account.host, account.username, key]),
-        ".audio",
-      );
+      const lock = await hash(JSON.stringify([account.host, account.username, key]));
       const save = async () => {
         signal.throwIfAborted();
         // Always take the per-file lock before any short-lived catalog lock.
@@ -820,25 +868,26 @@ export class Cache {
         const cached = await this.readDownload(candidate.track.id, candidate.format, signal);
         if (cached) return cached;
         const expected = this.#downloads.get(key)?.fileName;
-        directory = await this.#filesDirectory();
+        directory = await this.#disk.directory();
         signal.throwIfAborted();
-        fileName = candidate.fileName;
+        fileName = `${crypto.randomUUID()}.audio`;
         const handle = await directory.getFileHandle(fileName, { create: true });
         writable = await handle.createWritable();
         if (!response.body) throw new Error("The downloaded audio response has no body.");
         await response.body.pipeTo(writable, { signal });
         signal.throwIfAborted();
         const file = await handle.getFile();
-        const record = v.parse(cachedDownloadSchema, {
+        const record: CachedDownload = {
           ...candidate,
-          size: file.size,
-          downloadedAt: Date.now(),
-        });
+          fileName,
+          size: v.parse(cachedDownloadSchema.entries.size, file.size),
+          downloadedAt: v.parse(timestamp, Date.now()),
+        };
         await this.#runDownloads(async () => {
           signal.throwIfAborted();
-          const result = await (
-            await this.#downloadsFile()
-          ).update(
+          const result = await this.#disk.update(
+            "downloads",
+            parseDownloads,
             (catalog) => {
               const current = catalog?.downloads.find(
                 (item) => downloadKey(item.track.id, item.format) === key,
@@ -868,7 +917,7 @@ export class Cache {
         return winner;
       };
       return await (navigator.locks
-        ? navigator.locks.request(`libras-download:${lock}`, { signal }, save)
+        ? navigator.locks.request(`libras-download:${lock}.audio`, { signal }, save)
         : save());
     } catch (error) {
       if (!signal.aborted && this.account) this.#downloadsError = error;
@@ -888,10 +937,11 @@ export class Cache {
     // Validation also copies caller-owned records before any asynchronous work.
     const candidate = v.parse(librarySchema, snapshot);
     const prepared = prepareLibrary(candidate);
-    return this.#run(async () => {
+    return this.#runLibrary(async () => {
       signal?.throwIfAborted();
-      const file = await this.#libraryFile();
-      const result = await file.update(
+      const result = await this.#disk.update(
+        "library",
+        parseLibrary,
         (existing) => {
           if (
             existing &&
@@ -907,7 +957,7 @@ export class Cache {
         {
           valid: () => !signal?.aborted,
           // A fresh, validated server library can repair a corrupt snapshot.
-          recoverReadError: () => null,
+          repair: true,
         },
       );
       signal?.throwIfAborted();
