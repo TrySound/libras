@@ -231,32 +231,13 @@ describe("Cache's internal file operations", () => {
     expect(cache.lastModified).toBe(1);
   });
 
-  it("validates scalar queue edits without traversing cached track IDs", async () => {
+  it("reuses the cached track array for scalar queue edits", async () => {
     installDisk();
     const cache = new Cache(account);
     cache.setQueue(queue);
     const tracks = cache.queue.tracks;
-    // Instrument an existing element without changing its value.
-    const read = vi.fn(() => "track");
-    Object.defineProperty(tracks, "0", { get: read, configurable: true });
     cache.setQueue({ tracks, index: 0, position: 2 }, { checkpoint: true });
     expect(cache.queue.tracks).toBe(tracks);
-    expect(read).not.toHaveBeenCalled();
-    expect(() => cache.setQueue({ tracks, index: 1, position: 2 })).toThrow();
-    expect(() => cache.setQueue({ tracks, index: -1, position: 2 })).toThrow();
-    expect(() => cache.setQueue({ tracks, index: 0, position: -1 })).toThrow();
-    const extra = { tracks, index: 0, position: 2, unexpected: true };
-    expect(() => cache.setQueue(extra)).toThrow();
-    let accesses = 0;
-    const changing = {
-      get tracks() {
-        return ++accesses === 1 ? tracks : ["a", "b"];
-      },
-      index: 1,
-      position: 0,
-    };
-    expect(() => cache.setQueue(changing)).toThrow();
-    expect(accesses).toBe(1);
     await cache.flush();
   });
 });

@@ -1,6 +1,5 @@
 import * as v from "valibot";
 import {
-  accountSchema,
   artistSchema,
   albumSchema,
   trackSchema,
@@ -35,20 +34,11 @@ const queueFields = {
 function validSelection(queue: { tracks: readonly string[]; index: number; position: number }) {
   return queue.index < queue.tracks.length && (queue.index !== -1 || queue.position === 0);
 }
-const queueSchema = v.pipe(
-  v.strictObject(queueFields),
-  v.check((queue) => validSelection(queue), "Invalid queue selection."),
-);
-export type CachedQueue = v.InferOutput<typeof queueSchema>;
-// Used only when tracks is the already-validated, immutable cached array.
-const cachedQueueEditSchema = v.pipe(
-  v.strictObject({ ...queueFields, tracks: v.custom<readonly string[]>(Array.isArray) }),
-  v.check((queue) => validSelection(queue), "Invalid queue selection."),
-);
 const queueRecordSchema = v.pipe(
   v.strictObject({ ...queueFields, updatedAt: timestamp }),
   v.check((queue) => validSelection(queue), "Invalid queue selection."),
 );
+export type CachedQueue = Omit<v.InferOutput<typeof queueRecordSchema>, "updatedAt">;
 
 const imagesSchema = v.strictObject({ images: v.array(imageSchema) });
 export interface CachedImage {
@@ -69,7 +59,6 @@ const cachedDownloadSchema = v.strictObject({
   downloadedAt: timestamp,
 });
 export type CachedDownload = v.InferOutput<typeof cachedDownloadSchema>;
-const downloadInputSchema = v.pick(cachedDownloadSchema, ["track", "format", "contentType"]);
 const downloadsSchema = v.strictObject({ downloads: v.array(cachedDownloadSchema) });
 /** Account-local identity, also distinguishing original files from MP3 transcodes. */
 export function downloadKey(trackId: string, format: DownloadFormat) {
@@ -247,12 +236,7 @@ function parseDownloads(value: unknown) {
 function entityMap<T extends { readonly id: string }>(
   records: readonly T[],
 ): ReadonlyMap<string, T> {
-  const map = new Map<string, T>();
-  for (const record of records) {
-    if (map.has(record.id)) throw new Error(`Duplicate metadata ID: ${record.id}`);
-    map.set(record.id, record);
-  }
-  return map;
+  return new Map(records.map((record) => [record.id, record]));
 }
 
 function groupBy<T>(
@@ -373,8 +357,7 @@ export class Cache {
 
   /** Omitting the account creates an empty, non-persisting UI fallback. */
   constructor(account?: Account) {
-    this.account =
-      account === undefined ? undefined : Object.freeze(v.parse(accountSchema, account));
+    this.account = account === undefined ? undefined : Object.freeze({ ...account });
     this.#disk = this.account
       ? new Disk(hash(JSON.stringify([this.account.host, this.account.username])))
       : undefined;
@@ -495,16 +478,15 @@ export class Cache {
   /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
   setQueue(queue: Immutable<CachedQueue>, options: { checkpoint?: boolean } = {}): number {
     this.#requireAccount();
-    const input = { ...queue };
-    const cachedTracks = input.tracks === this.#queue.tracks;
-    const next = cachedTracks ? v.parse(cachedQueueEditSchema, input) : v.parse(queueSchema, input);
-    const updatedAt = v.parse(timestamp, Math.max(Date.now(), this.#queueUpdatedAt + 1));
     const sameTracks =
-      cachedTracks ||
-      (next.tracks.length === this.#queue.tracks.length &&
-        next.tracks.every((id, index) => id === this.#queue.tracks[index]));
-    this.#queue = { ...next, tracks: sameTracks ? this.#queue.tracks : next.tracks };
-    this.#queueUpdatedAt = updatedAt;
+      queue.tracks === this.#queue.tracks ||
+      (queue.tracks.length === this.#queue.tracks.length &&
+        queue.tracks.every((id, index) => id === this.#queue.tracks[index]));
+    this.#queue = {
+      ...queue,
+      tracks: sameTracks ? this.#queue.tracks : [...queue.tracks],
+    };
+    this.#queueUpdatedAt = Math.max(Date.now(), this.#queueUpdatedAt + 1);
     const revision = ++this.#queueRevision;
     this.#scheduleQueue(options.checkpoint ?? false);
     return revision;
@@ -561,9 +543,9 @@ export class Cache {
   /** Persist incoming queue state before adoption, unless local work supersedes it. */
   async replaceQueue(queue: Immutable<CachedQueue>, signal: AbortSignal): Promise<boolean> {
     this.#requireAccount();
-    const next = v.parse(queueSchema, queue);
+    const next: CachedQueue = { ...queue, tracks: [...queue.tracks] };
     const revision = this.#queueRevision;
-    const updatedAt = v.parse(timestamp, Math.max(Date.now(), this.#queueUpdatedAt + 1));
+    const updatedAt = Math.max(Date.now(), this.#queueUpdatedAt + 1);
     const valid = () => !signal.aborted && revision === this.#queueRevision;
     return this.#runQueue(async () => {
       if (!valid()) return false;
@@ -674,7 +656,7 @@ export class Cache {
   async saveImage(id: string, image: CachedImage, signal?: AbortSignal): Promise<Blob | undefined> {
     signal?.throwIfAborted();
     this.#requireAccount();
-    const record = v.parse(imageSchema, {
+    const record: ImageRecord = {
       id,
       fileName: `${crypto.randomUUID()}.image`,
       type: image.type,
@@ -682,7 +664,7 @@ export class Cache {
       cachedAt: Date.now(),
       etag: image.etag,
       lastModified: image.lastModified,
-    });
+    };
     const blob = new Blob([image.blob], { type: record.type });
     const expected = this.#images.get(id)?.fileName;
     return this.#runImages(async () => {
@@ -837,7 +819,11 @@ export class Cache {
     try {
       signal.throwIfAborted();
       const account = this.#requireAccount();
-      const candidate = v.parse(downloadInputSchema, { track, format, contentType });
+      const candidate = {
+        track: structuredClone(track) as CachedDownload["track"],
+        format,
+        contentType,
+      };
       const key = downloadKey(candidate.track.id, candidate.format);
       const lock = await hash(JSON.stringify([account.host, account.username, key]));
       const save = async () => {
@@ -860,8 +846,8 @@ export class Cache {
         const record: CachedDownload = {
           ...candidate,
           fileName,
-          size: v.parse(cachedDownloadSchema.entries.size, file.size),
-          downloadedAt: v.parse(timestamp, Date.now()),
+          size: file.size,
+          downloadedAt: Date.now(),
         };
         await this.#runDownloads(async () => {
           signal.throwIfAborted();
@@ -913,8 +899,7 @@ export class Cache {
   async replaceLibrary(snapshot: Immutable<LibrarySnapshot>, signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
     this.#requireAccount();
-    // Validation also copies caller-owned records before any asynchronous work.
-    const candidate = v.parse(librarySchema, snapshot);
+    const candidate = structuredClone(snapshot) as LibrarySnapshot;
     const prepared = prepareLibrary(candidate);
     return this.#runLibrary(async () => {
       signal?.throwIfAborted();

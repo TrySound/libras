@@ -180,17 +180,14 @@ describe("TrackEngine using Cache", () => {
     expect(cache.downloads.size).toBe(3);
   });
 
-  it.each(["HTTP", "empty", "catalog"])(
+  it.each(["HTTP", "catalog"])(
     "continues queued work after %s failure and permits retry",
     async (failure) => {
       const disk = install();
       const fetcher = vi
         .fn()
         .mockImplementationOnce(
-          async () =>
-            new Response(failure === "empty" ? "" : "bad", {
-              status: failure === "HTTP" ? 500 : 200,
-            }),
+          async () => new Response("bad", { status: failure === "HTTP" ? 500 : 200 }),
         )
         .mockImplementation(async () => new Response("good"));
       vi.stubGlobal("fetch", fetcher);

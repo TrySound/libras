@@ -96,7 +96,7 @@ describe("download cache foundation", () => {
     stop();
   });
 
-  it.each(["stream", "binary", "catalog", "empty"])(
+  it.each(["stream", "binary", "catalog"])(
     "cleans uncommitted files on %s failure and allows retry",
     async (stage) => {
       const disk = installDisk();
@@ -109,8 +109,7 @@ describe("download cache foundation", () => {
           throw new Error("Storage full");
       };
       const source = stream();
-      const response =
-        stage === "stream" ? source.response : new Response(stage === "empty" ? "" : "audio");
+      const response = stage === "stream" ? source.response : new Response("audio");
       const pending = cache.saveDownload(track, "mp3", "audio/mpeg", response, signal());
       if (stage === "stream") {
         source.controller.enqueue(new TextEncoder().encode("partial"));
@@ -424,7 +423,7 @@ describe("download cache foundation", () => {
     },
   );
 
-  it("validates and copies descriptions before streaming and releases invalid responses", async () => {
+  it("copies descriptions before streaming", async () => {
     installDisk();
     const cache = new Cache(account);
     const input = { ...track };
@@ -435,10 +434,5 @@ describe("download cache foundation", () => {
     source.controller.close();
     await pending;
     expect(cache.downloads.get(key)!.track.title).toBe("Track");
-    const invalid = stream();
-    await expect(
-      cache.saveDownload({ ...track, id: "" }, "mp3", "audio/mpeg", invalid.response, signal()),
-    ).rejects.toThrow();
-    expect(invalid.cancel).toHaveBeenCalledOnce();
   });
 });

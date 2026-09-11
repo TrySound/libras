@@ -124,14 +124,6 @@ describe("library cache", () => {
     expect(cache.savedAt).toBe(200);
   });
 
-  it("rejects duplicate IDs before saving", async () => {
-    const disk = installDisk();
-    const value = library();
-    value.tracks.push(value.tracks[0]!);
-    await expect(new Cache(account).replaceLibrary(value)).rejects.toThrow("Duplicate metadata ID");
-    expect(disk.files.size).toBe(0);
-  });
-
   it.each(["invalid JSON", "duplicate IDs", "unexpected field"])(
     "preserves %s on load and repairs it on replacement",
     async (kind) => {

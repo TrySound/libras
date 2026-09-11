@@ -364,14 +364,6 @@ describe("artwork cache foundation", () => {
     expect(cache.imagesError).toBeUndefined();
   });
 
-  it("rejects empty or non-image writes before file I/O", async () => {
-    const disk = installDisk();
-    const cache = new Cache(account);
-    await expect(cache.saveImage("cover", image(""))).rejects.toThrow();
-    await expect(cache.saveImage("cover", { ...image(), type: "text/plain" })).rejects.toThrow();
-    expect(disk.getDirectory).not.toHaveBeenCalled();
-  });
-
   it("isolates image records and bytes for accounts with the same artwork IDs", async () => {
     const disk = installDisk();
     const first = new Cache(account);

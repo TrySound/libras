@@ -247,26 +247,6 @@ describe("queue cache", () => {
     expect(JSON.parse(disk.files.get(queuePath(disk))!).updatedAt).toBe(1_001);
   });
 
-  it.each([
-    { tracks: [""], index: 0, position: 0 },
-    { tracks: [], index: 0, position: 0 },
-    { tracks: ["song"], index: 1, position: 0 },
-    { tracks: ["song"], index: 0.5, position: 0 },
-    { tracks: ["song"], index: -2, position: 0 },
-    { tracks: ["song"], index: -1, position: 1 },
-    { tracks: ["song"], index: 0, position: -1 },
-    { tracks: ["song"], index: 0, position: NaN },
-  ])("rejects invalid queue state without publication: %j", (invalid) => {
-    const disk = installDisk();
-    const cache = new Cache(account);
-    const previous = cache.queue;
-    expect(() => cache.setQueue(invalid)).toThrow();
-    expect(cache.queue).toBe(previous);
-    expect(cache.queueDirty).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-    expect(disk.getDirectory).not.toHaveBeenCalled();
-  });
-
   it.each(["library", "queue", "both"])(
     "restores independent domains when %s is corrupt",
     async (corrupt) => {
