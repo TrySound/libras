@@ -1,9 +1,6 @@
 import * as v from "valibot";
 import {
   accountSchema,
-  artistSchema,
-  albumSchema,
-  trackSchema,
   imageSchema,
   downloadSchema,
   type DownloadedFile,
@@ -13,17 +10,6 @@ import {
   type Account,
 } from "./schema";
 import { OpfsJsonStore, hashedFileName } from "./json-store";
-
-const timestamp = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000));
-const snapshotSchema = v.strictObject({
-  account: accountSchema,
-  lastModified: v.nullable(timestamp),
-  savedAt: timestamp,
-  artists: v.array(artistSchema),
-  albums: v.array(albumSchema),
-  tracks: v.array(trackSchema),
-});
-export type MetadataSnapshot = v.InferOutput<typeof snapshotSchema>;
 
 const audioCatalogSchema = v.array(downloadSchema);
 
@@ -118,61 +104,12 @@ function accountFile<T>(
   });
 }
 
-export type MetadataStorage = Pick<MetadataStore, "account" | "read" | "save">;
 export type QueueStorage = Pick<QueueStore, "account" | "read" | "save">;
 export type ArtworkStorage = Pick<
   ArtworkStore,
   "account" | "read" | "update" | "readImage" | "saveImage"
 >;
 export type AudioStorage = Pick<AudioStore, "read" | "save" | "list" | "entries">;
-
-class MetadataStore {
-  readonly account: Readonly<Account>;
-  readonly #file: () => Promise<OpfsJsonStore<MetadataSnapshot>>;
-
-  constructor(account: Readonly<Account>) {
-    this.account = account;
-    this.#file = accountFile(account, "metadata", "metadata", (value) => {
-      const snapshot = v.parse(snapshotSchema, value);
-      if (snapshot.account.host !== account.host || snapshot.account.username !== account.username)
-        throw new Error("The metadata snapshot belongs to a different account.");
-      return snapshot;
-    });
-  }
-
-  async read() {
-    return (await this.#file()).read();
-  }
-
-  async save(snapshot: MetadataSnapshot, current: () => boolean = () => true) {
-    if (
-      snapshot.account.host !== this.account.host ||
-      snapshot.account.username !== this.account.username
-    )
-      throw new Error("The metadata snapshot belongs to a different account.");
-    const result = await (
-      await this.#file()
-    ).update(
-      (existing) => {
-        if (
-          existing &&
-          ((existing.lastModified !== null &&
-            snapshot.lastModified !== null &&
-            existing.lastModified > snapshot.lastModified) ||
-            (existing.lastModified === snapshot.lastModified &&
-              existing.savedAt > snapshot.savedAt))
-        )
-          return undefined;
-        return snapshot;
-      },
-      {
-        valid: current,
-        recoverReadError: () => null,
-      },
-    );
-    return current() ? (result.value ?? undefined) : undefined;
-  }
-}
 
 class QueueStore {
   readonly account: Readonly<Account>;
@@ -504,14 +441,12 @@ class AudioStore {
 /** Account-configured persistence capabilities; construction performs no I/O. */
 export class Storage {
   readonly account: Readonly<Account>;
-  readonly metadata: MetadataStorage;
   readonly queue: QueueStorage;
   readonly artwork: ArtworkStorage;
   readonly audio: AudioStorage;
 
   constructor(account: Account) {
     this.account = Object.freeze({ ...account });
-    this.metadata = new MetadataStore(this.account);
     this.queue = new QueueStore(this.account);
     this.artwork = new ArtworkStore(this.account);
     this.audio = new AudioStore(this.account);

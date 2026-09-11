@@ -2,7 +2,9 @@ import { vi } from "vitest";
 import { AuthStore } from "./auth";
 import { Memory } from "./memory.svelte";
 import { Network, type MetadataConnection } from "./network.svelte";
-import { Storage, type MetadataSnapshot } from "./storage";
+import type { Storage } from "./storage";
+import type { MetadataSnapshot } from "./metadata.svelte";
+import { Cache } from "./cache.svelte";
 import type { Account } from "./schema";
 import { Session } from "./session.svelte";
 
@@ -58,20 +60,25 @@ export function createSession(saved = false, storage = createStorage()) {
   if (saved) auth.save(credentials);
   const metadata = {
     savedAt: undefined as number | undefined,
-    restore: vi.fn(async (storage: Pick<Storage, "account">) => {
-      const account = storage.account;
-      memory.artists = new Map(snapshot(account).artists.map((artist) => [artist.id, artist]));
+    restore: vi.fn(async (cache: Cache) => {
+      memory.cache = cache;
+      vi.spyOn(cache, "artists", "get").mockReturnValue(
+        new Map(snapshot(cache.account).artists.map((artist) => [artist.id, artist])),
+      );
       metadata.savedAt = 100;
     }),
     prepareConnection: vi.fn(async (connection: MetadataConnection) =>
       snapshot(connection.account),
     ),
-    saveConnection: vi.fn(
-      async (value: MetadataSnapshot, _storage: Storage, _signal: AbortSignal) => value,
-    ),
-    acceptConnection: vi.fn((value: MetadataSnapshot, _storage: Storage) => {
-      memory.artists = new Map(value.artists.map((artist) => [artist.id, artist]));
-      metadata.savedAt = value.savedAt;
+    saveConnection: vi.fn(async (value: MetadataSnapshot, cache: Cache, _signal: AbortSignal) => {
+      vi.spyOn(cache, "artists", "get").mockReturnValue(
+        new Map(value.artists.map((artist) => [artist.id, artist])),
+      );
+      vi.spyOn(cache, "savedAt", "get").mockReturnValue(value.savedAt);
+    }),
+    acceptConnection: vi.fn((cache: Cache) => {
+      memory.cache = cache;
+      metadata.savedAt = cache.savedAt;
     }),
     getModifiedAt: vi.fn(async () => 100),
     readLibrary: vi.fn(async () => ({ artists: [], albums: [], tracks: [] })),

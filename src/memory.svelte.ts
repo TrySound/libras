@@ -1,20 +1,33 @@
 import type { Artist, Album, Track, Account, DownloadedFile, ImageRecord } from "./schema";
-
-/** Consumer-facing records are immutable; engines publish replacements. */
-export type Immutable<T> = T extends object ? { readonly [Key in keyof T]: Immutable<T[Key]> } : T;
+import type { Cache, Immutable } from "./cache.svelte";
+export type { Immutable } from "./cache.svelte";
 
 /**
- * Passive, per-application memory. No I/O, validation, indexing, or lifecycle logic.
- * Prepare related maps first, replace them synchronously without awaiting, and
- * only notify engine subscribers after all assignments finish.
+ * Transitional state for domains not yet migrated to Cache, plus selection of
+ * the active library cache. Library getters delegate; they never copy records.
+ * Queue and resource engines still publish their non-library replacements here.
  * ReadonlyMap is a type contract: never mutate a map after publishing it.
  */
 export class Memory {
-  artists = $state.raw<ReadonlyMap<string, Immutable<Artist>>>(new Map());
-  albums = $state.raw<ReadonlyMap<string, Immutable<Album>>>(new Map());
-  tracks = $state.raw<ReadonlyMap<string, Immutable<Track>>>(new Map());
-  artistAlbums = $state.raw<ReadonlyMap<string, readonly Immutable<Album>[]>>(new Map());
-  albumTracks = $state.raw<ReadonlyMap<string, readonly Immutable<Track>[]>>(new Map());
+  cache = $state.raw<Cache>();
+
+  // Temporary read-only bridge for engines whose non-library data still lives here.
+  // Library records have one owner: the selected account cache.
+  get artists() {
+    return this.cache?.artists ?? emptyArtists;
+  }
+  get albums() {
+    return this.cache?.albums ?? emptyAlbums;
+  }
+  get tracks() {
+    return this.cache?.tracks ?? emptyTracks;
+  }
+  get artistAlbums() {
+    return this.cache?.artistAlbums ?? emptyArtistAlbums;
+  }
+  get albumTracks() {
+    return this.cache?.albumTracks ?? emptyAlbumTracks;
+  }
 
   downloads = $state.raw<ReadonlyMap<string, Immutable<DownloadedFile>>>(new Map());
 
@@ -30,5 +43,11 @@ export class Memory {
   account = $state.raw<Readonly<Account> | null>(null);
 }
 
-/** UI consumers read this view; each engine receives only its writable fields. */
+const emptyArtists: ReadonlyMap<string, Immutable<Artist>> = new Map();
+const emptyAlbums: ReadonlyMap<string, Immutable<Album>> = new Map();
+const emptyTracks: ReadonlyMap<string, Immutable<Track>> = new Map();
+const emptyArtistAlbums: ReadonlyMap<string, readonly Immutable<Album>[]> = new Map();
+const emptyAlbumTracks: ReadonlyMap<string, readonly Immutable<Track>[]> = new Map();
+
+/** Read-only bridge while queue and binary caches are migrated. */
 export type MemoryView = Readonly<Memory>;

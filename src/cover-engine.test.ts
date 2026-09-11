@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoverEngine } from "./cover.svelte";
-import { Storage, type MetadataSnapshot } from "./storage";
+import { Storage } from "./storage";
+import type { MetadataSnapshot } from "./metadata.svelte";
 import type { Account } from "./schema";
 import { Network } from "./network.svelte";
-import { Memory } from "./memory.svelte";
+import { Memory } from "./memory-test-helpers.svelte";
 
 function createConnection(credentials: Parameters<Network["prepare"]>[0]) {
   const network = new Network();

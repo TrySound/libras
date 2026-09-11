@@ -13,6 +13,7 @@ import type { QueueEngine } from "./queue.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Storage as AccountStorage } from "./storage";
+import { Cache } from "./cache.svelte";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -184,7 +185,7 @@ export class Session {
     account = this.#selectAccount(account);
     const storage = this.#storageFor(account);
     await Promise.all([
-      metadata.restore(storage).catch((error) => {
+      metadata.restore(new Cache(account)).catch((error) => {
         if (!this.#destroyed && this.#options.memory.account === account)
           this.error = `Could not restore library: ${error instanceof Error ? error.message : String(error)}`;
       }),
@@ -216,11 +217,12 @@ export class Session {
       auth.saveAccount(prepared.account);
       preferences.setItem(offlineModeStorageKey, "false");
       const metadataStorage = this.#storageFor(prepared.account);
-      const snapshot = await metadata.saveConnection(prepared, metadataStorage, connection.signal);
+      const cache = new Cache(prepared.account);
+      await metadata.saveConnection(prepared, cache, connection.signal);
       if (!this.#valid(generation)) return false;
       const activeConnection = this.#options.network.accept(connection);
       this.#options.playback.suspend();
-      this.#selectAccount(snapshot.account);
+      this.#selectAccount(cache.account);
       this.localReady = false;
       // Clear foreign queue/artwork synchronously before publishing new metadata.
       this.#restoration = Promise.all([
@@ -228,7 +230,7 @@ export class Session {
         covers.restore(metadataStorage),
         tracks.restore(metadataStorage),
       ]).then(() => {});
-      metadata.acceptConnection(snapshot, metadataStorage);
+      metadata.acceptConnection(cache);
       this.auth = credentials;
       this.#attach(activeConnection);
       await this.#restoration;

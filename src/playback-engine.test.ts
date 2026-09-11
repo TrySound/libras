@@ -6,7 +6,7 @@ import { QueueEngine } from "./queue.svelte";
 import { Storage } from "./storage";
 import type { Track } from "./schema";
 import type { TrackSource } from "./track.svelte";
-import { Memory } from "./memory.svelte";
+import { Memory } from "./memory-test-helpers.svelte";
 
 class AudioStub extends EventTarget {
   preload = "";

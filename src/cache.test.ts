@@ -257,6 +257,16 @@ describe("library cache", () => {
     expect(disk.state.writes).toBe(1);
   });
 
+  it("orders snapshots by savedAt when the server timestamp is unknown", async () => {
+    const disk = installDisk();
+    const cache = new Cache(account);
+    await cache.replaceLibrary({ ...library(200), lastModified: null });
+    await cache.replaceLibrary({ ...library(100), lastModified: null });
+    expect(cache.savedAt).toBe(200);
+    expect(cache.lastModified).toBeNull();
+    expect(disk.state.writes).toBe(1);
+  });
+
   it("isolates accounts with overlapping entity IDs", async () => {
     const disk = installDisk();
     const first = new Cache(account);

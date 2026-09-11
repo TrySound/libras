@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Network } from "./network.svelte";
 import { TrackEngine } from "./track.svelte";
 import { Storage } from "./storage";
-import { Memory as AppMemory } from "./memory.svelte";
+import { Memory as AppMemory } from "./memory-test-helpers.svelte";
 
 const auth = {
   host: "https://music.example.com",

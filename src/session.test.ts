@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MetadataSnapshot } from "./storage";
+import type { MetadataSnapshot } from "./metadata.svelte";
 import { NetworkTransportError } from "./network.svelte";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
@@ -422,13 +422,13 @@ describe("session", () => {
     const { session, auth, metadata, memory } = await connected();
     session.disconnect();
     const previous = memory.artists;
-    const saved = deferred<MetadataSnapshot>();
+    const saved = deferred();
     metadata.saveConnection.mockReturnValueOnce(saved.promise);
     const connecting = session.connect(input);
     await vi.waitFor(() => expect(metadata.saveConnection).toHaveBeenCalledOnce());
     expect(auth.load()).not.toBeNull();
     session.disconnect();
-    saved.resolve(snapshot(credentials));
+    saved.resolve();
     expect(await connecting).toBe(false);
     expect(auth.load()).toBeNull();
     expect(memory.artists).toBe(previous);
