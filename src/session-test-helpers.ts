@@ -58,28 +58,33 @@ export function createSession(saved = false, storage = createStorage()) {
   const memory = new Memory();
   const auth = new AuthStore(storage);
   if (saved) auth.save(credentials);
-  const metadata = {
-    savedAt: undefined as number | undefined,
-    restore: vi.fn(async (cache: Cache) => {
-      memory.cache = cache;
-      vi.spyOn(cache, "artists", "get").mockReturnValue(
-        new Map(snapshot(cache.account).artists.map((artist) => [artist.id, artist])),
+  const loadCache = vi
+    .spyOn(Cache.prototype, "load")
+    .mockReset()
+    .mockImplementation(async function (this: Cache, signal) {
+      signal?.throwIfAborted();
+      vi.spyOn(this, "artists", "get").mockReturnValue(
+        new Map(snapshot(this.account).artists.map((artist) => [artist.id, artist])),
       );
-      metadata.savedAt = 100;
-    }),
+      vi.spyOn(this, "savedAt", "get").mockReturnValue(100);
+    });
+  const saveLibrary = vi
+    .spyOn(Cache.prototype, "replaceLibrary")
+    .mockReset()
+    .mockImplementation(async function (this: Cache, value, signal) {
+      signal?.throwIfAborted();
+      vi.spyOn(this, "artists", "get").mockReturnValue(
+        new Map(value.artists.map((artist) => [artist.id, artist])),
+      );
+      vi.spyOn(this, "savedAt", "get").mockReturnValue(value.savedAt);
+    });
+  const metadata = {
+    get savedAt() {
+      return memory.cache?.savedAt;
+    },
     prepareConnection: vi.fn(async (connection: MetadataConnection) =>
       snapshot(connection.account),
     ),
-    saveConnection: vi.fn(async (value: MetadataSnapshot, cache: Cache, _signal: AbortSignal) => {
-      vi.spyOn(cache, "artists", "get").mockReturnValue(
-        new Map(value.artists.map((artist) => [artist.id, artist])),
-      );
-      vi.spyOn(cache, "savedAt", "get").mockReturnValue(value.savedAt);
-    }),
-    acceptConnection: vi.fn((cache: Cache) => {
-      memory.cache = cache;
-      metadata.savedAt = cache.savedAt;
-    }),
     getModifiedAt: vi.fn(async () => 100),
     readLibrary: vi.fn(async () => ({ artists: [], albums: [], tracks: [] })),
     setConnection: vi.fn(),
@@ -146,5 +151,7 @@ export function createSession(saved = false, storage = createStorage()) {
     playback,
     storage,
     prepareConnection,
+    loadCache,
+    saveLibrary,
   };
 }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MetadataSnapshot } from "./metadata.svelte";
+import type { Cache } from "./cache.svelte";
 import { NetworkTransportError } from "./network.svelte";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
@@ -20,15 +21,16 @@ async function connected() {
 
 afterEach(() => {
   for (const { session } of fixtures.splice(0)) session.destroy();
+  vi.restoreAllMocks();
 });
 
 const input = { host: credentials.host, username: credentials.username, password: "password" };
 
 describe("session", () => {
   it("reports failed metadata restoration without preventing offline queue restoration", async () => {
-    const { session, metadata, queue, storage } = setup(true);
+    const { session, metadata, queue, storage, loadCache } = setup(true);
     storage.setItem("navidrome-offline-mode", "true");
-    metadata.restore.mockRejectedValueOnce(new Error("Corrupt library"));
+    loadCache.mockRejectedValueOnce(new Error("Corrupt library"));
     session.start();
     await vi.waitFor(() => expect(session.localReady).toBe(true));
     expect(session.error).toContain("Could not restore library: Corrupt library");
@@ -37,8 +39,8 @@ describe("session", () => {
   });
 
   it("can recover online after a failed metadata restoration", async () => {
-    const { session, metadata, queue } = setup(true);
-    metadata.restore.mockRejectedValueOnce(new Error("Corrupt library"));
+    const { session, metadata, queue, loadCache } = setup(true);
+    loadCache.mockRejectedValueOnce(new Error("Corrupt library"));
     const refreshed = deferred();
     metadata.refresh.mockReturnValueOnce(refreshed.promise);
     session.start();
@@ -208,7 +210,8 @@ describe("session", () => {
   });
 
   it("migrates saved credentials to a non-secret account and refreshes without reconnecting", async () => {
-    const { session, storage, metadata, tracks, queue, prepareConnection } = await connected();
+    const { session, storage, metadata, tracks, queue, prepareConnection, loadCache } =
+      await connected();
     expect(JSON.parse(storage.getItem("navidrome-account")!)).toEqual({
       host: credentials.host,
       username: credentials.username,
@@ -228,7 +231,7 @@ describe("session", () => {
     refresh.resolve();
     await Promise.all([pending, overlapping]);
     expect(metadata.getModifiedAt).toHaveBeenCalledTimes(2);
-    expect(metadata.restore).toHaveBeenCalledOnce();
+    expect(loadCache).toHaveBeenCalledOnce();
     expect(tracks.setConnection.mock.calls.at(-1)![0]).toBe(client);
     expect(queue.refresh).toHaveBeenCalledTimes(2);
     expect(await session.connect(input)).toBe(false);
@@ -359,7 +362,7 @@ describe("session", () => {
       ).toBe(false);
       expect(memory.artists).toBe(previous);
       expect(memory.account).toBe(selection);
-      expect(metadata.acceptConnection).not.toHaveBeenCalled();
+      expect(memory.cache?.account).toEqual(selection);
       expect(session.auth).toBeNull();
       expect(auth.load()).toBeNull();
       expect(auth.loadAccount()).toEqual(selection);
@@ -371,7 +374,7 @@ describe("session", () => {
   it.each(["disconnect", "destroy"] as const)(
     "ignores a candidate that resolves after %s",
     async (action) => {
-      const { session, auth, metadata, tracks, prepareConnection } = setup();
+      const { session, auth, memory, tracks, prepareConnection, saveLibrary } = setup();
       session.start();
       const prepared = deferred<MetadataSnapshot>();
       prepareConnection.mockReturnValueOnce(prepared.promise);
@@ -383,7 +386,8 @@ describe("session", () => {
       expect(await connecting).toBe(false);
       expect(client.signal.aborted).toBe(true);
       expect(auth.load()).toBeNull();
-      expect(metadata.acceptConnection).not.toHaveBeenCalled();
+      expect(memory.cache).toBeUndefined();
+      expect(saveLibrary).not.toHaveBeenCalled();
       expect(tracks.setConnection.mock.calls.every(([client]) => client === undefined)).toBe(true);
     },
   );
@@ -391,7 +395,7 @@ describe("session", () => {
   it.each(["credentials", "metadata"])(
     "preserves the workspace and removes partial credentials when saving %s fails",
     async (stage) => {
-      const { session, auth, metadata, memory, storage } = await connected();
+      const { session, auth, memory, storage, saveLibrary } = await connected();
       session.disconnect();
       const previous = memory.artists;
       const account = memory.account;
@@ -399,11 +403,11 @@ describe("session", () => {
         vi.spyOn(auth, "save").mockImplementationOnce(() => {
           throw new TypeError("Storage full");
         });
-      else metadata.saveConnection.mockRejectedValueOnce(new TypeError("Storage full"));
+      else saveLibrary.mockRejectedValueOnce(new TypeError("Storage full"));
       expect(await session.connect({ ...input, username: "other" })).toBe(false);
       expect(session.error).toBe("Storage full");
       expect(memory.artists).toBe(previous);
-      expect(metadata.acceptConnection).not.toHaveBeenCalled();
+      expect(memory.cache?.account).toEqual(account);
       expect(auth.load()).toBeNull();
       expect(auth.loadAccount()).toEqual(account);
       expect(storage.getItem("navidrome-offline-mode")).toBe("true");
@@ -418,39 +422,136 @@ describe("session", () => {
     expect(prepareConnection).not.toHaveBeenCalled();
   });
 
-  it("removes credentials saved during connection if disconnect interrupts metadata persistence", async () => {
-    const { session, auth, metadata, memory } = await connected();
-    session.disconnect();
-    const previous = memory.artists;
-    const saved = deferred();
-    metadata.saveConnection.mockReturnValueOnce(saved.promise);
-    const connecting = session.connect(input);
-    await vi.waitFor(() => expect(metadata.saveConnection).toHaveBeenCalledOnce());
-    expect(auth.load()).not.toBeNull();
-    session.disconnect();
-    saved.resolve();
-    expect(await connecting).toBe(false);
-    expect(auth.load()).toBeNull();
-    expect(memory.artists).toBe(previous);
-    expect(metadata.acceptConnection).not.toHaveBeenCalled();
-  });
+  it.each(["disconnect", "destroy"] as const)(
+    "does not select a candidate when %s interrupts cache persistence",
+    async (action) => {
+      const { session, auth, memory, saveLibrary } = await connected();
+      session.disconnect();
+      const previous = memory.cache;
+      const saved = deferred();
+      saveLibrary.mockReturnValueOnce(saved.promise);
+      const connecting = session.connect(input);
+      await vi.waitFor(() => expect(saveLibrary).toHaveBeenCalledOnce());
+      const signal = saveLibrary.mock.calls[0][1]!;
+      expect(saveLibrary.mock.contexts[0]).not.toBe(previous);
+      expect(memory.cache).toBe(previous);
+      expect(auth.load()).not.toBeNull();
+      session[action]();
+      expect(signal.aborted).toBe(true);
+      saved.resolve();
+      expect(await connecting).toBe(false);
+      if (action === "disconnect") expect(auth.load()).toBeNull();
+      expect(memory.cache).toBe(previous);
+    },
+  );
 
   it("does not reconnect when disconnect occurs during startup restoration", async () => {
-    const { session, auth, metadata, queue, memory } = setup(true);
+    const { session, auth, metadata, queue, memory, loadCache } = setup(true);
     const restored = deferred();
-    metadata.restore.mockReturnValueOnce(restored.promise);
+    loadCache.mockReturnValueOnce(restored.promise);
     session.start();
+    const cache = memory.cache;
+    const signal = loadCache.mock.calls[0][0]!;
     session.disconnect();
+    expect(signal.aborted).toBe(false);
     restored.resolve();
     await vi.waitFor(() => expect(queue.restore).toHaveBeenCalledOnce());
     expect(memory.queuePosition).toBe(17);
+    expect(memory.cache).toBe(cache);
     expect(auth.load()).toBeNull();
     expect(metadata.getModifiedAt).not.toHaveBeenCalled();
     expect(queue.refresh).not.toHaveBeenCalled();
   });
 
+  it("selects and loads a cache before attaching network access", async () => {
+    const { session, memory, metadata, loadCache, queue } = setup(true);
+    const loaded = deferred();
+    loadCache.mockReturnValueOnce(loaded.promise);
+    session.start();
+    expect(memory.cache?.account).toEqual(memory.account);
+    expect(loadCache.mock.contexts[0]).toBe(memory.cache);
+    expect(session.localReady).toBe(false);
+    expect(
+      metadata.setConnection.mock.calls.every(([connection]) => connection === undefined),
+    ).toBe(true);
+    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+    expect(queue.restore).not.toHaveBeenCalled();
+    loaded.resolve();
+    await vi.waitFor(() => expect(session.status).toBe("connected"));
+    expect(session.localReady).toBe(true);
+    expect(metadata.setConnection.mock.calls.at(-1)![0]).toBeDefined();
+  });
+
+  it("aborts cache loading on destruction without late readiness or errors", async () => {
+    const { session, memory, loadCache, metadata, covers, queue } = setup(true);
+    const loaded = deferred();
+    loadCache.mockReturnValueOnce(loaded.promise);
+    session.start();
+    const cache = memory.cache;
+    const signal = loadCache.mock.calls[0][0]!;
+    session.destroy();
+    expect(signal.aborted).toBe(true);
+    loaded.reject(new DOMException("Stopped", "AbortError"));
+    // Drain the rejected load, independent domain restoration and startup callback.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(session.error).toBe("");
+    expect(session.localReady).toBe(false);
+    expect(memory.cache).toBe(cache);
+    expect(queue.restore).not.toHaveBeenCalled();
+    expect(covers.refresh).not.toHaveBeenCalled();
+    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+  });
+
+  it.each(["listener", "other"])(
+    "selects the prepared %s cache only after persistence and network acceptance",
+    async (username) => {
+      const { session, memory, saveLibrary, network, playback } = await connected();
+      session.disconnect();
+      const previous = memory.cache;
+      const save = saveLibrary.getMockImplementation()!;
+      const committed = deferred();
+      saveLibrary.mockImplementationOnce(async function (this: Cache, value, signal) {
+        expect(this).not.toBe(previous);
+        expect(memory.cache).toBe(previous);
+        await committed.promise;
+        await save.call(this, value, signal);
+        expect(memory.cache).toBe(previous);
+      });
+      const accept = vi.mocked(network.accept).getMockImplementation()!;
+      vi.spyOn(network, "accept").mockImplementation((connection) => {
+        expect(memory.cache).toBe(previous);
+        return accept(connection);
+      });
+      const connecting = session.connect({ ...input, username });
+      await vi.waitFor(() => expect(saveLibrary).toHaveBeenCalledOnce());
+      expect(memory.cache).toBe(previous);
+      committed.resolve();
+      expect(await connecting).toBe(true);
+      expect(playback.suspend).toHaveBeenCalledOnce();
+      expect(memory.cache).toBe(saveLibrary.mock.contexts[0]);
+      expect(memory.cache).not.toBe(previous);
+      expect(memory.cache?.account.username).toBe(username);
+      expect(memory.artists.get("artist")?.name).toBe(username);
+    },
+  );
+
+  it("keeps the selected cache if network acceptance fails after persistence", async () => {
+    const { session, memory, auth, network, saveLibrary } = await connected();
+    session.disconnect();
+    const previous = memory.cache;
+    vi.spyOn(network, "accept").mockImplementationOnce(() => {
+      throw new Error("Acceptance failed");
+    });
+    expect(await session.connect({ ...input, username: "other" })).toBe(false);
+    expect(saveLibrary).toHaveBeenCalledOnce();
+    expect(memory.cache).toBe(previous);
+    expect(memory.account).toEqual(previous?.account);
+    expect(auth.load()).toBeNull();
+    expect(session.error).toBe("Acceptance failed");
+  });
+
   it("keeps credentials for voluntary offline mode and resumes with a fresh cancellable client", async () => {
-    const { session, tracks, metadata, auth, queue } = await connected();
+    const { session, tracks, metadata, auth, queue, loadCache } = await connected();
     const client = tracks.setConnection.mock.calls.at(-1)![0];
     await session.setOfflineMode(true);
     expect(client.signal.aborted).toBe(true);
@@ -458,7 +559,7 @@ describe("session", () => {
     expect(session.auth).not.toBeNull();
     await session.setOfflineMode(false);
     expect(tracks.setConnection.mock.calls.at(-1)![0]).not.toBe(client);
-    expect(metadata.restore).toHaveBeenCalledOnce();
+    expect(loadCache).toHaveBeenCalledOnce();
     expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
     expect(metadata.readLibrary).not.toHaveBeenCalled();
     expect(queue.refresh).toHaveBeenCalledOnce();

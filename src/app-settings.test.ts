@@ -44,6 +44,7 @@ afterEach(async () => {
   document.body.innerHTML = "";
   mocks.session = undefined;
   mocks.navigate.mockClear();
+  vi.restoreAllMocks();
 });
 
 async function setup(saved = false) {

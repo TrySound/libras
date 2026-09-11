@@ -22,7 +22,7 @@ vi.mock("./session.svelte", () => ({
     }
     start() {
       mocks.options!.memory.account = mocks.cache!.account;
-      void mocks.options!.metadata.restore(mocks.cache!);
+      mocks.options!.memory.cache = mocks.cache!;
       return null;
     }
     destroy() {}
@@ -72,7 +72,6 @@ it("renders the cache through Memory, reacts to replacements, and stops observin
   }));
   const first = new Cache({ host: "https://music.example", username: "first" });
   await first.replaceLibrary(library("First artist", 1));
-  vi.spyOn(first, "load").mockResolvedValue();
   mocks.cache = first;
   const target = document.createElement("main");
   document.body.append(target);
@@ -90,7 +89,8 @@ it("renders the cache through Memory, reacts to replacements, and stops observin
   const second = new Cache({ host: "https://music.example", username: "second" });
   await second.replaceLibrary(library("Second artist", 3));
   mocks.options!.memory.account = second.account;
-  mocks.options!.metadata.acceptConnection(second);
+  mocks.options!.metadata.setConnection(undefined);
+  mocks.options!.memory.cache = second;
   flushSync();
   expect(names()).toEqual(["Second artist"]);
   expect(mocks.options!.memory.artists).toBe(second.artists);

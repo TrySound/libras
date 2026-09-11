@@ -18,18 +18,10 @@ import { Cache } from "./cache.svelte";
 const offlineModeStorageKey = "navidrome-offline-mode";
 
 interface SessionOptions {
-  memory: MemoryView & Pick<Memory, "account">;
+  memory: MemoryView & Pick<Memory, "account" | "cache">;
   network: Network;
   auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
-  metadata: Pick<
-    MetadataEngine,
-    | "restore"
-    | "prepareConnection"
-    | "saveConnection"
-    | "acceptConnection"
-    | "setConnection"
-    | "refresh"
-  >;
+  metadata: Pick<MetadataEngine, "prepareConnection" | "setConnection" | "refresh">;
   covers: Pick<CoverEngine, "restore" | "refresh" | "setConnection">;
   queue: Pick<
     QueueEngine,
@@ -57,6 +49,7 @@ export class Session {
   #refreshError = $state.raw<unknown>();
   #refreshPending?: Promise<void>;
   #restoration: Promise<void> = Promise.resolve();
+  #loadController?: AbortController;
   #generation = 0;
   #workspaces = new Map<string, AccountStorage>();
   #started = false;
@@ -180,23 +173,33 @@ export class Session {
   }
 
   async #restore(account: Account) {
-    const { metadata, covers, queue, tracks } = this.#options;
+    const { covers, queue, tracks, memory } = this.#options;
     this.localReady = false;
-    account = this.#selectAccount(account);
-    const storage = this.#storageFor(account);
-    await Promise.all([
-      metadata.restore(new Cache(account)).catch((error) => {
-        if (!this.#destroyed && this.#options.memory.account === account)
-          this.error = `Could not restore library: ${error instanceof Error ? error.message : String(error)}`;
-      }),
-      covers.restore(storage),
-      tracks.restore(storage),
-    ]);
-    if (this.#destroyed) return;
-    // Queue restoration is credential-free even if the metadata cache is missing.
-    await queue.restore(this.#storageFor(account));
-    if (!this.#destroyed) await covers.refresh();
-    if (!this.#destroyed) this.localReady = true;
+    const cache = new Cache(account);
+    this.#selectAccount(cache.account);
+    memory.cache = cache;
+    this.#loadController?.abort();
+    const controller = new AbortController();
+    this.#loadController = controller;
+    const current = () => !this.#destroyed && memory.cache === cache;
+    const storage = this.#storageFor(cache.account);
+    try {
+      await Promise.all([
+        cache.load(controller.signal).catch((error) => {
+          if (current())
+            this.error = `Could not restore library: ${error instanceof Error ? error.message : String(error)}`;
+        }),
+        covers.restore(storage),
+        tracks.restore(storage),
+      ]);
+      if (!current()) return;
+      // A corrupt library must not block the other local domains.
+      await queue.restore(storage);
+      if (current()) await covers.refresh();
+      if (current()) this.localReady = true;
+    } finally {
+      if (this.#loadController === controller) this.#loadController = undefined;
+    }
   }
 
   async connect(input: PasswordAuth): Promise<boolean> {
@@ -216,21 +219,25 @@ export class Session {
       auth.save(credentials);
       auth.saveAccount(prepared.account);
       preferences.setItem(offlineModeStorageKey, "false");
-      const metadataStorage = this.#storageFor(prepared.account);
+      // Never prepare into the selected cache, including same-account reconnects.
       const cache = new Cache(prepared.account);
-      await metadata.saveConnection(prepared, cache, connection.signal);
+      const { account: _account, ...library } = prepared;
+      await cache.replaceLibrary(library, connection.signal);
       if (!this.#valid(generation)) return false;
       const activeConnection = this.#options.network.accept(connection);
       this.#options.playback.suspend();
       this.#selectAccount(cache.account);
       this.localReady = false;
-      // Clear foreign queue/artwork synchronously before publishing new metadata.
+      // Cancel old metadata work before selecting the prepared cache. Resource
+      // restoration clears foreign state synchronously, without an intervening await.
+      metadata.setConnection(undefined);
+      const storage = this.#storageFor(cache.account);
       this.#restoration = Promise.all([
-        queue.restore(metadataStorage),
-        covers.restore(metadataStorage),
-        tracks.restore(metadataStorage),
+        queue.restore(storage),
+        covers.restore(storage),
+        tracks.restore(storage),
       ]).then(() => {});
-      metadata.acceptConnection(cache);
+      this.#options.memory.cache = cache;
       this.auth = credentials;
       this.#attach(activeConnection);
       await this.#restoration;
@@ -332,6 +339,8 @@ export class Session {
   destroy() {
     this.#destroyed = true;
     this.#generation++;
+    this.#loadController?.abort();
+    this.#loadController = undefined;
     this.#detach();
   }
 }
