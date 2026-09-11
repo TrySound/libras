@@ -54,6 +54,24 @@ describe("library cache", () => {
     expect(restored.albums.get("album")).toBe(restored.artistAlbums.get("artist")![0]);
   });
 
+  it("restores its initial view when the persisted snapshot is absent", async () => {
+    const disk = installDisk();
+    const cache = new Cache(account);
+    const initialArtists = cache.artists;
+    await cache.replaceLibrary(library());
+    const path = [...disk.files.keys()].find((path) => path.endsWith("/library.json"));
+    if (!path) throw new Error("Expected a persisted library");
+    disk.files.delete(path);
+    const writes = disk.state.writes;
+    await cache.load();
+    expect(cache.artists).toBe(initialArtists);
+    expect(cache.tracks.size).toBe(0);
+    expect(cache.albumTracks.size).toBe(0);
+    expect(cache.savedAt).toBeUndefined();
+    expect(cache.lastModified).toBeUndefined();
+    expect(disk.state.writes).toBe(writes);
+  });
+
   it("derives sorted relationships without duplicating persisted records", async () => {
     installDisk();
     const cache = new Cache(account);
@@ -182,12 +200,38 @@ describe("library cache", () => {
     const disk = installDisk();
     const first = new Cache(account);
     const second = new Cache(account);
-    await Promise.all([first.replaceLibrary(library(200)), second.replaceLibrary(library(100))]);
+    const winner = library(200);
+    winner.tracks = winner.tracks.map((track) => ({ ...track, title: "Winner" }));
+    await Promise.all([first.replaceLibrary(winner), second.replaceLibrary(library(100))]);
     expect(second.savedAt).toBe(200);
+    expect(second.tracks.get("track")?.title).toBe("Winner");
+    expect(second.albumTracks.get("album")?.[0]).toBe(second.tracks.get("track"));
     expect(disk.state.writes).toBe(1);
     await second.replaceLibrary({ ...library(300), lastModified: 9 });
     expect(second.lastModified).toBe(10);
     expect(disk.state.writes).toBe(1);
+  });
+
+  it("projects only the winning snapshot, not the rejected candidate", async () => {
+    installDisk();
+    const snapshot = (name: string, savedAt: number): LibrarySnapshot => ({
+      ...library(savedAt),
+      artists: [
+        { id: "z", name: `${name} Z`, genres: [] },
+        { id: "a", name: `${name} A`, genres: [] },
+      ],
+    });
+    await new Cache(account).replaceLibrary(snapshot("Winner", 200));
+    const compare = vi.spyOn(String.prototype, "localeCompare");
+    const cache = new Cache(account);
+    await cache.replaceLibrary(snapshot("Candidate", 100));
+    expect(compare).toHaveBeenCalledOnce();
+    expect(compare).toHaveBeenCalledWith("Winner Z");
+    expect([...cache.artists.values()].map((artist) => artist.name)).toEqual([
+      "Winner A",
+      "Winner Z",
+    ]);
+    expect(cache.savedAt).toBe(200);
   });
 
   it("orders snapshots by savedAt when the server timestamp is unknown", async () => {

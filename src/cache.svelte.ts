@@ -208,6 +208,62 @@ class Disk {
   }
 }
 
+interface SnapshotOptions<T, View> {
+  document: DocumentName;
+  initial: View;
+  parse: (value: unknown) => T;
+  project: (snapshot: T) => View;
+  shouldReplace: (candidate: T, existing: T) => boolean;
+}
+
+/** Complete snapshots publish only after persistence. Keep the projected view,
+ * not a second copy of the source document. Domain callers prepare owned inputs. */
+class SnapshotStore<T, View> {
+  #value: View;
+  #serial = serial();
+
+  constructor(
+    readonly disk: Disk | undefined,
+    readonly options: SnapshotOptions<T, View>,
+  ) {
+    this.#value = $state.raw(options.initial);
+  }
+
+  get value() {
+    return this.#value;
+  }
+
+  load(signal?: AbortSignal): Promise<void> {
+    return this.#serial(async () => {
+      signal?.throwIfAborted();
+      const snapshot = await this.disk?.read(this.options.document, this.options.parse);
+      signal?.throwIfAborted();
+      this.#value = snapshot == null ? this.options.initial : this.options.project(snapshot);
+    });
+  }
+
+  async replace(candidate: T, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    const disk = this.disk;
+    if (!disk) throw new Error("No account selected.");
+    return this.#serial(async () => {
+      signal?.throwIfAborted();
+      const result = await disk.update(
+        this.options.document,
+        this.options.parse,
+        (existing) =>
+          existing === null || this.options.shouldReplace(candidate, existing)
+            ? candidate
+            : undefined,
+        // Complete authoritative snapshots can replace corrupt persisted data.
+        { valid: () => !signal?.aborted, repair: true },
+      );
+      signal?.throwIfAborted();
+      if (result.value !== null) this.#value = this.options.project(result.value);
+    });
+  }
+}
+
 interface CheckpointRecord<T> {
   readonly value: T;
   readonly updatedAt: number;
@@ -528,7 +584,7 @@ function unique<T>(records: readonly T[], key: (record: T) => string) {
   if (new Set(records.map(key)).size !== records.length)
     throw new Error("Duplicate cache references.");
 }
-function parseLibrary(value: unknown) {
+function parseLibrary(value: unknown): Immutable<LibrarySnapshot> {
   const record = v.parse(librarySchema, value);
   for (const records of [record.artists, record.albums, record.tracks])
     unique<{ id: string }>(records, (item) => item.id);
@@ -653,9 +709,8 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
  */
 export class Cache {
   readonly account: Readonly<Account> | undefined;
-  #library = $state.raw(prepareLibrary(null));
+  readonly #library: SnapshotStore<Immutable<LibrarySnapshot>, ReturnType<typeof prepareLibrary>>;
   readonly #disk: Disk | undefined;
-  #runLibrary = serial();
   readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
   readonly #images: BinaryCatalog<Immutable<ImageRecord>>;
   readonly #downloads: BinaryCatalog<Immutable<CachedDownload>>;
@@ -666,6 +721,19 @@ export class Cache {
     this.#disk = this.account
       ? new Disk(hash(JSON.stringify([this.account.host, this.account.username])))
       : undefined;
+    this.#library = new SnapshotStore(this.#disk, {
+      document: "library",
+      initial: prepareLibrary(null),
+      parse: parseLibrary,
+      project: prepareLibrary,
+      shouldReplace: (candidate, existing) =>
+        !(
+          (existing.lastModified !== null &&
+            candidate.lastModified !== null &&
+            existing.lastModified > candidate.lastModified) ||
+          (existing.lastModified === candidate.lastModified && existing.savedAt > candidate.savedAt)
+        ),
+    });
     this.#queue = new CheckpointStore(this.#disk, {
       document: "queue",
       initial: { tracks: [], index: -1, position: 0 },
@@ -689,28 +757,28 @@ export class Cache {
   }
 
   get artists() {
-    return this.#library.artists;
+    return this.#library.value.artists;
   }
   get albums() {
-    return this.#library.albums;
+    return this.#library.value.albums;
   }
   get tracks() {
-    return this.#library.tracks;
+    return this.#library.value.tracks;
   }
   get artistAlbums() {
-    return this.#library.artistAlbums;
+    return this.#library.value.artistAlbums;
   }
   get albumTracks() {
-    return this.#library.albumTracks;
+    return this.#library.value.albumTracks;
   }
   get artistArtwork() {
-    return this.#library.artistArtwork;
+    return this.#library.value.artistArtwork;
   }
   get albumArtwork() {
-    return this.#library.albumArtwork;
+    return this.#library.value.albumArtwork;
   }
   get trackArtwork() {
-    return this.#library.trackArtwork;
+    return this.#library.value.trackArtwork;
   }
   get images() {
     return this.#images.records;
@@ -720,10 +788,10 @@ export class Cache {
   }
 
   get lastModified() {
-    return this.#library.lastModified;
+    return this.#library.value.lastModified;
   }
   get savedAt() {
-    return this.#library.savedAt;
+    return this.#library.value.savedAt;
   }
 
   /** Restore independent local domains, reporting failures after all finish. */
@@ -731,7 +799,7 @@ export class Cache {
     signal?.throwIfAborted();
     if (!this.account) return;
     const [library, queue, images, downloads] = await Promise.allSettled([
-      this.#loadLibrary(signal),
+      this.#library.load(signal),
       this.#queue.load(signal),
       this.#images.load(signal),
       this.#downloads.load(signal),
@@ -749,15 +817,6 @@ export class Cache {
         ...(images.status === "rejected" ? { images: images.reason } : {}),
         ...(downloads.status === "rejected" ? { downloads: downloads.reason } : {}),
       });
-  }
-
-  #loadLibrary(signal?: AbortSignal): Promise<void> {
-    return this.#runLibrary(async () => {
-      signal?.throwIfAborted();
-      const record = await this.#disk?.read("library", parseLibrary);
-      signal?.throwIfAborted();
-      this.#library = prepareLibrary(record ?? null);
-    });
   }
 
   get queue() {
@@ -916,35 +975,6 @@ export class Cache {
 
   async replaceLibrary(snapshot: Immutable<LibrarySnapshot>, signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
-    this.#requireAccount();
-    const candidate = structuredClone(snapshot) as LibrarySnapshot;
-    const prepared = prepareLibrary(candidate);
-    return this.#runLibrary(async () => {
-      signal?.throwIfAborted();
-      const result = await this.#disk?.update(
-        "library",
-        parseLibrary,
-        (existing) => {
-          if (
-            existing &&
-            ((existing.lastModified !== null &&
-              candidate.lastModified !== null &&
-              existing.lastModified > candidate.lastModified) ||
-              (existing.lastModified === candidate.lastModified &&
-                existing.savedAt > candidate.savedAt))
-          )
-            return undefined;
-          return candidate;
-        },
-        {
-          valid: () => !signal?.aborted,
-          // A fresh, validated server library can repair a corrupt snapshot.
-          repair: true,
-        },
-      );
-      signal?.throwIfAborted();
-      if (result?.written) this.#library = prepared;
-      else if (result?.value) this.#library = prepareLibrary(result?.value);
-    });
+    return this.#library.replace(structuredClone(snapshot), signal);
   }
 }
