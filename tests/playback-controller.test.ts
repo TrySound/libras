@@ -92,7 +92,6 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     ),
     cache: vi.fn(async () => new File([], "track")),
   };
-  const coverListeners = new Set<() => void>();
   let artwork = "data:image/jpeg;base64,aW1hZ2U=";
   const covers = {
     ensureTrackCover: vi.fn((id: string) => ({
@@ -102,12 +101,6 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       release: vi.fn(),
       cache: () => {},
     })),
-    subscribe: (listener: () => void) => {
-      coverListeners.add(listener);
-      return () => {
-        coverListeners.delete(listener);
-      };
-    },
   };
   const handlers = new Map<MediaSessionAction, MediaSessionActionHandler | null>();
   const session = {
@@ -210,7 +203,6 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     detach,
     artwork(value: string) {
       artwork = value;
-      for (const listener of coverListeners) listener();
     },
   };
 }
@@ -382,15 +374,22 @@ describe("playback engine", () => {
     expect(selection.cache!.queue.tracks).toEqual(["a", "fresh"]);
   });
 
-  it("uses original indexes for duplicate selection and skips unavailable occurrences", async () => {
-    const { player, queue, restoreTrack, selection } = setup();
+  it("navigates adjacent raw indexes without skipping missing metadata or duplicates", async () => {
+    const { player, queue, tracks, restoreTrack, selection, getPlayer } = setup();
     queue.update({ tracks: ["missing", "a", "missing", "a"], index: 1, position: 0 });
+    await player.play();
+    await player.next();
+    expect(selection.cache!.queue.index).toBe(2);
+    expect(player.track).toBeUndefined();
+    expect(getPlayer().status).toBe("idle");
+    expect(tracks.getSource).toHaveBeenCalledOnce();
     await player.next();
     expect(selection.cache!.queue.index).toBe(3);
     await player.previous();
-    expect(selection.cache!.queue.index).toBe(1);
+    expect(selection.cache!.queue.index).toBe(2);
+    expect(getPlayer().status).toBe("idle");
     restoreTrack("missing");
-    await player.next();
+    await player.play();
     expect(selection.cache!.queue.index).toBe(2);
     expect(player.track?.id).toBe("missing");
     expect(selection.cache!.queue.tracks).toEqual(["missing", "a", "missing", "a"]);
@@ -405,12 +404,35 @@ describe("playback engine", () => {
     expect(selection.cache!.queue.index).toBe(0);
     expect(selection.cache!.queue.position).toBe(0);
     await player.play();
+    expect(selection.cache!.queue.index).toBe(0);
+    expect(tracks.getSource).not.toHaveBeenCalled();
+    await player.next();
     expect(selection.cache!.queue.index).toBe(1);
     expect(selection.cache!.queue.tracks).toEqual(["a", "b"]);
+    await player.previous();
+    expect(selection.cache!.queue.index).toBe(0);
+    expect(tracks.getSource).toHaveBeenCalledOnce();
     available.add("a");
     await player.previous();
     expect(selection.cache!.queue.index).toBe(0);
     expect(selection.cache!.queue.tracks).toEqual(["a", "b"]);
+  });
+
+  it("starts at raw index zero and leaves out-of-range navigation unchanged", async () => {
+    const { player, queue, tracks, selection } = setup();
+    queue.update({ tracks: ["missing", "a"], position: 0 });
+    await player.play();
+    expect(selection.cache!.queue.index).toBe(0);
+    expect(tracks.getSource).not.toHaveBeenCalled();
+    await player.previous();
+    expect(selection.cache!.queue.index).toBe(0);
+    await player.next();
+    expect(selection.cache!.queue.index).toBe(1);
+    expect(tracks.getSource).toHaveBeenCalledOnce();
+    await player.next();
+    for (const index of [-1, 2, 0.5, NaN]) await player.playIndex(index);
+    expect(selection.cache!.queue.index).toBe(1);
+    expect(tracks.getSource).toHaveBeenCalledOnce();
   });
 
   it("preserves a restored duplicate index and position without autoplay", async () => {
@@ -533,7 +555,7 @@ describe("playback engine", () => {
     expect(handlers.get("previoustrack")).toEqual(expect.any(Function));
     expect(handlers.get("nexttrack")).toEqual(expect.any(Function));
     await player.next();
-    expect(selection.cache!.queue.index).toBe(1);
+    expect(selection.cache!.queue.index).toBe(2);
     expect(audio.play).not.toHaveBeenCalled();
   });
 
@@ -558,13 +580,16 @@ describe("playback engine", () => {
     expect(session.metadata).toMatchObject({ artist: "New artist", album: "New album" });
   });
 
-  it("resolves navigation against current metadata without waiting for queue events", async () => {
+  it("keeps raw navigation when metadata changes without a queue event", async () => {
     const { player, queue, removeTrack, selection } = setup();
     queue.update({ tracks: ["a", "b", "c"], index: 0, position: 0 });
     await player.play();
     removeTrack("b");
     await player.next();
     expect(selection.cache!.queue.tracks).toEqual(["a", "b", "c"]);
+    expect(player.track).toBeUndefined();
+    expect(selection.cache!.queue.index).toBe(1);
+    await player.next();
     expect(player.track?.id).toBe("c");
     expect(selection.cache!.queue.index).toBe(2);
   });

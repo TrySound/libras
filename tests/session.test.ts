@@ -94,7 +94,7 @@ describe("session", () => {
 
   it("reports queue storage errors without failing the connection", async () => {
     const { session, queue } = await connected();
-    queue.storageError = new Error("Storage unavailable");
+    vi.spyOn(queue, "storageError", "get").mockReturnValue(new Error("Storage unavailable"));
     await session.refresh();
     expect(session.refreshError).toContain("Storage unavailable");
     expect(session.status).toBe("connected");

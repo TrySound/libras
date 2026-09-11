@@ -255,6 +255,13 @@ describe("Cache's internal file operations", () => {
     const tracks = cache.queue.tracks;
     cache.setQueue({ tracks, index: 0, position: 2 }, { checkpoint: true });
     expect(cache.queue.tracks).toBe(tracks);
+    const replacement = [...tracks];
+    cache.setQueue({ tracks: replacement, index: 0, position: 3 });
+    expect(cache.queue.tracks).toEqual(tracks);
+    expect(cache.queue.tracks).not.toBe(tracks);
+    expect(cache.queue.tracks).not.toBe(replacement);
+    replacement.length = 0;
+    expect(cache.queue.tracks).toEqual(tracks);
     await cache.flush();
   });
 });

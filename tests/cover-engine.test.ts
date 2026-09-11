@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { flushSync } from "svelte";
+import { observeCover } from "./cover-reactivity.test.svelte";
 import { CoverEngine } from "../src/cover.svelte";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
@@ -193,8 +195,11 @@ describe("cover engine using Cache", () => {
       async () => new Response("image", { headers: { "Content-Type": "image/jpeg" } }),
     );
     vi.stubGlobal("fetch", fetcher);
-    const notify = vi.fn();
-    const unsubscribe = covers.subscribe(notify);
+    const sources: (string | undefined)[] = [];
+    const stop = observeCover(() => sources.push(cached.source));
+    onTestFinished(stop);
+    flushSync();
+    expect(sources).toEqual([undefined]);
     await vi.waitFor(() => expect(album.source).toContain("/rest/getCoverArt.view?"));
     expect(new URL(album.source!).searchParams.get("id")).toBe("album-cover");
     expect(fetcher).not.toHaveBeenCalled();
@@ -205,8 +210,8 @@ describe("cover engine using Cache", () => {
     expect(artist.source).toBe(cached.source);
     expect(album.source).toBe(cached.source);
     expect(fetcher).toHaveBeenCalledOnce();
-    expect(notify).toHaveBeenCalled();
-    unsubscribe();
+    flushSync();
+    expect(sources.at(-1)).toBe("blob:cover-1");
     const saved = catalog(disk);
     expect(saved).toEqual([...selection.cache!.images.values()]);
     expect(Array.isArray(saved)).toBe(true);

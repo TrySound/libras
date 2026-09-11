@@ -37,10 +37,7 @@ export type Library = {
   tracks: Track[];
 };
 
-export type MetadataConnection = Pick<
-  MetadataAccess,
-  "account" | "signal" | "getModifiedAt" | "readLibrary"
->;
+export type MetadataConnection = ReturnType<typeof metadataAccess>;
 export type NetworkConnection = Readonly<NetworkIdentity & { metadata: MetadataConnection }>;
 export type ActiveNetworkConnection = Readonly<
   NetworkConnection & {
@@ -58,16 +55,16 @@ export type RemoteQueue = {
   position: number;
 };
 
-export type QueueConnection = Pick<QueueAccess, "account" | "signal" | "read" | "write">;
+export type QueueConnection = ReturnType<typeof queueAccess>;
 
 type AudioFormat = "raw" | "mp3";
 
-export type AudioConnection = Pick<AudioAccess, "account" | "signal" | "url" | "read">;
+export type AudioConnection = ReturnType<typeof audioAccess>;
 
 type ArtworkValidators = { etag?: string; lastModified?: string };
 type RemoteArtwork = ArtworkValidators & { blob: Blob; type: string };
 
-export type ArtworkConnection = Pick<ArtworkAccess, "account" | "signal" | "url" | "read">;
+export type ArtworkConnection = ReturnType<typeof artworkAccess>;
 
 function genres(item: { genre?: string; genres?: { name: string }[] }) {
   const names = [item.genre ?? "", ...(item.genres ?? []).map((genre) => genre.name)]
@@ -149,215 +146,174 @@ async function networkFetch(input: RequestInfo | URL, init?: RequestInit) {
   }
 }
 
-class MetadataAccess {
-  readonly account: Readonly<Account>;
-  readonly signal: AbortSignal;
-  readonly #client: SubsonicClient;
-  readonly #request: Request;
-
-  constructor(account: Readonly<Account>, client: SubsonicClient, request: Request) {
-    this.account = account;
-    this.signal = client.signal;
-    this.#client = client;
-    this.#request = request;
-  }
-
-  getModifiedAt(since?: number) {
-    return this.#request(() => this.#client.getIndexes(since));
-  }
-
-  async readLibrary(workflowSignal: AbortSignal): Promise<Library> {
-    const controller = new AbortController();
-    const signal = AbortSignal.any([workflowSignal, controller.signal]);
-    const read = async <T>(run: () => Promise<T>) => {
-      signal.throwIfAborted();
-      const result = await this.#request(run);
-      signal.throwIfAborted();
-      return result;
-    };
-    const listArtists = () =>
-      read(async () =>
-        (await this.#client.getArtists(signal)).map((artist) => ({
-          id: artist.id,
-          name: artist.name,
-          artworkId: artist.coverArt || undefined,
-          genres: genres(artist),
-        })),
-      );
-    const listAlbums = (offset: number) =>
-      read(async () =>
-        (
-          await this.#client.getAlbumList2(
-            { type: "alphabeticalByArtist", size: 500, offset },
-            signal,
-          )
-        ).map((album) => ({
-          id: album.id,
-          title: album.name,
-          artistId: album.artistId,
-          artistName: album.artist,
-          artworkId: album.coverArt || undefined,
-          year: album.year && album.year > 0 ? album.year : undefined,
-          genres: genres(album),
-        })),
-      );
-    const getAlbumTracks = (albumId: string) =>
-      read(async () =>
-        (await this.#client.getAlbum(albumId, signal)).map((track) => ({
-          id: track.id,
-          title: track.title,
-          albumId: track.albumId,
-          artistId: track.artistId,
-          artistName: track.artist,
-          artworkId: track.coverArt || undefined,
-          number: track.track && track.track > 0 ? track.track : undefined,
-          disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,
-          duration: track.duration,
-          mimeType: track.contentType,
-          genres: genres(track),
-        })),
-      );
-    const fetchAlbums = async () => {
-      const albums: RemoteAlbum[] = [];
-      for (let offset = 0; ; offset += 500) {
-        const page = await listAlbums(offset);
-        albums.push(...page);
-        if (page.length < 500) return albums;
-      }
-    };
-    try {
-      const [artists, albums] = await Promise.all([listArtists(), fetchAlbums()]);
-      signal.throwIfAborted();
-      const tracksByAlbum = new Map<string, readonly RemoteTrack[]>();
-      let next = 0;
-      const worker = async () => {
-        while (next < albums.length) {
-          signal.throwIfAborted();
-          const album = albums[next++];
-          tracksByAlbum.set(album.id, await getAlbumTracks(album.id));
+function metadataAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+  return Object.freeze({
+    account,
+    signal: client.signal,
+    getModifiedAt: (since?: number) => request(() => client.getIndexes(since)),
+    async readLibrary(workflowSignal: AbortSignal): Promise<Library> {
+      const controller = new AbortController();
+      const signal = AbortSignal.any([workflowSignal, controller.signal]);
+      const read = async <T>(run: () => Promise<T>) => {
+        signal.throwIfAborted();
+        const result = await request(run);
+        signal.throwIfAborted();
+        return result;
+      };
+      const listArtists = () =>
+        read(async () =>
+          (await client.getArtists(signal)).map((artist) => ({
+            id: artist.id,
+            name: artist.name,
+            artworkId: artist.coverArt || undefined,
+            genres: genres(artist),
+          })),
+        );
+      const listAlbums = (offset: number) =>
+        read(async () =>
+          (
+            await client.getAlbumList2({ type: "alphabeticalByArtist", size: 500, offset }, signal)
+          ).map((album) => ({
+            id: album.id,
+            title: album.name,
+            artistId: album.artistId,
+            artistName: album.artist,
+            artworkId: album.coverArt || undefined,
+            year: album.year && album.year > 0 ? album.year : undefined,
+            genres: genres(album),
+          })),
+        );
+      const getAlbumTracks = (albumId: string) =>
+        read(async () =>
+          (await client.getAlbum(albumId, signal)).map((track) => ({
+            id: track.id,
+            title: track.title,
+            albumId: track.albumId,
+            artistId: track.artistId,
+            artistName: track.artist,
+            artworkId: track.coverArt || undefined,
+            number: track.track && track.track > 0 ? track.track : undefined,
+            disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,
+            duration: track.duration,
+            mimeType: track.contentType,
+            genres: genres(track),
+          })),
+        );
+      const fetchAlbums = async () => {
+        const albums: RemoteAlbum[] = [];
+        for (let offset = 0; ; offset += 500) {
+          const page = await listAlbums(offset);
+          albums.push(...page);
+          if (page.length < 500) return albums;
         }
       };
-      await Promise.all(Array.from({ length: Math.min(6, albums.length) }, worker));
-      signal.throwIfAborted();
-      return normalizeLibrary(artists, albums, tracksByAlbum);
-    } finally {
-      controller.abort();
-    }
-  }
+      try {
+        const [artists, albums] = await Promise.all([listArtists(), fetchAlbums()]);
+        signal.throwIfAborted();
+        const tracksByAlbum = new Map<string, readonly RemoteTrack[]>();
+        let next = 0;
+        const worker = async () => {
+          while (next < albums.length) {
+            signal.throwIfAborted();
+            const album = albums[next++];
+            tracksByAlbum.set(album.id, await getAlbumTracks(album.id));
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(6, albums.length) }, worker));
+        signal.throwIfAborted();
+        return normalizeLibrary(artists, albums, tracksByAlbum);
+      } finally {
+        controller.abort();
+      }
+    },
+  });
 }
 
-class QueueAccess {
-  readonly account: Readonly<Account>;
-  readonly signal: AbortSignal;
-  readonly #client: SubsonicClient;
-  readonly #request: Request;
-
-  constructor(account: Readonly<Account>, client: SubsonicClient, request: Request) {
-    this.account = account;
-    this.signal = client.signal;
-    this.#client = client;
-    this.#request = request;
-  }
-
-  async read(): Promise<RemoteQueue> {
-    const queue = await this.#request(() => this.#client.getPlayQueue());
-    return {
-      trackIds: queue.tracks,
-      currentTrackId: queue.current,
-      position: queue.position,
-    };
-  }
-
-  write(queue: RemoteQueue) {
-    return this.#request(() =>
-      this.#client.savePlayQueue({
-        tracks: queue.trackIds,
-        current: queue.currentTrackId,
-        position: queue.position,
-      }),
-    );
-  }
-}
-
-class ArtworkAccess {
-  readonly account: Readonly<Account>;
-  readonly signal: AbortSignal;
-  readonly #client: SubsonicClient;
-  readonly #request: Request;
-
-  constructor(account: Readonly<Account>, client: SubsonicClient, request: Request) {
-    this.account = account;
-    this.signal = client.signal;
-    this.#client = client;
-    this.#request = request;
-  }
-
-  url(id: string, size: number) {
-    this.signal.throwIfAborted();
-    return this.#client.getCoverArtUrl(id, size);
-  }
-
-  read(id: string, options: ArtworkValidators & { size: number }) {
-    return this.#request(async () => {
-      const headers = new Headers();
-      if (options.etag) headers.set("If-None-Match", options.etag);
-      if (options.lastModified) headers.set("If-Modified-Since", options.lastModified);
-      const response = await networkFetch(this.#client.getCoverArtUrl(id, options.size), {
-        headers,
-        signal: this.signal,
-      });
-      this.signal.throwIfAborted();
-      if (response.status === 304 && (options.etag || options.lastModified)) return null;
-      if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-      const blob = await response.blob();
+function queueAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+  return Object.freeze({
+    account,
+    signal: client.signal,
+    async read(): Promise<RemoteQueue> {
+      const queue = await request(() => client.getPlayQueue());
       return {
-        blob,
-        type: response.headers.get("Content-Type")?.split(";")[0] ?? "image/jpeg",
-        etag: response.headers.get("ETag") ?? undefined,
-        lastModified: response.headers.get("Last-Modified") ?? undefined,
-      } satisfies RemoteArtwork;
-    });
-  }
+        trackIds: queue.tracks,
+        currentTrackId: queue.current,
+        position: queue.position,
+      };
+    },
+    write: (queue: RemoteQueue) =>
+      request(() =>
+        client.savePlayQueue({
+          tracks: queue.trackIds,
+          current: queue.currentTrackId,
+          position: queue.position,
+        }),
+      ),
+  });
 }
 
-class AudioAccess {
-  readonly account: Readonly<Account>;
-  readonly signal: AbortSignal;
-  readonly #client: SubsonicClient;
-  readonly #request: Request;
+function artworkAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+  const signal = client.signal;
+  return Object.freeze({
+    account,
+    signal,
+    url(id: string, size: number) {
+      signal.throwIfAborted();
+      return client.getCoverArtUrl(id, size);
+    },
+    read: (id: string, options: ArtworkValidators & { size: number }) =>
+      request(async () => {
+        const headers = new Headers();
+        if (options.etag) headers.set("If-None-Match", options.etag);
+        if (options.lastModified) headers.set("If-Modified-Since", options.lastModified);
+        const response = await networkFetch(client.getCoverArtUrl(id, options.size), {
+          headers,
+          signal,
+        });
+        signal.throwIfAborted();
+        if (response.status === 304 && (options.etag || options.lastModified)) return null;
+        if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
+        const blob = await response.blob();
+        return {
+          blob,
+          type: response.headers.get("Content-Type")?.split(";")[0] ?? "image/jpeg",
+          etag: response.headers.get("ETag") ?? undefined,
+          lastModified: response.headers.get("Last-Modified") ?? undefined,
+        } satisfies RemoteArtwork;
+      }),
+  });
+}
 
-  constructor(account: Readonly<Account>, client: SubsonicClient, request: Request) {
-    this.account = account;
-    this.signal = client.signal;
-    this.#client = client;
-    this.#request = request;
-  }
-
-  url(id: string, options: { format: AudioFormat; position?: number }) {
-    this.signal.throwIfAborted();
-    return this.#client.getStreamUrl(id, {
+function audioAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+  const url = (id: string, options: { format: AudioFormat; position?: number }) => {
+    client.signal.throwIfAborted();
+    return client.getStreamUrl(id, {
       format: options.format,
       estimateContentLength: true,
       timeOffset: options.position,
     });
-  }
-
-  async read(id: string, options: { format: AudioFormat; signal: AbortSignal }) {
-    const signal = AbortSignal.any([this.signal, options.signal]);
-    signal.throwIfAborted();
-    let response: Response | undefined;
-    try {
-      return await this.#request(async () => {
-        response = await networkFetch(this.url(id, { format: options.format }), { signal });
-        signal.throwIfAborted();
-        if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-        return response;
-      });
-    } catch (error) {
-      await response?.body?.cancel().catch(() => {});
-      throw error;
-    }
-  }
+  };
+  return Object.freeze({
+    account,
+    signal: client.signal,
+    url,
+    async read(id: string, options: { format: AudioFormat; signal: AbortSignal }) {
+      const signal = AbortSignal.any([client.signal, options.signal]);
+      signal.throwIfAborted();
+      let response: Response | undefined;
+      try {
+        return await request(async () => {
+          response = await networkFetch(url(id, { format: options.format }), { signal });
+          signal.throwIfAborted();
+          if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
+          return response;
+        });
+      } catch (error) {
+        await response?.body?.cancel().catch(() => {});
+        throw error;
+      }
+    },
+  });
 }
 
 type CandidateConnection = { handle: NetworkConnection; client: SubsonicClient };
@@ -401,7 +357,7 @@ export class Network {
     this.#candidate?.client.abort();
     const account = Object.freeze({ host: client.host, username: client.username });
     const request: Request = (run) => this.#request(client, run);
-    const metadata = Object.freeze(new MetadataAccess(account, client, request));
+    const metadata = metadataAccess(account, client, request);
     const connection = Object.freeze({ account, signal: client.signal, metadata });
     this.#candidate = { handle: connection, client };
     return connection;
@@ -416,9 +372,9 @@ export class Network {
     }
     const { client } = candidate;
     const request: Request = (run) => this.#request(client, run);
-    const queue = Object.freeze(new QueueAccess(connection.account, client, request));
-    const artwork = Object.freeze(new ArtworkAccess(connection.account, client, request));
-    const audio = Object.freeze(new AudioAccess(connection.account, client, request));
+    const queue = queueAccess(connection.account, client, request);
+    const artwork = artworkAccess(connection.account, client, request);
+    const audio = audioAccess(connection.account, client, request);
     const active = Object.freeze({ ...connection, queue, artwork, audio });
     this.#active?.abort();
     this.#active = client;

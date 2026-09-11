@@ -829,12 +829,8 @@ export class Cache {
   setQueue(queue: Immutable<CachedQueue>, options: { checkpoint?: boolean } = {}): number {
     this.#requireAccount();
     const tracks = this.#queue.value.tracks;
-    const sameTracks =
-      queue.tracks === tracks ||
-      (queue.tracks.length === tracks.length &&
-        queue.tracks.every((id, index) => id === tracks[index]));
     return this.#queue.set(
-      { ...queue, tracks: sameTracks ? tracks : [...queue.tracks] },
+      { ...queue, tracks: queue.tracks === tracks ? tracks : [...queue.tracks] },
       options.checkpoint ?? false,
     );
   }

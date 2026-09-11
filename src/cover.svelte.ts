@@ -42,20 +42,12 @@ export class CoverEngine {
   #loads = new Map<string, Promise<InstalledImage | undefined>>();
   #objectUrls = new Map<string, InstalledImage>();
   #version = $state(0);
-  #listeners = new Set<() => void>();
 
   constructor(selection: CacheSelection) {
     this.#selection = selection;
   }
-  subscribe(listener: () => void) {
-    this.#listeners.add(listener);
-    return () => {
-      this.#listeners.delete(listener);
-    };
-  }
   #notify() {
     this.#version++;
-    for (const listener of this.#listeners) listener();
   }
 
   /** Session selected another cache. Invalidate resources, not persisted data. */
@@ -275,7 +267,6 @@ export class CoverEngine {
     this.#objectUrls.clear();
   }
   destroy() {
-    this.#listeners.clear();
     this.activate();
     this.#destroyed = true;
     this.#scope.abort();

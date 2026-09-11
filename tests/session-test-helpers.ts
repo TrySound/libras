@@ -101,7 +101,9 @@ export function createSession(saved = false, storage = createStorage()) {
   };
   const queue = {
     error: undefined,
-    storageError: undefined as unknown,
+    get storageError() {
+      return selection.cache?.queueError;
+    },
     setConnection: vi.fn(),
     activate: vi.fn(),
     refresh: vi.fn(async () => {}),

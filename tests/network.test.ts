@@ -213,7 +213,16 @@ describe("Network connection lifecycle", () => {
     expect(active.artwork.signal).toBe(connection.signal);
     expect(active.audio.account).toBe(connection.account);
     expect(active.audio.signal).toBe(connection.signal);
+    for (const access of [active.queue, active.artwork, active.audio])
+      expect(Object.isFrozen(access)).toBe(true);
+    // Capabilities remain bound to their connection even without a receiver.
+    const artworkUrl = active.artwork.url;
+    const audioUrl = active.audio.url;
+    expect(artworkUrl("cover", 500)).toContain("/rest/getCoverArt.view?");
+    expect(audioUrl("track", { format: "raw" })).toContain("/rest/stream.view?");
     network.setMode("offline");
+    expect(() => artworkUrl("cover", 500)).toThrowError(/abort/i);
+    expect(() => audioUrl("track", { format: "raw" })).toThrowError(/abort/i);
   });
 
   it("rejects foreign and copied handles without disturbing its active connection or candidate", () => {

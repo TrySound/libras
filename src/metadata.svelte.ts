@@ -46,13 +46,7 @@ export class MetadataEngine {
 
   async refresh(force = true) {
     const connection = this.#connection;
-    if (
-      !connection ||
-      connection !== this.#connection ||
-      connection.signal.aborted ||
-      this.#destroyed
-    )
-      return;
+    if (!connection || connection.signal.aborted || this.#destroyed) return;
     const cache = this.#selection.cache;
     if (
       !cache?.account ||

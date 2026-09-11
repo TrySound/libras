@@ -41,15 +41,6 @@ export class PlaybackController {
     const id = this.#localQueue.tracks[index];
     return id !== undefined && !!this.#selection.cache?.tracks.get(id) && this.#isAvailable(id);
   }
-  #nextIndex(after: number) {
-    return this.#localQueue.tracks.findIndex((_id, index) => index > after && this.#canPlay(index));
-  }
-  #previousIndex() {
-    for (let index = this.#localQueue.index - 1; index >= 0; index--) {
-      if (this.#canPlay(index)) return index;
-    }
-    return -1;
-  }
   get track() {
     const current = this.#localQueue.tracks[this.#localQueue.index];
     return current ? this.#selection.cache?.tracks.get(current) : undefined;
@@ -147,10 +138,11 @@ export class PlaybackController {
   async play() {
     const player = this.#player;
     if (!player) return;
-    if (!this.#canPlay(this.#localQueue.index)) {
-      await this.playIndex(this.#nextIndex(-1));
+    if (this.#localQueue.index < 0) {
+      await this.playIndex(0);
       return;
     }
+    if (!this.#canPlay(this.#localQueue.index)) return;
     this.#queue.playback("active");
     if (player.status !== "idle") await player.resume();
     else {
@@ -175,21 +167,18 @@ export class PlaybackController {
     else await this.play();
   }
   async playIndex(index: number) {
-    if (!Number.isInteger(index) || !this.#canPlay(index)) return;
+    if (!Number.isInteger(index) || index < 0 || index >= this.#localQueue.tracks.length) return;
     this.#queue.select(index);
     this.suspend();
     await this.play();
   }
   async next() {
     if (this.#localQueue.index < 0) return;
-    const index = this.#nextIndex(this.#localQueue.index);
-    if (index >= 0) await this.playIndex(index);
+    await this.playIndex(this.#localQueue.index + 1);
   }
   async previous() {
-    const index = this.#previousIndex();
-    if (this.#canPlay(this.#localQueue.index) && (this.#localQueue.position > 3 || index < 0))
-      await this.seek(0);
-    else if (index >= 0) await this.playIndex(index);
+    if (this.#localQueue.position > 3 || this.#localQueue.index === 0) await this.seek(0);
+    else await this.playIndex(this.#localQueue.index - 1);
   }
   async seek(position: number) {
     if (!Number.isFinite(position) || !this.#canPlay(this.#localQueue.index)) return;
