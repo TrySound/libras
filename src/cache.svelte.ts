@@ -1,6 +1,14 @@
 import * as v from "valibot";
 import { OpfsJsonStore, hashedFileName } from "./json-store";
-import { accountSchema, artistSchema, albumSchema, trackSchema, type Account } from "./schema";
+import {
+  accountSchema,
+  artistSchema,
+  albumSchema,
+  trackSchema,
+  imageSchema,
+  type Account,
+  type ImageRecord,
+} from "./schema";
 
 export type Immutable<T> = T extends object ? { readonly [K in keyof T]: Immutable<T[K]> } : T;
 
@@ -33,9 +41,17 @@ const queueRecordSchema = v.pipe(
   v.check((queue) => validSelection(queue), "Invalid queue selection."),
 );
 
+const imagesSchema = v.strictObject({ account: accountSchema, images: v.array(imageSchema) });
+export interface CachedImage {
+  blob: Blob;
+  type: string;
+  etag?: string;
+  lastModified?: string;
+}
+
 /** Loading one local domain never prevents another from restoring. */
 export class CacheLoadError extends AggregateError {
-  constructor(readonly failures: { library?: unknown; queue?: unknown }) {
+  constructor(readonly failures: { library?: unknown; queue?: unknown; images?: unknown }) {
     super(
       Object.values(failures),
       Object.entries(failures)
@@ -51,7 +67,7 @@ export class CacheLoadError extends AggregateError {
 
 async function accountFile<T extends { account: Account }>(
   account: Readonly<Account>,
-  name: "library" | "queue",
+  name: "library" | "queue" | "images",
   parse: (value: unknown) => T,
 ) {
   // Tuple encoding avoids ambiguous account keys; no legacy filename support.
@@ -115,7 +131,56 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
       (a.number ?? Infinity) - (b.number ?? Infinity) ||
       a.title.localeCompare(b.title),
   );
-  return { snapshot, artists, albums, tracks, artistAlbums, albumTracks };
+  const candidates = (ids: readonly (string | undefined)[]) => [
+    ...new Set(ids.filter((id): id is string => id !== undefined)),
+  ];
+  const albumArtwork = new Map<string, readonly string[]>();
+  for (const album of albums.values())
+    albumArtwork.set(
+      album.id,
+      candidates([
+        album.artworkId,
+        ...(albumTracks.get(album.id) ?? []).map((track) => track.artworkId),
+      ]),
+    );
+  const artistArtwork = new Map<string, readonly string[]>();
+  const firstAlbumArtwork = new Map<string, string | undefined>();
+  for (const artist of artists.values()) {
+    const related = artistAlbums.get(artist.id) ?? [];
+    artistArtwork.set(
+      artist.id,
+      candidates([
+        artist.artworkId,
+        ...related.flatMap((album) => albumArtwork.get(album.id) ?? []),
+      ]),
+    );
+    firstAlbumArtwork.set(artist.id, related.find((album) => album.artworkId)?.artworkId);
+  }
+  const trackArtwork = new Map<string, readonly string[]>();
+  for (const track of tracks.values()) {
+    const album = albums.get(track.albumId);
+    const artist = album && artists.get(album.artistId);
+    trackArtwork.set(
+      track.id,
+      candidates([
+        track.artworkId,
+        album?.artworkId,
+        artist?.artworkId,
+        artist && firstAlbumArtwork.get(artist.id),
+      ]),
+    );
+  }
+  return {
+    snapshot,
+    artists,
+    albums,
+    tracks,
+    artistAlbums,
+    albumTracks,
+    artistArtwork,
+    albumArtwork,
+    trackArtwork,
+  };
 }
 
 /**
@@ -138,6 +203,10 @@ export class Cache {
   #queueOperations: Promise<unknown> = Promise.resolve();
   #queueTimer?: ReturnType<typeof setTimeout>;
   #checkpointTimer?: ReturnType<typeof setTimeout>;
+  #images = $state.raw<ReadonlyMap<string, Immutable<ImageRecord>>>(new Map());
+  #imagesError = $state.raw<unknown>();
+  #imagesStore?: Promise<OpfsJsonStore<v.InferOutput<typeof imagesSchema>>>;
+  #imageOperations: Promise<unknown> = Promise.resolve();
 
   constructor(account: Account) {
     this.account = Object.freeze(v.parse(accountSchema, account));
@@ -158,6 +227,22 @@ export class Cache {
   get albumTracks() {
     return this.#library.albumTracks;
   }
+  get artistArtwork() {
+    return this.#library.artistArtwork;
+  }
+  get albumArtwork() {
+    return this.#library.albumArtwork;
+  }
+  get trackArtwork() {
+    return this.#library.trackArtwork;
+  }
+  get images() {
+    return this.#images;
+  }
+  get imagesError() {
+    return this.#imagesError;
+  }
+
   get lastModified() {
     return this.#library.snapshot?.lastModified;
   }
@@ -185,6 +270,19 @@ export class Cache {
     }));
   }
 
+  #imagesFile() {
+    return (this.#imagesStore ??= accountFile(this.account, "images", (value) => {
+      const catalog = v.parse(imagesSchema, value);
+      entityMap(catalog.images);
+      if (new Set(catalog.images.map((image) => image.fileName)).size !== catalog.images.length)
+        throw new Error("Duplicate image file references.");
+      return catalog;
+    }).catch((error) => {
+      this.#imagesStore = undefined;
+      throw error;
+    }));
+  }
+
   // Serialize publication with persistence, not just file access. A pending load
   // cannot publish an older snapshot after a later replacement has completed.
   #run<T>(operation: () => Promise<T>): Promise<T> {
@@ -196,15 +294,21 @@ export class Cache {
   /** Restore independent local domains, reporting failures after both finish. */
   async load(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
-    const [library, queue] = await Promise.allSettled([
+    const [library, queue, images] = await Promise.allSettled([
       this.#loadLibrary(signal),
       this.#loadQueue(signal),
+      this.#loadImages(signal),
     ]);
     signal?.throwIfAborted();
-    if (library.status === "rejected" || queue.status === "rejected")
+    if (
+      library.status === "rejected" ||
+      queue.status === "rejected" ||
+      images.status === "rejected"
+    )
       throw new CacheLoadError({
         ...(library.status === "rejected" ? { library: library.reason } : {}),
         ...(queue.status === "rejected" ? { queue: queue.reason } : {}),
+        ...(images.status === "rejected" ? { images: images.reason } : {}),
       });
   }
 
@@ -364,6 +468,148 @@ export class Cache {
         if (!valid()) return false;
         this.#queueError = error;
         throw error;
+      }
+    });
+  }
+
+  #runImages<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.#imageOperations.then(operation);
+    this.#imageOperations = result.catch(() => {});
+    return result;
+  }
+
+  #loadImages(signal?: AbortSignal) {
+    return this.#runImages(async () => {
+      try {
+        signal?.throwIfAborted();
+        const catalog = await (await this.#imagesFile()).read();
+        signal?.throwIfAborted();
+        this.#images = entityMap(catalog?.images ?? []);
+        this.#imagesError = undefined;
+      } catch (error) {
+        if (!signal?.aborted) this.#imagesError = error;
+        throw error;
+      }
+    });
+  }
+
+  async #imageDirectory() {
+    const key = await hashedFileName(
+      JSON.stringify([this.account.host, this.account.username]),
+      ".cache",
+    );
+    let directory = await navigator.storage.getDirectory();
+    for (const name of ["accounts", key.slice(0, -6), "files"])
+      directory = await directory.getDirectoryHandle(name, { create: true });
+    return directory;
+  }
+
+  /** Load bytes on demand. Missing/incomplete files invalidate only their matching record. */
+  readImage(id: string, signal?: AbortSignal): Promise<Blob | null> {
+    return this.#runImages(async () => {
+      try {
+        signal?.throwIfAborted();
+        const record = this.#images.get(id);
+        if (!record) return null;
+        const directory = await this.#imageDirectory();
+        try {
+          const file = await (await directory.getFileHandle(record.fileName)).getFile();
+          if (file.size !== record.size)
+            throw new DOMException("The cached image is incomplete.", "DataError");
+          const blob = new Blob([await file.arrayBuffer()], { type: record.type });
+          signal?.throwIfAborted();
+          this.#imagesError = undefined;
+          return blob;
+        } catch (error) {
+          if (
+            !(error instanceof DOMException) ||
+            !["NotFoundError", "DataError"].includes(error.name)
+          )
+            throw error;
+        }
+        signal?.throwIfAborted();
+        const result = await (
+          await this.#imagesFile()
+        ).update(
+          (catalog) => {
+            if (catalog?.images.find((image) => image.id === id)?.fileName !== record.fileName)
+              return undefined;
+            return { ...catalog!, images: catalog!.images.filter((image) => image.id !== id) };
+          },
+          { valid: () => !signal?.aborted },
+        );
+        signal?.throwIfAborted();
+        this.#images = entityMap(result.value?.images ?? []);
+        this.#imagesError = undefined;
+        if (!result.value?.images.some((image) => image.fileName === record.fileName))
+          await directory.removeEntry(record.fileName).catch(() => {});
+        return null;
+      } catch (error) {
+        if (!signal?.aborted) this.#imagesError = error;
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Commit bytes before the catalog, then publish. A competing replacement wins if
+   * it changed the record observed at call time. Only our committed blob is returned;
+   * callers can readImage() after an undefined result to use the competing winner.
+   */
+  async saveImage(id: string, image: CachedImage, signal?: AbortSignal): Promise<Blob | undefined> {
+    signal?.throwIfAborted();
+    const record = v.parse(imageSchema, {
+      id,
+      fileName: `${crypto.randomUUID()}.image`,
+      type: image.type,
+      size: image.blob.size,
+      cachedAt: Date.now(),
+      etag: image.etag,
+      lastModified: image.lastModified,
+    });
+    const blob = new Blob([image.blob], { type: record.type });
+    const expected = this.#images.get(id)?.fileName;
+    return this.#runImages(async () => {
+      let directory: FileSystemDirectoryHandle | undefined;
+      let writable: FileSystemWritableFileStream | undefined;
+      let committed = false;
+      try {
+        signal?.throwIfAborted();
+        directory = await this.#imageDirectory();
+        const handle = await directory.getFileHandle(record.fileName, { create: true });
+        writable = await handle.createWritable();
+        await writable.write(blob);
+        signal?.throwIfAborted();
+        await writable.close();
+        signal?.throwIfAborted();
+        const result = await (
+          await this.#imagesFile()
+        ).update(
+          (catalog) => {
+            if (catalog?.images.find((image) => image.id === id)?.fileName !== expected)
+              return undefined;
+            return {
+              account: this.account,
+              images: [...(catalog?.images ?? []).filter((image) => image.id !== id), record],
+            };
+          },
+          { valid: () => !signal?.aborted },
+        );
+        committed = result.written;
+        // A completed catalog commit owns its bytes, even if cancellation arrived during close.
+        if (committed && expected) await directory.removeEntry(expected).catch(() => {});
+        signal?.throwIfAborted();
+        this.#images = entityMap(result.value?.images ?? []);
+        this.#imagesError = undefined;
+        return committed ? blob : undefined;
+      } catch (error) {
+        if (!signal?.aborted) this.#imagesError = error;
+        throw error;
+      } finally {
+        if (!committed) {
+          await writable?.abort().catch(() => {});
+          await directory?.removeEntry(record.fileName).catch(() => {});
+        }
       }
     });
   }

@@ -2,12 +2,13 @@ import { expect, vi } from "vitest";
 
 export function installDisk() {
   const files = new Map<string, string>();
+  const blobs = new Map<string, Blob>();
   const state = {
     failClose: false,
     beforeRead: async (_path: string) => {},
     beforeWrite: (_path: string) => {},
     beforeClose: async (_path: string) => {},
-    afterClose: () => {},
+    afterClose: (_path: string) => {},
     writes: 0,
   };
   function directory(path: string): unknown {
@@ -19,27 +20,32 @@ export function installDisk() {
       },
       async getFileHandle(name: string, options?: { create?: boolean }) {
         const key = `${path}/${name}`;
-        if (!files.has(key) && !options?.create) throw new DOMException("Missing", "NotFoundError");
-        if (!files.has(key)) files.set(key, "");
+        if (!files.has(key) && !blobs.has(key) && !options?.create)
+          throw new DOMException("Missing", "NotFoundError");
+        if (!files.has(key) && !blobs.has(key)) files.set(key, "");
         return {
           async getFile() {
-            const file = new File([files.get(key)!], name);
+            const file = new File([files.get(key) ?? blobs.get(key)!], name);
             await state.beforeRead(key);
             return file;
           },
           async createWritable() {
-            let pending = "";
+            let pending: string | Blob = "";
             return {
-              async write(value: string) {
+              async write(value: string | Blob) {
                 state.beforeWrite(key);
                 pending = value;
               },
               async close() {
                 await state.beforeClose(key);
                 if (state.failClose) throw new Error("Storage full");
-                files.set(key, pending);
+                if (typeof pending === "string") files.set(key, pending);
+                else {
+                  blobs.set(key, pending);
+                  files.delete(key);
+                }
                 state.writes++;
-                state.afterClose();
+                state.afterClose(key);
               },
               async abort() {},
             };
@@ -48,6 +54,7 @@ export function installDisk() {
       },
       async removeEntry(name: string) {
         files.delete(`${path}/${name}`);
+        blobs.delete(`${path}/${name}`);
       },
     };
   }
@@ -62,5 +69,5 @@ export function installDisk() {
     return result;
   });
   vi.stubGlobal("navigator", { storage: { getDirectory }, locks: { request } });
-  return { files, state, getDirectory };
+  return { files, blobs, state, getDirectory };
 }

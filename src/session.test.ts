@@ -40,24 +40,28 @@ describe("session", () => {
     expect(metadata.refresh).not.toHaveBeenCalled();
   });
 
-  it("keeps queue load failures separate from library refresh warnings", async () => {
-    const { session, memory, loadCache, queue } = setup(true);
-    const failure = new Error("Corrupt cached queue");
-    loadCache.mockImplementationOnce(async function (this: Cache) {
-      vi.spyOn(this, "queueError", "get").mockReturnValue(failure);
-      throw new CacheLoadError({ queue: failure });
-    });
-    session.start();
-    await vi.waitFor(() => expect(session.status).toBe("connected"));
-    expect(session.localReady).toBe(true);
-    expect(session.error).toBe("");
-    expect(session.refreshError).toContain("Corrupt cached queue");
-    expect(queue.activate).toHaveBeenCalledOnce();
-    await session.refresh();
-    expect(session.refreshError).toContain("Corrupt cached queue");
-    vi.spyOn(memory.cache!, "queueError", "get").mockReturnValue(undefined);
-    expect(session.refreshError).toBe("");
-  });
+  it.each(["queue", "images"] as const)(
+    "keeps %s load failures separate from library refresh warnings",
+    async (domain) => {
+      const { session, memory, loadCache, queue } = setup(true);
+      const failure = new Error(`Corrupt cached ${domain}`);
+      const field = domain === "queue" ? "queueError" : "imagesError";
+      loadCache.mockImplementationOnce(async function (this: Cache) {
+        vi.spyOn(this, field, "get").mockReturnValue(failure);
+        throw new CacheLoadError({ [domain]: failure });
+      });
+      session.start();
+      await vi.waitFor(() => expect(session.status).toBe("connected"));
+      expect(session.localReady).toBe(true);
+      expect(session.error).toBe("");
+      expect(session.refreshError).toContain(`Corrupt cached ${domain}`);
+      expect(queue.activate).toHaveBeenCalledOnce();
+      await session.refresh();
+      expect(session.refreshError).toContain(`Corrupt cached ${domain}`);
+      vi.spyOn(memory.cache!, field, "get").mockReturnValue(undefined);
+      expect(session.refreshError).toBe("");
+    },
+  );
 
   it("can recover online after a failed metadata restoration", async () => {
     const { session, metadata, queue, loadCache } = setup(true);
