@@ -48,7 +48,7 @@ export function installDisk() {
             };
             return Object.assign(
               new WritableStream<Uint8Array>({
-                write: (chunk) => write(new Blob([pending, chunk.slice().buffer as ArrayBuffer])),
+                write: (chunk) => write(new Blob([pending, new Uint8Array(chunk).buffer])),
                 close,
               }),
               { write, close },

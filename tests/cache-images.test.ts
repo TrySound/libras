@@ -122,13 +122,17 @@ describe("artwork cache foundation", () => {
   it("commits bytes before the catalog and publishes records only after both closes", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
+    const read = vi.fn(async (_path: string) => {});
+    disk.state.beforeRead = read;
     disk.state.beforeClose = async (path) => {
       expect(cache.images.size).toBe(0);
       if (path.endsWith("/images.json")) expect(disk.blobs.size).toBe(1);
     };
     const saved = await cache.saveImage("cover", image());
-    expect(await saved!.text()).toBe("image");
-    expect(saved!.type).toBe("image/png");
+    expect(await saved!.blob.text()).toBe("image");
+    expect(saved!.blob.type).toBe("image/png");
+    expect(saved!.record).toBe(cache.images.get("cover"));
+    expect(read.mock.calls.some(([path]) => path.endsWith(".image"))).toBe(false);
     expect(cache.images.get("cover")).toMatchObject({
       id: "cover",
       size: 5,
@@ -138,9 +142,64 @@ describe("artwork cache foundation", () => {
     });
     expect(catalogPath(disk)).toMatch(/^accounts\/[a-f0-9]{64}\/images\.json$/);
     expect([...disk.blobs.keys()][0]).toMatch(/^accounts\/[a-f0-9]{64}\/files\/[a-f0-9-]+\.image$/);
-    expect(JSON.parse(disk.files.get(catalogPath(disk))!)).toEqual({
-      images: [...cache.images.values()],
+    expect(JSON.parse(disk.files.get(catalogPath(disk))!)).toEqual([...cache.images.values()]);
+  });
+
+  it("lets the first completed image win without blocking reads or other writes", async () => {
+    const disk = installDisk();
+    const cache = new Cache(account);
+    await cache.saveImage("cover", image("old"));
+    const closing = deferred<void>();
+    const release = deferred<void>();
+    let held = false;
+    disk.state.beforeClose = async (path) => {
+      if (path.endsWith(".image") && !held) {
+        held = true;
+        closing.resolve();
+        await release.promise;
+      }
+    };
+    const slow = cache.saveImage("cover", image("slow"));
+    await closing.promise;
+    try {
+      const fast = await cache.saveImage("cover", image("fast"));
+      expect(await fast!.blob.text()).toBe("fast");
+      expect(await (await cache.readImage("cover"))!.blob.text()).toBe("fast");
+    } finally {
+      release.resolve();
+    }
+    expect(await slow).toBeUndefined();
+    expect(disk.blobs.size).toBe(1);
+    expect(await (await cache.readImage("cover"))!.blob.text()).toBe("fast");
+  });
+
+  it("returns the matching image record even if replacement occurs during materialization", async () => {
+    installDisk();
+    const cache = new Cache(account);
+    const old = await cache.saveImage("cover", image("old"));
+    const reading = deferred<void>();
+    const release = deferred<void>();
+    const arrayBuffer = File.prototype.arrayBuffer;
+    vi.spyOn(File.prototype, "arrayBuffer").mockImplementation(async function (this: File) {
+      const bytes = await arrayBuffer.call(this);
+      if (this.name === old!.record.fileName) {
+        reading.resolve();
+        await release.promise;
+      }
+      return bytes;
     });
+    const pending = cache.readImage("cover");
+    await reading.promise;
+    try {
+      await cache.saveImage("cover", { ...image("new"), type: "image/jpeg" });
+    } finally {
+      release.resolve();
+    }
+    const opened = (await pending)!;
+    expect(opened.record).toBe(old!.record);
+    expect(opened.record.fileName).not.toBe(cache.images.get("cover")!.fileName);
+    expect(opened.blob.type).toBe("image/png");
+    expect(await opened.blob.text()).toBe("old");
   });
 
   it("loads only image records at startup and reads bytes lazily", async () => {
@@ -153,7 +212,7 @@ describe("artwork cache foundation", () => {
     await restored.load();
     expect(restored.images.get("cover")).toEqual(initial.images.get("cover"));
     expect(read.mock.calls.every(([path]) => path.endsWith(".json"))).toBe(true);
-    expect(await (await restored.readImage("cover"))!.text()).toBe("image");
+    expect(await (await restored.readImage("cover"))!.blob.text()).toBe("image");
     expect(read.mock.calls.at(-1)![0]).toMatch(/\.image$/);
     expect(await restored.readImage("unknown")).toBeNull();
   });
@@ -192,7 +251,7 @@ describe("artwork cache foundation", () => {
     expect(disk.blobs.has(original)).toBe(false);
     expect(disk.blobs.size).toBe(1);
     expect(cache.images.size).toBe(1);
-    expect(await (await cache.readImage("cover"))!.text()).toBe("replacement");
+    expect(await (await cache.readImage("cover"))!.blob.text()).toBe("replacement");
   });
 
   it.each(["binary", "catalog", "after commit"])(
@@ -222,7 +281,7 @@ describe("artwork cache foundation", () => {
       expect(disk.blobs.size).toBe(1);
       const restored = new Cache(account);
       await restored.load();
-      expect(await (await restored.readImage("cover"))!.text()).toBe(
+      expect(await (await restored.readImage("cover"))!.blob.text()).toBe(
         stage === "after commit" ? "new" : "old",
       );
     },
@@ -239,8 +298,8 @@ describe("artwork cache foundation", () => {
     expect(results.filter(Boolean)).toHaveLength(1);
     expect(disk.blobs.size).toBe(1);
     expect(first.images.get("cover")).toEqual(second.images.get("cover"));
-    expect(await (await second.readImage("cover"))!.text()).toBe(
-      await results.find(Boolean)!.text(),
+    expect(await (await second.readImage("cover"))!.blob.text()).toBe(
+      await results.find(Boolean)!.blob.text(),
     );
   });
 
@@ -269,7 +328,7 @@ describe("artwork cache foundation", () => {
       expect(cache.images.has("cover")).toBe(false);
       expect(cache.images.has("other")).toBe(true);
       expect(disk.blobs.has(binary)).toBe(false);
-      expect(JSON.parse(disk.files.get(catalogPath(disk))!).images).toHaveLength(1);
+      expect(JSON.parse(disk.files.get(catalogPath(disk))!)).toHaveLength(1);
     },
   );
 
@@ -280,9 +339,10 @@ describe("artwork cache foundation", () => {
     const second = new Cache(account);
     await second.load();
     await second.saveImage("cover", image("new"));
-    expect(await first.readImage("cover")).toBeNull();
+    const opened = await first.readImage("cover");
     expect(first.images.get("cover")).toEqual(second.images.get("cover"));
-    expect(await (await first.readImage("cover"))!.text()).toBe("new");
+    expect(opened!.record).toBe(first.images.get("cover"));
+    expect(await opened!.blob.text()).toBe("new");
     expect(disk.blobs.size).toBe(1);
   });
 
@@ -328,10 +388,10 @@ describe("artwork cache foundation", () => {
       await initial.saveImage("cover", image());
       const path = catalogPath(disk);
       const catalog = JSON.parse(disk.files.get(path)!);
-      if (kind === "unexpected field") catalog.unexpected = true;
+      if (kind === "unexpected field") catalog[0].unexpected = true;
       else
-        catalog.images.push({
-          ...catalog.images[0],
+        catalog.push({
+          ...catalog[0],
           id: kind === "shared file" ? "other" : "cover",
         });
       disk.files.set(path, JSON.stringify(catalog));
@@ -373,8 +433,8 @@ describe("artwork cache foundation", () => {
       second.saveImage("cover", image("second")),
     ]);
     await Promise.all([first.load(), second.load()]);
-    expect(await (await first.readImage("cover"))!.text()).toBe("first");
-    expect(await (await second.readImage("cover"))!.text()).toBe("second");
+    expect(await (await first.readImage("cover"))!.blob.text()).toBe("first");
+    expect(await (await second.readImage("cover"))!.blob.text()).toBe("second");
     expect(disk.files.size).toBe(2);
     expect(disk.blobs.size).toBe(2);
   });

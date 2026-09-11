@@ -40,7 +40,7 @@ const queueRecordSchema = v.pipe(
 );
 export type CachedQueue = Omit<v.InferOutput<typeof queueRecordSchema>, "updatedAt">;
 
-const imagesSchema = v.strictObject({ images: v.array(imageSchema) });
+const imagesSchema = v.array(imageSchema);
 export interface CachedImage {
   blob: Blob;
   type: string;
@@ -59,17 +59,10 @@ const cachedDownloadSchema = v.strictObject({
   downloadedAt: timestamp,
 });
 export type CachedDownload = v.InferOutput<typeof cachedDownloadSchema>;
-const downloadsSchema = v.strictObject({ downloads: v.array(cachedDownloadSchema) });
+const downloadsSchema = v.array(cachedDownloadSchema);
 /** Account-local identity, also distinguishing original files from MP3 transcodes. */
 export function downloadKey(trackId: string, format: DownloadFormat) {
   return JSON.stringify([trackId, format]);
-}
-function downloadMap(
-  records: readonly CachedDownload[],
-): ReadonlyMap<string, Immutable<CachedDownload>> {
-  const map = new Map<string, Immutable<CachedDownload>>();
-  for (const record of records) map.set(downloadKey(record.track.id, record.format), record);
-  return map;
 }
 
 /** Loading one local domain never prevents another from restoring. */
@@ -130,6 +123,13 @@ class Disk {
   }
   directory() {
     return this.#directory(true);
+  }
+
+  async lockDownload<T>(key: string, signal: AbortSignal, operation: () => Promise<T>) {
+    signal.throwIfAborted();
+    const name = `libras-download:${await this.key}:${key}.audio`;
+    signal.throwIfAborted();
+    return navigator.locks ? navigator.locks.request(name, { signal }, operation) : operation();
   }
 
   async #locked<T>(
@@ -207,6 +207,164 @@ class Disk {
   }
 }
 
+interface BinaryRecord {
+  readonly fileName: string;
+  readonly size: number;
+}
+
+interface CatalogOptions<R> {
+  document: DocumentName;
+  parse: (value: unknown) => readonly R[];
+  key: (record: R) => string;
+}
+
+/** Shared local records and bytes. Acquisition, per-item locks, and winner policy
+ * stay in Cache's domain methods. R is immutable; publication replaces the map. */
+class BinaryCatalog<R extends BinaryRecord> {
+  #records = $state.raw<ReadonlyMap<string, R>>(new Map());
+  error = $state.raw<unknown>();
+  #loads = $state(0);
+  #serial = serial();
+
+  constructor(
+    readonly disk: Disk | undefined,
+    readonly options: CatalogOptions<R>,
+  ) {}
+
+  get records() {
+    return this.#records;
+  }
+  get loading() {
+    return this.#loads > 0;
+  }
+
+  /** One error boundary per public Cache operation, not per internal I/O step. */
+  async operation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    try {
+      signal?.throwIfAborted();
+      const value = await action();
+      signal?.throwIfAborted();
+      this.error = undefined;
+      return value;
+    } catch (error) {
+      if (!signal?.aborted && this.disk) this.error = error;
+      throw error;
+    }
+  }
+
+  #publish(records: readonly R[] | null) {
+    this.#records = new Map((records ?? []).map((record) => [this.options.key(record), record]));
+  }
+
+  /** Hydration is observable; internal disk rechecks need not show a loading state. */
+  async load(signal?: AbortSignal) {
+    this.#loads++;
+    try {
+      await this.operation(() => this.refresh(signal), signal);
+    } finally {
+      this.#loads--;
+    }
+  }
+
+  refresh(signal?: AbortSignal) {
+    return this.#serial(async () => {
+      signal?.throwIfAborted();
+      const document = await this.disk?.read(this.options.document, this.options.parse);
+      signal?.throwIfAborted();
+      this.#publish(document ?? null);
+    });
+  }
+
+  #update(change: (records: readonly R[]) => readonly R[] | undefined, signal?: AbortSignal) {
+    if (!this.disk) throw new Error("No account selected.");
+    return this.disk.update(
+      this.options.document,
+      this.options.parse,
+      (records) => change(records ?? []),
+      { valid: () => !signal?.aborted },
+    );
+  }
+
+  /** Return bytes with their matching record, following competing replacements
+   * discovered during missing-file repair. No unlisted files are adopted. */
+  read(key: string, signal?: AbortSignal) {
+    return this.#serial(async () => {
+      signal?.throwIfAborted();
+      let record = this.#records.get(key);
+      if (!record) return null;
+      const directory = await this.disk?.directory();
+      if (!directory) return null;
+      while (record) {
+        signal?.throwIfAborted();
+        try {
+          const file = await (await directory.getFileHandle(record.fileName)).getFile();
+          signal?.throwIfAborted();
+          if (file.size === record.size) return { file, record };
+        } catch (error) {
+          if (!(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
+        }
+        signal?.throwIfAborted();
+        const missing = record.fileName;
+        const result = await this.#update((records) => {
+          if (records.find((item) => this.options.key(item) === key)?.fileName !== missing)
+            return undefined;
+          return records.filter((item) => item.fileName !== missing);
+        }, signal);
+        signal?.throwIfAborted();
+        this.#publish(result.value);
+        if (!result.value?.some((item) => item.fileName === missing))
+          await directory.removeEntry(missing).catch(() => {});
+        record = this.#records.get(key);
+      }
+      return null;
+    });
+  }
+
+  /** Stream independently; serialize only catalog commit and publication.
+   * Preparing the result may open the file, but blob-backed callers need not. */
+  async write<T>(
+    fileName: string,
+    source: ReadableStream<Uint8Array>,
+    prepare: (handle: FileSystemFileHandle) => Promise<{ record: R; value: T }>,
+    expected: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<T | undefined> {
+    signal?.throwIfAborted();
+    const directory = await this.disk?.directory();
+    if (!directory) throw new Error("No account selected.");
+    let writable: FileSystemWritableFileStream | undefined;
+    let committed = false;
+    try {
+      signal?.throwIfAborted();
+      const handle = await directory.getFileHandle(fileName, { create: true });
+      writable = await handle.createWritable();
+      await source.pipeTo(writable, { signal });
+      signal?.throwIfAborted();
+      const { record, value } = await prepare(handle);
+      const key = this.options.key(record);
+      await this.#serial(async () => {
+        signal?.throwIfAborted();
+        const result = await this.#update((records) => {
+          if (records.find((item) => this.options.key(item) === key)?.fileName !== expected)
+            return undefined;
+          return [...records.filter((item) => this.options.key(item) !== key), record];
+        }, signal);
+        // Mark ownership BEFORE checking cancellation or doing any further I/O.
+        committed = result.written;
+        if (committed && expected) await directory.removeEntry(expected).catch(() => {});
+        signal?.throwIfAborted();
+        this.#publish(result.value);
+      });
+      return committed ? value : undefined;
+    } finally {
+      if (!committed) {
+        await writable?.abort().catch(() => {});
+        await directory.removeEntry(fileName).catch(() => {});
+      }
+    }
+  }
+}
+
 function unique<T>(records: readonly T[], key: (record: T) => string) {
   if (new Set(records.map(key)).size !== records.length)
     throw new Error("Duplicate cache references.");
@@ -220,16 +378,16 @@ function parseLibrary(value: unknown) {
 function parseQueue(value: unknown) {
   return v.parse(queueRecordSchema, value);
 }
-function parseImages(value: unknown) {
+function parseImages(value: unknown): Immutable<v.InferOutput<typeof imagesSchema>> {
   const catalog = v.parse(imagesSchema, value);
-  unique(catalog.images, (image) => image.id);
-  unique(catalog.images, (image) => image.fileName);
+  unique(catalog, (image) => image.id);
+  unique(catalog, (image) => image.fileName);
   return catalog;
 }
-function parseDownloads(value: unknown) {
+function parseDownloads(value: unknown): Immutable<v.InferOutput<typeof downloadsSchema>> {
   const catalog = v.parse(downloadsSchema, value);
-  unique(catalog.downloads, (item) => downloadKey(item.track.id, item.format));
-  unique(catalog.downloads, (item) => item.fileName);
+  unique(catalog, (item) => downloadKey(item.track.id, item.format));
+  unique(catalog, (item) => item.fileName);
   return catalog;
 }
 
@@ -347,13 +505,8 @@ export class Cache {
   #runQueue = serial();
   #queueTimer?: ReturnType<typeof setTimeout>;
   #checkpointTimer?: ReturnType<typeof setTimeout>;
-  #images = $state.raw<ReadonlyMap<string, Immutable<ImageRecord>>>(new Map());
-  #imagesError = $state.raw<unknown>();
-  #runImages = serial();
-  #downloads = $state.raw<ReadonlyMap<string, Immutable<CachedDownload>>>(new Map());
-  #downloadsError = $state.raw<unknown>();
-  #runDownloads = serial();
-  #downloadLoads = $state(0);
+  readonly #images: BinaryCatalog<Immutable<ImageRecord>>;
+  readonly #downloads: BinaryCatalog<Immutable<CachedDownload>>;
 
   /** Omitting the account creates an empty, non-persisting UI fallback. */
   constructor(account?: Account) {
@@ -361,6 +514,16 @@ export class Cache {
     this.#disk = this.account
       ? new Disk(hash(JSON.stringify([this.account.host, this.account.username])))
       : undefined;
+    this.#images = new BinaryCatalog(this.#disk, {
+      document: "images",
+      parse: parseImages,
+      key: (image) => image.id,
+    });
+    this.#downloads = new BinaryCatalog(this.#disk, {
+      document: "downloads",
+      parse: parseDownloads,
+      key: (item) => downloadKey(item.track.id, item.format),
+    });
   }
 
   #requireAccount() {
@@ -393,10 +556,10 @@ export class Cache {
     return this.#library.trackArtwork;
   }
   get images() {
-    return this.#images;
+    return this.#images.records;
   }
   get imagesError() {
-    return this.#imagesError;
+    return this.#images.error;
   }
 
   get lastModified() {
@@ -413,8 +576,8 @@ export class Cache {
     const [library, queue, images, downloads] = await Promise.allSettled([
       this.#loadLibrary(signal),
       this.#loadQueue(signal),
-      this.#loadImages(signal),
-      this.#hydrateDownloads(signal),
+      this.#images.load(signal),
+      this.#downloads.load(signal),
     ]);
     signal?.throwIfAborted();
     if (
@@ -585,162 +748,53 @@ export class Cache {
     });
   }
 
-  #loadImages(signal?: AbortSignal) {
-    return this.#runImages(async () => {
-      try {
-        signal?.throwIfAborted();
-        const catalog = await this.#disk?.read("images", parseImages);
-        signal?.throwIfAborted();
-        this.#images = entityMap(catalog?.images ?? []);
-        this.#imagesError = undefined;
-      } catch (error) {
-        if (!signal?.aborted) this.#imagesError = error;
-        throw error;
-      }
-    });
-  }
-
   /** Load bytes on demand. Missing/incomplete files invalidate only their matching record. */
-  readImage(id: string, signal?: AbortSignal): Promise<Blob | null> {
-    return this.#runImages(async () => {
-      try {
-        signal?.throwIfAborted();
-        const record = this.#images.get(id);
-        if (!record) return null;
-        const directory = await this.#disk?.directory();
-        if (!directory) return null;
-        try {
-          const file = await (await directory.getFileHandle(record.fileName)).getFile();
-          if (file.size !== record.size)
-            throw new DOMException("The cached image is incomplete.", "DataError");
-          const blob = new Blob([await file.arrayBuffer()], { type: record.type });
-          signal?.throwIfAborted();
-          this.#imagesError = undefined;
-          return blob;
-        } catch (error) {
-          if (
-            !(error instanceof DOMException) ||
-            !["NotFoundError", "DataError"].includes(error.name)
-          )
-            throw error;
-        }
-        signal?.throwIfAborted();
-        const result = await this.#disk?.update(
-          "images",
-          parseImages,
-          (catalog) => {
-            if (catalog?.images.find((image) => image.id === id)?.fileName !== record.fileName)
-              return undefined;
-            return { ...catalog!, images: catalog!.images.filter((image) => image.id !== id) };
-          },
-          { valid: () => !signal?.aborted },
-        );
-        signal?.throwIfAborted();
-        this.#images = entityMap(result?.value?.images ?? []);
-        this.#imagesError = undefined;
-        if (!result?.value?.images.some((image) => image.fileName === record.fileName))
-          await directory.removeEntry(record.fileName).catch(() => {});
-        return null;
-      } catch (error) {
-        if (!signal?.aborted) this.#imagesError = error;
-        throw error;
-      }
-    });
+  readImage(id: string, signal?: AbortSignal) {
+    return this.#images.operation(async () => {
+      const opened = await this.#images.read(id, signal);
+      if (!opened) return null;
+      const { file, record } = opened;
+      return { blob: new Blob([await file.arrayBuffer()], { type: record.type }), record };
+    }, signal);
   }
 
   /**
    * Commit bytes before the catalog, then publish. A competing replacement wins if
-   * it changed the record observed at call time. Only our committed blob is returned;
+   * it changed the record observed at call time. Return our committed blob and record;
    * callers can readImage() after an undefined result to use the competing winner.
    */
-  async saveImage(id: string, image: CachedImage, signal?: AbortSignal): Promise<Blob | undefined> {
-    signal?.throwIfAborted();
-    this.#requireAccount();
-    const record: ImageRecord = {
-      id,
-      fileName: `${crypto.randomUUID()}.image`,
-      type: image.type,
-      size: image.blob.size,
-      cachedAt: Date.now(),
-      etag: image.etag,
-      lastModified: image.lastModified,
-    };
-    const blob = new Blob([image.blob], { type: record.type });
-    const expected = this.#images.get(id)?.fileName;
-    return this.#runImages(async () => {
-      let directory: FileSystemDirectoryHandle | undefined;
-      let writable: FileSystemWritableFileStream | undefined;
-      let committed = false;
-      try {
-        signal?.throwIfAborted();
-        directory = await this.#disk?.directory();
-        if (!directory) throw new Error("No account selected.");
-        const handle = await directory.getFileHandle(record.fileName, { create: true });
-        writable = await handle.createWritable();
-        await writable.write(blob);
-        signal?.throwIfAborted();
-        await writable.close();
-        signal?.throwIfAborted();
-        const result = await this.#disk?.update(
-          "images",
-          parseImages,
-          (catalog) => {
-            if (catalog?.images.find((image) => image.id === id)?.fileName !== expected)
-              return undefined;
-            return {
-              images: [...(catalog?.images ?? []).filter((image) => image.id !== id), record],
-            };
-          },
-          { valid: () => !signal?.aborted },
-        );
-        committed = result?.written ?? false;
-        // A completed catalog commit owns its bytes, even if cancellation arrived during close.
-        if (committed && expected) await directory.removeEntry(expected).catch(() => {});
-        signal?.throwIfAborted();
-        this.#images = entityMap(result?.value?.images ?? []);
-        this.#imagesError = undefined;
-        return committed ? blob : undefined;
-      } catch (error) {
-        if (!signal?.aborted) this.#imagesError = error;
-        throw error;
-      } finally {
-        if (!committed) {
-          await writable?.abort().catch(() => {});
-          await directory?.removeEntry(record.fileName).catch(() => {});
-        }
-      }
-    });
+  saveImage(id: string, image: CachedImage, signal?: AbortSignal) {
+    return this.#images.operation(async () => {
+      this.#requireAccount();
+      const record: Immutable<ImageRecord> = {
+        id,
+        fileName: `${crypto.randomUUID()}.image`,
+        type: image.type,
+        size: image.blob.size,
+        cachedAt: Date.now(),
+        etag: image.etag,
+        lastModified: image.lastModified,
+      };
+      const blob = new Blob([image.blob], { type: record.type });
+      const expected = this.images.get(id)?.fileName;
+      return this.#images.write(
+        record.fileName,
+        blob.stream(),
+        async () => ({ record, value: { blob, record } }),
+        expected,
+        signal,
+      );
+    }, signal);
   }
 
   get downloads() {
-    return this.#downloads;
+    return this.#downloads.records;
   }
   get downloadsError() {
-    return this.#downloadsError;
+    return this.#downloads.error;
   }
   get downloadsLoading() {
-    return this.#downloadLoads > 0;
-  }
-  #hydrateDownloads(signal?: AbortSignal) {
-    this.#downloadLoads++;
-    return this.#loadDownloads(signal).finally(() => {
-      this.#downloadLoads--;
-    });
-  }
-
-  #loadDownloads(signal?: AbortSignal) {
-    return this.#runDownloads(async () => {
-      try {
-        signal?.throwIfAborted();
-        const catalog = await this.#disk?.read("downloads", parseDownloads);
-        signal?.throwIfAborted();
-        this.#downloads = downloadMap(catalog?.downloads ?? []);
-        this.#downloadsError = undefined;
-      } catch (error) {
-        if (!signal?.aborted) this.#downloadsError = error;
-        throw error;
-      }
-    });
+    return this.#downloads.loading;
   }
 
   /** Open a file lazily without copying audio into RAM or adopting unlisted bytes. */
@@ -749,56 +803,10 @@ export class Cache {
     format: DownloadFormat,
     signal?: AbortSignal,
   ): Promise<File | null> {
-    return this.#runDownloads(async () => {
-      try {
-        signal?.throwIfAborted();
-        const key = downloadKey(trackId, format);
-        let record = this.#downloads.get(key);
-        if (!record) return null;
-        const directory = await this.#disk?.directory();
-        if (!directory) return null;
-        while (record) {
-          signal?.throwIfAborted();
-          try {
-            const file = await (await directory.getFileHandle(record.fileName)).getFile();
-            signal?.throwIfAborted();
-            if (file.size === record.size) {
-              this.#downloadsError = undefined;
-              return file;
-            }
-          } catch (error) {
-            if (!(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
-          }
-          const missing = record.fileName;
-          const result = await this.#disk?.update(
-            "downloads",
-            parseDownloads,
-            (catalog) => {
-              const current = catalog?.downloads.find(
-                (item) => downloadKey(item.track.id, item.format) === key,
-              );
-              if (current?.fileName !== missing) return undefined;
-              return {
-                ...catalog!,
-                downloads: catalog!.downloads.filter((item) => item.fileName !== missing),
-              };
-            },
-            { valid: () => !signal?.aborted },
-          );
-          signal?.throwIfAborted();
-          this.#downloads = downloadMap(result?.value?.downloads ?? []);
-          if (!result?.value?.downloads.some((item) => item.fileName === missing))
-            await directory.removeEntry(missing).catch(() => {});
-          // A stale miss may reveal a competing writer's complete replacement.
-          record = this.#downloads.get(key);
-        }
-        this.#downloadsError = undefined;
-        return null;
-      } catch (error) {
-        if (!signal?.aborted) this.#downloadsError = error;
-        throw error;
-      }
-    });
+    return this.#downloads.operation(async () => {
+      const opened = await this.#downloads.read(downloadKey(trackId, format), signal);
+      return opened?.file ?? null;
+    }, signal);
   }
 
   /** Stream bytes under a per-download lock; publish only after catalog commit.
@@ -812,86 +820,46 @@ export class Cache {
     response: Response,
     signal: AbortSignal,
   ): Promise<File> {
-    let directory: FileSystemDirectoryHandle | undefined;
-    let writable: FileSystemWritableFileStream | undefined;
-    let fileName: string | undefined;
-    let committed = false;
     try {
-      signal.throwIfAborted();
-      const account = this.#requireAccount();
-      const candidate = {
-        track: structuredClone(track) as CachedDownload["track"],
-        format,
-        contentType,
-      };
-      const key = downloadKey(candidate.track.id, candidate.format);
-      const lock = await hash(JSON.stringify([account.host, account.username, key]));
-      const save = async () => {
-        signal.throwIfAborted();
-        // Always take the per-file lock before any short-lived catalog lock.
-        await this.#loadDownloads(signal);
-        const cached = await this.readDownload(candidate.track.id, candidate.format, signal);
-        if (cached) return cached;
-        const expected = this.#downloads.get(key)?.fileName;
-        directory = await this.#disk?.directory();
-        if (!directory) throw new Error("No account selected.");
-        signal.throwIfAborted();
-        fileName = `${crypto.randomUUID()}.audio`;
-        const handle = await directory.getFileHandle(fileName, { create: true });
-        writable = await handle.createWritable();
-        if (!response.body) throw new Error("The downloaded audio response has no body.");
-        await response.body.pipeTo(writable, { signal });
-        signal.throwIfAborted();
-        const file = await handle.getFile();
-        const record: CachedDownload = {
-          ...candidate,
-          fileName,
-          size: file.size,
-          downloadedAt: Date.now(),
+      return await this.#downloads.operation(async () => {
+        const disk = this.#disk;
+        if (!disk) throw new Error("No account selected.");
+        const candidate = {
+          track: structuredClone(track) as CachedDownload["track"],
+          format,
+          contentType,
         };
-        await this.#runDownloads(async () => {
+        const key = downloadKey(candidate.track.id, candidate.format);
+        const save = async () => {
           signal.throwIfAborted();
-          const result = await this.#disk?.update(
-            "downloads",
-            parseDownloads,
-            (catalog) => {
-              const current = catalog?.downloads.find(
-                (item) => downloadKey(item.track.id, item.format) === key,
-              );
-              if (current?.fileName !== expected) return undefined;
+          // Always take the per-file lock before any short-lived catalog lock.
+          await this.#downloads.refresh(signal);
+          const cached = await this.#downloads.read(key, signal);
+          if (cached) return cached.file;
+          const expected = this.downloads.get(key)?.fileName;
+          const fileName = `${crypto.randomUUID()}.audio`;
+          if (!response.body) throw new Error("The downloaded audio response has no body.");
+          const file = await this.#downloads.write(
+            fileName,
+            response.body,
+            async (handle) => {
+              const file = await handle.getFile();
               return {
-                downloads: [
-                  ...(catalog?.downloads ?? []).filter(
-                    (item) => downloadKey(item.track.id, item.format) !== key,
-                  ),
-                  record,
-                ],
+                record: { ...candidate, fileName, size: file.size, downloadedAt: Date.now() },
+                value: file,
               };
             },
-            { valid: () => !signal.aborted },
+            expected,
+            signal,
           );
-          committed = result?.written ?? false;
-          // Cancellation during atomic close must never delete committed bytes.
-          signal.throwIfAborted();
-          this.#downloads = downloadMap(result?.value?.downloads ?? []);
-          this.#downloadsError = undefined;
-        });
-        if (committed) return file;
-        const winner = await this.readDownload(candidate.track.id, candidate.format, signal);
-        if (!winner) throw new Error("The competing download is no longer available.");
-        return winner;
-      };
-      return await (navigator.locks
-        ? navigator.locks.request(`libras-download:${lock}.audio`, { signal }, save)
-        : save());
-    } catch (error) {
-      if (!signal.aborted && this.account) this.#downloadsError = error;
-      throw error;
+          if (file) return file;
+          const winner = await this.#downloads.read(key, signal);
+          if (!winner) throw new Error("The competing download is no longer available.");
+          return winner.file;
+        };
+        return disk.lockDownload(key, signal, save);
+      }, signal);
     } finally {
-      if (!committed && fileName) {
-        await writable?.abort().catch(() => {});
-        await directory?.removeEntry(fileName).catch(() => {});
-      }
       if (response.body && !response.bodyUsed) await response.body.cancel().catch(() => {});
     }
   }

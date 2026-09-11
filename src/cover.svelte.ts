@@ -110,15 +110,10 @@ export class CoverEngine {
     const signal = this.#scope.signal;
     const valid = () => !this.#destroyed && !signal.aborted && cache === this.#selection.cache;
     const load: Promise<InstalledImage | undefined> = (async () => {
-      const blob = await cache.readImage(record.id, signal);
-      if (!valid()) return;
-      const latest = cache.images.get(record.id);
-      // Missing old bytes may have revealed a competing tab's replacement. Retry
-      // that reference, rather than falling back to the network while offline.
-      if (!blob && latest && latest.fileName !== record.fileName)
-        return this.#install(cache, latest);
-      if (!blob || latest?.fileName !== record.fileName) return;
-      return this.#installBlob(record, blob);
+      const image = await cache.readImage(record.id, signal);
+      if (!valid() || !image) return;
+      if (cache.images.get(record.id)?.fileName !== image.record.fileName) return;
+      return this.#installBlob(image.record, image.blob);
     })().finally(() => {
       if (this.#loads.get(record.fileName) === load) this.#loads.delete(record.fileName);
     });
@@ -205,10 +200,10 @@ export class CoverEngine {
         lastModified: cached?.lastModified,
       });
       if (!valid() || !result || cache.images.get(id)?.fileName !== cached?.fileName) return;
-      const blob = await cache.saveImage(id, result, signal);
+      const image = await cache.saveImage(id, result, signal);
       if (!valid()) return;
-      const record = cache.images.get(id);
-      if (blob && record) this.#installBlob(record, blob);
+      if (image && cache.images.get(id)?.fileName === image.record.fileName)
+        this.#installBlob(image.record, image.blob);
       await this.refresh();
     })()
       .catch(() => {})

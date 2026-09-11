@@ -161,15 +161,14 @@ describe("cover engine using Cache", () => {
     await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
     expect(cache.images.has("album-cover")).toBe(false);
     expect(cache.albumArtwork).toBe(references);
-    expect(catalog(disk).images.map((record: { id: string }) => record.id)).toEqual([
-      "track-cover",
-    ]);
+    expect(catalog(disk).map((record: { id: string }) => record.id)).toEqual(["track-cover"]);
     expect(await (vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob).text()).toBe("fallback");
   });
 
   it("reads a competing replacement on the first offline acquisition", async () => {
     installOpfs();
     const original = await seed();
+    const read = vi.spyOn(original, "readImage");
     const { covers } = await engine(original);
     const competing = new Cache(account);
     await competing.load();
@@ -179,6 +178,7 @@ describe("cover engine using Cache", () => {
     expect(await (vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob).text()).toBe(
       "replacement",
     );
+    expect(read).toHaveBeenCalledOnce();
   });
 
   it("shares one explicit download across network and cache-only handles", async () => {
@@ -208,8 +208,8 @@ describe("cover engine using Cache", () => {
     expect(notify).toHaveBeenCalled();
     unsubscribe();
     const saved = catalog(disk);
-    expect(saved.images).toEqual([...selection.cache!.images.values()]);
-    expect(Object.keys(saved)).toEqual(["images"]);
+    expect(saved).toEqual([...selection.cache!.images.values()]);
+    expect(Array.isArray(saved)).toBe(true);
     expect(disk.blobs.size).toBe(1);
     for (const secret of ["blob:", "getCoverArt", auth.token, auth.salt])
       expect(JSON.stringify(saved)).not.toContain(secret);
@@ -245,7 +245,7 @@ describe("cover engine using Cache", () => {
       await vi.waitFor(() => expect(cover.source).toBe("blob:cover-2"));
       expect(cached.source).toBe(cover.source);
       expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:cover-1");
-      expect(catalog(disk).images[0].etag).toBe('"new"');
+      expect(catalog(disk)[0].etag).toBe('"new"');
       expect(disk.blobs.size).toBe(1);
     } else {
       expect(cached.source).toBe("blob:cover-1");
@@ -392,7 +392,7 @@ describe("cover engine using Cache", () => {
       if (stage === "afterClose") {
         const restored = new Cache(account);
         await restored.load();
-        expect(await (await restored.readImage("album-cover"))!.text()).toBe("image");
+        expect(await (await restored.readImage("album-cover"))!.blob.text()).toBe("image");
       }
     },
   );
@@ -427,7 +427,7 @@ describe("cover engine using Cache", () => {
       const expected = entity === "album" ? ["album-cover"] : ["album-cover", "track-cover"];
       expect(
         catalog(disk)
-          .images.map((record: { id: string }) => record.id)
+          .map((record: { id: string }) => record.id)
           .sort(),
       ).toEqual(expected);
       expect(disk.blobs.size).toBe(expected.length);

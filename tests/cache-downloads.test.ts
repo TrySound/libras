@@ -47,8 +47,8 @@ describe("download cache foundation", () => {
       contentType: "audio/mpeg",
       size: 5,
     });
-    expect(catalog(disk)).toEqual({ downloads: [...cache.downloads.values()] });
-    expect(catalog(disk).downloads[0]).not.toHaveProperty("key");
+    expect(catalog(disk)).toEqual([...cache.downloads.values()]);
+    expect(catalog(disk)[0]).not.toHaveProperty("key");
     expect(disk.blobs.size).toBe(1);
     const reads: string[] = [];
     disk.state.beforeRead = async (name) => {
@@ -282,7 +282,7 @@ describe("download cache foundation", () => {
       else disk.blobs.set(binary, new Blob(["x"]));
       expect(await cache.readDownload(track.id, "mp3")).toBeNull();
       expect(cache.downloads.size).toBe(1);
-      expect(catalog(disk).downloads).toHaveLength(1);
+      expect(catalog(disk)).toHaveLength(1);
       expect(disk.blobs.has(binary)).toBe(false);
       await save(cache, "replacement");
       expect(cache.downloads.get(key)!.fileName).not.toBe(fileName);
@@ -300,7 +300,7 @@ describe("download cache foundation", () => {
     await save(second, "replacement");
     expect(await (await first.readDownload(track.id, "mp3"))!.text()).toBe("replacement");
     expect(first.downloads).toEqual(second.downloads);
-    expect(catalog(disk).downloads).toHaveLength(1);
+    expect(catalog(disk)).toHaveLength(1);
   });
 
   it("does not invalidate records after permission errors or cancelled reads", async () => {
@@ -323,7 +323,7 @@ describe("download cache foundation", () => {
       name: "AbortError",
     });
     expect(cache.downloads).toBe(original);
-    expect(catalog(disk).downloads).toHaveLength(1);
+    expect(catalog(disk)).toHaveLength(1);
   });
 
   it("isolates accounts and never adopts unlisted files", async () => {
@@ -353,10 +353,10 @@ describe("download cache foundation", () => {
       original.setQueue({ tracks: [track.id], index: 0, position: 0 });
       await original.flush();
       const data = catalog(disk);
-      if (kind === "unexpected field") data.unexpected = true;
-      if (kind === "duplicate") data.downloads.push(data.downloads[0]);
-      if (kind === "shared file") data.downloads.push({ ...data.downloads[0], format: "raw" });
-      if (kind === "unsafe filename") data.downloads[0].fileName = "../outside.audio";
+      if (kind === "unexpected field") data[0].unexpected = true;
+      if (kind === "duplicate") data.push(data[0]);
+      if (kind === "shared file") data.push({ ...data[0], format: "raw" });
+      if (kind === "unsafe filename") data[0].fileName = "../outside.audio";
       const value = kind === "broken" ? "broken JSON" : JSON.stringify(data);
       disk.files.set(path(disk), value);
       const cache = new Cache(account);
@@ -418,7 +418,7 @@ describe("download cache foundation", () => {
         gate.resolve();
         await Promise.all([loading, saving]);
         expect(cache.downloads.size).toBe(2);
-        expect(catalog(disk).downloads).toHaveLength(2);
+        expect(catalog(disk)).toHaveLength(2);
       }
     },
   );

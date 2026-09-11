@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Cache } from "../src/cache.svelte";
+import { Cache, downloadKey } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 
 const account = { host: "https://music.example", username: "listener" };
@@ -29,15 +29,28 @@ describe("Cache's internal file operations", () => {
     await cache.replaceLibrary(library());
     await cache.saveImage("cover", image);
     await cache.readImage("cover");
+    for (const format of ["raw", "mp3"] as const)
+      await cache.saveDownload(
+        track,
+        format,
+        "audio/mpeg",
+        new Response("audio"),
+        new AbortController().signal,
+      );
     expect(digest).toHaveBeenCalledOnce();
     const hash = Array.from(new Uint8Array(await digest.mock.results[0].value), (byte) =>
       byte.toString(16).padStart(2, "0"),
     ).join("");
     const names = vi.mocked(navigator.locks.request).mock.calls.map(([name]) => name);
     expect(new Set(names)).toEqual(
-      new Set(
-        ["library", "queue", "images", "downloads"].map((name) => `libras-${name}:${hash}.cache`),
-      ),
+      new Set([
+        ...["library", "queue", "images", "downloads"].map(
+          (name) => `libras-${name}:${hash}.cache`,
+        ),
+        ...(["raw", "mp3"] as const).map(
+          (format) => `libras-download:${hash}:${downloadKey(track.id, format)}.audio`,
+        ),
+      ]),
     );
   });
 
@@ -82,7 +95,7 @@ describe("Cache's internal file operations", () => {
       expect(restored.account).toEqual(identity);
       expect(restored.savedAt).toBe(version);
       expect(restored.queue.position).toBe(version);
-      expect(await (await restored.readImage("cover"))!.text()).toBe(`image-${version}`);
+      expect(await (await restored.readImage("cover"))!.blob.text()).toBe(`image-${version}`);
       expect(await (await restored.readDownload(track.id, "mp3"))!.text()).toBe(`audio-${version}`);
     }
   });
