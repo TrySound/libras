@@ -360,7 +360,7 @@ describe("session", () => {
     expect(memory.account).toEqual(next);
     expect(memory.artists.get("artist")?.name).toBe("other");
     expect(memory.queueTracks).toEqual(["other"]);
-    expect(covers.restore).toHaveBeenLastCalledWith(expect.objectContaining({ account: next }));
+    expect(covers.activate).toHaveBeenCalledTimes(2);
     expect(queue.activate).toHaveBeenCalledTimes(2);
     expect(session.auth).toMatchObject(next);
     expect(auth.load()).toEqual(session.auth);
@@ -493,12 +493,19 @@ describe("session", () => {
   });
 
   it("selects and loads a cache before attaching network access", async () => {
-    const { session, memory, metadata, loadCache, queue } = setup(true);
+    const { session, memory, metadata, loadCache, queue, covers } = setup(true);
     const loaded = deferred();
     loadCache.mockReturnValueOnce(loaded.promise);
     session.start();
     expect(memory.cache?.account).toEqual(memory.account);
     expect(loadCache.mock.contexts[0]).toBe(memory.cache);
+    expect(covers.activate).toHaveBeenCalledOnce();
+    expect(covers.activate.mock.invocationCallOrder[0]).toBeLessThan(
+      loadCache.mock.invocationCallOrder[0],
+    );
+    expect(covers.setConnection.mock.calls.every(([connection]) => connection === undefined)).toBe(
+      true,
+    );
     expect(session.localReady).toBe(false);
     expect(
       metadata.setConnection.mock.calls.every(([connection]) => connection === undefined),

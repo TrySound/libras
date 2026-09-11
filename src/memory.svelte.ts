@@ -31,10 +31,18 @@ export class Memory {
 
   downloads = $state.raw<ReadonlyMap<string, Immutable<DownloadedFile>>>(new Map());
 
-  images = $state.raw<ReadonlyMap<string, Immutable<ImageRecord>>>(new Map());
-  artistArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
-  albumArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
-  trackArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
+  get images() {
+    return this.cache?.images ?? emptyImages;
+  }
+  get artistArtwork() {
+    return this.cache?.artistArtwork ?? emptyArtwork;
+  }
+  get albumArtwork() {
+    return this.cache?.albumArtwork ?? emptyArtwork;
+  }
+  get trackArtwork() {
+    return this.cache?.trackArtwork ?? emptyArtwork;
+  }
 
   get queueTracks() {
     return this.cache?.queue.tracks ?? emptyQueue;
@@ -49,6 +57,8 @@ export class Memory {
   account = $state.raw<Readonly<Account> | null>(null);
 }
 
+const emptyImages: ReadonlyMap<string, Immutable<ImageRecord>> = new Map();
+const emptyArtwork: ReadonlyMap<string, readonly string[]> = new Map();
 const emptyQueue: readonly string[] = [];
 const emptyArtists: ReadonlyMap<string, Immutable<Artist>> = new Map();
 const emptyAlbums: ReadonlyMap<string, Immutable<Album>> = new Map();

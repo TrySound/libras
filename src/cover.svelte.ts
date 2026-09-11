@@ -1,28 +1,15 @@
-import type { Storage, ArtworkCatalog } from "./storage";
+import type { Cache, Immutable } from "./cache.svelte";
 import type { ArtworkConnection } from "./network.svelte";
-import type { ImageRecord, Account } from "./schema";
-import type { Memory, MemoryView } from "./memory.svelte";
-
-type CoverMemory = Pick<MemoryView, "account"> &
-  Pick<
-    Memory,
-    | "artists"
-    | "albums"
-    | "tracks"
-    | "artistAlbums"
-    | "albumTracks"
-    | "images"
-    | "artistArtwork"
-    | "albumArtwork"
-    | "trackArtwork"
-  >;
+import type { ImageRecord } from "./schema";
+import type { Memory } from "./memory.svelte";
 
 const referenceFields = {
   artists: "artistArtwork",
   albums: "albumArtwork",
   tracks: "trackArtwork",
 } as const;
-
+const emptyCandidates: readonly string[] = [];
+type Entity = keyof typeof referenceFields;
 interface CoverOptions {
   allowNetwork: boolean;
 }
@@ -30,107 +17,41 @@ interface Cover {
   readonly source: string | undefined;
   readonly cache: () => void;
 }
-
-type Entity = "artists" | "albums" | "tracks";
 interface CoverEntry {
   entity: Entity;
   id: string;
   allowNetwork: boolean;
-  candidates: readonly string[];
   cover: Cover;
   generation: number;
   selected?: string;
   source?: string;
   network: boolean;
 }
-
-function scope(account: Account) {
-  return `${account.host}\n${account.username}`;
-}
-function candidates(values: readonly (string | undefined)[]) {
-  return [...new Set(values.filter((id): id is string => Boolean(id)))];
-}
-function references(
-  memory: Pick<CoverMemory, "artists" | "albums" | "tracks" | "artistAlbums" | "albumTracks">,
-  savedAt: number,
-) {
-  const {
-    albums,
-    artists,
-    tracks,
-    albumTracks: tracksByAlbum,
-    artistAlbums: albumsByArtist,
-  } = memory;
-  const albumCandidates = new Map(
-    [...albums.values()].map((album) => [
-      album.id,
-      candidates([
-        album.artworkId,
-        ...(tracksByAlbum.get(album.id) ?? []).map((track) => track.artworkId),
-      ]),
-    ]),
-  );
-  const artistCandidates = new Map(
-    [...artists.values()].map((artist) => [
-      artist.id,
-      candidates([
-        artist.artworkId,
-        ...(albumsByArtist.get(artist.id) ?? []).flatMap(
-          (album) => albumCandidates.get(album.id) ?? [],
-        ),
-      ]),
-    ]),
-  );
-  const artistAlbumArtwork = new Map(
-    [...artists.values()].map((artist) => [
-      artist.id,
-      albumsByArtist.get(artist.id)?.find((album) => album.artworkId)?.artworkId,
-    ]),
-  );
-  return {
-    metadataSavedAt: savedAt,
-    artists: [...artistCandidates].map(([id, candidates]) => ({ id, candidates })),
-    albums: [...albumCandidates].map(([id, candidates]) => ({ id, candidates })),
-    tracks: [...tracks.values()].map((track) => {
-      const album = albums.get(track.albumId);
-      const artist = album && artists.get(album.artistId);
-      return {
-        id: track.id,
-        candidates: candidates([
-          track.artworkId,
-          album?.artworkId,
-          artist?.artworkId,
-          artist && artistAlbumArtwork.get(artist.id),
-        ]),
-      };
-    }),
-  };
+interface InstalledImage {
+  fileName: string;
+  source: string;
 }
 
+/** Resource acquisition and browser URLs; Cache owns references, records and bytes. */
 export class CoverEngine {
-  #memory: CoverMemory;
-  #metadata: { readonly savedAt: number | undefined };
+  #memory: Readonly<Pick<Memory, "cache">>;
   #connection?: ArtworkConnection;
-
-  constructor(memory: CoverMemory, metadata: { readonly savedAt: number | undefined }) {
-    this.#memory = memory;
-    this.#metadata = metadata;
-  }
-  #metadataSavedAt: number | null = null;
-  #scope = "";
-  #ready: Promise<void> = Promise.resolve();
-  #generation = 0;
+  #scope = new AbortController();
   #destroyed = false;
-  #reconcileKey = "";
-  #reconciling: Promise<void> = Promise.resolve();
-  #storage?: Pick<Storage, "account" | "artwork">;
   #covers = new Map<string, CoverEntry>();
-  #downloads = new Map<string, Promise<void>>();
-  #loads = new Map<string, Promise<string | undefined>>();
-  #objectUrls = new Map<string, string>();
+  #downloads = new Map<string, AbortController>();
+  #loads = new Map<string, Promise<InstalledImage | undefined>>();
+  #objectUrls = new Map<string, InstalledImage>();
   #version = $state(0);
   #listeners = new Set<() => void>();
 
+  constructor(
+    memory: Readonly<Pick<Memory, "cache">>,
+    _metadata?: { readonly savedAt: number | undefined },
+  ) {
+    // Keep the unused second argument until app.svelte's wiring is migrated.
+    this.#memory = memory;
+  }
   subscribe(listener: () => void) {
     this.#listeners.add(listener);
     return () => {
@@ -141,259 +62,167 @@ export class CoverEngine {
     this.#version++;
     for (const listener of this.#listeners) listener();
   }
-  restore(storage: Pick<Storage, "account" | "artwork">): Promise<void> {
-    if (this.#destroyed) return Promise.resolve();
-    const account = storage.account;
-    if (this.#scope === scope(account)) return this.#ready;
-    this.#scope = scope(account);
-    this.#storage = storage;
-    const generation = ++this.#generation;
-    const valid = () =>
-      generation === this.#generation &&
-      !this.#destroyed &&
-      this.#memory.account !== null &&
-      scope(this.#memory.account) === scope(account);
-    if (this.#connection && scope(this.#connection.account) !== this.#scope)
-      this.#connection = undefined;
-    this.#releaseObjectUrls();
+
+  /** Session selected another cache. Invalidate resources, not persisted data. */
+  activate() {
+    if (this.#destroyed) return;
+    this.#scope.abort();
+    this.#scope = new AbortController();
+    this.#cancelDownloads();
     this.#loads.clear();
-    this.#reconcileKey = "";
-    this.#metadataSavedAt = null;
-    this.#memory.images = new Map();
-    this.#memory.artistArtwork = new Map();
-    this.#memory.albumArtwork = new Map();
-    this.#memory.trackArtwork = new Map();
     for (const entry of this.#covers.values()) {
-      entry.source = undefined;
-      entry.candidates = [];
       entry.generation++;
+      entry.source = undefined;
+      entry.network = false;
     }
     this.#covers.clear();
+    this.#releaseObjectUrls();
     this.#notify();
-    return (this.#ready = (async () => {
-      try {
-        const catalog = await storage.artwork.read();
-        if (valid()) await this.#apply(catalog);
-      } catch {}
-    })());
   }
 
+  /** Re-resolve existing handles from Cache's derived references; no catalog writes. */
   async refresh() {
-    const account = this.#memory.account;
-    const storage = this.#storage;
-    const savedAt = this.#metadata.savedAt;
-    if (!account || !storage || savedAt === undefined || this.#destroyed) return;
-    // Capture immutable map references without rebuilding candidate lists on no-op refreshes.
-    const { artists, albums, tracks, artistAlbums, albumTracks } = this.#memory;
-    await this.#ready;
-    if (
-      this.#destroyed ||
-      this.#scope !== scope(account) ||
-      this.#metadata.savedAt !== savedAt ||
-      this.#memory.artists !== artists ||
-      this.#memory.albums !== albums ||
-      this.#memory.tracks !== tracks
-    )
-      return;
-    const key = `${this.#scope}\n${savedAt}`;
-    if (this.#reconcileKey === key) return this.#reconciling;
-    this.#reconcileKey = key;
-    if (this.#metadataSavedAt === savedAt) {
-      this.#reconciling = Promise.resolve();
-      return;
-    }
-    const generation = this.#generation;
-    const valid = () =>
-      !this.#destroyed &&
-      generation === this.#generation &&
-      key === this.#reconcileKey &&
-      this.#metadata.savedAt === savedAt &&
-      this.#memory.account !== null &&
-      scope(this.#memory.account) === scope(account);
-    const refs = references({ artists, albums, tracks, artistAlbums, albumTracks }, savedAt);
-    return (this.#reconciling = (async () => {
-      try {
-        const catalog = await storage.artwork.update(
-          (latest) => ((latest.metadataSavedAt ?? -1) > savedAt ? latest : { ...latest, ...refs }),
-          valid,
-        );
-        if (catalog && valid()) await this.#apply(catalog);
-      } catch {
-        if (valid()) this.#reconcileKey = "";
-      }
-    })());
-  }
-
-  async #apply(catalog: ArtworkCatalog, downloaded?: { id: string; blob: Blob }) {
-    if (
-      this.#destroyed ||
-      this.#scope !== scope(catalog.account) ||
-      !this.#memory.account ||
-      scope(this.#memory.account) !== this.#scope
-    )
-      return;
-    const generation = this.#generation;
-    const obsolete: string[] = [];
-    const images = new Map(catalog.images.map((image) => [image.id, image]));
-    for (const [id, url] of this.#objectUrls) {
-      if (this.#memory.images.get(id)?.fileName !== images.get(id)?.fileName) {
-        obsolete.push(url);
-        this.#objectUrls.delete(id);
-      }
-    }
-    const artistArtwork = new Map(
-      catalog.artists.map((reference) => [reference.id, reference.candidates]),
-    );
-    const albumArtwork = new Map(
-      catalog.albums.map((reference) => [reference.id, reference.candidates]),
-    );
-    const trackArtwork = new Map(
-      catalog.tracks.map((reference) => [reference.id, reference.candidates]),
-    );
-    this.#metadataSavedAt = catalog.metadataSavedAt;
-    this.#memory.images = images;
-    this.#memory.artistArtwork = artistArtwork;
-    this.#memory.albumArtwork = albumArtwork;
-    this.#memory.trackArtwork = trackArtwork;
-    if (downloaded) this.#objectUrls.set(downloaded.id, URL.createObjectURL(downloaded.blob));
+    if (this.#destroyed) return;
+    const cache = this.#memory.cache;
+    if (!cache) return;
+    for (const [id, image] of this.#objectUrls)
+      if (cache.images.get(id)?.fileName !== image.fileName) this.#discardUrl(id);
     await Promise.all([...this.#covers.values()].map((entry) => this.#resolve(entry, false)));
-    for (const url of obsolete) URL.revokeObjectURL(url);
-    if (!this.#destroyed && generation === this.#generation) this.#notify();
   }
 
-  #install(record: ImageRecord) {
+  #discardUrl(id: string) {
+    const image = this.#objectUrls.get(id);
+    if (!image) return;
+    this.#objectUrls.delete(id);
+    for (const entry of this.#covers.values())
+      if (entry.source === image.source) entry.source = undefined;
+    URL.revokeObjectURL(image.source);
+  }
+  #installBlob(record: Immutable<ImageRecord>, blob: Blob): InstalledImage {
     const existing = this.#objectUrls.get(record.id);
-    if (existing) return Promise.resolve(existing);
-    const loading = this.#loads.get(record.id);
+    if (existing?.fileName === record.fileName) return existing;
+    this.#discardUrl(record.id);
+    const image = { fileName: record.fileName, source: URL.createObjectURL(blob) };
+    this.#objectUrls.set(record.id, image);
+    return image;
+  }
+
+  #install(cache: Cache, record: Immutable<ImageRecord>): Promise<InstalledImage | undefined> {
+    const existing = this.#objectUrls.get(record.id);
+    if (existing?.fileName === record.fileName) return Promise.resolve(existing);
+    const loading = this.#loads.get(record.fileName);
     if (loading) return loading;
-    const generation = this.#generation;
-    const load = (async () => {
-      const account = this.#memory.account;
-      const storage = this.#storage;
-      if (!account || !storage) return;
-      const blob = await storage.artwork.readImage(record);
-      if (
-        this.#destroyed ||
-        generation !== this.#generation ||
-        !this.#memory.account ||
-        scope(this.#memory.account) !== this.#scope ||
-        this.#memory.images.get(record.id)?.fileName !== record.fileName
-      )
-        return;
-      const source = URL.createObjectURL(blob);
-      this.#objectUrls.set(record.id, source);
-      return source;
+    const signal = this.#scope.signal;
+    const valid = () => !this.#destroyed && !signal.aborted && cache === this.#memory.cache;
+    const load: Promise<InstalledImage | undefined> = (async () => {
+      const blob = await cache.readImage(record.id, signal);
+      if (!valid()) return;
+      const latest = cache.images.get(record.id);
+      // Missing old bytes may have revealed a competing tab's replacement. Retry
+      // that reference, rather than falling back to the network while offline.
+      if (!blob && latest && latest.fileName !== record.fileName)
+        return this.#install(cache, latest);
+      if (!blob || latest?.fileName !== record.fileName) return;
+      return this.#installBlob(record, blob);
     })().finally(() => {
-      if (this.#loads.get(record.id) === load) this.#loads.delete(record.id);
+      if (this.#loads.get(record.fileName) === load) this.#loads.delete(record.fileName);
     });
-    this.#loads.set(record.id, load);
+    this.#loads.set(record.fileName, load);
     return load;
   }
 
+  #candidates(entry: Pick<CoverEntry, "entity" | "id">) {
+    return this.#memory.cache?.[referenceFields[entry.entity]].get(entry.id) ?? emptyCandidates;
+  }
   async #resolve(entry: CoverEntry, revalidate: boolean) {
     const request = ++entry.generation;
-    const generation = this.#generation;
+    const signal = this.#scope.signal;
+    const cache = this.#memory.cache;
+    const candidates = this.#candidates(entry);
     const valid = () =>
       !this.#destroyed &&
-      generation === this.#generation &&
+      !signal.aborted &&
+      cache === this.#memory.cache &&
       request === entry.generation &&
-      this.#memory.account !== null &&
-      scope(this.#memory.account) === this.#scope;
-    entry.candidates = this.#memory[referenceFields[entry.entity]].get(entry.id) ?? [];
-    for (const id of entry.candidates) {
-      const record = this.#memory.images.get(id);
+      candidates === this.#candidates(entry);
+    if (!cache) return;
+    for (const id of candidates) {
+      const record = cache.images.get(id);
       if (!record) continue;
       try {
-        const source = await this.#install(record);
+        const image = await this.#install(cache, record);
         if (!valid()) return;
-        if (!source) continue;
-        entry.source = source;
+        if (!image || cache.images.get(id)?.fileName !== image.fileName) continue;
+        entry.source = image.source;
         entry.selected = id;
         entry.network = false;
         this.#notify();
-        if (revalidate && entry.allowNetwork) this.#cache(id);
+        if (revalidate && entry.allowNetwork) this.#cacheImage(id);
         return;
-      } catch (error) {
+      } catch {
         if (!valid()) return;
-        if (
-          !(error instanceof DOMException) ||
-          (error.name !== "NotFoundError" && error.name !== "DataError")
-        )
-          continue;
-        if (this.#memory.images.get(id)?.fileName === record.fileName) {
-          const images = new Map(this.#memory.images);
-          images.delete(id);
-          this.#memory.images = images;
-          const storage = this.#storage;
-          if (!storage) return;
-          void storage.artwork
-            .update(
-              (catalog) => ({
-                ...catalog,
-                images: catalog.images.filter((image) => image.fileName !== record.fileName),
-              }),
-              () => generation === this.#generation && !this.#destroyed,
-            )
-            .catch(() => {});
-        }
       }
     }
     if (!valid()) return;
-    entry.selected = entry.candidates[0];
+    entry.selected = candidates[0];
     const connection = this.#networkConnection();
     entry.network = !!(entry.selected && entry.allowNetwork && connection);
-    entry.source =
-      entry.network && connection && entry.selected
-        ? connection.url(entry.selected, 500)
-        : undefined;
+    entry.source = undefined;
+    if (entry.network && connection && entry.selected) {
+      try {
+        entry.source = connection.url(entry.selected, 500);
+      } catch {
+        entry.network = false;
+      }
+    }
     this.#notify();
   }
 
   #networkConnection() {
     const connection = this.#connection;
+    const cache = this.#memory.cache;
     return connection &&
       !connection.signal.aborted &&
-      this.#memory.account &&
-      scope(connection.account) === this.#scope &&
-      scope(this.#memory.account) === this.#scope
+      cache &&
+      cache.account.host === connection.account.host &&
+      cache.account.username === connection.account.username
       ? connection
       : undefined;
   }
-
-  #cache(id: string) {
+  #cacheImage(id: string) {
     const connection = this.#networkConnection();
-    if (!connection || !this.#storage || this.#destroyed) return;
-    const key = `${scope(connection.account)}\n${id}`;
-    if (this.#downloads.has(key)) return;
-    const generation = this.#generation;
+    const cache = this.#memory.cache;
+    if (!connection || !cache || this.#destroyed || this.#downloads.has(id)) return;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, connection.signal, this.#scope.signal]);
     const valid = () =>
-      generation === this.#generation &&
       !this.#destroyed &&
+      !signal.aborted &&
+      cache === this.#memory.cache &&
       this.#networkConnection() === connection;
-    const task = this.#download(id, connection, valid)
+    this.#downloads.set(id, controller);
+    void (async () => {
+      const cached = cache.images.get(id);
+      if (cached && !cached.etag && !cached.lastModified) return;
+      const result = await connection.read(id, {
+        size: 500,
+        etag: cached?.etag,
+        lastModified: cached?.lastModified,
+      });
+      if (!valid() || !result || cache.images.get(id)?.fileName !== cached?.fileName) return;
+      const blob = await cache.saveImage(id, result, signal);
+      if (!valid()) return;
+      const record = cache.images.get(id);
+      if (blob && record) this.#installBlob(record, blob);
+      await this.refresh();
+    })()
       .catch(() => {})
       .finally(() => {
-        if (this.#downloads.get(key) === task) this.#downloads.delete(key);
+        if (this.#downloads.get(id) === controller) this.#downloads.delete(id);
       });
-    this.#downloads.set(key, task);
   }
 
-  async #download(id: string, connection: ArtworkConnection, valid: () => boolean) {
-    const storage = this.#storage;
-    if (!storage) return;
-    const cached = this.#memory.images.get(id);
-    if (cached && !cached.etag && !cached.lastModified) return;
-    const result = await connection.read(id, {
-      size: 500,
-      etag: cached?.etag,
-      lastModified: cached?.lastModified,
-    });
-    if (!valid() || !result) return;
-    const saved = await storage.artwork.saveImage(id, result, cached?.fileName, valid);
-    if (saved && valid()) await this.#apply(saved.catalog, saved.image);
-  }
-
-  // Explicit resource acquisition. Reading the returned handle does not schedule I/O.
+  // Acquisition is explicit. Reading a returned handle never schedules new I/O.
   #ensureCover(entity: Entity, id: string, options: CoverOptions): Cover {
     this.#version;
     const key = JSON.stringify([entity, id, options.allowNetwork]);
@@ -404,7 +233,6 @@ export class CoverEngine {
       entity,
       id,
       allowNetwork: options.allowNetwork,
-      candidates: this.#memory[referenceFields[entity]].get(id) ?? [],
       generation: 0,
       network: false,
       cover: {
@@ -414,12 +242,12 @@ export class CoverEngine {
         },
         cache() {
           if (entry.network && entry.selected && engine.#covers.get(key) === entry)
-            engine.#cache(entry.selected);
+            engine.#cacheImage(entry.selected);
         },
       },
     };
     this.#covers.set(key, entry);
-    void this.#ready.then(() => {
+    void Promise.resolve().then(() => {
       if (this.#covers.get(key) === entry && !this.#destroyed) return this.#resolve(entry, true);
     });
     return entry.cover;
@@ -433,36 +261,33 @@ export class CoverEngine {
   ensureTrackCover(id: string, options: CoverOptions) {
     return this.#ensureCover("tracks", id, options);
   }
+
   setConnection(connection: ArtworkConnection | undefined) {
     if (connection === this.#connection || this.#destroyed) return;
+    this.#cancelDownloads();
     this.#connection = connection;
-    if (!connection) {
-      for (const entry of this.#covers.values()) {
-        entry.generation++;
-        if (entry.network) {
-          entry.network = false;
-          entry.source = undefined;
-        }
-        void this.#resolve(entry, false);
+    for (const entry of this.#covers.values()) {
+      entry.generation++;
+      if (entry.network) {
+        entry.network = false;
+        entry.source = undefined;
       }
-      this.#notify();
-      return;
+      void this.#resolve(entry, !!connection);
     }
-    void this.#ready.then(() => {
-      if (this.#connection === connection && !this.#destroyed) {
-        for (const entry of this.#covers.values()) void this.#resolve(entry, true);
-      }
-    });
+    this.#notify();
+  }
+  #cancelDownloads() {
+    for (const controller of this.#downloads.values()) controller.abort();
+    this.#downloads.clear();
   }
   #releaseObjectUrls() {
-    for (const url of this.#objectUrls.values()) URL.revokeObjectURL(url);
+    for (const image of this.#objectUrls.values()) URL.revokeObjectURL(image.source);
     this.#objectUrls.clear();
   }
   destroy() {
-    this.#destroyed = true;
-    this.#generation++;
-    this.#covers.clear();
-    this.#releaseObjectUrls();
     this.#listeners.clear();
+    this.activate();
+    this.#destroyed = true;
+    this.#scope.abort();
   }
 }

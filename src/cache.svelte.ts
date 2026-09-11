@@ -291,7 +291,7 @@ export class Cache {
     return result;
   }
 
-  /** Restore independent local domains, reporting failures after both finish. */
+  /** Restore independent local domains, reporting failures after all finish. */
   async load(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
     const [library, queue, images] = await Promise.allSettled([

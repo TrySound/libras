@@ -98,7 +98,7 @@ export function createSession(saved = false, storage = createStorage()) {
     }),
   };
   const covers = {
-    restore: vi.fn(async () => {}),
+    activate: vi.fn(),
     refresh: vi.fn(async () => {}),
     setConnection: vi.fn(),
   };

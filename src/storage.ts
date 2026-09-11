@@ -1,172 +1,16 @@
 import * as v from "valibot";
 import {
-  accountSchema,
-  imageSchema,
   downloadSchema,
   type DownloadedFile,
   type DownloadTrack,
   type TrackFileDescriptor,
-  type ImageRecord,
   type Account,
 } from "./schema";
 import { OpfsJsonStore, hashedFileName } from "./json-store";
 
 const audioCatalogSchema = v.array(downloadSchema);
 
-const artworkId = v.pipe(v.string(), v.minLength(1));
-const artworkTime = v.pipe(v.number(), v.integer(), v.minValue(0));
-const artworkReference = v.strictObject({ id: artworkId, candidates: v.array(artworkId) });
-const artworkCatalogSchema = v.strictObject({
-  account: accountSchema,
-  metadataSavedAt: v.nullable(artworkTime),
-  artists: v.array(artworkReference),
-  albums: v.array(artworkReference),
-  tracks: v.array(artworkReference),
-  images: v.array(imageSchema),
-});
-export type ArtworkCatalog = v.InferOutput<typeof artworkCatalogSchema>;
-type ArtworkImage = { blob: Blob; type: string; etag?: string; lastModified?: string };
-
-function emptyArtworkCatalog(account: Account): ArtworkCatalog {
-  return {
-    account: { ...account },
-    metadataSavedAt: null,
-    artists: [],
-    albums: [],
-    tracks: [],
-    images: [],
-  };
-}
-function parseArtworkCatalog(value: unknown, account: Account) {
-  const catalog = v.parse(artworkCatalogSchema, value);
-  if (catalog.account.host !== account.host || catalog.account.username !== account.username)
-    throw new Error("The cover catalog belongs to a different account.");
-  for (const records of [catalog.artists, catalog.albums, catalog.tracks, catalog.images]) {
-    if (new Set(records.map((record) => record.id)).size !== records.length)
-      throw new Error("Duplicate IDs in the cover catalog.");
-  }
-  return catalog;
-}
-
-function retryable<T>(create: () => Promise<T>) {
-  let pending: Promise<T> | undefined;
-  return () =>
-    (pending ??= create().catch((error) => {
-      pending = undefined;
-      throw error;
-    }));
-}
-
-function accountFile<T>(
-  account: Readonly<Account>,
-  directory: string,
-  lock: string,
-  parse: (value: unknown) => T | Promise<T>,
-) {
-  return retryable(async () => {
-    const key = `${account.host}\n${account.username}`;
-    const fileName = await hashedFileName(key, ".json");
-    return new OpfsJsonStore({
-      directory,
-      fileName,
-      lockName: `music-web-${lock}:${fileName}`,
-      parse,
-    });
-  });
-}
-
-export type ArtworkStorage = Pick<
-  ArtworkStore,
-  "account" | "read" | "update" | "readImage" | "saveImage"
->;
 export type AudioStorage = Pick<AudioStore, "read" | "save" | "list" | "entries">;
-
-class ArtworkStore {
-  readonly account: Readonly<Account>;
-  readonly #file: () => Promise<OpfsJsonStore<ArtworkCatalog>>;
-
-  constructor(account: Readonly<Account>) {
-    this.account = account;
-    this.#file = accountFile(account, "images", "covers", (value) =>
-      parseArtworkCatalog(value, account),
-    );
-  }
-
-  async #directory() {
-    const root = await navigator.storage.getDirectory();
-    return root.getDirectoryHandle("images", { create: true });
-  }
-
-  async #update(change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) {
-    const result = await (
-      await this.#file()
-    ).update((catalog) => change(catalog ?? emptyArtworkCatalog(this.account)), { valid });
-    return result.value ?? undefined;
-  }
-
-  async update(change: (catalog: ArtworkCatalog) => ArtworkCatalog, valid: () => boolean) {
-    const catalog = await this.#update(change, valid);
-    return valid() ? catalog : undefined;
-  }
-
-  async readImage(record: ImageRecord) {
-    const file = await (await (await this.#directory()).getFileHandle(record.fileName)).getFile();
-    if (file.size !== record.size)
-      throw new DOMException("The cached image is incomplete.", "DataError");
-    return new Blob([await file.arrayBuffer()], { type: record.type });
-  }
-
-  async read() {
-    return (await (await this.#file()).read()) ?? emptyArtworkCatalog(this.account);
-  }
-
-  async saveImage(
-    id: string,
-    image: ArtworkImage,
-    previousFileName: string | undefined,
-    valid: () => boolean,
-  ) {
-    const { blob } = image;
-    const record: ImageRecord = {
-      id,
-      fileName: `${crypto.randomUUID()}.image`,
-      type: image.type,
-      size: blob.size,
-      cachedAt: Date.now(),
-      etag: image.etag,
-      lastModified: image.lastModified,
-    };
-    if (!valid()) return;
-    const directory = await this.#directory();
-    const handle = await directory.getFileHandle(record.fileName, { create: true });
-    let writable: FileSystemWritableFileStream | undefined;
-    let committed = false;
-    try {
-      writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      const catalog = await this.#update((latest) => {
-        const current = latest.images.find((entry) => entry.id === id);
-        if (current && current.fileName !== previousFileName) return latest;
-        return {
-          ...latest,
-          images: [...latest.images.filter((entry) => entry.id !== id), record],
-        };
-      }, valid);
-      committed = catalog?.images.some((entry) => entry.fileName === record.fileName) ?? false;
-      if (catalog && valid())
-        return {
-          catalog,
-          image: committed ? { id, blob: new Blob([blob], { type: record.type }) } : undefined,
-        };
-    } finally {
-      if (!committed) {
-        await writable?.abort().catch(() => {});
-        await directory.removeEntry(record.fileName).catch(() => {});
-      }
-    }
-  }
-}
 
 // Audio files keep their original hashed names. The catalog contains no credentials
 // and only publishes files after their writable stream has closed successfully.
@@ -383,12 +227,10 @@ class AudioStore {
 /** Account-configured persistence capabilities; construction performs no I/O. */
 export class Storage {
   readonly account: Readonly<Account>;
-  readonly artwork: ArtworkStorage;
   readonly audio: AudioStorage;
 
   constructor(account: Account) {
     this.account = Object.freeze({ ...account });
-    this.artwork = new ArtworkStore(this.account);
     this.audio = new AudioStore(this.account);
   }
 }

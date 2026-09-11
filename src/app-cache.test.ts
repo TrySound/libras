@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import App from "./app.svelte";
 import { Cache, type LibrarySnapshot } from "./cache.svelte";
 import { OpfsJsonStore } from "./json-store";
+import { installDisk } from "./cache-test-helpers";
 
 const mocks = vi.hoisted(() => ({
   cache: undefined as import("./cache.svelte").Cache | undefined,
@@ -23,6 +24,7 @@ vi.mock("./session.svelte", () => ({
     start() {
       mocks.options!.memory.account = mocks.cache!.account;
       mocks.options!.memory.cache = mocks.cache!;
+      mocks.options!.covers.activate();
       return null;
     }
     destroy() {}
@@ -52,6 +54,7 @@ afterEach(async () => {
   mocks.options = undefined;
   mocks.cache = undefined;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function library(name: string, savedAt: number): LibrarySnapshot {
@@ -91,6 +94,7 @@ it("renders the cache through Memory, reacts to replacements, and stops observin
   mocks.options!.memory.account = second.account;
   mocks.options!.metadata.setConnection(undefined);
   mocks.options!.memory.cache = second;
+  mocks.options!.covers.activate();
   flushSync();
   expect(names()).toEqual(["Second artist"]);
   expect(mocks.options!.memory.artists).toBe(second.artists);
@@ -98,4 +102,46 @@ it("renders the cache through Memory, reacts to replacements, and stops observin
   await first.replaceLibrary(library("Late old account", 4));
   flushSync();
   expect(names()).toEqual(["Second artist"]);
+});
+
+it("renders cached artwork and drops the previous account's object URLs", async () => {
+  installDisk();
+  let sequence = 0;
+  vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:artwork-${++sequence}`);
+  const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  const first = new Cache({ host: "https://music.example", username: "first" });
+  const data = library("Artist", 1);
+  data.artists[0].artworkId = "cover";
+  await first.replaceLibrary(data);
+  mocks.cache = first;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  expect(target.querySelector(".artist-cover img")).toBeNull();
+
+  await first.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" });
+  await mocks.options!.covers.refresh();
+  flushSync();
+  expect(mocks.options!.memory.images).toBe(first.images);
+  expect(target.querySelector(".artist-cover img")?.getAttribute("src")).toBe("blob:artwork-1");
+
+  const second = new Cache({ ...first.account, username: "second" });
+  await second.replaceLibrary(data);
+  mocks.options!.memory.account = second.account;
+  mocks.options!.memory.cache = second;
+  mocks.options!.covers.activate();
+  flushSync();
+  await mocks.options!.covers.refresh();
+  flushSync();
+  expect(target.querySelector(".artist-cover img")).toBeNull();
+  expect(revoke).toHaveBeenCalledWith("blob:artwork-1");
+  expect(mocks.options!.memory.images).toBe(second.images);
+  expect(mocks.options!.memory.images.size).toBe(0);
+
+  await first.saveImage("cover", { blob: new Blob(["late old image"]), type: "image/png" });
+  await mocks.options!.covers.refresh();
+  flushSync();
+  expect(target.querySelector(".artist-cover img")).toBeNull();
 });
