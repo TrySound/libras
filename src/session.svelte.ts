@@ -69,7 +69,8 @@ export class Session {
       this.#options.queue.error ??
       this.#options.queue.storageError ??
       this.#options.memory.cache?.queueError ??
-      this.#options.memory.cache?.imagesError;
+      this.#options.memory.cache?.imagesError ??
+      this.#options.memory.cache?.downloadsError;
     return error ? `Synchronization failed: ${connectionError(error)}` : "";
   }
 

@@ -31,24 +31,28 @@ export function installDisk() {
           },
           async createWritable() {
             let pending: string | Blob = "";
-            return {
-              async write(value: string | Blob) {
-                state.beforeWrite(key);
-                pending = value;
-              },
-              async close() {
-                await state.beforeClose(key);
-                if (state.failClose) throw new Error("Storage full");
-                if (typeof pending === "string") files.set(key, pending);
-                else {
-                  blobs.set(key, pending);
-                  files.delete(key);
-                }
-                state.writes++;
-                state.afterClose(key);
-              },
-              async abort() {},
+            const write = async (value: string | Blob) => {
+              state.beforeWrite(key);
+              pending = value;
             };
+            const close = async () => {
+              await state.beforeClose(key);
+              if (state.failClose) throw new Error("Storage full");
+              if (typeof pending === "string") files.set(key, pending);
+              else {
+                blobs.set(key, pending);
+                files.delete(key);
+              }
+              state.writes++;
+              state.afterClose(key);
+            };
+            return Object.assign(
+              new WritableStream<Uint8Array>({
+                write: (chunk) => write(new Blob([pending, chunk.slice().buffer as ArrayBuffer])),
+                close,
+              }),
+              { write, close },
+            );
           },
         };
       },
@@ -60,14 +64,40 @@ export function installDisk() {
   }
   const getDirectory = vi.fn(async () => directory(""));
   const tails = new Map<string, Promise<unknown>>();
-  const request = vi.fn((name: string, action: () => Promise<unknown>) => {
-    const result = (tails.get(name) ?? Promise.resolve()).then(action);
-    tails.set(
-      name,
-      result.catch(() => {}),
-    );
-    return result;
-  });
+  const request = vi.fn(
+    (
+      name: string,
+      options: LockOptions | (() => Promise<unknown>),
+      action?: () => Promise<unknown>,
+    ) => {
+      const signal = typeof options === "function" ? undefined : options.signal;
+      const callback = typeof options === "function" ? options : action!;
+      let started = false;
+      const result = (tails.get(name) ?? Promise.resolve()).then(() => {
+        started = true;
+        signal?.throwIfAborted();
+        return callback();
+      });
+      tails.set(
+        name,
+        result.catch(() => {}),
+      );
+      if (!signal) return result;
+      let abort!: () => void;
+      const cancelled = new Promise<never>((_resolve, reject) => {
+        abort = () => {
+          if (!started) reject(signal.reason);
+        };
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+      });
+      // Once acquired, cancellation belongs to the callback (including atomic close).
+      // Waiting callers can reject immediately without overtaking the lock's tail.
+      return Promise.race([result, cancelled]).finally(() =>
+        signal.removeEventListener("abort", abort),
+      );
+    },
+  );
   vi.stubGlobal("navigator", { storage: { getDirectory }, locks: { request } });
   return { files, blobs, state, getDirectory };
 }

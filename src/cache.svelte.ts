@@ -6,6 +6,7 @@ import {
   albumSchema,
   trackSchema,
   imageSchema,
+  downloadTrackSchema,
   type Account,
   type ImageRecord,
 } from "./schema";
@@ -49,9 +50,50 @@ export interface CachedImage {
   lastModified?: string;
 }
 
+const downloadFormat = v.picklist(["raw", "mp3"]);
+export type DownloadFormat = v.InferOutput<typeof downloadFormat>;
+const cachedDownloadSchema = v.strictObject({
+  track: v.strictObject({ ...downloadTrackSchema.entries, id: v.pipe(v.string(), v.minLength(1)) }),
+  format: downloadFormat,
+  contentType: v.pipe(v.string(), v.minLength(1)),
+  fileName: v.pipe(v.string(), v.regex(/^[a-f0-9-]+\.audio$/)),
+  size: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  downloadedAt: timestamp,
+});
+export type CachedDownload = v.InferOutput<typeof cachedDownloadSchema>;
+const downloadsSchema = v.strictObject({
+  account: accountSchema,
+  downloads: v.array(cachedDownloadSchema),
+});
+/** Account-local identity, also distinguishing original files from MP3 transcodes. */
+export function downloadKey(trackId: string, format: DownloadFormat) {
+  return JSON.stringify([trackId, format]);
+}
+function downloadMap(
+  records: readonly CachedDownload[],
+): ReadonlyMap<string, Immutable<CachedDownload>> {
+  const map = new Map<string, Immutable<CachedDownload>>();
+  const files = new Set<string>();
+  for (const record of records) {
+    const key = downloadKey(record.track.id, record.format);
+    if (map.has(key) || files.has(record.fileName))
+      throw new Error("Duplicate download references.");
+    map.set(key, record);
+    files.add(record.fileName);
+  }
+  return map;
+}
+
 /** Loading one local domain never prevents another from restoring. */
 export class CacheLoadError extends AggregateError {
-  constructor(readonly failures: { library?: unknown; queue?: unknown; images?: unknown }) {
+  constructor(
+    readonly failures: {
+      library?: unknown;
+      queue?: unknown;
+      images?: unknown;
+      downloads?: unknown;
+    },
+  ) {
     super(
       Object.values(failures),
       Object.entries(failures)
@@ -67,7 +109,7 @@ export class CacheLoadError extends AggregateError {
 
 async function accountFile<T extends { account: Account }>(
   account: Readonly<Account>,
-  name: "library" | "queue" | "images",
+  name: "library" | "queue" | "images" | "downloads",
   parse: (value: unknown) => T,
 ) {
   // Tuple encoding avoids ambiguous account keys; no legacy filename support.
@@ -207,6 +249,10 @@ export class Cache {
   #imagesError = $state.raw<unknown>();
   #imagesStore?: Promise<OpfsJsonStore<v.InferOutput<typeof imagesSchema>>>;
   #imageOperations: Promise<unknown> = Promise.resolve();
+  #downloads = $state.raw<ReadonlyMap<string, Immutable<CachedDownload>>>(new Map());
+  #downloadsError = $state.raw<unknown>();
+  #downloadsStore?: Promise<OpfsJsonStore<v.InferOutput<typeof downloadsSchema>>>;
+  #downloadOperations: Promise<unknown> = Promise.resolve();
 
   constructor(account: Account) {
     this.account = Object.freeze(v.parse(accountSchema, account));
@@ -294,21 +340,24 @@ export class Cache {
   /** Restore independent local domains, reporting failures after all finish. */
   async load(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
-    const [library, queue, images] = await Promise.allSettled([
+    const [library, queue, images, downloads] = await Promise.allSettled([
       this.#loadLibrary(signal),
       this.#loadQueue(signal),
       this.#loadImages(signal),
+      this.#loadDownloads(signal),
     ]);
     signal?.throwIfAborted();
     if (
       library.status === "rejected" ||
       queue.status === "rejected" ||
-      images.status === "rejected"
+      images.status === "rejected" ||
+      downloads.status === "rejected"
     )
       throw new CacheLoadError({
         ...(library.status === "rejected" ? { library: library.reason } : {}),
         ...(queue.status === "rejected" ? { queue: queue.reason } : {}),
         ...(images.status === "rejected" ? { images: images.reason } : {}),
+        ...(downloads.status === "rejected" ? { downloads: downloads.reason } : {}),
       });
   }
 
@@ -493,7 +542,7 @@ export class Cache {
     });
   }
 
-  async #imageDirectory() {
+  async #filesDirectory() {
     const key = await hashedFileName(
       JSON.stringify([this.account.host, this.account.username]),
       ".cache",
@@ -511,7 +560,7 @@ export class Cache {
         signal?.throwIfAborted();
         const record = this.#images.get(id);
         if (!record) return null;
-        const directory = await this.#imageDirectory();
+        const directory = await this.#filesDirectory();
         try {
           const file = await (await directory.getFileHandle(record.fileName)).getFile();
           if (file.size !== record.size)
@@ -575,7 +624,7 @@ export class Cache {
       let committed = false;
       try {
         signal?.throwIfAborted();
-        directory = await this.#imageDirectory();
+        directory = await this.#filesDirectory();
         const handle = await directory.getFileHandle(record.fileName, { create: true });
         writable = await handle.createWritable();
         await writable.write(blob);
@@ -612,6 +661,199 @@ export class Cache {
         }
       }
     });
+  }
+
+  get downloads() {
+    return this.#downloads;
+  }
+  get downloadsError() {
+    return this.#downloadsError;
+  }
+
+  #downloadsFile() {
+    return (this.#downloadsStore ??= accountFile(this.account, "downloads", (value) => {
+      const catalog = v.parse(downloadsSchema, value);
+      downloadMap(catalog.downloads);
+      return catalog;
+    }).catch((error) => {
+      this.#downloadsStore = undefined;
+      throw error;
+    }));
+  }
+  #runDownloads<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.#downloadOperations.then(operation);
+    this.#downloadOperations = result.catch(() => {});
+    return result;
+  }
+  #loadDownloads(signal?: AbortSignal) {
+    return this.#runDownloads(async () => {
+      try {
+        signal?.throwIfAborted();
+        const catalog = await (await this.#downloadsFile()).read();
+        signal?.throwIfAborted();
+        this.#downloads = downloadMap(catalog?.downloads ?? []);
+        this.#downloadsError = undefined;
+      } catch (error) {
+        if (!signal?.aborted) this.#downloadsError = error;
+        throw error;
+      }
+    });
+  }
+
+  /** Open a file lazily without copying audio into RAM or adopting unlisted bytes. */
+  readDownload(
+    trackId: string,
+    format: DownloadFormat,
+    signal?: AbortSignal,
+  ): Promise<File | null> {
+    return this.#runDownloads(async () => {
+      try {
+        signal?.throwIfAborted();
+        const key = downloadKey(trackId, format);
+        let record = this.#downloads.get(key);
+        if (!record) return null;
+        const directory = await this.#filesDirectory();
+        while (record) {
+          signal?.throwIfAborted();
+          try {
+            const file = await (await directory.getFileHandle(record.fileName)).getFile();
+            signal?.throwIfAborted();
+            if (file.size === record.size) {
+              this.#downloadsError = undefined;
+              return file;
+            }
+          } catch (error) {
+            if (!(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
+          }
+          const missing = record.fileName;
+          const result = await (
+            await this.#downloadsFile()
+          ).update(
+            (catalog) => {
+              const current = catalog?.downloads.find(
+                (item) => downloadKey(item.track.id, item.format) === key,
+              );
+              if (current?.fileName !== missing) return undefined;
+              return {
+                ...catalog!,
+                downloads: catalog!.downloads.filter((item) => item.fileName !== missing),
+              };
+            },
+            { valid: () => !signal?.aborted },
+          );
+          signal?.throwIfAborted();
+          this.#downloads = downloadMap(result.value?.downloads ?? []);
+          if (!result.value?.downloads.some((item) => item.fileName === missing))
+            await directory.removeEntry(missing).catch(() => {});
+          // A stale miss may reveal a competing writer's complete replacement.
+          record = this.#downloads.get(key);
+        }
+        this.#downloadsError = undefined;
+        return null;
+      } catch (error) {
+        if (!signal?.aborted) this.#downloadsError = error;
+        throw error;
+      }
+    });
+  }
+
+  /** Stream bytes under a per-download lock; publish only after catalog commit.
+   * A complete winner is reused and the unused response is cancelled. Different
+   * downloads stream concurrently; only short catalog operations are serialized.
+   */
+  async saveDownload(
+    track: Immutable<CachedDownload["track"]>,
+    format: DownloadFormat,
+    contentType: string,
+    response: Response,
+    signal: AbortSignal,
+  ): Promise<File> {
+    let directory: FileSystemDirectoryHandle | undefined;
+    let writable: FileSystemWritableFileStream | undefined;
+    let fileName: string | undefined;
+    let committed = false;
+    try {
+      signal.throwIfAborted();
+      const candidate = v.parse(cachedDownloadSchema, {
+        track,
+        format,
+        contentType,
+        fileName: `${crypto.randomUUID()}.audio`,
+        size: 1,
+        downloadedAt: Date.now(),
+      });
+      const key = downloadKey(candidate.track.id, candidate.format);
+      const lock = await hashedFileName(
+        JSON.stringify([this.account.host, this.account.username, key]),
+        ".audio",
+      );
+      const save = async () => {
+        signal.throwIfAborted();
+        // Always take the per-file lock before any short-lived catalog lock.
+        await this.#loadDownloads(signal);
+        const cached = await this.readDownload(candidate.track.id, candidate.format, signal);
+        if (cached) return cached;
+        const expected = this.#downloads.get(key)?.fileName;
+        directory = await this.#filesDirectory();
+        signal.throwIfAborted();
+        fileName = candidate.fileName;
+        const handle = await directory.getFileHandle(fileName, { create: true });
+        writable = await handle.createWritable();
+        if (!response.body) throw new Error("The downloaded audio response has no body.");
+        await response.body.pipeTo(writable, { signal });
+        signal.throwIfAborted();
+        const file = await handle.getFile();
+        const record = v.parse(cachedDownloadSchema, {
+          ...candidate,
+          size: file.size,
+          downloadedAt: Date.now(),
+        });
+        await this.#runDownloads(async () => {
+          signal.throwIfAborted();
+          const result = await (
+            await this.#downloadsFile()
+          ).update(
+            (catalog) => {
+              const current = catalog?.downloads.find(
+                (item) => downloadKey(item.track.id, item.format) === key,
+              );
+              if (current?.fileName !== expected) return undefined;
+              return {
+                account: this.account,
+                downloads: [
+                  ...(catalog?.downloads ?? []).filter(
+                    (item) => downloadKey(item.track.id, item.format) !== key,
+                  ),
+                  record,
+                ],
+              };
+            },
+            { valid: () => !signal.aborted },
+          );
+          committed = result.written;
+          // Cancellation during atomic close must never delete committed bytes.
+          signal.throwIfAborted();
+          this.#downloads = downloadMap(result.value?.downloads ?? []);
+          this.#downloadsError = undefined;
+        });
+        if (committed) return file;
+        const winner = await this.readDownload(candidate.track.id, candidate.format, signal);
+        if (!winner) throw new Error("The competing download is no longer available.");
+        return winner;
+      };
+      return await (navigator.locks
+        ? navigator.locks.request(`libras-download:${lock}`, { signal }, save)
+        : save());
+    } catch (error) {
+      if (!signal.aborted) this.#downloadsError = error;
+      throw error;
+    } finally {
+      if (!committed && fileName) {
+        await writable?.abort().catch(() => {});
+        await directory?.removeEntry(fileName).catch(() => {});
+      }
+      if (response.body && !response.bodyUsed) await response.body.cancel().catch(() => {});
+    }
   }
 
   async replaceLibrary(snapshot: Immutable<LibrarySnapshot>, signal?: AbortSignal): Promise<void> {

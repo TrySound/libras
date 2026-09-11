@@ -40,12 +40,14 @@ describe("session", () => {
     expect(metadata.refresh).not.toHaveBeenCalled();
   });
 
-  it.each(["queue", "images"] as const)(
+  it.each(["queue", "images", "downloads"] as const)(
     "keeps %s load failures separate from library refresh warnings",
     async (domain) => {
       const { session, memory, loadCache, queue } = setup(true);
       const failure = new Error(`Corrupt cached ${domain}`);
-      const field = domain === "queue" ? "queueError" : "imagesError";
+      const field = (
+        { queue: "queueError", images: "imagesError", downloads: "downloadsError" } as const
+      )[domain];
       loadCache.mockImplementationOnce(async function (this: Cache) {
         vi.spyOn(this, field, "get").mockReturnValue(failure);
         throw new CacheLoadError({ [domain]: failure });
