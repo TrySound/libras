@@ -34,11 +34,12 @@ const queueFields = {
 function validSelection(queue: { tracks: readonly string[]; index: number; position: number }) {
   return queue.index < queue.tracks.length && (queue.index !== -1 || queue.position === 0);
 }
-const queueRecordSchema = v.pipe(
-  v.strictObject({ ...queueFields, updatedAt: timestamp }),
+const queueSchema = v.pipe(
+  v.strictObject(queueFields),
   v.check((queue) => validSelection(queue), "Invalid queue selection."),
 );
-export type CachedQueue = Omit<v.InferOutput<typeof queueRecordSchema>, "updatedAt">;
+export type CachedQueue = v.InferOutput<typeof queueSchema>;
+const queueRecordSchema = v.strictObject({ value: queueSchema, updatedAt: timestamp });
 
 const imagesSchema = v.array(imageSchema);
 export interface CachedImage {
@@ -202,6 +203,164 @@ class Disk {
             if (file?.size === 0) await directory.removeEntry(`${name}.json`).catch(() => {});
           }
         }
+      }
+    });
+  }
+}
+
+interface CheckpointRecord<T> {
+  readonly value: T;
+  readonly updatedAt: number;
+}
+
+interface CheckpointOptions<T> {
+  document: DocumentName;
+  initial: T;
+  parse: (value: unknown) => CheckpointRecord<T>;
+}
+
+/** Optimistic publication, durable adoption, and revision-aware checkpoints.
+ * Values are immutable by contract; domain callers own input preparation. */
+class CheckpointStore<T> {
+  #record: CheckpointRecord<T>;
+  #revision = $state(0);
+  #savedRevision = $state(0);
+  error = $state.raw<unknown>();
+  #serial = serial();
+  #debounceTimer?: ReturnType<typeof setTimeout>;
+  #checkpointTimer?: ReturnType<typeof setTimeout>;
+
+  constructor(
+    readonly disk: Disk | undefined,
+    readonly options: CheckpointOptions<T>,
+  ) {
+    this.#record = $state.raw({ value: options.initial, updatedAt: 0 });
+  }
+
+  get value() {
+    return this.#record.value;
+  }
+  get revision() {
+    return this.#revision;
+  }
+  get dirty() {
+    return this.#revision !== this.#savedRevision;
+  }
+
+  #adopt(record: CheckpointRecord<T>) {
+    this.#record = record;
+    this.#savedRevision = ++this.#revision;
+    this.error = undefined;
+  }
+
+  load(signal?: AbortSignal) {
+    const revision = this.#revision;
+    return this.#serial(async () => {
+      try {
+        signal?.throwIfAborted();
+        const record = await this.disk?.read(this.options.document, this.options.parse);
+        signal?.throwIfAborted();
+        // Loading must not discard optimistic edits, including edits made before load().
+        if (this.dirty || revision !== this.#revision) return;
+        this.#adopt(record ?? { value: this.options.initial, updatedAt: 0 });
+      } catch (error) {
+        if (!signal?.aborted) this.error = error;
+        throw error;
+      }
+    });
+  }
+
+  set(value: T, checkpoint = false) {
+    this.#record = { value, updatedAt: Math.max(Date.now(), this.#record.updatedAt + 1) };
+    const revision = ++this.#revision;
+    this.#schedule(checkpoint);
+    return revision;
+  }
+
+  #schedule(checkpoint = false) {
+    const save = () => {
+      void this.flush().catch(() => {});
+    };
+    if (!checkpoint) {
+      clearTimeout(this.#debounceTimer);
+      this.#debounceTimer = setTimeout(save, 300);
+    }
+    // Continuous edits must not starve disk checkpoints.
+    this.#checkpointTimer ??= setTimeout(save, 5_000);
+  }
+
+  #clearTimers() {
+    clearTimeout(this.#debounceTimer);
+    clearTimeout(this.#checkpointTimer);
+    this.#debounceTimer = this.#checkpointTimer = undefined;
+  }
+
+  /** Acknowledge only the revision committed; edits during the write stay dirty. */
+  flush(): Promise<number> {
+    this.#clearTimers();
+    return this.#serial(async () => {
+      if (!this.dirty) return this.#savedRevision;
+      const revision = this.#revision;
+      const record = this.#record;
+      try {
+        const result = await this.disk?.update(
+          this.options.document,
+          this.options.parse,
+          (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
+          { repair: true },
+        );
+        if (!result?.written)
+          throw new Error(
+            `A newer ${this.options.document} was saved in another tab. Local edits have not been saved.`,
+          );
+        this.#savedRevision = revision;
+        this.error = undefined;
+        return revision;
+      } catch (error) {
+        this.error = error;
+        throw error;
+      }
+    });
+  }
+
+  /** Persist before publication, unless local work or cancellation supersedes it. */
+  replace(next: T, signal: AbortSignal): Promise<boolean> {
+    const revision = this.#revision;
+    const record = { value: next, updatedAt: Math.max(Date.now(), this.#record.updatedAt + 1) };
+    const valid = () => !signal.aborted && revision === this.#revision;
+    return this.#serial(async () => {
+      if (!valid()) return false;
+      try {
+        const result = await this.disk?.update(
+          this.options.document,
+          this.options.parse,
+          (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
+          { valid, repair: true },
+        );
+        if (!valid()) {
+          // Close cannot be undone. Repair disk from the still-visible local state
+          // without advancing the revision for a cancelled adoption.
+          if (result?.written) {
+            this.#record = {
+              ...this.#record,
+              updatedAt: Math.max(this.#record.updatedAt, record.updatedAt),
+            };
+            this.#savedRevision = -1;
+            this.#schedule();
+          }
+          return false;
+        }
+        if (!result?.written)
+          throw new Error(
+            `A newer ${this.options.document} is already stored. The incoming snapshot was not saved.`,
+          );
+        this.#clearTimers();
+        this.#adopt(record);
+        return true;
+      } catch (error) {
+        if (!valid()) return false;
+        this.error = error;
+        throw error;
       }
     });
   }
@@ -375,7 +534,7 @@ function parseLibrary(value: unknown) {
     unique<{ id: string }>(records, (item) => item.id);
   return record;
 }
-function parseQueue(value: unknown) {
+function parseQueue(value: unknown): Immutable<v.InferOutput<typeof queueRecordSchema>> {
   return v.parse(queueRecordSchema, value);
 }
 function parseImages(value: unknown): Immutable<v.InferOutput<typeof imagesSchema>> {
@@ -497,14 +656,7 @@ export class Cache {
   #library = $state.raw(prepareLibrary(null));
   readonly #disk: Disk | undefined;
   #runLibrary = serial();
-  #queue = $state.raw<Immutable<CachedQueue>>({ tracks: [], index: -1, position: 0 });
-  #queueRevision = $state(0);
-  #queueSavedRevision = $state(0);
-  #queueError = $state.raw<unknown>();
-  #queueUpdatedAt = 0;
-  #runQueue = serial();
-  #queueTimer?: ReturnType<typeof setTimeout>;
-  #checkpointTimer?: ReturnType<typeof setTimeout>;
+  readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
   readonly #images: BinaryCatalog<Immutable<ImageRecord>>;
   readonly #downloads: BinaryCatalog<Immutable<CachedDownload>>;
 
@@ -514,6 +666,11 @@ export class Cache {
     this.#disk = this.account
       ? new Disk(hash(JSON.stringify([this.account.host, this.account.username])))
       : undefined;
+    this.#queue = new CheckpointStore(this.#disk, {
+      document: "queue",
+      initial: { tracks: [], index: -1, position: 0 },
+      parse: parseQueue,
+    });
     this.#images = new BinaryCatalog(this.#disk, {
       document: "images",
       parse: parseImages,
@@ -575,7 +732,7 @@ export class Cache {
     if (!this.account) return;
     const [library, queue, images, downloads] = await Promise.allSettled([
       this.#loadLibrary(signal),
-      this.#loadQueue(signal),
+      this.#queue.load(signal),
       this.#images.load(signal),
       this.#downloads.load(signal),
     ]);
@@ -604,148 +761,41 @@ export class Cache {
   }
 
   get queue() {
-    return this.#queue;
+    return this.#queue.value;
   }
   get queueRevision() {
-    return this.#queueRevision;
+    return this.#queue.revision;
   }
   get queueDirty() {
-    return this.#queueRevision !== this.#queueSavedRevision;
+    return this.#queue.dirty;
   }
   get queueError() {
-    return this.#queueError;
-  }
-
-  #loadQueue(signal?: AbortSignal) {
-    const revision = this.#queueRevision;
-    return this.#runQueue(async () => {
-      try {
-        signal?.throwIfAborted();
-        const record = await this.#disk?.read("queue", parseQueue);
-        signal?.throwIfAborted();
-        // Loading must not discard optimistic edits, including edits made before load().
-        if (this.queueDirty || revision !== this.#queueRevision) return;
-        this.#queue = record
-          ? { tracks: record.tracks, index: record.index, position: record.position }
-          : { tracks: [], index: -1, position: 0 };
-        this.#queueUpdatedAt = record?.updatedAt ?? 0;
-        this.#queueSavedRevision = ++this.#queueRevision;
-        this.#queueError = undefined;
-      } catch (error) {
-        if (!signal?.aborted) this.#queueError = error;
-        throw error;
-      }
-    });
+    return this.#queue.error;
   }
 
   /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
   setQueue(queue: Immutable<CachedQueue>, options: { checkpoint?: boolean } = {}): number {
     this.#requireAccount();
+    const tracks = this.#queue.value.tracks;
     const sameTracks =
-      queue.tracks === this.#queue.tracks ||
-      (queue.tracks.length === this.#queue.tracks.length &&
-        queue.tracks.every((id, index) => id === this.#queue.tracks[index]));
-    this.#queue = {
-      ...queue,
-      tracks: sameTracks ? this.#queue.tracks : [...queue.tracks],
-    };
-    this.#queueUpdatedAt = Math.max(Date.now(), this.#queueUpdatedAt + 1);
-    const revision = ++this.#queueRevision;
-    this.#scheduleQueue(options.checkpoint ?? false);
-    return revision;
+      queue.tracks === tracks ||
+      (queue.tracks.length === tracks.length &&
+        queue.tracks.every((id, index) => id === tracks[index]));
+    return this.#queue.set(
+      { ...queue, tracks: sameTracks ? tracks : [...queue.tracks] },
+      options.checkpoint ?? false,
+    );
   }
 
-  #scheduleQueue(checkpoint = false) {
-    const save = () => {
-      void this.flush().catch(() => {});
-    };
-    if (!checkpoint) {
-      clearTimeout(this.#queueTimer);
-      this.#queueTimer = setTimeout(save, 300);
-    }
-    // Continuous playback position updates must not starve disk checkpoints.
-    this.#checkpointTimer ??= setTimeout(save, 5_000);
-  }
-
-  /**
-   * Save pending local edits and return the revision actually committed. Edits made
-   * during the write remain dirty and keep their own scheduled checkpoint.
-   * Failures reject here and remain observable through queueError for timer saves.
-   */
+  /** Save pending edits and return the revision actually committed. */
   flush(): Promise<number> {
-    clearTimeout(this.#queueTimer);
-    clearTimeout(this.#checkpointTimer);
-    this.#queueTimer = this.#checkpointTimer = undefined;
-    return this.#runQueue(async () => {
-      if (!this.queueDirty) return this.#queueSavedRevision;
-      const revision = this.#queueRevision;
-      const record = {
-        ...this.#queue,
-        tracks: [...this.#queue.tracks],
-        updatedAt: this.#queueUpdatedAt,
-      };
-      try {
-        const result = await this.#disk?.update(
-          "queue",
-          parseQueue,
-          (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
-          { repair: true },
-        );
-        if (!result?.written)
-          throw new Error("A newer queue was saved in another tab. This queue has not been saved.");
-        this.#queueSavedRevision = revision;
-        this.#queueError = undefined;
-        return revision;
-      } catch (error) {
-        this.#queueError = error;
-        throw error;
-      }
-    });
+    return this.#queue.flush();
   }
 
   /** Persist incoming queue state before adoption, unless local work supersedes it. */
   async replaceQueue(queue: Immutable<CachedQueue>, signal: AbortSignal): Promise<boolean> {
     this.#requireAccount();
-    const next: CachedQueue = { ...queue, tracks: [...queue.tracks] };
-    const revision = this.#queueRevision;
-    const updatedAt = Math.max(Date.now(), this.#queueUpdatedAt + 1);
-    const valid = () => !signal.aborted && revision === this.#queueRevision;
-    return this.#runQueue(async () => {
-      if (!valid()) return false;
-      try {
-        const result = await this.#disk?.update(
-          "queue",
-          parseQueue,
-          (previous) =>
-            previous && previous.updatedAt > updatedAt ? undefined : { ...next, updatedAt },
-          { valid, repair: true },
-        );
-        if (!valid()) {
-          // Atomic close cannot be undone. Checkpoint the still-visible local queue
-          // if cancellation arrived during close, without granting upload eligibility.
-          if (result?.written) {
-            this.#queueUpdatedAt = Math.max(this.#queueUpdatedAt, updatedAt);
-            this.#queueSavedRevision = -1;
-            this.#scheduleQueue();
-          }
-          return false;
-        }
-        if (!result?.written)
-          throw new Error("A newer queue is already stored. The server snapshot was not saved.");
-        clearTimeout(this.#queueTimer);
-        clearTimeout(this.#checkpointTimer);
-        this.#queueTimer = this.#checkpointTimer = undefined;
-        this.#queue = next;
-        this.#queueUpdatedAt = updatedAt;
-        this.#queueSavedRevision = ++this.#queueRevision;
-        this.#queueError = undefined;
-        return true;
-      } catch (error) {
-        if (!valid()) return false;
-        this.#queueError = error;
-        throw error;
-      }
-    });
+    return this.#queue.replace({ ...queue, tracks: [...queue.tracks] }, signal);
   }
 
   /** Load bytes on demand. Missing/incomplete files invalidate only their matching record. */
