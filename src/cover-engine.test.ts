@@ -209,7 +209,7 @@ describe("cover engine using Cache", () => {
     unsubscribe();
     const saved = catalog(disk);
     expect(saved.images).toEqual([...selection.cache!.images.values()]);
-    expect(Object.keys(saved).sort()).toEqual(["account", "images"]);
+    expect(Object.keys(saved)).toEqual(["images"]);
     expect(disk.blobs.size).toBe(1);
     for (const secret of ["blob:", "getCoverArt", auth.token, auth.salt])
       expect(JSON.stringify(saved)).not.toContain(secret);

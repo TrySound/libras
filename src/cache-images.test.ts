@@ -86,7 +86,7 @@ describe("artwork cache foundation", () => {
     expect(cache.trackArtwork.get("first")).toEqual(["album-art", "artist-art", "older-art"]);
     expect(disk.files.size).toBe(1);
     const json = JSON.parse([...disk.files.values()][0]!);
-    expect(json).toEqual({ account, ...library() });
+    expect(json).toEqual(library());
     expect(disk.blobs.size).toBe(0);
   });
 
@@ -139,7 +139,6 @@ describe("artwork cache foundation", () => {
     expect(catalogPath(disk)).toMatch(/^accounts\/[a-f0-9]{64}\/images\.json$/);
     expect([...disk.blobs.keys()][0]).toMatch(/^accounts\/[a-f0-9]{64}\/files\/[a-f0-9-]+\.image$/);
     expect(JSON.parse(disk.files.get(catalogPath(disk))!)).toEqual({
-      account,
       images: [...cache.images.values()],
     });
   });
@@ -321,7 +320,7 @@ describe("artwork cache foundation", () => {
     expect(disk.blobs.size).toBe(1);
   });
 
-  it.each(["duplicate ID", "shared file", "foreign account"])(
+  it.each(["duplicate ID", "shared file", "unexpected field"])(
     "rejects invalid image catalogs: %s",
     async (kind) => {
       const disk = installDisk();
@@ -329,7 +328,7 @@ describe("artwork cache foundation", () => {
       await initial.saveImage("cover", image());
       const path = catalogPath(disk);
       const catalog = JSON.parse(disk.files.get(path)!);
-      if (kind === "foreign account") catalog.account.username = "other";
+      if (kind === "unexpected field") catalog.unexpected = true;
       else
         catalog.images.push({
           ...catalog.images[0],

@@ -33,7 +33,7 @@ async function path(identity = account) {
   return `accounts/${hash}/queue.json`;
 }
 async function seed(queue = local(), identity = account, updatedAt = 42) {
-  disk.files.set(await path(identity), JSON.stringify({ account: identity, ...queue, updatedAt }));
+  disk.files.set(await path(identity), JSON.stringify({ ...queue, updatedAt }));
 }
 async function json(identity = account) {
   return JSON.parse(disk.files.get(await path(identity))!);

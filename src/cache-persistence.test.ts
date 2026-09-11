@@ -19,11 +19,12 @@ afterEach(() => {
 });
 
 describe("Cache's internal file operations", () => {
-  it("shares one lazy account hash across documents and binary lookups", async () => {
-    installDisk();
+  it("starts one shared account hash at construction without opening storage", async () => {
+    const disk = installDisk();
     const digest = vi.spyOn(crypto.subtle, "digest");
     const cache = new Cache(account);
-    expect(digest).not.toHaveBeenCalled();
+    expect(digest).toHaveBeenCalledOnce();
+    expect(disk.getDirectory).not.toHaveBeenCalled();
     await cache.load();
     await cache.replaceLibrary(library());
     await cache.saveImage("cover", image);
@@ -40,19 +41,68 @@ describe("Cache's internal file operations", () => {
     );
   });
 
-  it("retries account initialization without poisoning any domain", async () => {
+  it.each([
+    { ...account, host: "https://other.example" },
+    { ...account, username: "other" },
+  ])("scopes identity-free documents and bytes by namespace: %j", async (other) => {
+    const disk = installDisk();
+    async function save(cache: Cache, version: number) {
+      await cache.replaceLibrary(library(version));
+      cache.setQueue({ ...queue, position: version });
+      await cache.flush();
+      await cache.saveImage("cover", { ...image, blob: new Blob([`image-${version}`]) });
+      await cache.saveDownload(
+        track,
+        "mp3",
+        "audio/mpeg",
+        new Response(`audio-${version}`),
+        new AbortController().signal,
+      );
+    }
+    await save(new Cache(account), 1);
+    const empty = new Cache(other);
+    await empty.load();
+    expect(empty.savedAt).toBeUndefined();
+    expect(empty.queue.tracks).toEqual([]);
+    expect(empty.images.size).toBe(0);
+    expect(empty.downloads.size).toBe(0);
+    await save(empty, 2);
+    expect(disk.files.size).toBe(8);
+    for (const text of disk.files.values()) {
+      expect(JSON.parse(text)).not.toHaveProperty("account");
+      expect(text).not.toContain(account.host);
+      expect(text).not.toContain(account.username);
+    }
+    for (const [identity, version] of [
+      [account, 1],
+      [other, 2],
+    ] as const) {
+      const restored = new Cache(identity);
+      await restored.load();
+      expect(restored.account).toEqual(identity);
+      expect(restored.savedAt).toBe(version);
+      expect(restored.queue.position).toBe(version);
+      expect(await (await restored.readImage("cover"))!.text()).toBe(`image-${version}`);
+      expect(await (await restored.readDownload(track.id, "mp3"))!.text()).toBe(`audio-${version}`);
+    }
+  });
+
+  it("observes unused hash failures and reports them on I/O without retrying", async () => {
     const disk = installDisk();
     const digest = vi
       .spyOn(crypto.subtle, "digest")
       .mockRejectedValueOnce(new Error("Hash unavailable"));
     const cache = new Cache(account);
+    // Let the rejection settle while nobody is using the cache. Vitest would
+    // report an unhandled rejection if Disk did not observe the key promise.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     await expect(cache.load()).rejects.toThrow("Hash unavailable");
+    await expect(cache.load()).rejects.toThrow("Hash unavailable");
+    await expect(cache.replaceLibrary(library())).rejects.toThrow("Hash unavailable");
     expect(disk.getDirectory).not.toHaveBeenCalled();
-    await cache.load();
+    expect(digest).toHaveBeenCalledOnce();
+    await new Cache(account).load();
     expect(digest).toHaveBeenCalledTimes(2);
-    expect(cache.queueError).toBeUndefined();
-    expect(cache.imagesError).toBeUndefined();
-    expect(cache.downloadsError).toBeUndefined();
   });
 
   it.each(["library", "queue"] as const)(
@@ -105,7 +155,7 @@ describe("Cache's internal file operations", () => {
           cache.setQueue(queue);
           await cache.flush();
         }
-        expect(JSON.parse(disk.files.get(path)!).account).toEqual(account);
+        expect(JSON.parse(disk.files.get(path)!)).not.toHaveProperty("account");
       }
     },
   );
@@ -148,7 +198,7 @@ describe("Cache's internal file operations", () => {
       expect(disk.blobs.size).toBe(0);
       disk.state.beforeClose = async () => {};
       await save();
-      expect(JSON.parse(disk.files.get(path)!).account).toEqual(account);
+      expect(JSON.parse(disk.files.get(path)!)).not.toHaveProperty("account");
       expect(disk.blobs.size).toBe(domain === "images" || domain === "downloads" ? 1 : 0);
     },
   );

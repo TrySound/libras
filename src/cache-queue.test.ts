@@ -70,7 +70,7 @@ describe("queue cache", () => {
       expect(seen.at(-1)).toEqual({ queue: queue(), dirty: false });
       const path = queuePath(disk);
       expect(path).toMatch(/^accounts\/[a-f0-9]{64}\/queue\.json$/);
-      expect(JSON.parse(disk.files.get(path)!)).toEqual({ account, ...queue(), updatedAt: 1_000 });
+      expect(JSON.parse(disk.files.get(path)!)).toEqual({ ...queue(), updatedAt: 1_000 });
       const restored = new Cache(account);
       await restored.load();
       expect(restored.queue).toEqual(queue());
@@ -302,7 +302,7 @@ describe("queue cache", () => {
     },
   );
 
-  it.each(["foreign account", "invalid selection"])(
+  it.each(["unexpected field", "invalid selection"])(
     "rejects a persisted %s and preserves the file until an explicit edit",
     async (kind) => {
       const disk = installDisk();
@@ -311,7 +311,7 @@ describe("queue cache", () => {
       await cache.flush();
       const path = queuePath(disk);
       const value = JSON.parse(disk.files.get(path)!);
-      if (kind === "foreign account") value.account.username = "other";
+      if (kind === "unexpected field") value.unexpected = true;
       else value.index = 99;
       const corrupt = JSON.stringify(value);
       disk.files.set(path, corrupt);

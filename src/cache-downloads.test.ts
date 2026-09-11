@@ -47,7 +47,7 @@ describe("download cache foundation", () => {
       contentType: "audio/mpeg",
       size: 5,
     });
-    expect(catalog(disk)).toEqual({ account, downloads: [...cache.downloads.values()] });
+    expect(catalog(disk)).toEqual({ downloads: [...cache.downloads.values()] });
     expect(catalog(disk).downloads[0]).not.toHaveProperty("key");
     expect(disk.blobs.size).toBe(1);
     const reads: string[] = [];
@@ -345,7 +345,7 @@ describe("download cache foundation", () => {
     expect(disk.blobs.size).toBe(2);
   });
 
-  it.each(["foreign", "duplicate", "shared file", "unsafe filename", "broken"])(
+  it.each(["unexpected field", "duplicate", "shared file", "unsafe filename", "broken"])(
     "rejects %s catalogs independently and preserves them on attempted saves",
     async (kind) => {
       const disk = installDisk();
@@ -354,7 +354,7 @@ describe("download cache foundation", () => {
       original.setQueue({ tracks: [track.id], index: 0, position: 0 });
       await original.flush();
       const data = catalog(disk);
-      if (kind === "foreign") data.account.username = "other";
+      if (kind === "unexpected field") data.unexpected = true;
       if (kind === "duplicate") data.downloads.push(data.downloads[0]);
       if (kind === "shared file") data.downloads.push({ ...data.downloads[0], format: "raw" });
       if (kind === "unsafe filename") data.downloads[0].fileName = "../outside.audio";

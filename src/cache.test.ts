@@ -42,7 +42,7 @@ describe("library cache", () => {
     await cache.replaceLibrary(library());
     const [path, json] = [...disk.files][0]!;
     expect(path).toMatch(/^accounts\/[a-f0-9]{64}\/library\.json$/);
-    expect(JSON.parse(json)).toEqual({ account, ...library() });
+    expect(JSON.parse(json)).toEqual(library());
     const restored = new Cache(account);
     await restored.load();
     expect(restored.savedAt).toBe(100);
@@ -132,7 +132,7 @@ describe("library cache", () => {
     expect(disk.files.size).toBe(0);
   });
 
-  it.each(["invalid JSON", "duplicate IDs", "foreign account"])(
+  it.each(["invalid JSON", "duplicate IDs", "unexpected field"])(
     "preserves %s on load and repairs it on replacement",
     async (kind) => {
       const disk = installDisk();
@@ -146,7 +146,7 @@ describe("library cache", () => {
           ? "broken"
           : JSON.stringify({
               ...(kind === "duplicate IDs" ? invalid : library()),
-              account: kind === "foreign account" ? { ...account, username: "other" } : account,
+              ...(kind === "unexpected field" ? { unexpected: true } : {}),
             });
       disk.files.set(path, corrupt);
       const previous = cache.tracks;

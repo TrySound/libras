@@ -18,6 +18,12 @@ function snapshot(): MetadataSnapshot {
     tracks: [{ id: "song", title: "Song", albumId: "album", artistId: "artist", genres: [] }],
   };
 }
+// Network snapshots include identity; persisted library documents do not.
+function persisted(data: unknown) {
+  if (!data || typeof data !== "object") return data;
+  const { account: _account, ...record } = data as Record<string, unknown>;
+  return record;
+}
 async function snapshotPath(identity: Account) {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -33,7 +39,7 @@ function installMetadataStorage() {
     writes: 0,
     async seed(identity: Account, data: unknown) {
       const path = await snapshotPath(identity);
-      storage.files.set(path, new File([JSON.stringify(data)], path));
+      storage.files.set(path, new File([JSON.stringify(persisted(data))], path));
     },
   };
   function directoryHandle(directory: string): unknown {
@@ -561,7 +567,9 @@ describe("metadata engine", () => {
     expect((engineSelection.cache!.albumTracks.get("earlier") ?? [])[0]).toBe(
       engineSelection.cache!.tracks.get("first"),
     );
-    expect(JSON.parse(await storage.files.get(await snapshotPath(account))!.text())).toEqual(data);
+    expect(JSON.parse(await storage.files.get(await snapshotPath(account))!.text())).toEqual(
+      persisted(data),
+    );
     expect(storage.writes).toBe(0);
     engine.destroy();
   });
@@ -605,15 +613,17 @@ describe("metadata engine", () => {
     },
   );
 
-  it("rejects a persisted snapshot belonging to another account", async () => {
+  it("restores library data only from the selected account's namespace", async () => {
     const storage = installMetadataStorage();
-    const data = snapshot();
-    data.account = { ...account, username: "other" };
-    await storage.seed(account, data);
-    const engineSelection = new TestSelection();
-    const engine = new MetadataEngine(engineSelection);
-    await expect(loadCache(engineSelection, new Cache(account))).rejects.toBeInstanceOf(Error);
-    engine.destroy();
+    const other = { ...account, username: "other" };
+    await storage.seed(other, { ...snapshot(), account: other });
+    const selection = new TestSelection();
+    await loadCache(selection, new Cache(account));
+    expect(selection.cache!.savedAt).toBeUndefined();
+    expect(selection.cache!.tracks.size).toBe(0);
+    await loadCache(selection, new Cache(other));
+    expect(selection.cache!.savedAt).toBe(100);
+    expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
   });
 
   it("aborts an in-progress snapshot write after destruction", async () => {
@@ -675,7 +685,6 @@ describe("metadata engine", () => {
     expect(engineSelection.cache!.tracks.get("song")?.title).toBe("Song");
     expect(storage.writes).toBe(1);
     expect(JSON.parse(await storage.files.get(await snapshotPath(account))!.text())).toMatchObject({
-      account,
       lastModified: 20,
       tracks: [{ id: "song" }],
     });
