@@ -75,18 +75,66 @@ describe("TrackEngine using Cache", () => {
     expect(engine.downloadJobs).toEqual([]);
     expect(engine.downloadsLoading).toBe(false);
     expect(disk.getDirectory).not.toHaveBeenCalled();
-    expect(await engine.getSource(track)).toEqual({ cached: true, url: "blob:track-1" });
+    const first = await engine.getSource(track);
+    expect(first).toMatchObject({ cached: true, url: "blob:track-1" });
     engine.setConnection(connection());
     engine.setConnection(undefined);
     expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     expect(engine.getStatus(track.id)).toBe("downloaded");
-    await engine.getSource(track);
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:track-1");
-    engine.releaseSource();
+    const second = await engine.getSource(track);
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    first.release();
+    first.release();
+    expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:track-1");
+    second.release();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:track-2");
     await engine.getSource(track);
     engine.destroy();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:track-3");
+  });
+
+  it("allows concurrent source requests and independent handle lifetimes", async () => {
+    install();
+    const { engine } = setup({ cache: await seed() });
+    const controller = new AbortController();
+    const [first, second] = await Promise.all([
+      engine.getSource(track, { signal: controller.signal }),
+      engine.getSource(track),
+    ]);
+    expect(first.url).not.toBe(second.url);
+    controller.abort();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    first.release();
+    expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith(first.url);
+    engine.destroy();
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+    expect(URL.revokeObjectURL).toHaveBeenLastCalledWith(second.url);
+    second.release();
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+  });
+
+  it("aborting one pending source does not cancel another", async () => {
+    const disk = install();
+    const { engine } = setup({ cache: await seed() });
+    const gate = deferred();
+    const reading = deferred();
+    disk.state.beforeRead = async (path) => {
+      if (path.endsWith(".audio")) {
+        disk.state.beforeRead = async () => {};
+        reading.resolve();
+        await gate.promise;
+      }
+    };
+    const controller = new AbortController();
+    const first = engine.getSource(track, { signal: controller.signal });
+    const rejected = expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await reading.promise;
+    const second = engine.getSource(track);
+    controller.abort();
+    gate.resolve();
+    await rejected;
+    expect((await second).cached).toBe(true);
+    expect(URL.createObjectURL).toHaveBeenCalledOnce();
   });
 
   it("proxies hydration progress and waits behind Cache's pending load", async () => {
@@ -284,7 +332,7 @@ describe("TrackEngine using Cache", () => {
     expect(fetcher).not.toHaveBeenCalled();
     expect(disk.blobs.size).toBe(0);
     await seed(cache, "raw");
-    expect(await engine.getSource(track, { position: 120 })).toEqual({
+    expect(await engine.getSource(track, { position: 120 })).toMatchObject({
       cached: true,
       url: "blob:track-1",
     });
@@ -402,7 +450,7 @@ describe("TrackEngine using Cache", () => {
     },
   );
 
-  it.each(["switch", "release", "destroy", "supersede"])(
+  it.each(["switch", "abort", "destroy", "disconnect"])(
     "rejects a late cached source after %s",
     async (action) => {
       const disk = install();
@@ -416,23 +464,20 @@ describe("TrackEngine using Cache", () => {
           await gate.promise;
         }
       };
-      const pending = engine.getSource(track);
+      const controller = new AbortController();
+      const pending = engine.getSource(track, { signal: controller.signal });
       const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
       await reading.promise;
-      let current: ReturnType<TrackEngine["getSource"]> | undefined;
       if (action === "switch") {
         selection.cache = new Cache(account);
         engine.activate();
       }
-      if (action === "release") engine.releaseSource();
+      if (action === "abort") controller.abort();
       if (action === "destroy") engine.destroy();
-      if (action === "supersede") current = engine.getSource(track);
+      if (action === "disconnect") engine.setConnection(connection());
       gate.resolve();
       await rejected;
-      if (current) {
-        expect((await current).cached).toBe(true);
-        expect(URL.createObjectURL).toHaveBeenCalledOnce();
-      } else expect(URL.createObjectURL).not.toHaveBeenCalled();
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
       expect(cache.downloads.size).toBe(1);
     },
   );

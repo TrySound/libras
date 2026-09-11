@@ -7,7 +7,7 @@ import {
   type Network,
   type PasswordAuth,
 } from "./network.svelte";
-import type { PlaybackEngine } from "./playback.svelte";
+import type { PlaybackController } from "./playback-controller.svelte";
 import type { QueueEngine } from "./queue.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
@@ -26,7 +26,7 @@ interface SessionOptions {
     "activate" | "refresh" | "flush" | "setConnection" | "error" | "storageError"
   >;
   tracks: Pick<TrackEngine, "activate" | "setConnection">;
-  playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
+  playback: Pick<PlaybackController, "suspend" | "suspendNetwork">;
   preferences: Pick<Storage, "getItem" | "setItem">;
 }
 

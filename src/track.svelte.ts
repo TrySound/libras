@@ -14,6 +14,8 @@ export interface TrackSource {
   url: string;
   offset?: number;
   nativeSeeking?: boolean;
+  /** Releases only this result; other source handles remain valid. */
+  release(): void;
 }
 interface TrackSourceOptions {
   forceTranscode?: boolean;
@@ -41,7 +43,7 @@ interface DownloadJob {
 
 /** Scheduling and playback resources. Cache owns all completed records and bytes. */
 export class TrackEngine {
-  #activeObjectUrl = "";
+  #sourceReleases = new Set<() => void>();
   #connection?: AudioConnection;
   #jobs = new Map<string, DownloadJob>();
   #selection: CacheSelection;
@@ -62,7 +64,7 @@ export class TrackEngine {
 
   /** Session selected a cache. Activation performs no hydration or persistence. */
   activate() {
-    this.releaseSource();
+    this.#releaseSources();
     this.#cancelDownloads();
     this.#error = undefined;
     this.#version++;
@@ -230,18 +232,19 @@ export class TrackEngine {
   }
   async getSource(
     track: EngineTrack,
-    options: TrackSourceOptions & { position?: number } = {},
+    options: TrackSourceOptions & { position?: number; signal?: AbortSignal } = {},
   ): Promise<TrackSource> {
     if (this.#destroyed) throw new DOMException("Playback stopped.", "AbortError");
-    this.#cancelSourceRequest();
-    const signal = this.#sourceController.signal;
+    const signal = options.signal
+      ? AbortSignal.any([this.#sourceController.signal, options.signal])
+      : this.#sourceController.signal;
+    signal.throwIfAborted();
     const descriptor = this.#describe(track, options);
     const cache = this.#selection.cache!;
     const cached = await this.#cached(cache, track, descriptor, signal);
     signal.throwIfAborted();
     if (this.#destroyed || cache !== this.#selection.cache)
       throw new DOMException("Source request superseded.", "AbortError");
-    this.#clearObjectUrl();
     if (!cached) {
       const offset = Math.max(0, Math.floor(options.position ?? 0));
       if (offset > 0)
@@ -249,29 +252,30 @@ export class TrackEngine {
           cached: false,
           offset,
           url: this.#streamUrl(track.id, { ...descriptor, format: "mp3" }, offset),
+          release() {},
         };
       return {
         cached: false,
         url: this.#streamUrl(track.id, descriptor),
         nativeSeeking: descriptor.format === "raw",
+        release() {},
       };
     }
-    this.#activeObjectUrl = URL.createObjectURL(
-      new Blob([cached.file], { type: cached.contentType }),
-    );
-    return { cached: true, url: this.#activeObjectUrl };
-  }
-  #clearObjectUrl() {
-    if (this.#activeObjectUrl) URL.revokeObjectURL(this.#activeObjectUrl);
-    this.#activeObjectUrl = "";
+    const url = URL.createObjectURL(new Blob([cached.file], { type: cached.contentType }));
+    const release = () => {
+      if (!this.#sourceReleases.delete(release)) return;
+      URL.revokeObjectURL(url);
+    };
+    this.#sourceReleases.add(release);
+    return { cached: true, url, release };
   }
   #cancelSourceRequest() {
     this.#sourceController.abort();
     this.#sourceController = new AbortController();
   }
-  releaseSource() {
+  #releaseSources() {
     this.#cancelSourceRequest();
-    this.#clearObjectUrl();
+    for (const release of this.#sourceReleases) release();
   }
   setConnection(connection?: AudioConnection) {
     if (this.#connection === connection || this.#destroyed) return;
@@ -290,7 +294,7 @@ export class TrackEngine {
   }
   destroy() {
     this.#destroyed = true;
-    this.releaseSource();
+    this.#releaseSources();
     this.#cancelDownloads();
   }
 }

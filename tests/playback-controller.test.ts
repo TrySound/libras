@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PlaybackEngine } from "../src/playback.svelte";
+import { PlaybackController } from "../src/playback-controller.svelte";
 import { flushSync, mount as mountComponent, unmount } from "svelte";
 import Player from "../src/player.svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
@@ -88,10 +88,9 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       async (
         track: { id: string },
         _options?: { forceTranscode?: boolean; position?: number },
-      ): Promise<TrackSource> => ({ cached: true, url: `blob:${track.id}` }),
+      ): Promise<TrackSource> => ({ cached: true, release: vi.fn(), url: `blob:${track.id}` }),
     ),
     cache: vi.fn(async () => new File([], "track")),
-    releaseSource: vi.fn(),
   };
   const coverListeners = new Set<() => void>();
   let artwork = "data:image/jpeg;base64,aW1hZ2U=";
@@ -100,6 +99,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       source: artwork,
       artworkId: id,
       cached: true,
+      release: vi.fn(),
       cache: () => {},
     })),
     subscribe: (listener: () => void) => {
@@ -125,7 +125,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     return audio as unknown as HTMLAudioElement;
   });
   vi.stubGlobal("Audio", createAudio);
-  const player = new PlaybackEngine({
+  const player = new PlaybackController({
     isAvailable,
     queue,
     selection,
@@ -133,6 +133,9 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     covers,
   });
   queue.update({ tracks: ["a", "b"], index: 0, position: 0 });
+  let mountedPlayer: ReturnType<typeof Player>;
+  const getPlayer = () => mountedPlayer;
+  const queuePosition = () => selection.cache?.queue.position ?? 0;
   let detachMounted: (() => void) | undefined;
   const mountPlayer = () => {
     detachMounted?.();
@@ -143,7 +146,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
           return player.hasNext;
         },
         get hasPrevious() {
-          return player.hasPrevious || (!!player.track && player.position > 0);
+          return player.hasPrevious || (!!player.track && queuePosition() > 0);
         },
         onnext: () => {
           void player.next();
@@ -155,8 +158,9 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
         onended: () => player.ended(),
       },
     });
+    mountedPlayer = component;
     flushSync();
-    const detachEngine = player.mount(component);
+    const detachEngine = player.attach(component);
     flushSync();
     let disposed = false;
     const detach = () => {
@@ -190,6 +194,8 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       updateTrack(id, { title });
     },
     player,
+    getPlayer,
+    queuePosition,
     mountPlayer,
     createAudio,
     queue,
@@ -241,7 +247,7 @@ function setupShortcuts() {
 
 describe("playback engine", () => {
   it("reads a new cache atomically and ignores a suspended account's late source", async () => {
-    const { selection, queue, player, tracks, audio } = setup();
+    const { selection, queue, player, getPlayer, queuePosition, tracks, audio } = setup();
     const old = selection.cache!;
     const late = Promise.withResolvers<TrackSource>();
     tracks.getSource.mockReturnValueOnce(late.promise);
@@ -255,43 +261,47 @@ describe("playback engine", () => {
     selection.cache = next;
     queue.activate();
     expect(player.track?.title).toBe("Other account");
-    expect(player.position).toBe(37);
+    expect(queuePosition()).toBe(37);
     await player.play();
-    late.resolve({ cached: true, url: "blob:old-account" });
+    late.resolve({ cached: true, release: vi.fn(), url: "blob:old-account" });
     await pending;
     expect(audio.src).toBe("blob:a");
-    expect(player.playing).toBe(true);
+    expect(getPlayer().playing).toBe(true);
     expect(old.queue.tracks).toEqual(["a", "b"]);
     player.suspend();
     selection.cache = undefined;
     queue.activate();
     expect(player.track).toBeUndefined();
-    expect(player.position).toBe(0);
+    expect(queuePosition()).toBe(0);
     expect(player.hasNext).toBe(false);
   });
   it("keeps cached playback running when network sources are suspended", async () => {
-    const { player, audio, tracks } = setup();
+    const { player, getPlayer, audio, tracks } = setup();
     await player.play();
     const source = audio.src;
     player.suspendNetwork();
-    expect(player.playing).toBe(true);
+    expect(getPlayer().playing).toBe(true);
     expect(audio.src).toBe(source);
-    tracks.getSource.mockResolvedValue({ cached: false, url: "https://music.example/stream" });
+    tracks.getSource.mockResolvedValue({
+      cached: false,
+      release: vi.fn(),
+      url: "https://music.example/stream",
+    });
     await player.next();
     player.suspendNetwork();
-    expect(player.playing).toBe(false);
+    expect(getPlayer().playing).toBe(false);
     expect(audio.src).toBe("");
   });
 
   it("suspends playback for account changes without losing queue selection or position", async () => {
-    const { player, audio, selection, tracks } = setup();
+    const { player, getPlayer, audio, selection, tracks } = setup();
     await player.play();
     audio.currentTime = 23;
     audio.dispatchEvent(new Event("timeupdate"));
     const queued = selection.cache!.queue.tracks;
     player.suspend();
     expect(audio.src).toBe("");
-    expect(player.playing).toBe(false);
+    expect(getPlayer().playing).toBe(false);
     expect(selection.cache!.queue.tracks).toBe(queued);
     expect(selection.cache!.queue.index).toBe(0);
     expect(selection.cache!.queue.position).toBe(23);
@@ -299,11 +309,12 @@ describe("playback engine", () => {
     expect(tracks.getSource).toHaveBeenLastCalledWith(expect.objectContaining({ id: "a" }), {
       forceTranscode: false,
       position: 23,
+      signal: expect.any(AbortSignal),
     });
   });
 
   it("stops playback and clears selection and position without deleting the queue", async () => {
-    const { player, selection, audio, session } = setup();
+    const { player, getPlayer, selection, audio, session } = setup();
     await player.play();
     audio.currentTime = 8;
     audio.dispatchEvent(new Event("timeupdate"));
@@ -311,7 +322,7 @@ describe("playback engine", () => {
     expect(selection.cache!.queue.tracks).toEqual(["a", "b"]);
     expect(selection.cache!.queue.index).toBe(-1);
     expect(selection.cache!.queue.position).toBe(0);
-    expect(player.playing).toBe(false);
+    expect(getPlayer().playing).toBe(false);
     expect(audio.src).toBe("");
     expect(session.metadata).toBeNull();
   });
@@ -349,7 +360,7 @@ describe("playback engine", () => {
   );
 
   it("does not upload deletions when a server queue arrives before fresh metadata", async () => {
-    const { player, queue, audio, restoreTrack, selection } = setup();
+    const { player, getPlayer, queue, audio, restoreTrack, selection } = setup();
     const { Network } = await import("../src/network.svelte");
     const network = new Network();
     const fetcher = vi.fn(
@@ -392,7 +403,7 @@ describe("playback engine", () => {
     await player.play();
     audio.currentTime = 13;
     audio.dispatchEvent(new Event("timeupdate"));
-    expect(player.playing).toBe(true);
+    expect(getPlayer().playing).toBe(true);
     expect(selection.cache!.queue.tracks).toEqual(["a", "fresh"]);
   });
 
@@ -429,21 +440,31 @@ describe("playback engine", () => {
   });
 
   it("preserves a restored duplicate index and position without autoplay", async () => {
-    const { player, mountPlayer, queue, audio, updateTrack, session, selection } = setup(false);
+    const {
+      player,
+      getPlayer,
+      queuePosition,
+      mountPlayer,
+      queue,
+      audio,
+      updateTrack,
+      session,
+      selection,
+    } = setup(false);
     updateTrack("a", { duration: 200 });
     queue.update({ tracks: ["a", "b", "a"], index: 2, position: 38 });
     mountPlayer();
     expect(selection.cache!.queue.index).toBe(2);
-    expect(player.position).toBe(38);
-    expect(player.duration).toBe(200);
-    expect(player.position / player.duration).toBe(0.19);
+    expect(queuePosition()).toBe(38);
+    expect(getPlayer().duration).toBe(0);
+    expect(player.track?.duration).toBe(200);
     // The component has no loaded item until an explicit play command.
     expect(session.metadata).toBeNull();
     expect(session.setPositionState).toHaveBeenLastCalledWith(undefined);
-    expect(player.playing).toBe(false);
+    expect(getPlayer().playing).toBe(false);
     expect(audio.play).not.toHaveBeenCalled();
     audio.dispatchEvent(new Event("loadedmetadata"));
-    expect(player.duration).toBe(200);
+    expect(getPlayer().duration).toBe(0);
     await player.play();
     expect(audio.currentTime).toBe(38);
   });
@@ -462,7 +483,8 @@ describe("playback engine", () => {
   it.each([false, true])(
     "preserves unknown IDs and selection before or after mounting (mounted: %s)",
     (mounted) => {
-      const { player, mountPlayer, queue, audio, selection } = setup(mounted);
+      const { player, getPlayer, queuePosition, mountPlayer, queue, audio, selection } =
+        setup(mounted);
       queue.update({ tracks: ["missing", "a", "b"], index: 1, position: 12 });
       if (!mounted) {
         expect(selection.cache!.queue.tracks).toEqual(["missing", "a", "b"]);
@@ -471,19 +493,19 @@ describe("playback engine", () => {
       expect(selection.cache!.queue.tracks).toEqual(["missing", "a", "b"]);
       expect(selection.cache!.queue.index).toBe(1);
       expect(player.track?.id).toBe("a");
-      expect(player.position).toBe(12);
+      expect(queuePosition()).toBe(12);
       queue.update({ tracks: ["missing", "b"], index: 0, position: 30 });
       expect(selection.cache!.queue.tracks).toEqual(["missing", "b"]);
       expect(player.track).toBeUndefined();
       expect(selection.cache!.queue.index).toBe(0);
-      expect(player.position).toBe(30);
-      expect(player.error).toBeUndefined();
+      expect(queuePosition()).toBe(30);
+      expect(getPlayer().error).toBeUndefined();
       expect(audio.play).not.toHaveBeenCalled();
     },
   );
 
   it("refreshes app metadata but keeps Media Session metadata fixed until the next play", async () => {
-    const { player, selection, renameTrack, audio, session, queue } = setup();
+    const { player, getPlayer, selection, renameTrack, audio, session, queue } = setup();
     expect(player.track).toBe(selection.cache!.tracks.get("a"));
     await player.play();
     renameTrack("a", "Updated title");
@@ -496,12 +518,12 @@ describe("playback engine", () => {
       artist: "Artist",
       album: "Album",
     });
-    expect(player.playing).toBe(true);
+    expect(getPlayer().playing).toBe(true);
     expect(audio.play).toHaveBeenCalledOnce();
   });
 
   it("stops unavailable playback without deleting its saved selection or position", async () => {
-    const { player, queue, removeTrack, audio, selection } = setup();
+    const { player, getPlayer, queuePosition, queue, removeTrack, audio, selection } = setup();
     await player.play();
     queue.setPosition(20);
     removeTrack("a");
@@ -511,22 +533,22 @@ describe("playback engine", () => {
     expect(selection.cache!.queue.tracks).toEqual(["a", "b"]);
     expect(player.track).toBeUndefined();
     expect(selection.cache!.queue.index).toBe(0);
-    expect(player.position).toBe(21);
-    expect(player.playing).toBe(false);
-    expect(player.error).toBeUndefined();
+    expect(queuePosition()).toBe(21);
+    expect(getPlayer().playing).toBe(false);
+    expect(getPlayer().error).toBeUndefined();
     expect(audio.src).toBe("");
     expect(audio.play).toHaveBeenCalledOnce();
   });
 
   it("keeps playing when metadata removes a different queued track", async () => {
-    const { player, queue, removeTrack, audio, selection } = setup();
+    const { player, getPlayer, queuePosition, queue, removeTrack, audio, selection } = setup();
     await player.play();
     queue.setPosition(20);
     removeTrack("b");
     expect(selection.cache!.queue.tracks).toEqual(["a", "b"]);
     expect(player.track?.id).toBe("a");
-    expect(player.position).toBe(20);
-    expect(player.playing).toBe(true);
+    expect(queuePosition()).toBe(20);
+    expect(getPlayer().playing).toBe(true);
     expect(player.hasNext).toBe(false);
     expect(audio.src).toBe("blob:a");
     expect(audio.play).toHaveBeenCalledOnce();
@@ -548,7 +570,7 @@ describe("playback engine", () => {
         album: "New album",
         contentType: "audio/flac",
       },
-      { forceTranscode: false, position: 0 },
+      { forceTranscode: false, position: 0, signal: expect.any(AbortSignal) },
     );
     expect(session.metadata).toMatchObject({ artist: "New artist", album: "New album" });
   });
@@ -664,10 +686,10 @@ describe("playback engine", () => {
   });
 
   it("updates UI observers without recreating the mounted audio", async () => {
-    const { player, audio, queue, createAudio } = setup();
+    const { player, getPlayer, queuePosition, audio, queue, createAudio } = setup();
     const observe = vi.fn(() => {
-      void player.position;
-      void player.playing;
+      void queuePosition();
+      void getPlayer().playing;
     });
     const destroy = observePlayback(observe);
     try {
@@ -680,7 +702,7 @@ describe("playback engine", () => {
       flushSync();
       expect(createAudio).toHaveBeenCalledOnce();
       expect(observe.mock.calls.length).toBeGreaterThan(1);
-      expect(player.position).toBe(12);
+      expect(queuePosition()).toBe(12);
     } finally {
       destroy();
     }
@@ -701,15 +723,15 @@ describe("playback engine", () => {
   });
 
   it("updates queue position and media session from audio events", async () => {
-    const { player, audio, queue, session, tracks, selection } = setup();
+    const { player, getPlayer, queuePosition, audio, queue, session, tracks, selection } = setup();
     await player.play();
     audio.dispatchEvent(new Event("loadedmetadata"));
     audio.currentTime = 32;
     audio.dispatchEvent(new Event("timeupdate"));
     expect(selection.cache!.queue.position).toBe(32);
-    expect(player.position).toBe(32);
-    expect(player.duration).toBe(120);
-    expect(player.playing).toBe(true);
+    expect(queuePosition()).toBe(32);
+    expect(getPlayer().duration).toBe(120);
+    expect(getPlayer().playing).toBe(true);
     expect(session.playbackState).toBe("playing");
     expect(session.setPositionState).toHaveBeenLastCalledWith({
       duration: 120,
@@ -733,16 +755,16 @@ describe("playback engine", () => {
   });
 
   it("advances at end but retains the final queue entry", async () => {
-    const { player, audio, selection } = setup();
+    const { player, getPlayer, audio, selection } = setup();
     await player.play();
     audio.dispatchEvent(new Event("ended"));
     await Promise.resolve();
     await Promise.resolve();
     expect(selection.cache!.queue.tracks[selection.cache!.queue.index]).toBe("b");
-    await vi.waitFor(() => expect(player.playing).toBe(true));
+    await vi.waitFor(() => expect(getPlayer().playing).toBe(true));
     audio.dispatchEvent(new Event("ended"));
-    expect(player.status).toBe("ended");
-    expect(player.playing).toBe(false);
+    expect(getPlayer().status).toBe("ended");
+    expect(getPlayer().playing).toBe(false);
     expect(selection.cache!.queue.tracks).toHaveLength(2);
   });
 
@@ -758,9 +780,10 @@ describe("playback engine", () => {
   });
 
   it("seeks within advertised original-file ranges without restarting the stream", async () => {
-    const { player, audio, tracks } = setup();
+    const { player, queuePosition, audio, tracks } = setup();
     tracks.getSource.mockResolvedValueOnce({
       cached: false,
+      release: vi.fn(),
       url: "https://server/raw",
       nativeSeeking: true,
     });
@@ -772,7 +795,7 @@ describe("playback engine", () => {
     };
     await player.seek(90);
     expect(audio.currentTime).toBe(90);
-    expect(player.position).toBe(90);
+    expect(queuePosition()).toBe(90);
     expect(tracks.getSource).toHaveBeenCalledTimes(1);
     expect(tracks.cache).not.toHaveBeenCalled();
     player.pause();
@@ -781,6 +804,7 @@ describe("playback engine", () => {
     expect(audio.play).toHaveBeenCalledTimes(1);
     tracks.getSource.mockResolvedValueOnce({
       cached: false,
+      release: vi.fn(),
       url: "https://server/offset",
       offset: 40,
     });
@@ -791,25 +815,31 @@ describe("playback engine", () => {
   });
 
   it("does not trust seekable ranges on transcoded streams", async () => {
-    const { player, audio, tracks } = setup();
-    tracks.getSource.mockResolvedValueOnce({ cached: false, url: "https://server/mp3" });
+    const { player, queuePosition, audio, tracks } = setup();
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      release: vi.fn(),
+      url: "https://server/mp3",
+    });
     await player.play();
     audio.seekable.length = 1;
     tracks.getSource.mockResolvedValueOnce({
       cached: false,
+      release: vi.fn(),
       url: "https://server/offset",
       offset: 60,
     });
     await player.seek(60);
     expect(audio.src).toBe("https://server/offset");
     expect(audio.currentTime).toBe(0);
-    expect(player.position).toBe(60);
+    expect(queuePosition()).toBe(60);
   });
 
   it("falls back to an offset stream if setting native seek time throws", async () => {
-    const { player, audio, tracks } = setup();
+    const { player, getPlayer, queuePosition, audio, tracks } = setup();
     tracks.getSource.mockResolvedValueOnce({
       cached: false,
+      release: vi.fn(),
       url: "https://server/raw",
       nativeSeeking: true,
     });
@@ -825,45 +855,56 @@ describe("playback engine", () => {
     });
     tracks.getSource.mockResolvedValueOnce({
       cached: false,
+      release: vi.fn(),
       url: "https://server/offset",
       offset: 60,
     });
     await player.seek(60);
     expect(audio.src).toBe("https://server/offset");
-    expect(player.position).toBe(60);
-    expect(player.playing).toBe(true);
-    expect(player.error).toBeUndefined();
+    expect(queuePosition()).toBe(60);
+    expect(getPlayer().playing).toBe(true);
+    expect(getPlayer().error).toBeUndefined();
   });
 
   it("streams from the beginning without starting an offline download", async () => {
-    const { player, audio, tracks } = setup();
-    tracks.getSource.mockResolvedValueOnce({ cached: false, url: "https://server/stream" });
+    const { player, getPlayer, audio, tracks } = setup();
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      release: vi.fn(),
+      url: "https://server/stream",
+    });
     await player.play();
     expect(audio.src).toBe("https://server/stream");
-    expect(player.playing).toBe(true);
+    expect(getPlayer().playing).toBe(true);
     expect(tracks.cache).not.toHaveBeenCalled();
   });
 
   it("uses MP3 fallback for unsupported formats", async () => {
-    const { player, audio, tracks } = setup();
+    const { player, getPlayer, audio, tracks } = setup();
     audio.play.mockRejectedValueOnce(new DOMException("unsupported", "NotSupportedError"));
     await player.play();
     expect(tracks.getSource).toHaveBeenLastCalledWith(expect.objectContaining({ id: "a" }), {
       forceTranscode: true,
       position: 0,
+      signal: expect.any(AbortSignal),
     });
-    expect(player.error).toBeUndefined();
-    expect(player.playing).toBe(true);
+    expect(getPlayer().error).toBeUndefined();
+    expect(getPlayer().playing).toBe(true);
   });
 
   it("preserves pause when seeking to an offset stream without downloading", async () => {
-    const { player, audio, tracks } = setup();
-    tracks.getSource.mockResolvedValueOnce({ cached: false, url: "https://server/stream" });
+    const { player, queuePosition, audio, tracks } = setup();
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      release: vi.fn(),
+      url: "https://server/stream",
+    });
     await player.play();
     player.pause();
     tracks.cache.mockClear();
     tracks.getSource.mockResolvedValueOnce({
       cached: false,
+      release: vi.fn(),
       url: "https://server/offset",
       offset: 45,
     });
@@ -871,30 +912,32 @@ describe("playback engine", () => {
     expect(tracks.getSource).toHaveBeenLastCalledWith(expect.objectContaining({ id: "a" }), {
       forceTranscode: false,
       position: 45,
+      signal: expect.any(AbortSignal),
     });
     expect(tracks.cache).not.toHaveBeenCalled();
     expect(audio.currentTime).toBe(0);
-    expect(player.position).toBe(45);
+    expect(queuePosition()).toBe(45);
     expect(audio.paused).toBe(true);
     expect(audio.play).toHaveBeenCalledTimes(1);
   });
 
   it("resumes an offset stream and translates time, duration, and buffered seeks", async () => {
-    const { player, audio, tracks, queue, updateTrack, selection } = setup();
+    const { player, getPlayer, audio, tracks, queue, updateTrack, selection } = setup();
     updateTrack("a", { duration: 240 });
     queue.setPosition(120.5);
     tracks.getSource.mockResolvedValueOnce({
       cached: false,
+      release: vi.fn(),
       url: "https://server/offset",
       offset: 120,
     });
     await player.play();
     expect(audio.currentTime).toBe(0.5);
-    expect(player.playing).toBe(true);
+    expect(getPlayer().playing).toBe(true);
     expect(tracks.cache).not.toHaveBeenCalled();
     audio.duration = 120;
     audio.dispatchEvent(new Event("durationchange"));
-    expect(player.duration).toBe(240);
+    expect(getPlayer().duration).toBe(240);
     audio.currentTime = 5;
     audio.dispatchEvent(new Event("timeupdate"));
     expect(selection.cache!.queue.position).toBe(125);
@@ -905,6 +948,7 @@ describe("playback engine", () => {
     expect(tracks.getSource).toHaveBeenCalledTimes(1);
     tracks.getSource.mockResolvedValueOnce({
       cached: false,
+      release: vi.fn(),
       url: "https://server/earlier",
       offset: 30,
     });
@@ -920,7 +964,7 @@ describe("playback engine", () => {
 
   it("cancels stale loading on pause", async () => {
     const { player, tracks, audio } = setup();
-    let resolve!: (source: { cached: boolean; url: string }) => void;
+    let resolve!: (source: TrackSource) => void;
     tracks.getSource.mockImplementationOnce(
       () =>
         new Promise((done) => {
@@ -929,7 +973,7 @@ describe("playback engine", () => {
     );
     const play = player.play();
     player.pause();
-    resolve({ cached: true, url: "blob:late" });
+    resolve({ cached: true, release: vi.fn(), url: "blob:late" });
     await play;
     expect(audio.play).not.toHaveBeenCalled();
     expect(audio.src).toBe("");
@@ -955,7 +999,7 @@ describe("playback engine", () => {
 
   it("ignores a stale source after switching tracks", async () => {
     const { player, audio, tracks } = setup();
-    let resolve!: (source: { cached: boolean; url: string }) => void;
+    let resolve!: (source: TrackSource) => void;
     tracks.getSource.mockImplementationOnce(
       () =>
         new Promise((done) => {
@@ -964,7 +1008,7 @@ describe("playback engine", () => {
     );
     const first = player.play();
     await player.playIndex(1);
-    resolve({ cached: true, url: "blob:old" });
+    resolve({ cached: true, release: vi.fn(), url: "blob:old" });
     await first;
     expect(audio.src).toBe("blob:b");
     expect(audio.play).toHaveBeenCalledOnce();
@@ -972,7 +1016,11 @@ describe("playback engine", () => {
 
   it("resumes after an unbuffered seek only if playback was active", async () => {
     const { player, audio, tracks } = setup();
-    tracks.getSource.mockResolvedValueOnce({ cached: false, url: "https://server/stream" });
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      release: vi.fn(),
+      url: "https://server/stream",
+    });
     await player.play();
     await player.seek(50);
     expect(audio.currentTime).toBe(50);
@@ -981,14 +1029,14 @@ describe("playback engine", () => {
   });
 
   it("contains source failures and permits retry", async () => {
-    const { player, tracks } = setup();
+    const { player, getPlayer, tracks } = setup();
     tracks.getSource.mockRejectedValueOnce(new Error("Network failed"));
     await expect(player.play()).resolves.toBeUndefined();
-    expect(player.status).toBe("error");
-    expect(player.error).toMatchObject({ message: "Network failed" });
+    expect(getPlayer().status).toBe("error");
+    expect(getPlayer().error).toMatchObject({ message: "Network failed" });
     await player.play();
-    expect(player.status).toBe("ready");
-    expect(player.error).toBeUndefined();
+    expect(getPlayer().status).toBe("ready");
+    expect(getPlayer().error).toBeUndefined();
   });
 
   it("flushes the queue when the page becomes hidden", () => {
@@ -1000,11 +1048,11 @@ describe("playback engine", () => {
   });
 
   it("clears playback and metadata if the selected track disappears", async () => {
-    const { player, queue, audio, session } = setup();
+    const { player, getPlayer, queue, audio, session } = setup();
     await player.play();
     queue.update({ tracks: [], position: 0 });
     expect(audio.src).toBe("");
-    expect(player.status).toBe("idle");
+    expect(getPlayer().status).toBe("idle");
     expect(session.metadata).toBeNull();
   });
 });

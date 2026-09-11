@@ -39,7 +39,8 @@ export class QueueEngine {
   #refreshController?: AbortController;
   #serverWrites: Promise<void> = Promise.resolve();
   #error = $state.raw<unknown>();
-  #playbackActive = false;
+  #playbackState: "active" | "paused" | "inactive" = "inactive";
+  #lastProgressFlush = 0;
   #serverWritable = false;
   #dirty = false;
   #epoch = 0;
@@ -72,7 +73,8 @@ export class QueueEngine {
   activate() {
     if (this.#destroyed) return;
     this.#resetPolicy();
-    this.#playbackActive = false;
+    this.#playbackState = "inactive";
+    this.#lastProgressFlush = 0;
     this.#notify();
   }
   #resetPolicy() {
@@ -92,9 +94,26 @@ export class QueueEngine {
     this.#connection = connection;
     this.#resetPolicy();
   }
-  setPlaybackActive(active: boolean) {
-    this.#playbackActive = active;
-    if (active) this.#refreshController?.abort();
+  /** Transport lifecycle owns no upload timers; QueueEngine owns this policy. */
+  playback(state: "active" | "paused" | "inactive") {
+    if (this.#destroyed || state === this.#playbackState) return;
+    this.#playbackState = state;
+    if (state !== "inactive") this.#refreshController?.abort();
+    if (state === "active") this.save();
+    else void this.flush();
+  }
+  progress(position: number) {
+    if (this.#destroyed) return;
+    this.setPosition(position);
+    if (this.#playbackState !== "active") this.save();
+    else if (Date.now() - this.#lastProgressFlush >= 10_000) {
+      this.#lastProgressFlush = Date.now();
+      void this.flush();
+    }
+  }
+  seek(position: number) {
+    this.setPosition(position);
+    this.save();
   }
   #connected(cache: Cache) {
     return (
@@ -144,7 +163,7 @@ export class QueueEngine {
     if (position === cache.queue.position) return;
     this.#change({ ...cache.queue, position }, true);
   }
-  // Debounce server commands separately; continuous position checkpoints are local only.
+  // Debounce explicit commands separately from periodic playback progress flushes.
   save() {
     if (this.#destroyed) return;
     clearTimeout(this.#saveTimer);
@@ -229,7 +248,7 @@ export class QueueEngine {
           !current() ||
           signal.aborted ||
           revision !== cache.queueRevision ||
-          this.#playbackActive
+          this.#playbackState !== "inactive"
         )
           return;
         const next = fromRemoteQueue(remote, cache.queue);

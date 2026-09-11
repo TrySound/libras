@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { installLongPress } from "./long-press";
-  import { PlaybackEngine } from "./playback.svelte";
+  import { PlaybackController } from "./playback-controller.svelte";
   import Player from "./player.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
@@ -56,7 +56,7 @@
     return [...jobs, ...completed];
   });
   let player = $state<ReturnType<typeof Player>>();
-  const playback: PlaybackEngine = new PlaybackEngine({
+  const playback: PlaybackController = new PlaybackController({
     queue: queueEngine,
     selection,
     tracks: trackEngine,
@@ -96,7 +96,7 @@
   let loading = $derived(!session.localReady);
 
   onMount(() => installLongPress());
-  onMount(() => playback.mount(player!));
+  onMount(() => playback.attach(player!));
 
   onDestroy(() => {
     session.destroy();

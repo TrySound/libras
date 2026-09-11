@@ -249,7 +249,7 @@ describe("queue engine using the selected cache", () => {
       const pending = queue.refresh();
       await vi.waitFor(() => expect(connection.read).toHaveBeenCalledOnce());
       if (action === "local edit") queue.select(0);
-      if (action === "playback") queue.setPlaybackActive(true);
+      if (action === "playback") queue.playback("active");
       if (action === "detach") queue.setConnection(undefined);
       response.resolve(remote());
       await pending;
@@ -281,7 +281,7 @@ describe("queue engine using the selected cache", () => {
       expect(notify).not.toHaveBeenCalled();
       if (outcome === "local edit") queue.update({ tracks: ["local"], index: 0, position: 0 });
       if (outcome === "detach") queue.setConnection(undefined);
-      if (outcome === "playback") queue.setPlaybackActive(true);
+      if (outcome === "playback") queue.playback("active");
       if (outcome === "failure") disk.state.failClose = true;
       release.resolve();
       await pending;
@@ -315,7 +315,7 @@ describe("queue engine using the selected cache", () => {
   it("keeps offline playback checkpoints local after reconnecting", async () => {
     const { queue, cache } = await setup();
     queue.update(local());
-    queue.setPlaybackActive(true);
+    queue.playback("active");
     await queue.flush();
     const connection = client();
     queue.setConnection(connection);
@@ -389,6 +389,57 @@ describe("queue engine using the selected cache", () => {
     expect(cache.queue.position).toBe(21);
     expect(connection.write).not.toHaveBeenCalled();
     expect(connection.read).not.toHaveBeenCalled();
+  });
+
+  it("owns progress upload timing and idempotent pause/end transitions", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { queue } = await setup();
+    const connection = client();
+    queue.setConnection(connection);
+    queue.update(local());
+    queue.playback("active");
+    await vi.advanceTimersByTimeAsync(300);
+    expect(connection.write).toHaveBeenCalledOnce();
+    connection.write.mockClear();
+    for (let position = 1; position <= 9; position++) {
+      await vi.advanceTimersByTimeAsync(1000);
+      queue.progress(position);
+    }
+    expect(connection.write).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(700);
+    queue.progress(10);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(connection.write).toHaveBeenCalledOnce();
+    queue.progress(11);
+    queue.playback("paused");
+    queue.playback("paused");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(connection.write).toHaveBeenCalledTimes(2);
+    expect(connection.write).toHaveBeenLastCalledWith(expect.objectContaining({ position: 11 }));
+    queue.seek(35);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(connection.write).toHaveBeenCalledTimes(3);
+    queue.playback("active");
+    queue.progress(36);
+    queue.playback("inactive");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(connection.write).toHaveBeenLastCalledWith(expect.objectContaining({ position: 36 }));
+  });
+
+  it("does not promote an offline queue through lifecycle or progress updates", async () => {
+    vi.useFakeTimers();
+    const { queue, cache } = await setup();
+    queue.update(local());
+    const connection = client();
+    queue.setConnection(connection);
+    queue.playback("active");
+    queue.progress(50);
+    await vi.advanceTimersByTimeAsync(10_000);
+    queue.playback("paused");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(cache.queue.position).toBe(50);
+    expect(connection.write).not.toHaveBeenCalled();
   });
 
   it("exposes local write errors separately and preserves optimistic edits", async () => {
