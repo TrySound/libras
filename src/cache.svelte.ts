@@ -253,6 +253,7 @@ export class Cache {
   #downloadsError = $state.raw<unknown>();
   #downloadsStore?: Promise<OpfsJsonStore<v.InferOutput<typeof downloadsSchema>>>;
   #downloadOperations: Promise<unknown> = Promise.resolve();
+  #downloadLoads = $state(0);
 
   constructor(account: Account) {
     this.account = Object.freeze(v.parse(accountSchema, account));
@@ -344,7 +345,7 @@ export class Cache {
       this.#loadLibrary(signal),
       this.#loadQueue(signal),
       this.#loadImages(signal),
-      this.#loadDownloads(signal),
+      this.#hydrateDownloads(signal),
     ]);
     signal?.throwIfAborted();
     if (
@@ -668,6 +669,15 @@ export class Cache {
   }
   get downloadsError() {
     return this.#downloadsError;
+  }
+  get downloadsLoading() {
+    return this.#downloadLoads > 0;
+  }
+  #hydrateDownloads(signal?: AbortSignal) {
+    this.#downloadLoads++;
+    return this.#loadDownloads(signal).finally(() => {
+      this.#downloadLoads--;
+    });
   }
 
   #downloadsFile() {

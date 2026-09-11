@@ -1,10 +1,9 @@
 import type { AudioConnection } from "./network.svelte";
-import type { Storage } from "./storage";
-import type { DownloadTrack, TrackFileDescriptor } from "./schema";
-import type { Memory, MemoryView } from "./memory.svelte";
+import { downloadKey, type Cache, type DownloadFormat } from "./cache.svelte";
+import type { Account, DownloadTrack } from "./schema";
+import type { Memory } from "./memory.svelte";
 
-type DownloadMemory = Pick<MemoryView, "account"> & Pick<Memory, "downloads">;
-
+type DownloadMemory = Readonly<Pick<Memory, "cache">>;
 interface EngineTrack {
   id: string;
   title?: string;
@@ -24,18 +23,15 @@ interface TrackSourceOptions {
 type TrackStatus = "idle" | "queued" | "downloading" | "downloaded";
 interface TrackEngineOptions {
   memory: DownloadMemory;
-  storage?: Pick<Storage, "account" | "audio">;
   connection?: AudioConnection;
   concurrency?: number;
 }
-type DownloadJobInfo = TrackFileDescriptor & {
-  track: DownloadTrack;
-  status: "queued" | "downloading";
-};
+type Descriptor = Readonly<Account> & { key: string; format: DownloadFormat; contentType: string };
+type DownloadJobInfo = Descriptor & { track: DownloadTrack; status: "queued" | "downloading" };
 interface DownloadJob {
-  descriptor: TrackFileDescriptor;
+  descriptor: Descriptor;
   connection: AudioConnection;
-  storage: Pick<Storage, "account" | "audio">;
+  cache: Cache;
   signal: AbortSignal;
   track: DownloadTrack;
   status: "queued" | "downloading";
@@ -45,83 +41,47 @@ interface DownloadJob {
   reject: (error: unknown) => void;
 }
 
+/** Scheduling and playback resources. Cache owns all completed records and bytes. */
 export class TrackEngine {
   #activeObjectUrl = "";
   #connection?: AudioConnection;
   #jobs = new Map<string, DownloadJob>();
   #memory: DownloadMemory;
-  #ready: Promise<void> = Promise.resolve();
   #concurrency: number;
   #destroyed = false;
-  #catalogRequest = 0;
-  #loading = $state(false);
   #error = $state.raw<unknown>();
   #mediaProbe = document.createElement("audio");
-  #sourceRequest = 0;
-  #storage?: Pick<Storage, "account" | "audio">;
+  #sourceController = new AbortController();
   #version = $state(0);
 
   constructor(options: TrackEngineOptions) {
     this.#memory = options.memory;
-    if (options.storage) this.restore(options.storage);
-    if (options.connection) this.setConnection(options.connection);
     this.#concurrency = options.concurrency ?? 3;
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1)
       throw new Error("Download concurrency must be a positive integer.");
+    if (options.connection) this.setConnection(options.connection);
   }
 
-  restore(storage: Pick<Storage, "account" | "audio">) {
-    if (this.#storage === storage) return this.#ready;
-    if (this.#storage) {
-      this.#sourceRequest++;
-      this.#cancelDownloads();
-      this.#clearObjectUrl();
-    }
-    this.#storage = storage;
-    this.#loading = true;
-    this.#ready = this.#refreshCatalog(true);
-    return this.#ready;
+  /** Session selected a cache. Activation performs no hydration or persistence. */
+  activate() {
+    this.releaseSource();
+    this.#cancelDownloads();
+    this.#error = undefined;
+    this.#version++;
   }
-
   get downloadJobs(): readonly DownloadJobInfo[] {
     this.#version;
-    const jobs = [...this.#jobs.values()];
+    const jobs = [...this.#jobs.values()].filter((job) => job.cache === this.#memory.cache);
     return [
       ...jobs.filter((job) => job.status === "downloading"),
       ...jobs.filter((job) => job.status === "queued"),
-    ].map((job) => ({
-      key: job.descriptor.key,
-      host: job.descriptor.host,
-      username: job.descriptor.username,
-      format: job.descriptor.format,
-      contentType: job.descriptor.contentType,
-      track: job.track,
-      status: job.status,
-    }));
+    ].map((job) => ({ ...job.descriptor, track: job.track, status: job.status }));
   }
   get downloadsLoading() {
-    return this.#loading;
+    return this.#memory.cache?.downloadsLoading ?? false;
   }
   get error() {
-    return this.#error;
-  }
-
-  async #refreshCatalog(validate = false) {
-    const request = ++this.#catalogRequest;
-    const storage = this.#storage;
-    if (!storage) return;
-    try {
-      const audio = storage.audio;
-      const entries = await (validate ? audio.list() : audio.entries());
-      if (this.#destroyed || request !== this.#catalogRequest) return;
-      this.#memory.downloads = new Map(entries.map((entry) => [entry.key, entry]));
-    } catch (error) {
-      if (this.#destroyed || request !== this.#catalogRequest) return;
-      this.#error = error;
-    }
-    if (!this.#destroyed && request === this.#catalogRequest) {
-      this.#loading = false;
-    }
+    return this.#error ?? this.#memory.cache?.downloadsError;
   }
 
   #track(track: EngineTrack): DownloadTrack {
@@ -133,17 +93,9 @@ export class TrackEngine {
       contentType: track.contentType,
     };
   }
-  #key(id: string, format: "raw" | "mp3") {
-    return `${this.#storage?.account?.host}\n${this.#storage?.account?.username}\n${id}\n${format}-v1`;
-  }
-  #describe(track: EngineTrack, options: TrackSourceOptions = {}): TrackFileDescriptor {
-    const account = this.#storage?.account;
-    if (!account) throw new Error("No music storage selected.");
-    if (
-      account.host !== this.#memory.account?.host ||
-      account.username !== this.#memory.account.username
-    )
-      throw new Error("Audio storage belongs to a different account.");
+  #describe(track: EngineTrack, options: TrackSourceOptions = {}): Descriptor {
+    const cache = this.#memory.cache;
+    if (!cache) throw new Error("No music cache selected.");
     const format =
       !options.forceTranscode &&
       track.contentType &&
@@ -151,36 +103,24 @@ export class TrackEngine {
         ? "raw"
         : "mp3";
     return {
-      key: this.#key(track.id, format),
-      host: account.host,
-      username: account.username,
+      key: downloadKey(track.id, format),
+      ...cache.account,
       format,
       contentType: format === "raw" && track.contentType ? track.contentType : "audio/mpeg",
     };
   }
-
-  #matchesAccount(descriptor: TrackFileDescriptor) {
-    return (
-      descriptor.host === this.#memory.account?.host &&
-      descriptor.username === this.#memory.account?.username
-    );
-  }
-
-  #connectionFor(descriptor: TrackFileDescriptor) {
+  #connectionFor(descriptor: Descriptor) {
     const connection = this.#connection;
     if (
       !connection ||
       connection.account.host !== descriptor.host ||
-      connection.account.username !== descriptor.username ||
-      !this.#matchesAccount(descriptor)
-    ) {
+      connection.account.username !== descriptor.username
+    )
       throw new Error("This track is not downloaded. Connect to its music server to stream it.");
-    }
     connection.signal.throwIfAborted();
     return connection;
   }
-
-  #streamUrl(trackId: string, descriptor: TrackFileDescriptor, position?: number) {
+  #streamUrl(trackId: string, descriptor: Descriptor, position?: number) {
     return this.#connectionFor(descriptor).url(trackId, { format: descriptor.format, position });
   }
 
@@ -209,27 +149,35 @@ export class TrackEngine {
     }
     this.#version++;
   }
-
   async #download(job: DownloadJob) {
-    const { descriptor, track, connection, storage, signal } = job;
-    try {
-      let file = await storage.audio.read(descriptor, track);
+    const { descriptor, track, connection, cache, signal } = job;
+    const check = () => {
+      if (cache !== this.#memory.cache) job.controller.abort();
       signal.throwIfAborted();
+    };
+    try {
+      check();
+      let file = await cache.readDownload(track.id, descriptor.format, signal);
+      check();
       if (!file) {
         const response = await connection.read(track.id, { format: descriptor.format, signal });
-        file = await storage.audio.save(descriptor, track, response, signal);
+        if (cache !== this.#memory.cache) job.controller.abort();
+        // Cache also releases unused responses, including cancellation before save.
+        file = await cache.saveDownload(
+          track,
+          descriptor.format,
+          descriptor.contentType,
+          response,
+          signal,
+        );
       }
-      signal.throwIfAborted();
-      await this.#refreshCatalog();
+      check();
       return file;
     } catch (error) {
-      if (!this.#destroyed && !signal.aborted) {
-        this.#error = error;
-      }
+      if (!this.#destroyed && !signal.aborted && cache === this.#memory.cache) this.#error = error;
       throw error;
     }
   }
-
   cache(track: EngineTrack, options: TrackSourceOptions = {}) {
     if (this.#destroyed)
       return Promise.reject(new DOMException("Downloads stopped.", "AbortError"));
@@ -237,14 +185,13 @@ export class TrackEngine {
     const connection = this.#connectionFor(descriptor);
     const existing = this.#jobs.get(descriptor.key);
     if (existing) return existing.promise;
-    const storage = this.#storage;
-    if (!storage) return Promise.reject(new Error("No music storage selected."));
+    const cache = this.#memory.cache!;
     const { promise, resolve, reject } = Promise.withResolvers<File>();
     const controller = new AbortController();
     this.#jobs.set(descriptor.key, {
       descriptor,
       connection,
-      storage,
+      cache,
       signal: AbortSignal.any([controller.signal, connection.signal]),
       track: this.#track(track),
       status: "queued",
@@ -258,68 +205,52 @@ export class TrackEngine {
     return promise;
   }
 
-  async #cached(track: EngineTrack, descriptor: TrackFileDescriptor) {
-    const storage = this.#storage;
-    if (!storage) throw new Error("No music storage selected.");
-    const metadata = this.#track(track);
-    const file = await storage.audio.read(descriptor, metadata);
-    if (file) return { file, contentType: descriptor.contentType };
-    // A codec retry may have downloaded MP3 even when canPlayType claims raw support.
-    if (descriptor.format === "raw") {
-      const fallback: TrackFileDescriptor = {
-        ...descriptor,
-        key: `${descriptor.host}\n${descriptor.username}\n${track.id}\nmp3-v1`,
-        format: "mp3",
-        contentType: "audio/mpeg",
+  async #cached(cache: Cache, track: EngineTrack, descriptor: Descriptor, signal: AbortSignal) {
+    const file = await cache.readDownload(track.id, descriptor.format, signal);
+    if (file)
+      return {
+        file,
+        contentType: cache.downloads.get(descriptor.key)?.contentType ?? descriptor.contentType,
       };
-      const mp3 = await storage.audio.read(fallback, metadata);
-      if (mp3) return { file: mp3, contentType: fallback.contentType };
+    // A codec retry may have saved MP3 despite the browser claiming raw support.
+    if (descriptor.format === "raw") {
+      const mp3 = await cache.readDownload(track.id, "mp3", signal);
+      if (mp3) return { file: mp3, contentType: "audio/mpeg" };
     }
     return null;
   }
-
   getStatus(trackId: string): TrackStatus {
     this.#version;
-    if (
-      !this.#storage?.account ||
-      this.#storage.account.host !== this.#memory.account?.host ||
-      this.#storage.account.username !== this.#memory.account.username
-    )
-      return "idle";
-    const keys = [this.#key(trackId, "raw"), this.#key(trackId, "mp3")];
-    const jobs = keys.map((key) => this.#jobs.get(key));
+    const cache = this.#memory.cache;
+    if (!cache) return "idle";
+    const keys = [downloadKey(trackId, "raw"), downloadKey(trackId, "mp3")];
+    const jobs = keys.map((key) => this.#jobs.get(key)).filter((job) => job?.cache === cache);
     if (jobs.some((job) => job?.status === "downloading")) return "downloading";
     if (jobs.some((job) => job?.status === "queued")) return "queued";
-    return keys.some((key) => this.#memory.downloads.has(key)) ? "downloaded" : "idle";
+    return keys.some((key) => cache.downloads.has(key)) ? "downloaded" : "idle";
   }
-
   async getSource(
     track: EngineTrack,
     options: TrackSourceOptions & { position?: number } = {},
   ): Promise<TrackSource> {
     if (this.#destroyed) throw new DOMException("Playback stopped.", "AbortError");
-    const request = ++this.#sourceRequest;
-    const storage = this.#storage;
+    this.#cancelSourceRequest();
+    const signal = this.#sourceController.signal;
     const descriptor = this.#describe(track, options);
-    const cached = await this.#cached(track, descriptor);
-    await this.#refreshCatalog();
-    if (
-      request !== this.#sourceRequest ||
-      this.#destroyed ||
-      this.#storage !== storage ||
-      !this.#matchesAccount(descriptor)
-    )
+    const cache = this.#memory.cache!;
+    const cached = await this.#cached(cache, track, descriptor, signal);
+    signal.throwIfAborted();
+    if (this.#destroyed || cache !== this.#memory.cache)
       throw new DOMException("Source request superseded.", "AbortError");
     this.#clearObjectUrl();
     if (!cached) {
       const offset = Math.max(0, Math.floor(options.position ?? 0));
-      if (offset > 0) {
+      if (offset > 0)
         return {
           cached: false,
           offset,
           url: this.#streamUrl(track.id, { ...descriptor, format: "mp3" }, offset),
         };
-      }
       return {
         cached: false,
         url: this.#streamUrl(track.id, descriptor),
@@ -331,22 +262,24 @@ export class TrackEngine {
     );
     return { cached: true, url: this.#activeObjectUrl };
   }
-
   #clearObjectUrl() {
     if (this.#activeObjectUrl) URL.revokeObjectURL(this.#activeObjectUrl);
     this.#activeObjectUrl = "";
   }
+  #cancelSourceRequest() {
+    this.#sourceController.abort();
+    this.#sourceController = new AbortController();
+  }
   releaseSource() {
-    this.#sourceRequest++;
+    this.#cancelSourceRequest();
     this.#clearObjectUrl();
   }
   setConnection(connection?: AudioConnection) {
-    if (this.#connection === connection) return;
-    this.#sourceRequest++;
+    if (this.#connection === connection || this.#destroyed) return;
+    this.#cancelSourceRequest();
     this.#cancelDownloads();
     this.#connection = connection;
-    // Connection changes never select a workspace. Session owns account identity;
-    // descriptor checks prevent a mismatched connection from being used.
+    // Retain the active cached object URL across disconnects.
     this.#version++;
   }
   #cancelDownloads() {
@@ -356,7 +289,6 @@ export class TrackEngine {
     }
     this.#jobs.clear();
   }
-
   destroy() {
     this.#destroyed = true;
     this.releaseSource();

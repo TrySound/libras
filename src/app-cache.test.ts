@@ -8,6 +8,7 @@ import { installDisk } from "./cache-test-helpers";
 
 const mocks = vi.hoisted(() => ({
   cache: undefined as import("./cache.svelte").Cache | undefined,
+  route: "/library",
   options: undefined as
     | ConstructorParameters<typeof import("./session.svelte").Session>[0]
     | undefined,
@@ -25,6 +26,7 @@ vi.mock("./session.svelte", () => ({
       mocks.options!.memory.account = mocks.cache!.account;
       mocks.options!.memory.cache = mocks.cache!;
       mocks.options!.covers.activate();
+      mocks.options!.tracks.activate();
       return null;
     }
     destroy() {}
@@ -34,7 +36,7 @@ vi.mock("./router-engine", () => ({
   RouterEngine: class {
     match;
     constructor(routes: { pattern: string }[]) {
-      this.match = { route: routes.find((route) => route.pattern === "/library"), params: {} };
+      this.match = { route: routes.find((route) => route.pattern === mocks.route), params: {} };
     }
     start() {}
     destroy() {}
@@ -53,6 +55,7 @@ afterEach(async () => {
   document.body.innerHTML = "";
   mocks.options = undefined;
   mocks.cache = undefined;
+  mocks.route = "/library";
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -102,6 +105,74 @@ it("renders the cache through Memory, reacts to replacements, and stops observin
   await first.replaceLibrary(library("Late old account", 4));
   flushSync();
   expect(names()).toEqual(["Second artist"]);
+});
+
+it("renders download records and jobs without duplicates and switches account projections", async () => {
+  installDisk();
+  mocks.route = "/downloads";
+  const first = new Cache({ host: "https://music.example", username: "first" });
+  const track = { id: "track", title: "First download", artist: "Artist", album: "Album" };
+  await first.saveDownload(
+    track,
+    "mp3",
+    "audio/mpeg",
+    new Response("audio"),
+    new AbortController().signal,
+  );
+  mocks.cache = first;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  expect(first.tracks.size).toBe(0);
+  expect(target.textContent).toContain("First download");
+  expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
+  const options = mocks.options!;
+  const tracks = options.tracks as import("./track.svelte").TrackEngine;
+  const connection = options.network.accept(
+    options.network.prepare({ ...first.account, token: "token", salt: "salt" }),
+  );
+  tracks.setConnection(connection.audio);
+  const pending = tracks.cache(track, { forceTranscode: true });
+  flushSync();
+  expect(target.querySelectorAll('[aria-label="Downloading"]')).toHaveLength(1);
+  expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(0);
+  await pending;
+  flushSync();
+  expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
+
+  const second = new Cache({ ...first.account, username: "second" });
+  await second.saveDownload(
+    { ...track, title: "Second download" },
+    "mp3",
+    "audio/mpeg",
+    new Response("audio"),
+    new AbortController().signal,
+  );
+  options.memory.account = second.account;
+  options.memory.cache = second;
+  options.tracks.activate();
+  options.covers.activate();
+  flushSync();
+  expect(target.textContent).toContain("Second download");
+  expect(target.textContent).not.toContain("First download");
+  await first.saveDownload(
+    { ...track, id: "late", title: "Late download" },
+    "mp3",
+    "audio/mpeg",
+    new Response("audio"),
+    new AbortController().signal,
+  );
+  flushSync();
+  expect(target.textContent).not.toContain("Late download");
+  expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
+  const loading = second.load();
+  flushSync();
+  expect(target.textContent).toContain("Reading downloaded files");
+  await loading;
+  flushSync();
+  expect(target.textContent).not.toContain("Reading downloaded files");
 });
 
 it("renders cached artwork and drops the previous account's object URLs", async () => {

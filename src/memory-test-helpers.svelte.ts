@@ -1,4 +1,5 @@
-import type { Artist, Album, Track, Account, DownloadedFile, ImageRecord } from "./schema";
+import type { Artist, Album, Track, Account, ImageRecord } from "./schema";
+import type { DownloadView } from "./memory.svelte";
 import type { Immutable, Cache } from "./cache.svelte";
 
 /** Mutable fixture for isolated queue/resource engine tests, not an application data owner. */
@@ -9,7 +10,7 @@ export class Memory {
   tracks = $state.raw<ReadonlyMap<string, Immutable<Track>>>(new Map());
   artistAlbums = $state.raw<ReadonlyMap<string, readonly Immutable<Album>[]>>(new Map());
   albumTracks = $state.raw<ReadonlyMap<string, readonly Immutable<Track>[]>>(new Map());
-  downloads = $state.raw<ReadonlyMap<string, Immutable<DownloadedFile>>>(new Map());
+  downloads = $state.raw<ReadonlyMap<string, DownloadView>>(new Map());
   images = $state.raw<ReadonlyMap<string, Immutable<ImageRecord>>>(new Map());
   artistArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
   albumArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());

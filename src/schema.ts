@@ -45,18 +45,6 @@ export const downloadTrackSchema = v.object({
   contentType: v.optional(v.string()),
 });
 
-export const downloadSchema = v.object({
-  key: v.string(),
-  fileName: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}\.audio$/)),
-  host: v.string(),
-  username: v.string(),
-  track: downloadTrackSchema,
-  format: v.picklist(["raw", "mp3"]),
-  contentType: v.string(),
-  size: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  downloadedAt: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000)),
-});
-
 export const imageSchema = v.strictObject({
   id,
   fileName: v.pipe(v.string(), v.regex(/^[a-f0-9-]+\.image$/)),
@@ -69,14 +57,7 @@ export const imageSchema = v.strictObject({
 
 export type ImageRecord = v.InferOutput<typeof imageSchema>;
 
-export type DownloadedFile = v.InferOutput<typeof downloadSchema>;
-
 export type DownloadTrack = v.InferOutput<typeof downloadTrackSchema>;
-
-export type TrackFileDescriptor = Pick<
-  DownloadedFile,
-  "key" | "host" | "username" | "format" | "contentType"
->;
 
 export type Account = v.InferOutput<typeof accountSchema>;
 

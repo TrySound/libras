@@ -345,12 +345,16 @@ describe("session", () => {
   );
 
   it("allows explicit connection while forced offline and only switches accounts after validation", async () => {
-    const { session, memory, auth, metadata, queue, covers, prepareConnection } = await connected();
+    const { session, memory, auth, metadata, queue, covers, tracks, prepareConnection } =
+      await connected();
     session.disconnect();
     const previous = memory.artists;
     const prepared = deferred<MetadataSnapshot>();
     prepareConnection.mockReturnValueOnce(prepared.promise);
     const next = { host: "https://other.example", username: "other" };
+    tracks.activate.mockImplementation(() => {
+      expect(memory.cache?.account).toEqual(next);
+    });
     const connecting = session.connect({ ...next, password: "secret" });
     await vi.waitFor(() => expect(prepareConnection).toHaveBeenCalledOnce());
     expect(session.offlineMode).toBe(true);
@@ -363,6 +367,7 @@ describe("session", () => {
     expect(memory.artists.get("artist")?.name).toBe("other");
     expect(memory.queueTracks).toEqual(["other"]);
     expect(covers.activate).toHaveBeenCalledTimes(2);
+    expect(tracks.activate).toHaveBeenCalledTimes(2);
     expect(queue.activate).toHaveBeenCalledTimes(2);
     expect(session.auth).toMatchObject(next);
     expect(auth.load()).toEqual(session.auth);
@@ -495,13 +500,17 @@ describe("session", () => {
   });
 
   it("selects and loads a cache before attaching network access", async () => {
-    const { session, memory, metadata, loadCache, queue, covers } = setup(true);
+    const { session, memory, metadata, loadCache, queue, covers, tracks } = setup(true);
     const loaded = deferred();
     loadCache.mockReturnValueOnce(loaded.promise);
     session.start();
     expect(memory.cache?.account).toEqual(memory.account);
     expect(loadCache.mock.contexts[0]).toBe(memory.cache);
     expect(covers.activate).toHaveBeenCalledOnce();
+    expect(tracks.activate).toHaveBeenCalledOnce();
+    expect(tracks.activate.mock.invocationCallOrder[0]).toBeLessThan(
+      loadCache.mock.invocationCallOrder[0],
+    );
     expect(covers.activate.mock.invocationCallOrder[0]).toBeLessThan(
       loadCache.mock.invocationCallOrder[0],
     );

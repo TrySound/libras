@@ -12,7 +12,6 @@ import type { PlaybackEngine } from "./playback.svelte";
 import type { QueueEngine } from "./queue.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
-import { Storage as AccountStorage } from "./storage";
 import { Cache, CacheLoadError } from "./cache.svelte";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
@@ -27,7 +26,7 @@ interface SessionOptions {
     QueueEngine,
     "activate" | "refresh" | "flush" | "setConnection" | "error" | "storageError"
   >;
-  tracks: Pick<TrackEngine, "restore" | "setConnection">;
+  tracks: Pick<TrackEngine, "activate" | "setConnection">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
   preferences: Pick<Storage, "getItem" | "setItem">;
 }
@@ -51,7 +50,6 @@ export class Session {
   #restoration: Promise<void> = Promise.resolve();
   #loadController?: AbortController;
   #generation = 0;
-  #workspaces = new Map<string, AccountStorage>();
   #started = false;
   #destroyed = false;
 
@@ -93,16 +91,6 @@ export class Session {
       host: account.host,
       username: account.username,
     }));
-  }
-
-  #storageFor(account: Account) {
-    const key = `${account.host}\n${account.username}`;
-    let storage = this.#workspaces.get(key);
-    if (!storage) {
-      storage = new AccountStorage(account);
-      this.#workspaces.set(key, storage);
-    }
-    return storage;
   }
 
   #begin() {
@@ -184,21 +172,18 @@ export class Session {
     this.#selectAccount(cache.account);
     memory.cache = cache;
     covers.activate();
+    tracks.activate();
     this.#loadController?.abort();
     const controller = new AbortController();
     this.#loadController = controller;
     const current = () => !this.#destroyed && memory.cache === cache;
-    const storage = this.#storageFor(cache.account);
     try {
-      await Promise.all([
-        cache.load(controller.signal).catch((error) => {
-          // Queue/image failures remain on Cache and do not become library warnings.
-          const libraryError = error instanceof CacheLoadError ? error.failures.library : error;
-          if (current() && libraryError !== undefined)
-            this.error = `Could not restore library: ${libraryError instanceof Error ? libraryError.message : String(libraryError)}`;
-        }),
-        tracks.restore(storage),
-      ]);
+      await cache.load(controller.signal).catch((error) => {
+        // Other domain failures remain on Cache, separate from library warnings.
+        const libraryError = error instanceof CacheLoadError ? error.failures.library : error;
+        if (current() && libraryError !== undefined)
+          this.error = `Could not restore library: ${libraryError instanceof Error ? libraryError.message : String(libraryError)}`;
+      });
       if (!current()) return;
       // Notify playback only after the cache's independent load attempts finish.
       queue.activate();
@@ -246,23 +231,19 @@ export class Session {
       this.#options.playback.suspend();
       this.#selectAccount(cache.account);
       this.localReady = false;
-      // Cancel old metadata work before selecting the prepared cache. Resource
-      // restoration clears foreign state synchronously, without an intervening await.
+      // Cancel old work before selecting the fully hydrated candidate.
       metadata.setConnection(undefined);
-      const storage = this.#storageFor(cache.account);
-      this.#restoration = Promise.resolve(tracks.restore(storage));
       // Preserve edits made during a same-account reconnect, rather than adopting
       // an older checkpoint. This remains an optimistic, local-only queue edit.
       if (sameAccount && previous.queueRevision !== previousRevision)
         cache.setQueue(previous.queue);
       this.#options.memory.cache = cache;
       covers.activate();
+      tracks.activate();
       queue.activate();
       if (previous) void previous.flush().catch(() => {});
       this.auth = credentials;
       this.#attach(activeConnection);
-      await this.#restoration;
-      if (!this.#valid(generation)) return false;
       this.localReady = true;
       await covers.refresh();
       if (!this.#valid(generation)) return false;
