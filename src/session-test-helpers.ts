@@ -2,7 +2,6 @@ import { vi } from "vitest";
 import { AuthStore } from "./auth";
 import { Memory } from "./memory.svelte";
 import { Network, type MetadataConnection } from "./network.svelte";
-import type { Storage } from "./storage";
 import type { MetadataSnapshot } from "./metadata.svelte";
 import { Cache } from "./cache.svelte";
 import type { Account } from "./schema";
@@ -67,6 +66,11 @@ export function createSession(saved = false, storage = createStorage()) {
         new Map(snapshot(this.account).artists.map((artist) => [artist.id, artist])),
       );
       vi.spyOn(this, "savedAt", "get").mockReturnValue(100);
+      vi.spyOn(this, "queue", "get").mockReturnValue({
+        tracks: [this.account.username],
+        index: 0,
+        position: 17,
+      });
     });
   const saveLibrary = vi
     .spyOn(Cache.prototype, "replaceLibrary")
@@ -102,12 +106,7 @@ export function createSession(saved = false, storage = createStorage()) {
     error: undefined,
     storageError: undefined as unknown,
     setConnection: vi.fn(),
-    restore: vi.fn(async (storage: Pick<Storage, "account">) => {
-      const account = storage.account;
-      memory.queueTracks = [account.username];
-      memory.queueIndex = 0;
-      memory.queuePosition = 17;
-    }),
+    activate: vi.fn(),
     refresh: vi.fn(async () => {}),
     flush: vi.fn(async () => {}),
   };

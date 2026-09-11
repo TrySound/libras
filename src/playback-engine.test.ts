@@ -3,7 +3,8 @@ import { PlaybackEngine } from "./playback.svelte";
 import { flushSync } from "svelte";
 import { observePlayback } from "./playback-reactivity.test.svelte";
 import { QueueEngine } from "./queue.svelte";
-import { Storage } from "./storage";
+import { Cache } from "./cache.svelte";
+import { installDisk } from "./cache-test-helpers";
 import type { Track } from "./schema";
 import type { TrackSource } from "./track.svelte";
 import { Memory } from "./memory-test-helpers.svelte";
@@ -45,7 +46,7 @@ const song = (id: string): Track => ({
   artworkId: id,
   genres: [],
 });
-const cleanups: (() => void)[] = [];
+const cleanups: (() => void | Promise<void>)[] = [];
 function setup(mount = true, isAvailable: (id: string) => boolean = () => true) {
   vi.useFakeTimers();
   const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
@@ -58,7 +59,9 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       }
     },
   );
+  installDisk();
   const memory = new Memory();
+  memory.cache = new Cache({ host: "https://music.example.com", username: "listener" });
   memory.tracks = new Map(["a", "b", "c"].map((id) => [id, song(id)]));
   memory.trackArtwork = new Map(["a", "b", "c"].map((id) => [id, [id]]));
   memory.artists = new Map([["artist", { id: "artist", name: "Artist", genres: [] }]]);
@@ -123,9 +126,9 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
   });
   queue.update({ tracks: ["a", "b"], index: 0, position: 0 });
   const detach = mount ? player.mount() : () => {};
-  cleanups.push(() => {
+  cleanups.push(async () => {
     player.destroy();
-    queue.destroy();
+    await queue.destroy();
   });
   return {
     memory,
@@ -159,8 +162,8 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
   };
 }
 
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -243,18 +246,8 @@ describe("playback engine", () => {
       const { player, queue, audio, memory } = setup();
       const account = { host: "https://music.example.com", username: "listener" };
       const local = { tracks: ["a", "b"], index: 0, position: 0 };
-      const save = vi.fn(async (value: import("./storage").QueueRecord) => ({
-        written: true,
-        value,
-      }));
-      await queue.restore({
-        account,
-        queue: {
-          account,
-          read: async () => ({ ...local, account, updatedAt: 1 }),
-          save,
-        },
-      });
+      await memory.cache!.flush();
+      const save = vi.spyOn(memory.cache!, "replaceQueue");
       const connection = {
         account,
         signal: new AbortController().signal,
@@ -306,14 +299,8 @@ describe("playback engine", () => {
       salt: "salt",
     });
     const active = network.accept(client);
-    await queue.restore({
-      account: client.account,
-      queue: {
-        account: client.account,
-        read: async () => null,
-        save: async (record) => ({ written: true, value: record }),
-      },
-    });
+    await memory.cache!.flush();
+    queue.activate();
     queue.setConnection(active.queue);
     await queue.refresh();
     await queue.flush();

@@ -14,8 +14,14 @@ export class Memory {
   artistArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
   albumArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
   trackArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
-  queueTracks = $state.raw<readonly string[]>([]);
-  queueIndex = $state(-1);
-  queuePosition = $state(0);
+  get queueTracks() {
+    return this.cache?.queue.tracks ?? [];
+  }
+  get queueIndex() {
+    return this.cache?.queue.index ?? -1;
+  }
+  get queuePosition() {
+    return this.cache?.queue.position ?? 0;
+  }
   account = $state.raw<Readonly<Account> | null>(null);
 }

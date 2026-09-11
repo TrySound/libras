@@ -4,15 +4,15 @@ export type { Immutable } from "./cache.svelte";
 
 /**
  * Transitional state for domains not yet migrated to Cache, plus selection of
- * the active library cache. Library getters delegate; they never copy records.
- * Queue and resource engines still publish their non-library replacements here.
+ * the active account cache. Library and queue getters delegate without copying.
+ * Resource engines still publish artwork and download replacements here.
  * ReadonlyMap is a type contract: never mutate a map after publishing it.
  */
 export class Memory {
   cache = $state.raw<Cache>();
 
-  // Temporary read-only bridge for engines whose non-library data still lives here.
-  // Library records have one owner: the selected account cache.
+  // Temporary read-only bridge while resource data still lives here.
+  // Library and queue records have one owner: the selected account cache.
   get artists() {
     return this.cache?.artists ?? emptyArtists;
   }
@@ -36,18 +36,25 @@ export class Memory {
   albumArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
   trackArtwork = $state.raw<ReadonlyMap<string, readonly string[]>>(new Map());
 
-  queueTracks = $state.raw<readonly string[]>([]);
-  queueIndex = $state(-1);
-  queuePosition = $state(0);
+  get queueTracks() {
+    return this.cache?.queue.tracks ?? emptyQueue;
+  }
+  get queueIndex() {
+    return this.cache?.queue.index ?? -1;
+  }
+  get queuePosition() {
+    return this.cache?.queue.position ?? 0;
+  }
 
   account = $state.raw<Readonly<Account> | null>(null);
 }
 
+const emptyQueue: readonly string[] = [];
 const emptyArtists: ReadonlyMap<string, Immutable<Artist>> = new Map();
 const emptyAlbums: ReadonlyMap<string, Immutable<Album>> = new Map();
 const emptyTracks: ReadonlyMap<string, Immutable<Track>> = new Map();
 const emptyArtistAlbums: ReadonlyMap<string, readonly Immutable<Album>[]> = new Map();
 const emptyAlbumTracks: ReadonlyMap<string, readonly Immutable<Track>[]> = new Map();
 
-/** Read-only bridge while queue and binary caches are migrated. */
+/** Read-only bridge while binary caches are migrated. */
 export type MemoryView = Readonly<Memory>;

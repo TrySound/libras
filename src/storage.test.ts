@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Storage, type QueueRecord } from "./storage";
+import { Storage } from "./storage";
 import { hashedFileName } from "./json-store";
 import type { TrackFileDescriptor } from "./schema";
 
@@ -15,7 +15,7 @@ function installStorage() {
   };
   const getDirectory = vi.fn(async () => ({
     async getDirectoryHandle(directory: string) {
-      expect(["queue", "images", "tracks"]).toContain(directory);
+      expect(["images", "tracks"]).toContain(directory);
       return {
         async getFileHandle(name: string, options?: { create?: boolean }) {
           const path = `${directory}/${name}`;
@@ -89,7 +89,6 @@ describe("configured storage", () => {
     expect(storage.account).toEqual(account);
     expect(Object.isFrozen(storage.account)).toBe(true);
     expect(disk.getDirectory).not.toHaveBeenCalled();
-    expect(await storage.queue.read()).toBeNull();
     expect((await storage.artwork.read()).account).toEqual(account);
   });
 
@@ -356,129 +355,5 @@ describe("artwork storage", () => {
     await expect(artwork.saveImage("cover", image(), undefined, valid)).rejects.toThrow();
     expect(disk.files.get(path)).toBe("broken JSON");
     expect([...disk.files.keys()]).toEqual([path, "images/legacy.image"]);
-  });
-});
-
-describe("queue storage", () => {
-  const record = (): QueueRecord => ({
-    account,
-    tracks: ["a", "b", "a"],
-    index: 2,
-    position: 12.5,
-    updatedAt: 42,
-  });
-
-  it.each([true, false])(
-    "discards legacy pendingSync=%s on read and omits it on the next save",
-    async (pendingSync) => {
-      const disk = installStorage();
-      const queue = new Storage(account).queue;
-      const path = `queue/${await hashedFileName(`${account.host}\n${account.username}`, ".json")}`;
-      const legacy = JSON.stringify({ ...record(), pendingSync });
-      disk.files.set(path, legacy);
-      const restored = await queue.read();
-      expect(restored).toEqual(record());
-      expect(restored).not.toHaveProperty("pendingSync");
-      expect(disk.files.get(path)).toBe(legacy);
-      if (!restored) throw new Error("Expected a restored queue");
-      await queue.save(restored);
-      expect(JSON.parse(disk.files.get(path) as string)).toEqual(record());
-      expect(JSON.parse(disk.files.get(path) as string)).not.toHaveProperty("pendingSync");
-    },
-  );
-
-  it("discards a legacy server replica without changing the local queue", async () => {
-    const disk = installStorage();
-    const queue = new Storage(account).queue;
-    const path = `queue/${await hashedFileName(`${account.host}\n${account.username}`, ".json")}`;
-    const legacy = JSON.stringify({
-      ...record(),
-      server: { tracks: ["remote"], index: 0, position: 5 },
-    });
-    disk.files.set(path, legacy);
-    const restored = await queue.read();
-    expect(restored).toEqual(record());
-    expect(restored).not.toHaveProperty("server");
-    expect(disk.files.get(path)).toBe(legacy);
-    if (!restored) throw new Error("Expected a restored queue");
-    await queue.save(restored);
-    expect(JSON.parse(disk.files.get(path) as string)).toEqual(record());
-  });
-
-  it("keeps queue files and lock names account-scoped", async () => {
-    const disk = installStorage();
-    const storage = new Storage(account);
-    const queue = storage.queue;
-    expect(disk.getDirectory).not.toHaveBeenCalled();
-    expect(await queue.read()).toBeNull();
-    expect(await queue.save(record())).toEqual({ written: true, value: record() });
-    const name = await hashedFileName(`${account.host}\n${account.username}`, ".json");
-    expect(disk.files.size).toBe(1);
-    expect(JSON.parse(disk.files.get(`queue/${name}`) as string)).toEqual(record());
-    expect(disk.lock).toHaveBeenCalledWith(`music-web-queue:${name}`, expect.any(Function));
-    expect(await new Storage(account).queue.read()).toEqual(record());
-  });
-
-  it("serializes shared handles, reports conflicts, and permits equal-timestamp writes", async () => {
-    const disk = installStorage();
-    const storage = new Storage(account);
-    const first = storage.queue;
-    const second = storage.queue;
-    const newer = { ...record(), updatedAt: 100 };
-    expect(await Promise.all([first.save(newer), second.save(record())])).toEqual([
-      { written: true, value: newer },
-      { written: false, value: newer },
-    ]);
-    expect(disk.state.writes).toBe(1);
-    const synced = { ...newer, position: 20 };
-    expect(await second.save(synced)).toEqual({ written: true, value: synced });
-    expect(await first.read()).toEqual(synced);
-  });
-
-  it("captures account identity and rejects foreign writes before I/O", async () => {
-    const disk = installStorage();
-    const identity = { ...account };
-    const storage = new Storage(identity);
-    const queue = storage.queue;
-    identity.username = "other";
-    await expect(queue.save({ ...record(), account: identity })).rejects.toThrow(
-      "different account",
-    );
-    expect(disk.getDirectory).not.toHaveBeenCalled();
-    await queue.save(record());
-    expect(storage.account).toEqual(account);
-    expect(await storage.queue.read()).toEqual(record());
-    expect(await queue.read()).toEqual(record());
-  });
-
-  it("does not hide corrupt or foreign reads and retains explicit repair on write", async () => {
-    const disk = installStorage();
-    const queue = new Storage(account).queue;
-    const path = `queue/${await hashedFileName(`${account.host}\n${account.username}`, ".json")}`;
-    for (const invalid of [
-      "broken JSON",
-      JSON.stringify({ ...record(), account: { ...account, username: "other" } }),
-      JSON.stringify({ ...record(), tracks: [], index: 0 }),
-      JSON.stringify({ ...record(), index: -1, position: 1 }),
-    ]) {
-      disk.files.set(path, invalid);
-      await expect(queue.read()).rejects.toThrow();
-      expect(disk.files.get(path)).toBe(invalid);
-      await queue.save(record());
-      expect(await queue.read()).toEqual(record());
-    }
-  });
-
-  it("preserves the complete queue on write failure and allows later writes", async () => {
-    const disk = installStorage();
-    const queue = new Storage(account).queue;
-    await queue.save(record());
-    const empty = { ...record(), tracks: [], index: -1, position: 0, updatedAt: 100 };
-    disk.state.fail = true;
-    await expect(queue.save(empty)).rejects.toThrow("Storage full");
-    expect(await queue.read()).toEqual(record());
-    disk.state.fail = false;
-    expect(await queue.save(empty)).toEqual({ written: true, value: empty });
-    expect(await queue.read()).toEqual(empty);
   });
 });

@@ -13,35 +13,6 @@ import { OpfsJsonStore, hashedFileName } from "./json-store";
 
 const audioCatalogSchema = v.array(downloadSchema);
 
-const queueSnapshotSchema = v.strictObject({
-  tracks: v.array(v.pipe(v.string(), v.minLength(1))),
-  index: v.pipe(v.number(), v.integer(), v.minValue(-1)),
-  position: v.pipe(v.number(), v.finite(), v.minValue(0)),
-});
-export type QueueSnapshot = v.InferOutput<typeof queueSnapshotSchema>;
-
-const queueRecordSchema = v.pipe(
-  v.strictObject({
-    account: v.strictObject({ host: v.string(), username: v.string() }),
-    ...queueSnapshotSchema.entries,
-    updatedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
-    pendingSync: v.optional(v.boolean()),
-    server: v.optional(v.unknown()),
-  }),
-  // Obsolete upload markers and server replicas never enter current records.
-  v.transform(({ pendingSync: _legacyPendingSync, server: _legacyServer, ...record }) => record),
-);
-export type QueueRecord = v.InferOutput<typeof queueRecordSchema>;
-
-function parseQueueRecord(value: unknown, account: Account) {
-  const record = v.parse(queueRecordSchema, value);
-  if (record.account.host !== account.host || record.account.username !== account.username)
-    throw new Error("The queue belongs to a different account.");
-  if (record.index >= record.tracks.length || (record.index === -1 && record.position !== 0))
-    throw new Error("The saved queue selection is invalid.");
-  return record;
-}
-
 const artworkId = v.pipe(v.string(), v.minLength(1));
 const artworkTime = v.pipe(v.number(), v.integer(), v.minValue(0));
 const artworkReference = v.strictObject({ id: artworkId, candidates: v.array(artworkId) });
@@ -104,40 +75,11 @@ function accountFile<T>(
   });
 }
 
-export type QueueStorage = Pick<QueueStore, "account" | "read" | "save">;
 export type ArtworkStorage = Pick<
   ArtworkStore,
   "account" | "read" | "update" | "readImage" | "saveImage"
 >;
 export type AudioStorage = Pick<AudioStore, "read" | "save" | "list" | "entries">;
-
-class QueueStore {
-  readonly account: Readonly<Account>;
-  readonly #file: () => Promise<OpfsJsonStore<QueueRecord>>;
-
-  constructor(account: Readonly<Account>) {
-    this.account = account;
-    this.#file = accountFile(account, "queue", "queue", (value) =>
-      parseQueueRecord(value, account),
-    );
-  }
-
-  async read() {
-    return (await this.#file()).read();
-  }
-
-  async save(record: QueueRecord) {
-    if (
-      record.account.host !== this.account.host ||
-      record.account.username !== this.account.username
-    )
-      throw new Error("The queue belongs to a different account.");
-    return (await this.#file()).update(
-      (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
-      { recoverReadError: () => null },
-    );
-  }
-}
 
 class ArtworkStore {
   readonly account: Readonly<Account>;
@@ -441,13 +383,11 @@ class AudioStore {
 /** Account-configured persistence capabilities; construction performs no I/O. */
 export class Storage {
   readonly account: Readonly<Account>;
-  readonly queue: QueueStorage;
   readonly artwork: ArtworkStorage;
   readonly audio: AudioStorage;
 
   constructor(account: Account) {
     this.account = Object.freeze({ ...account });
-    this.queue = new QueueStore(this.account);
     this.artwork = new ArtworkStore(this.account);
     this.audio = new AudioStore(this.account);
   }

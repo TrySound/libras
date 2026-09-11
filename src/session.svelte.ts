@@ -25,7 +25,7 @@ interface SessionOptions {
   covers: Pick<CoverEngine, "restore" | "refresh" | "setConnection">;
   queue: Pick<
     QueueEngine,
-    "restore" | "refresh" | "flush" | "setConnection" | "error" | "storageError"
+    "activate" | "refresh" | "flush" | "setConnection" | "error" | "storageError"
   >;
   tracks: Pick<TrackEngine, "restore" | "setConnection">;
   playback: Pick<PlaybackEngine, "suspend" | "suspendNetwork">;
@@ -198,8 +198,8 @@ export class Session {
         tracks.restore(storage),
       ]);
       if (!current()) return;
-      // A corrupt library must not block the other local domains.
-      await queue.restore(storage);
+      // Notify playback only after the cache's independent load attempts finish.
+      queue.activate();
       if (current()) await covers.refresh();
       if (current()) this.localReady = true;
     } finally {
@@ -225,7 +225,18 @@ export class Session {
       auth.saveAccount(prepared.account);
       preferences.setItem(offlineModeStorageKey, "false");
       // Never prepare into the selected cache, including same-account reconnects.
+      const previous = this.#options.memory.cache;
+      const sameAccount =
+        previous?.account.host === prepared.account.host &&
+        previous.account.username === prepared.account.username;
+      if (sameAccount) await previous.flush();
+      const previousRevision = previous?.queueRevision;
       const cache = new Cache(prepared.account);
+      // Restore the queue before selecting this candidate. A fresh library repairs
+      // library read failures; queue failures remain independently observable.
+      await cache.load(connection.signal).catch((error) => {
+        if (!(error instanceof CacheLoadError)) throw error;
+      });
       const { account: _account, ...library } = prepared;
       await cache.replaceLibrary(library, connection.signal);
       if (!this.#valid(generation)) return false;
@@ -237,12 +248,16 @@ export class Session {
       // restoration clears foreign state synchronously, without an intervening await.
       metadata.setConnection(undefined);
       const storage = this.#storageFor(cache.account);
-      this.#restoration = Promise.all([
-        queue.restore(storage),
-        covers.restore(storage),
-        tracks.restore(storage),
-      ]).then(() => {});
+      this.#restoration = Promise.all([covers.restore(storage), tracks.restore(storage)]).then(
+        () => {},
+      );
+      // Preserve edits made during a same-account reconnect, rather than adopting
+      // an older checkpoint. This remains an optimistic, local-only queue edit.
+      if (sameAccount && previous.queueRevision !== previousRevision)
+        cache.setQueue(previous.queue);
       this.#options.memory.cache = cache;
+      queue.activate();
+      if (previous) void previous.flush().catch(() => {});
       this.auth = credentials;
       this.#attach(activeConnection);
       await this.#restoration;

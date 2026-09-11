@@ -262,20 +262,29 @@ export class Cache {
   }
 
   /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
-  setQueue(queue: Immutable<CachedQueue>): number {
+  setQueue(queue: Immutable<CachedQueue>, options: { checkpoint?: boolean } = {}): number {
     const next = v.parse(queueSchema, queue);
     const updatedAt = v.parse(timestamp, Math.max(Date.now(), this.#queueUpdatedAt + 1));
-    this.#queue = next;
+    const sameTracks =
+      next.tracks.length === this.#queue.tracks.length &&
+      next.tracks.every((id, index) => id === this.#queue.tracks[index]);
+    this.#queue = { ...next, tracks: sameTracks ? this.#queue.tracks : next.tracks };
     this.#queueUpdatedAt = updatedAt;
     const revision = ++this.#queueRevision;
+    this.#scheduleQueue(options.checkpoint ?? false);
+    return revision;
+  }
+
+  #scheduleQueue(checkpoint = false) {
     const save = () => {
       void this.flush().catch(() => {});
     };
-    clearTimeout(this.#queueTimer);
-    this.#queueTimer = setTimeout(save, 300);
+    if (!checkpoint) {
+      clearTimeout(this.#queueTimer);
+      this.#queueTimer = setTimeout(save, 300);
+    }
     // Continuous playback position updates must not starve disk checkpoints.
     this.#checkpointTimer ??= setTimeout(save, 5_000);
-    return revision;
   }
 
   /**
@@ -308,6 +317,51 @@ export class Cache {
         this.#queueError = undefined;
         return revision;
       } catch (error) {
+        this.#queueError = error;
+        throw error;
+      }
+    });
+  }
+
+  /** Persist incoming queue state before adoption, unless local work supersedes it. */
+  async replaceQueue(queue: Immutable<CachedQueue>, signal: AbortSignal): Promise<boolean> {
+    const next = v.parse(queueSchema, queue);
+    const revision = this.#queueRevision;
+    const updatedAt = v.parse(timestamp, Math.max(Date.now(), this.#queueUpdatedAt + 1));
+    const valid = () => !signal.aborted && revision === this.#queueRevision;
+    return this.#runQueue(async () => {
+      if (!valid()) return false;
+      try {
+        const file = await this.#queueFile();
+        const result = await file.update(
+          (previous) =>
+            previous && previous.updatedAt > updatedAt
+              ? undefined
+              : { account: this.account, ...next, updatedAt },
+          { valid, recoverReadError: () => null },
+        );
+        if (!valid()) {
+          // Atomic close cannot be undone. Checkpoint the still-visible local queue
+          // if cancellation arrived during close, without granting upload eligibility.
+          if (result.written) {
+            this.#queueUpdatedAt = Math.max(this.#queueUpdatedAt, updatedAt);
+            this.#queueSavedRevision = -1;
+            this.#scheduleQueue();
+          }
+          return false;
+        }
+        if (!result.written)
+          throw new Error("A newer queue is already stored. The server snapshot was not saved.");
+        clearTimeout(this.#queueTimer);
+        clearTimeout(this.#checkpointTimer);
+        this.#queueTimer = this.#checkpointTimer = undefined;
+        this.#queue = next;
+        this.#queueUpdatedAt = updatedAt;
+        this.#queueSavedRevision = ++this.#queueRevision;
+        this.#queueError = undefined;
+        return true;
+      } catch (error) {
+        if (!valid()) return false;
         this.#queueError = error;
         throw error;
       }
