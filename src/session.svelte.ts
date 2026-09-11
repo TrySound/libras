@@ -13,7 +13,7 @@ import type { QueueEngine } from "./queue.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Storage as AccountStorage } from "./storage";
-import { Cache } from "./cache.svelte";
+import { Cache, CacheLoadError } from "./cache.svelte";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -65,7 +65,10 @@ export class Session {
 
   get refreshError() {
     const error =
-      this.#refreshError ?? this.#options.queue.error ?? this.#options.queue.storageError;
+      this.#refreshError ??
+      this.#options.queue.error ??
+      this.#options.queue.storageError ??
+      this.#options.memory.cache?.queueError;
     return error ? `Synchronization failed: ${connectionError(error)}` : "";
   }
 
@@ -186,8 +189,10 @@ export class Session {
     try {
       await Promise.all([
         cache.load(controller.signal).catch((error) => {
-          if (current())
-            this.error = `Could not restore library: ${error instanceof Error ? error.message : String(error)}`;
+          // Queue failures remain on cache.queueError and do not become library warnings.
+          const libraryError = error instanceof CacheLoadError ? error.failures.library : error;
+          if (current() && libraryError !== undefined)
+            this.error = `Could not restore library: ${libraryError instanceof Error ? libraryError.message : String(libraryError)}`;
         }),
         covers.restore(storage),
         tracks.restore(storage),

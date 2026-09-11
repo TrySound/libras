@@ -654,7 +654,8 @@ describe("metadata engine", () => {
       loadCache(firstMemory, new Cache(account)),
       loadCache(secondMemory, new Cache(account)),
     ]);
-    expect(request).toHaveBeenCalledTimes(2);
+    // Each account cache loads its library and queue independently.
+    expect(request).toHaveBeenCalledTimes(4);
     request.mockClear();
     first.setConnection(createConnection(auth));
     second.setConnection(createConnection(auth));

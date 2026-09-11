@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
 import { observeCache } from "./cache-reactivity.test.svelte";
 import { Cache, type LibrarySnapshot } from "./cache.svelte";
+import { installDisk } from "./cache-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
 function library(savedAt = 100): LibrarySnapshot {
@@ -12,66 +13,6 @@ function library(savedAt = 100): LibrarySnapshot {
     albums: [{ id: "album", title: "Album", artistId: "artist", genres: [] }],
     tracks: [{ id: "track", title: "Track", artistId: "artist", albumId: "album", genres: [] }],
   };
-}
-
-function installDisk() {
-  const files = new Map<string, string>();
-  const state = {
-    failClose: false,
-    beforeWrite: () => {},
-    afterClose: () => {},
-    writes: 0,
-  };
-  function directory(path: string): unknown {
-    return {
-      async getDirectoryHandle(name: string) {
-        // OPFS does not accept a slash-delimited path as a directory name.
-        expect(name).not.toContain("/");
-        return directory(path ? `${path}/${name}` : name);
-      },
-      async getFileHandle(name: string, options?: { create?: boolean }) {
-        const key = `${path}/${name}`;
-        if (!files.has(key) && !options?.create) throw new DOMException("Missing", "NotFoundError");
-        if (!files.has(key)) files.set(key, "");
-        return {
-          async getFile() {
-            return new File([files.get(key)!], name);
-          },
-          async createWritable() {
-            let pending = "";
-            return {
-              async write(value: string) {
-                state.beforeWrite();
-                pending = value;
-              },
-              async close() {
-                if (state.failClose) throw new Error("Storage full");
-                files.set(key, pending);
-                state.writes++;
-                state.afterClose();
-              },
-              async abort() {},
-            };
-          },
-        };
-      },
-      async removeEntry(name: string) {
-        files.delete(`${path}/${name}`);
-      },
-    };
-  }
-  const getDirectory = vi.fn(async () => directory(""));
-  const tails = new Map<string, Promise<unknown>>();
-  const request = vi.fn((name: string, action: () => Promise<unknown>) => {
-    const result = (tails.get(name) ?? Promise.resolve()).then(action);
-    tails.set(
-      name,
-      result.catch(() => {}),
-    );
-    return result;
-  });
-  vi.stubGlobal("navigator", { storage: { getDirectory }, locks: { request } });
-  return { files, state, getDirectory };
 }
 
 afterEach(() => {

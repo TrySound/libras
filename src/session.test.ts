@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MetadataSnapshot } from "./metadata.svelte";
-import type { Cache } from "./cache.svelte";
+import { CacheLoadError, type Cache } from "./cache.svelte";
 import { NetworkTransportError } from "./network.svelte";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
@@ -36,6 +36,25 @@ describe("session", () => {
     expect(session.error).toContain("Could not restore library: Corrupt library");
     expect(queue.restore).toHaveBeenCalledOnce();
     expect(metadata.refresh).not.toHaveBeenCalled();
+  });
+
+  it("keeps queue load failures separate from library refresh warnings", async () => {
+    const { session, memory, loadCache, queue } = setup(true);
+    const failure = new Error("Corrupt cached queue");
+    loadCache.mockImplementationOnce(async function (this: Cache) {
+      vi.spyOn(this, "queueError", "get").mockReturnValue(failure);
+      throw new CacheLoadError({ queue: failure });
+    });
+    session.start();
+    await vi.waitFor(() => expect(session.status).toBe("connected"));
+    expect(session.localReady).toBe(true);
+    expect(session.error).toBe("");
+    expect(session.refreshError).toContain("Corrupt cached queue");
+    expect(queue.restore).toHaveBeenCalledOnce();
+    await session.refresh();
+    expect(session.refreshError).toContain("Corrupt cached queue");
+    vi.spyOn(memory.cache!, "queueError", "get").mockReturnValue(undefined);
+    expect(session.refreshError).toBe("");
   });
 
   it("can recover online after a failed metadata restoration", async () => {

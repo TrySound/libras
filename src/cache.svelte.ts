@@ -15,6 +15,60 @@ const librarySchema = v.strictObject({
 export type LibrarySnapshot = v.InferOutput<typeof librarySchema>;
 const libraryRecordSchema = v.strictObject({ account: accountSchema, ...librarySchema.entries });
 
+const queueFields = {
+  tracks: v.array(v.pipe(v.string(), v.minLength(1))),
+  index: v.pipe(v.number(), v.integer(), v.minValue(-1)),
+  position: v.pipe(v.number(), v.finite(), v.minValue(0)),
+};
+function validSelection(queue: { tracks: readonly string[]; index: number; position: number }) {
+  return queue.index < queue.tracks.length && (queue.index !== -1 || queue.position === 0);
+}
+const queueSchema = v.pipe(
+  v.strictObject(queueFields),
+  v.check((queue) => validSelection(queue), "Invalid queue selection."),
+);
+export type CachedQueue = v.InferOutput<typeof queueSchema>;
+const queueRecordSchema = v.pipe(
+  v.strictObject({ account: accountSchema, ...queueFields, updatedAt: timestamp }),
+  v.check((queue) => validSelection(queue), "Invalid queue selection."),
+);
+
+/** Loading one local domain never prevents another from restoring. */
+export class CacheLoadError extends AggregateError {
+  constructor(readonly failures: { library?: unknown; queue?: unknown }) {
+    super(
+      Object.values(failures),
+      Object.entries(failures)
+        .map(
+          ([domain, error]) =>
+            `${domain}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+        .join("; "),
+    );
+    this.name = "CacheLoadError";
+  }
+}
+
+async function accountFile<T extends { account: Account }>(
+  account: Readonly<Account>,
+  name: "library" | "queue",
+  parse: (value: unknown) => T,
+) {
+  // Tuple encoding avoids ambiguous account keys; no legacy filename support.
+  const key = await hashedFileName(JSON.stringify([account.host, account.username]), ".cache");
+  return new OpfsJsonStore({
+    directory: ["accounts", key.slice(0, -6)],
+    fileName: `${name}.json`,
+    lockName: `libras-${name}:${key}`,
+    parse: (value: unknown) => {
+      const record = parse(value);
+      if (record.account.host !== account.host || record.account.username !== account.username)
+        throw new Error(`The ${name} belongs to a different account.`);
+      return record;
+    },
+  });
+}
+
 function entityMap<T extends { readonly id: string }>(
   records: readonly T[],
 ): ReadonlyMap<string, T> {
@@ -67,13 +121,23 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
 /**
  * Account-scoped local data owner. Construction performs no I/O.
  * Collections and records are immutable by contract; consumers never mutate them.
- * Library state is published with one assignment, only after a successful read/commit.
+ * Library state is published only after a successful read/commit. Queue edits are
+ * optimistic; checkpoints acknowledge only the revision actually committed.
  */
 export class Cache {
   readonly account: Readonly<Account>;
   #library = $state.raw(prepareLibrary(null));
   #file?: Promise<OpfsJsonStore<v.InferOutput<typeof libraryRecordSchema>>>;
   #operations: Promise<unknown> = Promise.resolve();
+  #queue = $state.raw<Immutable<CachedQueue>>({ tracks: [], index: -1, position: 0 });
+  #queueRevision = $state(0);
+  #queueSavedRevision = $state(0);
+  #queueError = $state.raw<unknown>();
+  #queueUpdatedAt = 0;
+  #queueStore?: Promise<OpfsJsonStore<v.InferOutput<typeof queueRecordSchema>>>;
+  #queueOperations: Promise<unknown> = Promise.resolve();
+  #queueTimer?: ReturnType<typeof setTimeout>;
+  #checkpointTimer?: ReturnType<typeof setTimeout>;
 
   constructor(account: Account) {
     this.account = Object.freeze(v.parse(accountSchema, account));
@@ -102,30 +166,21 @@ export class Cache {
   }
 
   #libraryFile() {
-    return (this.#file ??= (async () => {
-      // Tuple encoding avoids ambiguous account keys; no legacy filename support.
-      const name = await hashedFileName(
-        JSON.stringify([this.account.host, this.account.username]),
-        ".cache",
-      );
-      return new OpfsJsonStore({
-        directory: ["accounts", name.slice(0, -6)],
-        fileName: "library.json",
-        lockName: `libras-library:${name}`,
-        parse: (value: unknown) => {
-          const record = v.parse(libraryRecordSchema, value);
-          if (
-            record.account.host !== this.account.host ||
-            record.account.username !== this.account.username
-          )
-            throw new Error("The library belongs to a different account.");
-          // Reject duplicate IDs on disk as well as on replacement.
-          prepareLibrary(record);
-          return record;
-        },
-      });
-    })().catch((error) => {
+    return (this.#file ??= accountFile(this.account, "library", (value) => {
+      const record = v.parse(libraryRecordSchema, value);
+      prepareLibrary(record); // Reject duplicate IDs on disk as well as on replacement.
+      return record;
+    }).catch((error) => {
       this.#file = undefined;
+      throw error;
+    }));
+  }
+
+  #queueFile() {
+    return (this.#queueStore ??= accountFile(this.account, "queue", (value) =>
+      v.parse(queueRecordSchema, value),
+    ).catch((error) => {
+      this.#queueStore = undefined;
       throw error;
     }));
   }
@@ -138,8 +193,22 @@ export class Cache {
     return result;
   }
 
-  /** Restore this account's local data without network access. */
-  load(signal?: AbortSignal): Promise<void> {
+  /** Restore independent local domains, reporting failures after both finish. */
+  async load(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    const [library, queue] = await Promise.allSettled([
+      this.#loadLibrary(signal),
+      this.#loadQueue(signal),
+    ]);
+    signal?.throwIfAborted();
+    if (library.status === "rejected" || queue.status === "rejected")
+      throw new CacheLoadError({
+        ...(library.status === "rejected" ? { library: library.reason } : {}),
+        ...(queue.status === "rejected" ? { queue: queue.reason } : {}),
+      });
+  }
+
+  #loadLibrary(signal?: AbortSignal): Promise<void> {
     return this.#run(async () => {
       signal?.throwIfAborted();
       const record = await (await this.#libraryFile()).read();
@@ -148,6 +217,100 @@ export class Cache {
         const { account: _account, ...snapshot } = record;
         this.#library = prepareLibrary(snapshot);
       } else this.#library = prepareLibrary(null);
+    });
+  }
+
+  get queue() {
+    return this.#queue;
+  }
+  get queueRevision() {
+    return this.#queueRevision;
+  }
+  get queueDirty() {
+    return this.#queueRevision !== this.#queueSavedRevision;
+  }
+  get queueError() {
+    return this.#queueError;
+  }
+
+  #runQueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.#queueOperations.then(operation);
+    this.#queueOperations = result.catch(() => {});
+    return result;
+  }
+
+  #loadQueue(signal?: AbortSignal) {
+    const revision = this.#queueRevision;
+    return this.#runQueue(async () => {
+      try {
+        signal?.throwIfAborted();
+        const record = await (await this.#queueFile()).read();
+        signal?.throwIfAborted();
+        // Loading must not discard optimistic edits, including edits made before load().
+        if (this.queueDirty || revision !== this.#queueRevision) return;
+        this.#queue = record
+          ? { tracks: record.tracks, index: record.index, position: record.position }
+          : { tracks: [], index: -1, position: 0 };
+        this.#queueUpdatedAt = record?.updatedAt ?? 0;
+        this.#queueSavedRevision = ++this.#queueRevision;
+        this.#queueError = undefined;
+      } catch (error) {
+        if (!signal?.aborted) this.#queueError = error;
+        throw error;
+      }
+    });
+  }
+
+  /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
+  setQueue(queue: Immutable<CachedQueue>): number {
+    const next = v.parse(queueSchema, queue);
+    const updatedAt = v.parse(timestamp, Math.max(Date.now(), this.#queueUpdatedAt + 1));
+    this.#queue = next;
+    this.#queueUpdatedAt = updatedAt;
+    const revision = ++this.#queueRevision;
+    const save = () => {
+      void this.flush().catch(() => {});
+    };
+    clearTimeout(this.#queueTimer);
+    this.#queueTimer = setTimeout(save, 300);
+    // Continuous playback position updates must not starve disk checkpoints.
+    this.#checkpointTimer ??= setTimeout(save, 5_000);
+    return revision;
+  }
+
+  /**
+   * Save pending local edits and return the revision actually committed. Edits made
+   * during the write remain dirty and keep their own scheduled checkpoint.
+   * Failures reject here and remain observable through queueError for timer saves.
+   */
+  flush(): Promise<number> {
+    clearTimeout(this.#queueTimer);
+    clearTimeout(this.#checkpointTimer);
+    this.#queueTimer = this.#checkpointTimer = undefined;
+    return this.#runQueue(async () => {
+      if (!this.queueDirty) return this.#queueSavedRevision;
+      const revision = this.#queueRevision;
+      const record = {
+        account: this.account,
+        ...this.#queue,
+        tracks: [...this.#queue.tracks],
+        updatedAt: this.#queueUpdatedAt,
+      };
+      try {
+        const file = await this.#queueFile();
+        const result = await file.update(
+          (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
+          { recoverReadError: () => null },
+        );
+        if (!result.written)
+          throw new Error("A newer queue was saved in another tab. This queue has not been saved.");
+        this.#queueSavedRevision = revision;
+        this.#queueError = undefined;
+        return revision;
+      } catch (error) {
+        this.#queueError = error;
+        throw error;
+      }
     });
   }
 
