@@ -1,8 +1,10 @@
 import type { CoverEngine } from "./cover.svelte";
 import { PlayerMediaSession } from "./media-session";
 import type { QueueEngine } from "./queue.svelte";
-import type { MemoryView } from "./memory.svelte";
+import type { CacheSelection } from "./cache.svelte";
 import type { TrackEngine } from "./track.svelte";
+
+const emptyQueue = { tracks: [] as readonly string[], index: -1, position: 0 };
 
 const interactive =
   'input, textarea, select, summary, audio, video, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]';
@@ -38,10 +40,7 @@ interface PlaybackEngineOptions {
     QueueEngine,
     "select" | "setPosition" | "save" | "flush" | "subscribe" | "setPlaybackActive"
   >;
-  memory: Pick<
-    MemoryView,
-    "tracks" | "albums" | "artists" | "queueTracks" | "queueIndex" | "queuePosition"
-  >;
+  selection: CacheSelection;
   tracks: Pick<TrackEngine, "getSource" | "releaseSource">;
   covers: Pick<CoverEngine, "ensureTrackCover" | "subscribe">;
   mediaSession?: MediaSession;
@@ -51,7 +50,7 @@ interface PlaybackEngineOptions {
 
 export class PlaybackEngine {
   #queue: PlaybackEngineOptions["queue"];
-  #memory: PlaybackEngineOptions["memory"];
+  #selection: PlaybackEngineOptions["selection"];
   #tracks: PlaybackEngineOptions["tracks"];
   #covers: PlaybackEngineOptions["covers"];
   #nativeSession?: MediaSession;
@@ -77,7 +76,7 @@ export class PlaybackEngine {
 
   constructor(options: PlaybackEngineOptions) {
     this.#queue = options.queue;
-    this.#memory = options.memory;
+    this.#selection = options.selection;
     this.#tracks = options.tracks;
     this.#covers = options.covers;
     this.#nativeSession = options.mediaSession;
@@ -85,30 +84,32 @@ export class PlaybackEngine {
     this.#isAvailable = options.isAvailable ?? (() => true);
   }
 
+  get #localQueue() {
+    return this.#selection.cache?.queue ?? emptyQueue;
+  }
+
   #canPlay(index: number) {
-    const id = this.#memory.queueTracks[index];
-    return id !== undefined && !!this.#memory.tracks.get(id) && this.#isAvailable(id);
+    const id = this.#localQueue.tracks[index];
+    return id !== undefined && !!this.#selection.cache?.tracks.get(id) && this.#isAvailable(id);
   }
 
   #nextIndex(after: number) {
-    return this.#memory.queueTracks.findIndex(
-      (_id, index) => index > after && this.#canPlay(index),
-    );
+    return this.#localQueue.tracks.findIndex((_id, index) => index > after && this.#canPlay(index));
   }
 
   #previousIndex() {
-    for (let index = this.#memory.queueIndex - 1; index >= 0; index--) {
+    for (let index = this.#localQueue.index - 1; index >= 0; index--) {
       if (this.#canPlay(index)) return index;
     }
     return -1;
   }
 
   get track() {
-    const current = this.#memory.queueTracks[this.#memory.queueIndex];
-    return current ? this.#memory.tracks.get(current) : undefined;
+    const current = this.#localQueue.tracks[this.#localQueue.index];
+    return current ? this.#selection.cache?.tracks.get(current) : undefined;
   }
   get position() {
-    return this.#memory.queuePosition;
+    return this.#localQueue.position;
   }
   get duration() {
     return this.#duration > 0 ? this.#duration : (this.track?.duration ?? 0);
@@ -123,7 +124,7 @@ export class PlaybackEngine {
     return this.#error;
   }
   get hasNext() {
-    return this.#memory.queueIndex >= 0 && this.#nextIndex(this.#memory.queueIndex) >= 0;
+    return this.#localQueue.index >= 0 && this.#nextIndex(this.#localQueue.index) >= 0;
   }
   get hasPrevious() {
     return this.#previousIndex() >= 0;
@@ -143,8 +144,8 @@ export class PlaybackEngine {
     const track = selected && {
       id: selected.id,
       title: selected.title,
-      artist: this.#memory.artists.get(selected.artistId)?.name ?? "Unknown artist",
-      album: this.#memory.albums.get(selected.albumId)?.title ?? "Unknown album",
+      artist: this.#selection.cache?.artists.get(selected.artistId)?.name ?? "Unknown artist",
+      album: this.#selection.cache?.albums.get(selected.albumId)?.title ?? "Unknown album",
     };
     const source = selected
       ? this.#covers.ensureTrackCover(selected.id, { allowNetwork: false }).source
@@ -351,15 +352,15 @@ export class PlaybackEngine {
   async #load(position: number, autoplay: boolean, forceTranscode = false, seeking = false) {
     const audio = this.#audio;
     const track = this.track;
-    if (!audio || !track || !this.#canPlay(this.#memory.queueIndex)) return;
+    if (!audio || !track || !this.#canPlay(this.#localQueue.index)) return;
     this.#queue.setPlaybackActive(true);
     this.#id = track.id;
     this.#artwork();
     const download = {
       id: track.id,
       title: track.title,
-      artist: this.#memory.artists.get(track.artistId)?.name,
-      album: this.#memory.albums.get(track.albumId)?.title,
+      artist: this.#selection.cache?.artists.get(track.artistId)?.name,
+      album: this.#selection.cache?.albums.get(track.albumId)?.title,
       contentType: track.mimeType,
     };
     this.#invalidate();
@@ -421,7 +422,7 @@ export class PlaybackEngine {
 
   async play() {
     if (!this.#audio) return;
-    if (!this.#canPlay(this.#memory.queueIndex)) {
+    if (!this.#canPlay(this.#localQueue.index)) {
       await this.playIndex(this.#nextIndex(-1));
       return;
     }
@@ -471,16 +472,16 @@ export class PlaybackEngine {
   }
 
   async next() {
-    if (this.hasNext) await this.playIndex(this.#nextIndex(this.#memory.queueIndex));
+    if (this.hasNext) await this.playIndex(this.#nextIndex(this.#localQueue.index));
   }
   async previous() {
-    if (this.#canPlay(this.#memory.queueIndex) && (this.position > 3 || !this.hasPrevious))
+    if (this.#canPlay(this.#localQueue.index) && (this.position > 3 || !this.hasPrevious))
       await this.seek(0);
     else if (this.hasPrevious) await this.playIndex(this.#previousIndex());
   }
 
   async seek(position: number) {
-    if (!Number.isFinite(position) || !this.#audio || !this.#canPlay(this.#memory.queueIndex))
+    if (!Number.isFinite(position) || !this.#audio || !this.#canPlay(this.#localQueue.index))
       return;
     const duration = this.duration;
     position = Math.max(0, duration > 0 ? Math.min(position, duration) : position);

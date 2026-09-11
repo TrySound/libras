@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Network } from "./network.svelte";
 import { TrackEngine } from "./track.svelte";
 import { Cache, downloadKey } from "./cache.svelte";
-import { Memory } from "./memory.svelte";
+import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
@@ -29,18 +29,17 @@ function connection(credentials = auth) {
   return network.accept(network.prepare(credentials)).audio;
 }
 function setup(options: { cache?: Cache; online?: boolean; concurrency?: number } = {}) {
-  const memory = new Memory();
+  const selection = new TestSelection();
   const cache = options.cache ?? new Cache(account);
-  memory.cache = cache;
-  memory.account = cache.account;
+  selection.cache = cache;
   const engine = new TrackEngine({
-    memory,
+    selection,
     concurrency: options.concurrency,
     connection: options.online ? connection({ ...auth, ...cache.account }) : undefined,
   });
   engines.push(engine);
   engine.activate();
-  return { memory, cache, engine };
+  return { selection, cache, engine };
 }
 async function seed(cache = new Cache(account), format: "raw" | "mp3" = "mp3") {
   await cache.saveDownload(
@@ -60,19 +59,17 @@ afterEach(() => {
 });
 
 describe("TrackEngine using Cache", () => {
-  it("uses a read-only Memory projection and owns offline playback URLs", async () => {
+  it("reads normalized Cache records and owns offline playback URLs", async () => {
     const disk = install();
     await seed();
     const cache = new Cache(account);
     await cache.load();
-    const { engine, memory } = setup({ cache });
+    const { engine, selection } = setup({ cache });
     expect(cache.tracks.size).toBe(0);
     const record = cache.downloads.get(downloadKey(track.id, "mp3"))!;
-    expect([...memory.downloads.values()]).toEqual([
-      { ...record, ...account, key: downloadKey(track.id, "mp3") },
-    ]);
-    expect([...memory.downloads.values()][0].track).toBe(record.track);
-    expect(Object.getOwnPropertyDescriptor(Memory.prototype, "downloads")?.set).toBeUndefined();
+    expect(record).not.toHaveProperty("key");
+    expect(record).not.toHaveProperty("host");
+    expect([...selection.cache!.downloads.values()][0].track).toBe(record.track);
     disk.getDirectory.mockClear();
     expect(engine.getStatus(track.id)).toBe("downloaded");
     expect(engine.downloadJobs).toEqual([]);
@@ -136,15 +133,15 @@ describe("TrackEngine using Cache", () => {
       "fetch",
       vi.fn(() => response.promise),
     );
-    const { engine, memory, cache } = setup({ online: true });
+    const { engine, selection, cache } = setup({ online: true });
     const pending = engine.cache(track);
     expect(engine.getStatus(track.id)).toBe("downloading");
-    expect(memory.downloads.size).toBe(0);
+    expect(selection.cache!.downloads.size).toBe(0);
     response.resolve(new Response("audio"));
     await pending;
     expect(engine.getStatus(track.id)).toBe("downloaded");
     expect(engine.downloadJobs).toEqual([]);
-    expect([...memory.downloads.values()][0].key).toBe(downloadKey(track.id, "mp3"));
+    expect([...selection.cache!.downloads.keys()][0]).toBe(downloadKey(track.id, "mp3"));
     expect(cache.downloads.size).toBe(1);
     expect(disk.blobs.size).toBe(1);
     const json = [...disk.files.values()].join();
@@ -383,12 +380,11 @@ describe("TrackEngine using Cache", () => {
       const next = deferred<Response>();
       const fetcher = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(next.promise);
       vi.stubGlobal("fetch", fetcher);
-      const { engine, memory, cache } = setup({ online: true });
+      const { engine, selection, cache } = setup({ online: true });
       const old = engine.cache(track);
       const rejected = expect(old).rejects.toMatchObject({ name: "AbortError" });
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
-      memory.cache = new Cache({ ...account, username });
-      memory.account = memory.cache.account;
+      selection.cache = new Cache({ ...account, username });
       engine.activate();
       engine.setConnection(connection({ ...auth, username }));
       await rejected;
@@ -403,7 +399,7 @@ describe("TrackEngine using Cache", () => {
       next.resolve(new Response("new"));
       await retry;
       expect(cache.downloads.size).toBe(0);
-      expect(memory.cache.downloads.size).toBe(1);
+      expect(selection.cache.downloads.size).toBe(1);
       expect(disk.blobs.size).toBe(1);
       expect(engine.error).toBeUndefined();
     },
@@ -413,7 +409,7 @@ describe("TrackEngine using Cache", () => {
     "rejects a late cached source after %s",
     async (action) => {
       const disk = install();
-      const { cache, engine, memory } = setup({ cache: await seed() });
+      const { cache, engine, selection } = setup({ cache: await seed() });
       const gate = deferred();
       const reading = deferred();
       disk.state.beforeRead = async (path) => {
@@ -428,7 +424,7 @@ describe("TrackEngine using Cache", () => {
       await reading.promise;
       let current: ReturnType<TrackEngine["getSource"]> | undefined;
       if (action === "switch") {
-        memory.cache = new Cache(account);
+        selection.cache = new Cache(account);
         engine.activate();
       }
       if (action === "release") engine.releaseSource();
@@ -446,14 +442,13 @@ describe("TrackEngine using Cache", () => {
 
   it("does not stream with a foreign connection and drops old account resources on activation", async () => {
     install();
-    const { engine, memory } = setup({ cache: await seed(), online: true });
+    const { engine, selection } = setup({ cache: await seed(), online: true });
     await engine.getSource(track);
-    memory.cache = new Cache({ ...account, username: "other" });
-    memory.account = memory.cache.account;
+    selection.cache = new Cache({ ...account, username: "other" });
     engine.activate();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:track-1");
     expect(engine.getStatus(track.id)).toBe("idle");
-    expect(memory.downloads.size).toBe(0);
+    expect(selection.cache!.downloads.size).toBe(0);
     await expect(engine.getSource(track)).rejects.toThrow("Connect");
   });
 

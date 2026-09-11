@@ -1,6 +1,5 @@
 import type { Auth, AuthStore } from "./auth";
 import type { CoverEngine } from "./cover.svelte";
-import type { Memory, MemoryView } from "./memory.svelte";
 import type { MetadataEngine } from "./metadata.svelte";
 import {
   NetworkTransportError,
@@ -17,7 +16,7 @@ import { Cache, CacheLoadError } from "./cache.svelte";
 const offlineModeStorageKey = "navidrome-offline-mode";
 
 interface SessionOptions {
-  memory: MemoryView & Pick<Memory, "account" | "cache">;
+  selection: { cache: Cache | undefined };
   network: Network;
   auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
   metadata: Pick<MetadataEngine, "prepareConnection" | "setConnection" | "refresh">;
@@ -66,9 +65,9 @@ export class Session {
       this.#refreshError ??
       this.#options.queue.error ??
       this.#options.queue.storageError ??
-      this.#options.memory.cache?.queueError ??
-      this.#options.memory.cache?.imagesError ??
-      this.#options.memory.cache?.downloadsError;
+      this.#options.selection.cache?.queueError ??
+      this.#options.selection.cache?.imagesError ??
+      this.#options.selection.cache?.downloadsError;
     return error ? `Synchronization failed: ${connectionError(error)}` : "";
   }
 
@@ -82,15 +81,6 @@ export class Session {
 
   #valid(generation: number) {
     return !this.#destroyed && generation === this.#generation;
-  }
-
-  #selectAccount(account: Account) {
-    const current = this.#options.memory.account;
-    if (current?.host === account.host && current.username === account.username) return current;
-    return (this.#options.memory.account = Object.freeze({
-      host: account.host,
-      username: account.username,
-    }));
   }
 
   #begin() {
@@ -166,17 +156,16 @@ export class Session {
   }
 
   async #restore(account: Account) {
-    const { covers, queue, tracks, memory } = this.#options;
+    const { covers, queue, tracks, selection } = this.#options;
     this.localReady = false;
     const cache = new Cache(account);
-    this.#selectAccount(cache.account);
-    memory.cache = cache;
+    selection.cache = cache;
     covers.activate();
     tracks.activate();
     this.#loadController?.abort();
     const controller = new AbortController();
     this.#loadController = controller;
-    const current = () => !this.#destroyed && memory.cache === cache;
+    const current = () => !this.#destroyed && selection.cache === cache;
     try {
       await cache.load(controller.signal).catch((error) => {
         // Other domain failures remain on Cache, separate from library warnings.
@@ -212,9 +201,9 @@ export class Session {
       auth.saveAccount(prepared.account);
       preferences.setItem(offlineModeStorageKey, "false");
       // Never prepare into the selected cache, including same-account reconnects.
-      const previous = this.#options.memory.cache;
+      const previous = this.#options.selection.cache;
       const sameAccount =
-        previous?.account.host === prepared.account.host &&
+        previous?.account?.host === prepared.account.host &&
         previous.account.username === prepared.account.username;
       if (sameAccount) await previous.flush();
       const previousRevision = previous?.queueRevision;
@@ -229,7 +218,6 @@ export class Session {
       if (!this.#valid(generation)) return false;
       const activeConnection = this.#options.network.accept(connection);
       this.#options.playback.suspend();
-      this.#selectAccount(cache.account);
       this.localReady = false;
       // Cancel old work before selecting the fully hydrated candidate.
       metadata.setConnection(undefined);
@@ -237,7 +225,7 @@ export class Session {
       // an older checkpoint. This remains an optimistic, local-only queue edit.
       if (sameAccount && previous.queueRevision !== previousRevision)
         cache.setQueue(previous.queue);
-      this.#options.memory.cache = cache;
+      this.#options.selection.cache = cache;
       covers.activate();
       tracks.activate();
       queue.activate();
@@ -269,7 +257,7 @@ export class Session {
     try {
       this.#options.auth.clear();
       this.#options.preferences.setItem(offlineModeStorageKey, "true");
-      const account = this.#options.memory.account;
+      const account = this.#options.selection.cache?.account;
       if (account) this.#options.auth.saveAccount(account);
       return true;
     } catch (error) {

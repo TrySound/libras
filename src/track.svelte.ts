@@ -1,9 +1,7 @@
 import type { AudioConnection } from "./network.svelte";
-import { downloadKey, type Cache, type DownloadFormat } from "./cache.svelte";
+import { downloadKey, type Cache, type CacheSelection, type DownloadFormat } from "./cache.svelte";
 import type { Account, DownloadTrack } from "./schema";
-import type { Memory } from "./memory.svelte";
 
-type DownloadMemory = Readonly<Pick<Memory, "cache">>;
 interface EngineTrack {
   id: string;
   title?: string;
@@ -22,7 +20,7 @@ interface TrackSourceOptions {
 }
 type TrackStatus = "idle" | "queued" | "downloading" | "downloaded";
 interface TrackEngineOptions {
-  memory: DownloadMemory;
+  selection: CacheSelection;
   connection?: AudioConnection;
   concurrency?: number;
 }
@@ -46,7 +44,7 @@ export class TrackEngine {
   #activeObjectUrl = "";
   #connection?: AudioConnection;
   #jobs = new Map<string, DownloadJob>();
-  #memory: DownloadMemory;
+  #selection: CacheSelection;
   #concurrency: number;
   #destroyed = false;
   #error = $state.raw<unknown>();
@@ -55,7 +53,7 @@ export class TrackEngine {
   #version = $state(0);
 
   constructor(options: TrackEngineOptions) {
-    this.#memory = options.memory;
+    this.#selection = options.selection;
     this.#concurrency = options.concurrency ?? 3;
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1)
       throw new Error("Download concurrency must be a positive integer.");
@@ -71,17 +69,17 @@ export class TrackEngine {
   }
   get downloadJobs(): readonly DownloadJobInfo[] {
     this.#version;
-    const jobs = [...this.#jobs.values()].filter((job) => job.cache === this.#memory.cache);
+    const jobs = [...this.#jobs.values()].filter((job) => job.cache === this.#selection.cache);
     return [
       ...jobs.filter((job) => job.status === "downloading"),
       ...jobs.filter((job) => job.status === "queued"),
     ].map((job) => ({ ...job.descriptor, track: job.track, status: job.status }));
   }
   get downloadsLoading() {
-    return this.#memory.cache?.downloadsLoading ?? false;
+    return this.#selection.cache?.downloadsLoading ?? false;
   }
   get error() {
-    return this.#error ?? this.#memory.cache?.downloadsError;
+    return this.#error ?? this.#selection.cache?.downloadsError;
   }
 
   #track(track: EngineTrack): DownloadTrack {
@@ -94,8 +92,8 @@ export class TrackEngine {
     };
   }
   #describe(track: EngineTrack, options: TrackSourceOptions = {}): Descriptor {
-    const cache = this.#memory.cache;
-    if (!cache) throw new Error("No music cache selected.");
+    const cache = this.#selection.cache;
+    if (!cache?.account) throw new Error("No music account selected.");
     const format =
       !options.forceTranscode &&
       track.contentType &&
@@ -152,7 +150,7 @@ export class TrackEngine {
   async #download(job: DownloadJob) {
     const { descriptor, track, connection, cache, signal } = job;
     const check = () => {
-      if (cache !== this.#memory.cache) job.controller.abort();
+      if (cache !== this.#selection.cache) job.controller.abort();
       signal.throwIfAborted();
     };
     try {
@@ -161,7 +159,7 @@ export class TrackEngine {
       check();
       if (!file) {
         const response = await connection.read(track.id, { format: descriptor.format, signal });
-        if (cache !== this.#memory.cache) job.controller.abort();
+        if (cache !== this.#selection.cache) job.controller.abort();
         // Cache also releases unused responses, including cancellation before save.
         file = await cache.saveDownload(
           track,
@@ -174,7 +172,8 @@ export class TrackEngine {
       check();
       return file;
     } catch (error) {
-      if (!this.#destroyed && !signal.aborted && cache === this.#memory.cache) this.#error = error;
+      if (!this.#destroyed && !signal.aborted && cache === this.#selection.cache)
+        this.#error = error;
       throw error;
     }
   }
@@ -185,7 +184,7 @@ export class TrackEngine {
     const connection = this.#connectionFor(descriptor);
     const existing = this.#jobs.get(descriptor.key);
     if (existing) return existing.promise;
-    const cache = this.#memory.cache!;
+    const cache = this.#selection.cache!;
     const { promise, resolve, reject } = Promise.withResolvers<File>();
     const controller = new AbortController();
     this.#jobs.set(descriptor.key, {
@@ -221,7 +220,7 @@ export class TrackEngine {
   }
   getStatus(trackId: string): TrackStatus {
     this.#version;
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     if (!cache) return "idle";
     const keys = [downloadKey(trackId, "raw"), downloadKey(trackId, "mp3")];
     const jobs = keys.map((key) => this.#jobs.get(key)).filter((job) => job?.cache === cache);
@@ -237,10 +236,10 @@ export class TrackEngine {
     this.#cancelSourceRequest();
     const signal = this.#sourceController.signal;
     const descriptor = this.#describe(track, options);
-    const cache = this.#memory.cache!;
+    const cache = this.#selection.cache!;
     const cached = await this.#cached(cache, track, descriptor, signal);
     signal.throwIfAborted();
-    if (this.#destroyed || cache !== this.#memory.cache)
+    if (this.#destroyed || cache !== this.#selection.cache)
       throw new DOMException("Source request superseded.", "AbortError");
     this.#clearObjectUrl();
     if (!cached) {

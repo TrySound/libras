@@ -11,7 +11,7 @@
     Artist as ArtistRecord,
     Track as TrackRecord,
   } from "./schema";
-  import { Memory, type Immutable } from "./memory.svelte";
+  import { Cache, type Immutable } from "./cache.svelte";
 
   type Album = Immutable<AlbumRecord>;
   type Artist = Immutable<ArtistRecord>;
@@ -27,40 +27,43 @@
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
 
-  const memory = new Memory();
-  const metadataEngine = new MetadataEngine(memory);
-  const queueEngine = new QueueEngine(memory);
+  const selection = $state<{ cache: Cache | undefined }>({ cache: undefined });
+  const emptyCache = new Cache();
+  const cache = $derived(selection.cache ?? emptyCache);
+  const cachedQueue = $derived(cache.queue);
+  const metadataEngine = new MetadataEngine(selection);
+  const queueEngine = new QueueEngine(selection);
   let navigate = $state<RouterNavigate>(() => {});
-  let artists = $derived([...memory.artists.values()]);
+  let artists = $derived([...cache.artists.values()]);
   let queue = $derived(
-    memory.queueTracks.flatMap((id, index) => {
-      const track = memory.tracks.get(id);
+    cachedQueue.tracks.flatMap((id, index) => {
+      const track = cache.tracks.get(id);
       return track && (!offlineMode || trackEngine.getStatus(id) === "downloaded")
         ? [{ track, index }]
         : [];
     }),
   );
-  const coverEngine = new CoverEngine(memory, metadataEngine);
-  const trackEngine = new TrackEngine({ memory });
+  const coverEngine = new CoverEngine(selection);
+  const trackEngine = new TrackEngine({ selection });
   const downloads = $derived.by(() => {
     const jobs = trackEngine.downloadJobs;
     const activeKeys = new Set(jobs.map((job) => job.key));
-    const completed = [...memory.downloads.values()]
-      .filter((file) => !activeKeys.has(file.key))
-      .sort((a, b) => b.downloadedAt - a.downloadedAt || a.key.localeCompare(b.key))
-      .map((file) => ({ ...file, status: "downloaded" as const }));
+    const completed = [...cache.downloads]
+      .filter(([key]) => !activeKeys.has(key))
+      .sort(([aKey, a], [bKey, b]) => b.downloadedAt - a.downloadedAt || aKey.localeCompare(bKey))
+      .map(([key, file]) => ({ ...file, key, status: "downloaded" as const }));
     return [...jobs, ...completed];
   });
   const playback: PlaybackEngine = new PlaybackEngine({
     queue: queueEngine,
-    memory,
+    selection,
     tracks: trackEngine,
     covers: coverEngine,
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
   });
   const network = new Network();
   const session = new Session({
-    memory,
+    selection,
     network,
     auth: new AuthStore(),
     metadata: metadataEngine,
@@ -70,7 +73,7 @@
     playback,
     preferences: localStorage,
   });
-  const libraryAvailable = $derived(metadataEngine.savedAt !== undefined);
+  const libraryAvailable = $derived(cache.savedAt !== undefined);
   const offlineMode = $derived(session.offlineMode);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);
@@ -101,7 +104,7 @@
 
   onMount(() => {
     const savedAuth = session.start();
-    if (!savedAuth && !memory.account) navigate("/settings", "replace");
+    if (!savedAuth && !cache.account) navigate("/settings", "replace");
   });
 
   function artistPath(artist: Artist) {
@@ -121,20 +124,20 @@
   function albumGenres(album: Album) {
     return uniqueGenres([
       ...album.genres,
-      ...(memory.albumTracks.get(album.id) ?? []).flatMap((track) => track.genres),
+      ...(cache.albumTracks.get(album.id) ?? []).flatMap((track) => track.genres),
     ]);
   }
 
   function artistGenres(artist: Artist) {
     return uniqueGenres([
       ...artist.genres,
-      ...(memory.artistAlbums.get(artist.id) ?? []).flatMap(albumGenres),
+      ...(cache.artistAlbums.get(artist.id) ?? []).flatMap(albumGenres),
     ]);
   }
 
   function artistTracks(artist: Artist): readonly Track[] {
-    return (memory.artistAlbums.get(artist.id) ?? []).flatMap(
-      (album) => memory.albumTracks.get(album.id) ?? [],
+    return (cache.artistAlbums.get(artist.id) ?? []).flatMap(
+      (album) => cache.albumTracks.get(album.id) ?? [],
     );
   }
 
@@ -145,7 +148,7 @@
   }
 
   function playAlbum(album: Album) {
-    replaceQueueAndPlay(availableTracks(memory.albumTracks.get(album.id) ?? []));
+    replaceQueueAndPlay(availableTracks(cache.albumTracks.get(album.id) ?? []));
   }
 
   function playArtist(artist: Artist) {
@@ -155,19 +158,19 @@
   function playNext(tracks: readonly Track[]) {
     const items = availableTracks(tracks);
     if (items.length === 0) return;
-    if (memory.queueTracks.length === 0) {
+    if (cachedQueue.tracks.length === 0) {
       replaceQueueAndPlay(items);
       return;
     }
 
-    const insertAt = Math.max(0, memory.queueIndex + 1);
+    const insertAt = Math.max(0, cachedQueue.index + 1);
     queueEngine.update({
-      index: memory.queueIndex,
-      position: memory.queuePosition,
+      index: cachedQueue.index,
+      position: cachedQueue.position,
       tracks: [
-        ...memory.queueTracks.slice(0, insertAt),
+        ...cachedQueue.tracks.slice(0, insertAt),
         ...items.map((track) => track.id),
-        ...memory.queueTracks.slice(insertAt),
+        ...cachedQueue.tracks.slice(insertAt),
       ],
     });
   }
@@ -175,31 +178,31 @@
   function playLast(tracks: readonly Track[]) {
     const items = availableTracks(tracks);
     if (items.length === 0) return;
-    if (memory.queueTracks.length === 0) {
+    if (cachedQueue.tracks.length === 0) {
       replaceQueueAndPlay(items);
       return;
     }
 
     queueEngine.update({
-      index: memory.queueIndex,
-      position: memory.queuePosition,
-      tracks: [...memory.queueTracks, ...items.map((track) => track.id)],
+      index: cachedQueue.index,
+      position: cachedQueue.position,
+      tracks: [...cachedQueue.tracks, ...items.map((track) => track.id)],
     });
   }
 
   function playTrack(track: Track) {
-    const albumTracks = availableTracks(memory.albumTracks.get(track.albumId) ?? []);
+    const albumTracks = availableTracks(cache.albumTracks.get(track.albumId) ?? []);
     const selectedIndex = albumTracks.findIndex((item) => item.id === track.id);
     replaceQueueAndPlay(albumTracks, Math.max(0, selectedIndex));
   }
 
   async function downloadTrack(track: Track) {
     try {
-      const album = memory.albums.get(track.albumId);
+      const album = cache.albums.get(track.albumId);
       await trackEngine.cache({
         id: track.id,
         title: track.title,
-        artist: memory.artists.get(track.artistId)?.name,
+        artist: cache.artists.get(track.artistId)?.name,
         album: album?.title,
         contentType: track.mimeType,
       });
@@ -218,7 +221,7 @@
     const key = `album:${album.id}`;
     downloadingCollection = key;
     try {
-      await downloadTracks(memory.albumTracks.get(album.id) ?? []);
+      await downloadTracks(cache.albumTracks.get(album.id) ?? []);
     } finally {
       if (downloadingCollection === key) downloadingCollection = "";
     }
@@ -250,7 +253,7 @@
 
   function playbackPercent() {
     if (!Number.isFinite(playback.duration) || playback.duration <= 0) return 0;
-    return Math.min(100, Math.max(0, (memory.queuePosition / playback.duration) * 100));
+    return Math.min(100, Math.max(0, (cachedQueue.position / playback.duration) * 100));
   }
 
   function formatTime(value: number) {
@@ -581,9 +584,9 @@
 {/snippet}
 
 {#snippet playerDialog()}
-  {@const artist = playback.track && memory.artists.get(playback.track.artistId)}
-  {@const album = playback.track && memory.albums.get(playback.track.albumId)}
-  {@const albumArtist = album && memory.artists.get(album.artistId)}
+  {@const artist = playback.track && cache.artists.get(playback.track.artistId)}
+  {@const album = playback.track && cache.albums.get(playback.track.albumId)}
+  {@const albumArtist = album && cache.artists.get(album.artistId)}
   <dialog id="player-dialog" class="player-dialog" closedby="any" use:swipeToDismiss>
     <header class="topbar wings">
       <button
@@ -649,7 +652,7 @@
             min="0"
             max={Number.isFinite(playback.duration) ? playback.duration : 0}
             step="0.1"
-            value={memory.queuePosition}
+            value={cachedQueue.position}
             disabled={!playback.duration ||
               (offlineMode &&
                 playback.track &&
@@ -657,7 +660,7 @@
             oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
           />
           <div class="playback-time type-caption">
-            <span>{formatTime(memory.queuePosition)}</span>
+            <span>{formatTime(cachedQueue.position)}</span>
             <span>{formatTime(playback.duration)}</span>
           </div>
         </div>
@@ -668,7 +671,7 @@
             data-size="md"
             data-variant="neutral"
             onclick={() => playback.previous()}
-            disabled={!playback.hasPrevious && memory.queuePosition <= 0}
+            disabled={!playback.hasPrevious && cachedQueue.position <= 0}
             title="Previous">{@render icon("previous")}</button
           >
           <button
@@ -720,7 +723,7 @@
               {queue.length} track{queue.length === 1 ? "" : "s"}
             </h2>
           </div>
-          {#if memory.queueTracks.length > 0}
+          {#if cachedQueue.tracks.length > 0}
             <button class="button" data-size="sm" data-variant="neutral" onclick={clearQueue}
               >Clear</button
             >
@@ -737,15 +740,15 @@
                   onclick={() => playback.playIndex(index)}
                 ></button>
                 <span class="track-leading">
-                  {#if index === memory.queueIndex && playbackLoading}
+                  {#if index === cachedQueue.index && playbackLoading}
                     <span role="img" aria-label="Loading playback">
                       {@render icon("loading")}
                     </span>
-                  {:else if index === memory.queueIndex && playback.playing}
+                  {:else if index === cachedQueue.index && playback.playing}
                     <span role="img" aria-label="Playing">
                       {@render icon("sound-bars")}
                     </span>
-                  {:else if index === memory.queueIndex}
+                  {:else if index === cachedQueue.index}
                     <span role="img" aria-label="Current track, not playing">
                       {@render icon("pause")}
                     </span>
@@ -765,7 +768,7 @@
               </div>
             {/each}
           </div>
-        {:else if memory.queueTracks.length > 0}
+        {:else if cachedQueue.tracks.length > 0}
           <p class="type-body text-muted">No available tracks.</p>
         {:else}
           <p class="type-body text-muted">The queue is empty.</p>
@@ -909,15 +912,15 @@
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams, router: RouteControls)}
-  {@const artist = params.artistId ? memory.artists.get(params.artistId) : undefined}
+  {@const artist = params.artistId ? cache.artists.get(params.artistId) : undefined}
   {@const visibleAlbums = artist
     ? offlineMode
-      ? (memory.artistAlbums.get(artist.id) ?? []).filter((album) =>
-          (memory.albumTracks.get(album.id) ?? []).some(
+      ? (cache.artistAlbums.get(artist.id) ?? []).filter((album) =>
+          (cache.albumTracks.get(album.id) ?? []).some(
             (track) => trackEngine.getStatus(track.id) === "downloaded",
           ),
         )
-      : (memory.artistAlbums.get(artist.id) ?? [])
+      : (cache.artistAlbums.get(artist.id) ?? [])
     : []}
 
   <header class="topbar wings">
@@ -990,10 +993,10 @@
           {#each visibleAlbums as album, index}
             {@const albumMenuId = `album-menu-${index}`}
             {@const visibleTracks = offlineMode
-              ? (memory.albumTracks.get(album.id) ?? []).filter(
+              ? (cache.albumTracks.get(album.id) ?? []).filter(
                   (track) => trackEngine.getStatus(track.id) === "downloaded",
                 )
-              : (memory.albumTracks.get(album.id) ?? [])}
+              : (cache.albumTracks.get(album.id) ?? [])}
             {@const cover = coverEngine.ensureAlbumCover(album.id, {
               allowNetwork: !offlineMode,
             })}
@@ -1116,14 +1119,14 @@
               </button>
               <button
                 class="wings-item row-button"
-                onclick={() => playNext(memory.albumTracks.get(album.id) ?? [])}
+                onclick={() => playNext(cache.albumTracks.get(album.id) ?? [])}
               >
                 {@render icon("next")}
                 <span>Play next</span>
               </button>
               <button
                 class="wings-item row-button"
-                onclick={() => playLast(memory.albumTracks.get(album.id) ?? [])}
+                onclick={() => playLast(cache.albumTracks.get(album.id) ?? [])}
               >
                 {@render icon("plus")}
                 <span>Play last</span>
@@ -1143,14 +1146,14 @@
 {/snippet}
 
 {#snippet albumRoute(params: RouteParams, router: RouteControls)}
-  {@const artist = params.artistId ? memory.artists.get(params.artistId) : undefined}
-  {@const album = params.albumId ? memory.albums.get(params.albumId) : undefined}
+  {@const artist = params.artistId ? cache.artists.get(params.artistId) : undefined}
+  {@const album = params.albumId ? cache.albums.get(params.albumId) : undefined}
   {@const visibleTracks = album
     ? offlineMode
-      ? (memory.albumTracks.get(album.id) ?? []).filter(
+      ? (cache.albumTracks.get(album.id) ?? []).filter(
           (track) => trackEngine.getStatus(track.id) === "downloaded",
         )
-      : (memory.albumTracks.get(album.id) ?? [])
+      : (cache.albumTracks.get(album.id) ?? [])
     : []}
 
   <header class="topbar wings">
@@ -1320,14 +1323,14 @@
           </button>
           <button
             class="wings-item row-button"
-            onclick={() => playNext(memory.albumTracks.get(album.id) ?? [])}
+            onclick={() => playNext(cache.albumTracks.get(album.id) ?? [])}
           >
             {@render icon("next")}
             <span>Play next</span>
           </button>
           <button
             class="wings-item row-button"
-            onclick={() => playLast(memory.albumTracks.get(album.id) ?? [])}
+            onclick={() => playLast(cache.albumTracks.get(album.id) ?? [])}
           >
             {@render icon("plus")}
             <span>Play last</span>
@@ -1433,7 +1436,7 @@
           {playback.track.title}
         </strong>
         <small class="type-small text-muted">
-          {memory.artists.get(playback.track.artistId)?.name}
+          {cache.artists.get(playback.track.artistId)?.name}
         </small>
       </span>
       <button

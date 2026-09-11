@@ -1,6 +1,5 @@
-import type { Cache, CachedQueue, Immutable } from "./cache.svelte";
+import type { Cache, CachedQueue, CacheSelection, Immutable } from "./cache.svelte";
 import type { QueueConnection, RemoteQueue } from "./network.svelte";
-import type { Memory } from "./memory.svelte";
 
 interface QueueState {
   index?: number;
@@ -34,7 +33,7 @@ function toRemoteQueue(local: Immutable<CachedQueue>): RemoteQueue {
 
 /** Queue commands and connection-scoped server policy; Cache owns all local durability. */
 export class QueueEngine {
-  #memory: Readonly<Pick<Memory, "cache">>;
+  #selection: CacheSelection;
   #connection?: QueueConnection;
   #refreshPending?: Promise<void>;
   #refreshController?: AbortController;
@@ -48,15 +47,15 @@ export class QueueEngine {
   #saveTimer?: ReturnType<typeof setTimeout>;
   #listeners = new Set<() => void>();
 
-  constructor(memory: Readonly<Pick<Memory, "cache">>) {
-    this.#memory = memory;
+  constructor(selection: CacheSelection) {
+    this.#selection = selection;
   }
 
   get error() {
     return this.#error;
   }
   get storageError() {
-    return this.#memory.cache?.queueError;
+    return this.#selection.cache?.queueError;
   }
 
   subscribe(listener: () => void) {
@@ -100,6 +99,7 @@ export class QueueEngine {
   #connected(cache: Cache) {
     return (
       !!this.#connection &&
+      !!cache.account &&
       !this.#connection.signal.aborted &&
       this.#connection.account.host === cache.account.host &&
       this.#connection.account.username === cache.account.username
@@ -107,7 +107,7 @@ export class QueueEngine {
   }
 
   #change(state: QueueState, checkpoint = false) {
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     if (!cache || this.#destroyed) return;
     const requestedIndex = state.index ?? -1;
     const index =
@@ -125,20 +125,20 @@ export class QueueEngine {
     this.#notify();
   }
   update(state: QueueState) {
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     if (!cache || this.#destroyed) return;
     this.#serverWritable = this.#connected(cache);
     this.#change(state);
     this.save();
   }
   select(index: number) {
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     if (!cache || this.#destroyed) return;
     this.#change({ tracks: cache.queue.tracks, index, position: 0 });
     this.save();
   }
   setPosition(position: number) {
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     if (!cache || this.#destroyed || cache.queue.index < 0 || !Number.isFinite(position)) return;
     position = Math.max(0, position);
     if (position === cache.queue.position) return;
@@ -157,7 +157,7 @@ export class QueueEngine {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
     try {
-      await this.#memory.cache?.flush();
+      await this.#selection.cache?.flush();
     } catch {
       return;
     }
@@ -165,13 +165,13 @@ export class QueueEngine {
   }
   #writeServer(): Promise<void> {
     const connection = this.#connection;
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     const epoch = this.#epoch;
     const valid = () =>
       !this.#destroyed &&
       epoch === this.#epoch &&
       !!cache &&
-      cache === this.#memory.cache &&
+      cache === this.#selection.cache &&
       this.#connected(cache);
     const task = this.#serverWrites.then(async () => {
       if (!cache || !connection || !valid()) return;
@@ -205,7 +205,7 @@ export class QueueEngine {
 
   refresh(): Promise<void> {
     const connection = this.#connection;
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     if (!connection || !cache || !this.#connected(cache) || this.#destroyed)
       return Promise.resolve();
     if (this.#refreshPending) return this.#refreshPending;
@@ -216,7 +216,7 @@ export class QueueEngine {
     const current = () =>
       epoch === this.#epoch &&
       !this.#destroyed &&
-      cache === this.#memory.cache &&
+      cache === this.#selection.cache &&
       !connection.signal.aborted;
     return (this.#refreshPending = (async () => {
       try {
@@ -251,7 +251,7 @@ export class QueueEngine {
     this.#resetPolicy();
     this.#listeners.clear();
     return (
-      this.#memory.cache?.flush().then(
+      this.#selection.cache?.flush().then(
         () => {},
         () => {},
       ) ?? Promise.resolve()

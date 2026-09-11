@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueueEngine } from "./queue.svelte";
 import { Cache, type CachedQueue } from "./cache.svelte";
-import { Memory } from "./memory.svelte";
+import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { Network, type RemoteQueue } from "./network.svelte";
 import { hashedFileName } from "./json-store";
 import { installDisk } from "./cache-test-helpers";
@@ -36,14 +36,13 @@ async function json(identity = account) {
 async function setup(identity = account) {
   const cache = new Cache(identity);
   caches.push(cache);
-  const memory = new Memory();
-  memory.account = cache.account;
-  memory.cache = cache;
-  const queue = new QueueEngine(memory);
+  const selection = new TestSelection();
+  selection.cache = cache;
+  const queue = new QueueEngine(selection);
   engines.push(queue);
   await cache.load().catch(() => {});
   queue.activate();
-  return { cache, memory, queue };
+  return { cache, selection, queue };
 }
 beforeEach(() => {
   disk = installDisk();
@@ -59,8 +58,8 @@ afterEach(async () => {
 
 describe("queue engine using the selected cache", () => {
   it("configures and activates without performing local or network I/O", () => {
-    const memory = new Memory();
-    const queue = new QueueEngine(memory);
+    const selection = new TestSelection();
+    const queue = new QueueEngine(selection);
     engines.push(queue);
     const connection = client();
     queue.setConnection(connection);
@@ -72,21 +71,21 @@ describe("queue engine using the selected cache", () => {
   });
 
   it("publishes a complete normalized queue before playback notifications", async () => {
-    const { queue, memory } = await setup();
+    const { queue, selection } = await setup();
     const seen: unknown[] = [];
     queue.subscribe(() =>
       seen.push({
-        tracks: memory.queueTracks,
-        index: memory.queueIndex,
-        position: memory.queuePosition,
+        tracks: selection.cache!.queue.tracks,
+        index: selection.cache!.queue.index,
+        position: selection.cache!.queue.position,
       }),
     );
     const tracks = ["a", "b", "a"];
     queue.update({ tracks, index: 2, position: 12 });
-    const publishedTracks = memory.queueTracks;
+    const publishedTracks = selection.cache!.queue.tracks;
     tracks.push("changed");
     queue.setPosition(15);
-    expect(memory.queueTracks).toBe(publishedTracks);
+    expect(selection.cache!.queue.tracks).toBe(publishedTracks);
     queue.update({ tracks: ["b"], index: 9, position: 20 });
     expect(seen).toEqual([
       { tracks: ["a", "b", "a"], index: 2, position: 12 },
@@ -419,7 +418,7 @@ describe("queue engine using the selected cache", () => {
   });
 
   it("isolates accounts and ignores a late response after Session selects a different cache", async () => {
-    const { queue, memory } = await setup();
+    const { queue, selection } = await setup();
     const connection = client();
     const response = deferred<RemoteQueue>();
     connection.read.mockReturnValueOnce(response.promise);
@@ -432,12 +431,11 @@ describe("queue engine using the selected cache", () => {
     caches.push(next);
     await next.load();
     queue.setConnection(undefined);
-    memory.cache = next;
-    memory.account = other;
+    selection.cache = next;
     queue.activate();
     response.resolve(remote());
     await pending;
-    expect(memory.queueTracks).toEqual(["other"]);
+    expect(selection.cache!.queue.tracks).toEqual(["other"]);
     expect((await json(other)).tracks).toEqual(["other"]);
   });
 
@@ -445,9 +443,9 @@ describe("queue engine using the selected cache", () => {
     await seed();
     const cache = new Cache(account);
     caches.push(cache);
-    const memory = new Memory();
-    memory.cache = cache;
-    const queue = new QueueEngine(memory);
+    const selection = new TestSelection();
+    selection.cache = cache;
+    const queue = new QueueEngine(selection);
     engines.push(queue);
     const loaded = cache.load();
     queue.update({ tracks: ["local"], index: 0, position: 3 });

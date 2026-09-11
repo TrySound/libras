@@ -11,6 +11,11 @@ import {
   type ImageRecord,
 } from "./schema";
 
+/** Read-only selection dependency. Session is the application's only selector. */
+export interface CacheSelection {
+  readonly cache: Cache | undefined;
+}
+
 export type Immutable<T> = T extends object ? { readonly [K in keyof T]: Immutable<T[K]> } : T;
 
 const timestamp = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8_640_000_000_000_000));
@@ -226,13 +231,14 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
 }
 
 /**
- * Account-scoped local data owner. Construction performs no I/O.
+ * Account-scoped local data owner, or an empty unscoped UI fallback.
+ * Construction performs no I/O.
  * Collections and records are immutable by contract; consumers never mutate them.
  * Library state is published only after a successful read/commit. Queue edits are
  * optimistic; checkpoints acknowledge only the revision actually committed.
  */
 export class Cache {
-  readonly account: Readonly<Account>;
+  readonly account: Readonly<Account> | undefined;
   #library = $state.raw(prepareLibrary(null));
   #file?: Promise<OpfsJsonStore<v.InferOutput<typeof libraryRecordSchema>>>;
   #operations: Promise<unknown> = Promise.resolve();
@@ -255,8 +261,15 @@ export class Cache {
   #downloadOperations: Promise<unknown> = Promise.resolve();
   #downloadLoads = $state(0);
 
-  constructor(account: Account) {
-    this.account = Object.freeze(v.parse(accountSchema, account));
+  /** Omitting the account creates an empty, non-persisting UI fallback. */
+  constructor(account?: Account) {
+    this.account =
+      account === undefined ? undefined : Object.freeze(v.parse(accountSchema, account));
+  }
+
+  #requireAccount() {
+    if (!this.account) throw new Error("No account selected.");
+    return this.account;
   }
 
   get artists() {
@@ -298,7 +311,7 @@ export class Cache {
   }
 
   #libraryFile() {
-    return (this.#file ??= accountFile(this.account, "library", (value) => {
+    return (this.#file ??= accountFile(this.#requireAccount(), "library", (value) => {
       const record = v.parse(libraryRecordSchema, value);
       prepareLibrary(record); // Reject duplicate IDs on disk as well as on replacement.
       return record;
@@ -309,7 +322,7 @@ export class Cache {
   }
 
   #queueFile() {
-    return (this.#queueStore ??= accountFile(this.account, "queue", (value) =>
+    return (this.#queueStore ??= accountFile(this.#requireAccount(), "queue", (value) =>
       v.parse(queueRecordSchema, value),
     ).catch((error) => {
       this.#queueStore = undefined;
@@ -318,7 +331,7 @@ export class Cache {
   }
 
   #imagesFile() {
-    return (this.#imagesStore ??= accountFile(this.account, "images", (value) => {
+    return (this.#imagesStore ??= accountFile(this.#requireAccount(), "images", (value) => {
       const catalog = v.parse(imagesSchema, value);
       entityMap(catalog.images);
       if (new Set(catalog.images.map((image) => image.fileName)).size !== catalog.images.length)
@@ -341,6 +354,7 @@ export class Cache {
   /** Restore independent local domains, reporting failures after all finish. */
   async load(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
+    if (!this.account) return;
     const [library, queue, images, downloads] = await Promise.allSettled([
       this.#loadLibrary(signal),
       this.#loadQueue(signal),
@@ -417,6 +431,7 @@ export class Cache {
 
   /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
   setQueue(queue: Immutable<CachedQueue>, options: { checkpoint?: boolean } = {}): number {
+    this.#requireAccount();
     const next = v.parse(queueSchema, queue);
     const updatedAt = v.parse(timestamp, Math.max(Date.now(), this.#queueUpdatedAt + 1));
     const sameTracks =
@@ -454,7 +469,7 @@ export class Cache {
       if (!this.queueDirty) return this.#queueSavedRevision;
       const revision = this.#queueRevision;
       const record = {
-        account: this.account,
+        account: this.#requireAccount(),
         ...this.#queue,
         tracks: [...this.#queue.tracks],
         updatedAt: this.#queueUpdatedAt,
@@ -479,6 +494,7 @@ export class Cache {
 
   /** Persist incoming queue state before adoption, unless local work supersedes it. */
   async replaceQueue(queue: Immutable<CachedQueue>, signal: AbortSignal): Promise<boolean> {
+    const account = this.#requireAccount();
     const next = v.parse(queueSchema, queue);
     const revision = this.#queueRevision;
     const updatedAt = v.parse(timestamp, Math.max(Date.now(), this.#queueUpdatedAt + 1));
@@ -491,7 +507,7 @@ export class Cache {
           (previous) =>
             previous && previous.updatedAt > updatedAt
               ? undefined
-              : { account: this.account, ...next, updatedAt },
+              : { account, ...next, updatedAt },
           { valid, recoverReadError: () => null },
         );
         if (!valid()) {
@@ -544,10 +560,8 @@ export class Cache {
   }
 
   async #filesDirectory() {
-    const key = await hashedFileName(
-      JSON.stringify([this.account.host, this.account.username]),
-      ".cache",
-    );
+    const account = this.#requireAccount();
+    const key = await hashedFileName(JSON.stringify([account.host, account.username]), ".cache");
     let directory = await navigator.storage.getDirectory();
     for (const name of ["accounts", key.slice(0, -6), "files"])
       directory = await directory.getDirectoryHandle(name, { create: true });
@@ -608,6 +622,7 @@ export class Cache {
    */
   async saveImage(id: string, image: CachedImage, signal?: AbortSignal): Promise<Blob | undefined> {
     signal?.throwIfAborted();
+    const account = this.#requireAccount();
     const record = v.parse(imageSchema, {
       id,
       fileName: `${crypto.randomUUID()}.image`,
@@ -639,7 +654,7 @@ export class Cache {
             if (catalog?.images.find((image) => image.id === id)?.fileName !== expected)
               return undefined;
             return {
-              account: this.account,
+              account,
               images: [...(catalog?.images ?? []).filter((image) => image.id !== id), record],
             };
           },
@@ -681,7 +696,7 @@ export class Cache {
   }
 
   #downloadsFile() {
-    return (this.#downloadsStore ??= accountFile(this.account, "downloads", (value) => {
+    return (this.#downloadsStore ??= accountFile(this.#requireAccount(), "downloads", (value) => {
       const catalog = v.parse(downloadsSchema, value);
       downloadMap(catalog.downloads);
       return catalog;
@@ -784,6 +799,7 @@ export class Cache {
     let committed = false;
     try {
       signal.throwIfAborted();
+      const account = this.#requireAccount();
       const candidate = v.parse(cachedDownloadSchema, {
         track,
         format,
@@ -794,7 +810,7 @@ export class Cache {
       });
       const key = downloadKey(candidate.track.id, candidate.format);
       const lock = await hashedFileName(
-        JSON.stringify([this.account.host, this.account.username, key]),
+        JSON.stringify([account.host, account.username, key]),
         ".audio",
       );
       const save = async () => {
@@ -829,7 +845,7 @@ export class Cache {
               );
               if (current?.fileName !== expected) return undefined;
               return {
-                account: this.account,
+                account,
                 downloads: [
                   ...(catalog?.downloads ?? []).filter(
                     (item) => downloadKey(item.track.id, item.format) !== key,
@@ -855,7 +871,7 @@ export class Cache {
         ? navigator.locks.request(`libras-download:${lock}`, { signal }, save)
         : save());
     } catch (error) {
-      if (!signal.aborted) this.#downloadsError = error;
+      if (!signal.aborted && this.account) this.#downloadsError = error;
       throw error;
     } finally {
       if (!committed && fileName) {
@@ -868,6 +884,7 @@ export class Cache {
 
   async replaceLibrary(snapshot: Immutable<LibrarySnapshot>, signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
+    const account = this.#requireAccount();
     // Validation also copies caller-owned records before any asynchronous work.
     const candidate = v.parse(librarySchema, snapshot);
     const prepared = prepareLibrary(candidate);
@@ -885,7 +902,7 @@ export class Cache {
                 existing.savedAt > candidate.savedAt))
           )
             return undefined;
-          return { account: this.account, ...candidate };
+          return { account, ...candidate };
         },
         {
           valid: () => !signal?.aborted,

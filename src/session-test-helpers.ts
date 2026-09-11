@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { AuthStore } from "./auth";
-import { Memory } from "./memory.svelte";
+import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { Network, type MetadataConnection } from "./network.svelte";
 import type { MetadataSnapshot } from "./metadata.svelte";
 import { Cache } from "./cache.svelte";
@@ -54,7 +54,7 @@ export function createStorage() {
 }
 
 export function createSession(saved = false, storage = createStorage()) {
-  const memory = new Memory();
+  const selection = new TestSelection();
   const auth = new AuthStore(storage);
   if (saved) auth.save(credentials);
   const loadCache = vi
@@ -63,11 +63,11 @@ export function createSession(saved = false, storage = createStorage()) {
     .mockImplementation(async function (this: Cache, signal) {
       signal?.throwIfAborted();
       vi.spyOn(this, "artists", "get").mockReturnValue(
-        new Map(snapshot(this.account).artists.map((artist) => [artist.id, artist])),
+        new Map(snapshot(this.account!).artists.map((artist) => [artist.id, artist])),
       );
       vi.spyOn(this, "savedAt", "get").mockReturnValue(100);
       vi.spyOn(this, "queue", "get").mockReturnValue({
-        tracks: [this.account.username],
+        tracks: [this.account!.username],
         index: 0,
         position: 17,
       });
@@ -83,9 +83,6 @@ export function createSession(saved = false, storage = createStorage()) {
       vi.spyOn(this, "savedAt", "get").mockReturnValue(value.savedAt);
     });
   const metadata = {
-    get savedAt() {
-      return memory.cache?.savedAt;
-    },
     prepareConnection: vi.fn(async (connection: MetadataConnection) =>
       snapshot(connection.account),
     ),
@@ -128,7 +125,7 @@ export function createSession(saved = false, storage = createStorage()) {
   });
   const prepareConnection = metadata.prepareConnection;
   const session = new Session({
-    memory,
+    selection,
     network,
     auth,
     metadata,
@@ -141,7 +138,7 @@ export function createSession(saved = false, storage = createStorage()) {
   return {
     session,
     network,
-    memory,
+    selection,
     auth,
     metadata,
     covers,

@@ -1,7 +1,6 @@
-import type { Cache, Immutable } from "./cache.svelte";
+import type { Cache, CacheSelection, Immutable } from "./cache.svelte";
 import type { ArtworkConnection } from "./network.svelte";
 import type { ImageRecord } from "./schema";
-import type { Memory } from "./memory.svelte";
 
 const referenceFields = {
   artists: "artistArtwork",
@@ -34,7 +33,7 @@ interface InstalledImage {
 
 /** Resource acquisition and browser URLs; Cache owns references, records and bytes. */
 export class CoverEngine {
-  #memory: Readonly<Pick<Memory, "cache">>;
+  #selection: CacheSelection;
   #connection?: ArtworkConnection;
   #scope = new AbortController();
   #destroyed = false;
@@ -45,12 +44,8 @@ export class CoverEngine {
   #version = $state(0);
   #listeners = new Set<() => void>();
 
-  constructor(
-    memory: Readonly<Pick<Memory, "cache">>,
-    _metadata?: { readonly savedAt: number | undefined },
-  ) {
-    // Keep the unused second argument until app.svelte's wiring is migrated.
-    this.#memory = memory;
+  constructor(selection: CacheSelection) {
+    this.#selection = selection;
   }
   subscribe(listener: () => void) {
     this.#listeners.add(listener);
@@ -83,7 +78,7 @@ export class CoverEngine {
   /** Re-resolve existing handles from Cache's derived references; no catalog writes. */
   async refresh() {
     if (this.#destroyed) return;
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     if (!cache) return;
     for (const [id, image] of this.#objectUrls)
       if (cache.images.get(id)?.fileName !== image.fileName) this.#discardUrl(id);
@@ -113,7 +108,7 @@ export class CoverEngine {
     const loading = this.#loads.get(record.fileName);
     if (loading) return loading;
     const signal = this.#scope.signal;
-    const valid = () => !this.#destroyed && !signal.aborted && cache === this.#memory.cache;
+    const valid = () => !this.#destroyed && !signal.aborted && cache === this.#selection.cache;
     const load: Promise<InstalledImage | undefined> = (async () => {
       const blob = await cache.readImage(record.id, signal);
       if (!valid()) return;
@@ -132,17 +127,17 @@ export class CoverEngine {
   }
 
   #candidates(entry: Pick<CoverEntry, "entity" | "id">) {
-    return this.#memory.cache?.[referenceFields[entry.entity]].get(entry.id) ?? emptyCandidates;
+    return this.#selection.cache?.[referenceFields[entry.entity]].get(entry.id) ?? emptyCandidates;
   }
   async #resolve(entry: CoverEntry, revalidate: boolean) {
     const request = ++entry.generation;
     const signal = this.#scope.signal;
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     const candidates = this.#candidates(entry);
     const valid = () =>
       !this.#destroyed &&
       !signal.aborted &&
-      cache === this.#memory.cache &&
+      cache === this.#selection.cache &&
       request === entry.generation &&
       candidates === this.#candidates(entry);
     if (!cache) return;
@@ -180,10 +175,10 @@ export class CoverEngine {
 
   #networkConnection() {
     const connection = this.#connection;
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     return connection &&
       !connection.signal.aborted &&
-      cache &&
+      cache?.account &&
       cache.account.host === connection.account.host &&
       cache.account.username === connection.account.username
       ? connection
@@ -191,14 +186,14 @@ export class CoverEngine {
   }
   #cacheImage(id: string) {
     const connection = this.#networkConnection();
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     if (!connection || !cache || this.#destroyed || this.#downloads.has(id)) return;
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, connection.signal, this.#scope.signal]);
     const valid = () =>
       !this.#destroyed &&
       !signal.aborted &&
-      cache === this.#memory.cache &&
+      cache === this.#selection.cache &&
       this.#networkConnection() === connection;
     this.#downloads.set(id, controller);
     void (async () => {

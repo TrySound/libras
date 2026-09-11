@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoverEngine } from "./cover.svelte";
 import { Cache, type LibrarySnapshot } from "./cache.svelte";
-import { Memory } from "./memory.svelte";
+import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { Network } from "./network.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
@@ -59,13 +59,12 @@ function installOpfs() {
 }
 async function engine(cache = new Cache(account)) {
   if (cache.savedAt === undefined) await cache.replaceLibrary(snapshot());
-  const memory = new Memory();
-  memory.account = cache.account;
-  memory.cache = cache;
-  const covers = new CoverEngine(memory);
+  const selection = new TestSelection();
+  selection.cache = cache;
+  const covers = new CoverEngine(selection);
   engines.push(covers);
   covers.activate();
-  return { memory, cache, covers };
+  return { selection, cache, covers };
 }
 function catalog(disk: ReturnType<typeof installDisk>) {
   return JSON.parse([...disk.files].find(([path]) => path.endsWith("/images.json"))![1]);
@@ -83,17 +82,18 @@ afterEach(() => {
 });
 
 describe("cover engine using Cache", () => {
-  it("uses Memory's read-only proxies without persisting candidates or writing on refresh", async () => {
+  it("uses the selected Cache without persisting candidates or writing on refresh", async () => {
     const disk = installOpfs();
-    const { memory, cache, covers } = await engine();
+    const { cache, covers } = await engine();
+    const candidates = vi.spyOn(cache, "albumArtwork", "get");
+    const read = vi.spyOn(cache, "readImage");
     const writes = disk.state.writes;
     disk.getDirectory.mockClear();
+    const cover = covers.ensureAlbumCover("album", offline);
     await covers.refresh();
-    expect(memory.artistArtwork).toBe(cache.artistArtwork);
-    expect(memory.albumArtwork).toBe(cache.albumArtwork);
-    expect(memory.trackArtwork).toBe(cache.trackArtwork);
-    expect(memory.images).toBe(cache.images);
-    expect(Object.getOwnPropertyDescriptor(Memory.prototype, "images")?.set).toBeUndefined();
+    expect(candidates).toHaveBeenCalled();
+    expect(cover.source).toBeUndefined();
+    expect(read).not.toHaveBeenCalled();
     expect(disk.state.writes).toBe(writes);
     expect(disk.getDirectory).not.toHaveBeenCalled();
     expect([...disk.files.keys()].some((path) => path.endsWith("images.json"))).toBe(false);
@@ -134,18 +134,18 @@ describe("cover engine using Cache", () => {
 
   it("refreshes existing handles after metadata replacement without rewriting images", async () => {
     const disk = installOpfs();
-    const { covers, cache, memory } = await engine(await seed());
+    const { covers, cache, selection } = await engine(await seed());
     const old = covers.ensureTrackCover("one", offline);
     await vi.waitFor(() => expect(old.source).toBeDefined());
-    const references = memory.trackArtwork;
-    const images = memory.images;
+    const references = selection.cache!.trackArtwork;
+    const images = selection.cache!.images;
     const saved = catalog(disk);
     await cache.replaceLibrary({ ...snapshot(), savedAt: 200, albums: [], tracks: [] });
     await covers.refresh();
     expect(old.source).toBeUndefined();
-    expect(memory.trackArtwork.size).toBe(0);
+    expect(selection.cache!.trackArtwork.size).toBe(0);
     expect(references.has("one")).toBe(true);
-    expect(memory.images).toBe(images);
+    expect(selection.cache!.images).toBe(images);
     expect(catalog(disk)).toEqual(saved);
   });
 
@@ -183,7 +183,7 @@ describe("cover engine using Cache", () => {
 
   it("shares one explicit download across network and cache-only handles", async () => {
     const disk = installOpfs();
-    const { covers, memory } = await engine();
+    const { covers, selection } = await engine();
     covers.setConnection(createConnection());
     const album = covers.ensureAlbumCover("album", online);
     const track = covers.ensureTrackCover("two", online);
@@ -208,7 +208,7 @@ describe("cover engine using Cache", () => {
     expect(notify).toHaveBeenCalled();
     unsubscribe();
     const saved = catalog(disk);
-    expect(saved.images).toEqual([...memory.images.values()]);
+    expect(saved.images).toEqual([...selection.cache!.images.values()]);
     expect(Object.keys(saved).sort()).toEqual(["account", "images"]);
     expect(disk.blobs.size).toBe(1);
     for (const secret of ["blob:", "getCoverArt", auth.token, auth.salt])
@@ -315,7 +315,7 @@ describe("cover engine using Cache", () => {
 
   it.each(["switch", "destroy"])("does not install late cached bytes after %s", async (action) => {
     installOpfs();
-    const { covers, memory } = await engine(await seed());
+    const { covers, selection } = await engine(await seed());
     const bytes = deferred<ArrayBuffer>();
     const read = vi
       .spyOn(File.prototype, "arrayBuffer")
@@ -323,8 +323,7 @@ describe("cover engine using Cache", () => {
     const cover = covers.ensureAlbumCover("album", offline);
     await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
     if (action === "switch") {
-      memory.cache = new Cache({ ...account, username: "other" });
-      memory.account = memory.cache.account;
+      selection.cache = new Cache({ ...account, username: "other" });
       covers.activate();
     } else covers.destroy();
     bytes.resolve(new TextEncoder().encode("image").buffer);
@@ -337,7 +336,7 @@ describe("cover engine using Cache", () => {
     "isolates pending downloads when selecting another cache (%s)",
     async (username) => {
       const disk = installOpfs();
-      const { covers, memory, cache } = await engine();
+      const { covers, selection, cache } = await engine();
       const late = deferred<Response>();
       const fresh = deferred<Response>();
       const fetcher = vi.fn().mockReturnValueOnce(late.promise).mockReturnValueOnce(fresh.promise);
@@ -348,8 +347,7 @@ describe("cover engine using Cache", () => {
       old.cache();
       const next = new Cache({ ...account, username });
       await next.replaceLibrary(snapshot());
-      memory.cache = next;
-      memory.account = next.account;
+      selection.cache = next;
       covers.activate();
       covers.setConnection(createConnection({ ...auth, username }));
       const current = covers.ensureAlbumCover("album", online);

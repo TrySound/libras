@@ -5,7 +5,7 @@ import { Cache } from "./cache.svelte";
 import type { MetadataSnapshot } from "./metadata.svelte";
 import type { Account } from "./schema";
 import { Network } from "./network.svelte";
-import { Memory } from "./memory.svelte";
+import { TestSelection } from "./cache-selection-test-helpers.svelte";
 
 const account = { host: "https://music.example.com", username: "listener" };
 function snapshot(): MetadataSnapshot {
@@ -130,17 +130,17 @@ afterEach(() => {
 });
 
 // Session owns this setup in the application; engine tests select/load explicitly.
-async function loadCache(memory: Memory, cache: Cache) {
-  memory.cache = cache;
+async function loadCache(selection: TestSelection, cache: Cache) {
+  selection.cache = cache;
   await cache.load();
 }
 
 async function loadLibrary(
   engine: MetadataEngine,
   client: ReturnType<typeof createConnection>,
-  memory: Memory,
+  selection: TestSelection,
 ) {
-  if (!memory.cache) await loadCache(memory, new Cache(client.account));
+  if (!selection.cache) await loadCache(selection, new Cache(client.account));
   engine.setConnection(client);
   await engine.refresh(false);
 }
@@ -149,8 +149,8 @@ describe("metadata engine", () => {
   it.each(["detach", "destroy"])(
     "cancels candidate traversal on %s without publishing",
     async (action) => {
-      const memory = new Memory();
-      const engine = new MetadataEngine(memory);
+      const selection = new TestSelection();
+      const engine = new MetadataEngine(selection);
       const connection = createConnection(auth);
       vi.spyOn(connection, "getModifiedAt").mockResolvedValue(10);
       const response = deferred();
@@ -167,14 +167,14 @@ describe("metadata engine", () => {
       expect(signal.aborted).toBe(true);
       response.resolve();
       await rejected;
-      expect(memory.tracks.size).toBe(0);
-      expect(engine.savedAt).toBeUndefined();
+      expect(selection.cache).toBeUndefined();
+      expect(selection.cache?.savedAt).toBeUndefined();
       engine.destroy();
     },
   );
 
   it("supersedes a candidate before fetching its library", async () => {
-    const engine = new MetadataEngine(new Memory());
+    const engine = new MetadataEngine(new TestSelection());
     const connection = createConnection(auth);
     const timestamp = deferred<number>();
     vi.spyOn(connection, "getModifiedAt")
@@ -193,16 +193,16 @@ describe("metadata engine", () => {
 
   it("requires a matching selected cache without trying to load or select one", async () => {
     const disk = installMetadataStorage();
-    const memory = new Memory();
-    const engine = new MetadataEngine(memory);
+    const selection = new TestSelection();
+    const engine = new MetadataEngine(selection);
     const connection = createConnection(auth);
     const modified = vi.spyOn(connection, "getModifiedAt");
     engine.setConnection(connection);
     await expect(engine.refresh()).rejects.toThrow("Select the account cache");
     const foreign = new Cache({ ...account, username: "other" });
-    memory.cache = foreign;
+    selection.cache = foreign;
     await expect(engine.refresh()).rejects.toThrow("Select the account cache");
-    expect(memory.cache).toBe(foreign);
+    expect(selection.cache).toBe(foreign);
     expect(disk.getDirectory).not.toHaveBeenCalled();
     expect(modified).not.toHaveBeenCalled();
     engine.destroy();
@@ -211,9 +211,9 @@ describe("metadata engine", () => {
   it("revalidates or forces a refresh directly without a commit protocol", async () => {
     const disk = installMetadataStorage();
     await disk.seed(account, snapshot());
-    const memory = new Memory();
-    const engine = new MetadataEngine(memory);
-    await loadCache(memory, new Cache(account));
+    const selection = new TestSelection();
+    const engine = new MetadataEngine(selection);
+    await loadCache(selection, new Cache(account));
     const connection = createConnection(auth);
     const modified = vi.spyOn(connection, "getModifiedAt").mockResolvedValue(10);
     const read = vi.spyOn(connection, "readLibrary").mockResolvedValue(snapshot());
@@ -232,16 +232,16 @@ describe("metadata engine", () => {
   it("keeps restored data and reports a direct refresh failure to its caller", async () => {
     const disk = installMetadataStorage();
     await disk.seed(account, snapshot());
-    const memory = new Memory();
-    const engine = new MetadataEngine(memory);
-    await loadCache(memory, new Cache(account));
-    const previous = memory.tracks;
+    const selection = new TestSelection();
+    const engine = new MetadataEngine(selection);
+    await loadCache(selection, new Cache(account));
+    const previous = selection.cache!.tracks;
     const connection = createConnection(auth);
     const error = new Error("Server unavailable");
     vi.spyOn(connection, "getModifiedAt").mockRejectedValue(error);
     engine.setConnection(connection);
     await expect(engine.refresh()).rejects.toBe(error);
-    expect(memory.tracks).toBe(previous);
+    expect(selection.cache!.tracks).toBe(previous);
 
     expect(disk.writes).toBe(0);
     engine.destroy();
@@ -253,11 +253,11 @@ describe("metadata engine", () => {
     const cache = new Cache(account);
     const load = vi.spyOn(cache, "load");
     const replace = vi.spyOn(cache, "replaceLibrary");
-    const memory = new Memory();
-    const engine = new MetadataEngine(memory);
-    await loadCache(memory, cache);
+    const selection = new TestSelection();
+    const engine = new MetadataEngine(selection);
+    await loadCache(selection, cache);
     expect(load).toHaveBeenCalledOnce();
-    expect(memory.tracks).toBe(cache.tracks);
+    expect(selection.cache!.tracks).toBe(cache.tracks);
     await disk.seed(account, {
       ...snapshot(),
       lastModified: 30,
@@ -271,9 +271,9 @@ describe("metadata engine", () => {
       expect.objectContaining({ lastModified: 20 }),
       expect.any(AbortSignal),
     );
-    expect(memory.tracks).toBe(cache.tracks);
+    expect(selection.cache!.tracks).toBe(cache.tracks);
     expect(cache.tracks.get("song")?.title).toBe("Stored winner");
-    expect(engine.savedAt).toBe(500);
+    expect(selection.cache?.savedAt).toBe(500);
     engine.destroy();
   });
 
@@ -282,18 +282,17 @@ describe("metadata engine", () => {
     async (username) => {
       const storage = installMetadataStorage();
       await storage.seed(account, snapshot());
-      const memory = new Memory();
-      memory.account = account;
-      const engine = new MetadataEngine(memory);
-      await loadCache(memory, new Cache(account));
-      const previous = memory.tracks;
+      const selection = new TestSelection();
+      const engine = new MetadataEngine(selection);
+      await loadCache(selection, new Cache(account));
+      const previous = selection.cache!.tracks;
       const network = new Network();
       const client = network.prepare({ ...auth, username });
       vi.stubGlobal("fetch", serveLibrary());
       const prepared = await engine.prepareConnection(client.metadata);
       expect(network.mode).toBe("offline");
-      expect(memory.tracks).toBe(previous);
-      expect(memory.account).toEqual(account);
+      expect(selection.cache!.tracks).toBe(previous);
+      expect(selection.cache!.account).toEqual(account);
       expect(storage.files.size).toBe(1);
       expect(prepared.account).toEqual({ host: auth.host, username });
       expect(prepared.tracks[0]?.title).toBe("Song");
@@ -307,11 +306,10 @@ describe("metadata engine", () => {
     async (abort) => {
       const storage = installMetadataStorage();
       await storage.seed(account, snapshot());
-      const memory = new Memory();
-      memory.account = account;
-      const engine = new MetadataEngine(memory);
-      await loadCache(memory, new Cache(account));
-      const previous = memory.tracks;
+      const selection = new TestSelection();
+      const engine = new MetadataEngine(selection);
+      await loadCache(selection, new Cache(account));
+      const previous = selection.cache!.tracks;
       let resolve!: (response: Response) => void;
       vi.stubGlobal(
         "fetch",
@@ -334,8 +332,8 @@ describe("metadata engine", () => {
           : new Response("Unauthorized", { status: 401 }),
       );
       await expect(preparing).rejects.toThrow();
-      expect(memory.tracks).toBe(previous);
-      expect(memory.account).toEqual(account);
+      expect(selection.cache!.tracks).toBe(previous);
+      expect(selection.cache!.account).toEqual(account);
       expect(storage.writes).toBe(0);
 
       engine.destroy();
@@ -346,18 +344,18 @@ describe("metadata engine", () => {
     const storage = installMetadataStorage();
     const fetcher = serveLibrary();
     vi.stubGlobal("fetch", fetcher);
-    const memory = new Memory();
-    const engine = new MetadataEngine(memory);
+    const selection = new TestSelection();
+    const engine = new MetadataEngine(selection);
     engine.setConnection(createConnection(auth));
     engine.setConnection(undefined);
     engine.setConnection(createConnection(auth));
     expect(storage.getDirectory).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
-    await loadCache(memory, new Cache(account));
+    await loadCache(selection, new Cache(account));
     expect(fetcher).not.toHaveBeenCalled();
     await engine.refresh(false);
 
-    expect(memory.tracks.get("song")).toBeDefined();
+    expect(selection.cache!.tracks.get("song")).toBeDefined();
     await engine.refresh();
 
     fetcher.mockClear();
@@ -372,10 +370,10 @@ describe("metadata engine", () => {
   it("cancels detached library traversal without revoking the shared connection", async () => {
     const storage = installMetadataStorage();
     await storage.seed(account, snapshot());
-    const memory = new Memory();
-    const engine = new MetadataEngine(memory);
-    await loadCache(memory, new Cache(account));
-    const previous = memory.tracks;
+    const selection = new TestSelection();
+    const engine = new MetadataEngine(selection);
+    await loadCache(selection, new Cache(account));
+    const previous = selection.cache!.tracks;
     const connection = createConnection(auth);
     engine.setConnection(connection);
     let resolve!: (response: Response) => void;
@@ -405,13 +403,13 @@ describe("metadata engine", () => {
     );
     await refreshing;
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(memory.tracks).toBe(previous);
+    expect(selection.cache!.tracks).toBe(previous);
     expect(storage.writes).toBe(0);
 
     vi.stubGlobal("fetch", serveLibrary());
     engine.setConnection(connection);
     await engine.refresh();
-    expect(memory.tracks.get("song")?.title).toBe("Song");
+    expect(selection.cache!.tracks.get("song")?.title).toBe("Song");
     engine.destroy();
   });
 
@@ -452,13 +450,13 @@ describe("metadata engine", () => {
         throw new Error(`Unexpected request: ${url.pathname}`);
       }),
     );
-    const memory = new Memory();
-    const engine = new MetadataEngine(memory);
-    await loadLibrary(engine, createConnection(auth), memory);
+    const selection = new TestSelection();
+    const engine = new MetadataEngine(selection);
+    await loadLibrary(engine, createConnection(auth), selection);
     expect(offsets).toEqual([0, 500]);
     expect(trackRequests).toBe(501);
     expect(peak).toBe(6);
-    expect(memory.albums.size).toBe(501);
+    expect(selection.cache!.albums.size).toBe(501);
 
     engine.destroy();
   });
@@ -489,10 +487,10 @@ describe("metadata engine", () => {
         ],
       }),
     );
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadLibrary(engine, createConnection(auth), engineMemory);
-    expect(engineMemory.albums.get("album")).toEqual({
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadLibrary(engine, createConnection(auth), engineSelection);
+    expect(engineSelection.cache!.albums.get("album")).toEqual({
       id: "album",
       title: "Album",
       artistId: "artist",
@@ -500,7 +498,7 @@ describe("metadata engine", () => {
       year: 2024,
       genres: [],
     });
-    expect(engineMemory.tracks.get("second")).toMatchObject({
+    expect(engineSelection.cache!.tracks.get("second")).toMatchObject({
       artistId: "guest",
       albumId: "album",
       number: 2,
@@ -508,20 +506,18 @@ describe("metadata engine", () => {
       mimeType: "audio/flac",
       duration: 120,
     });
-    expect(engineMemory.tracks.get("first")?.artistId).toBe("artist");
-    expect(engineMemory.artists.get("artist")?.genres.map((genre) => genre.toLowerCase())).toEqual([
-      "jazz",
-      "rock",
-    ]);
-    expect((engineMemory.artistAlbums.get("artist") ?? []).map((album) => album.id)).toEqual([
-      "album",
-    ]);
-    expect(engineMemory.artistAlbums.get("guest") ?? []).toEqual([]);
-    expect((engineMemory.albumTracks.get("album") ?? []).map((track) => track.id)).toEqual([
-      "first",
-      "second",
-    ]);
-    expect(engineMemory.albumTracks.get("missing") ?? []).toEqual([]);
+    expect(engineSelection.cache!.tracks.get("first")?.artistId).toBe("artist");
+    expect(
+      engineSelection.cache!.artists.get("artist")?.genres.map((genre) => genre.toLowerCase()),
+    ).toEqual(["jazz", "rock"]);
+    expect(
+      (engineSelection.cache!.artistAlbums.get("artist") ?? []).map((album) => album.id),
+    ).toEqual(["album"]);
+    expect(engineSelection.cache!.artistAlbums.get("guest") ?? []).toEqual([]);
+    expect(
+      (engineSelection.cache!.albumTracks.get("album") ?? []).map((track) => track.id),
+    ).toEqual(["first", "second"]);
+    expect(engineSelection.cache!.albumTracks.get("missing") ?? []).toEqual([]);
     const persisted = JSON.parse(await storage.files.get(await snapshotPath(account))!.text());
     expect(persisted.artists[0]).not.toHaveProperty("albums");
     expect(persisted.albums[0]).not.toHaveProperty("tracks");
@@ -545,26 +541,25 @@ describe("metadata engine", () => {
       { id: "first", albumId: "earlier", artistId: "a", title: "First", number: 1, genres: [] },
     ];
     await storage.seed(account, data);
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadCache(engineMemory, new Cache(account));
-    expect([...engineMemory.artists.values()].map((item) => item.id)).toEqual(["a", "b"]);
-    expect((engineMemory.artistAlbums.get("a") ?? []).map((item) => item.id)).toEqual([
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadCache(engineSelection, new Cache(account));
+    expect([...engineSelection.cache!.artists.values()].map((item) => item.id)).toEqual(["a", "b"]);
+    expect((engineSelection.cache!.artistAlbums.get("a") ?? []).map((item) => item.id)).toEqual([
       "earlier",
       "later",
     ]);
-    expect((engineMemory.albumTracks.get("earlier") ?? []).map((item) => item.id)).toEqual([
-      "first",
-      "second",
-    ]);
+    expect(
+      (engineSelection.cache!.albumTracks.get("earlier") ?? []).map((item) => item.id),
+    ).toEqual(["first", "second"]);
 
-    expect(engineMemory.albumTracks.get("earlier") ?? []).toBe(
-      engineMemory.albumTracks.get("earlier") ?? [],
+    expect(engineSelection.cache!.albumTracks.get("earlier") ?? []).toBe(
+      engineSelection.cache!.albumTracks.get("earlier") ?? [],
     );
-    expect(engineMemory.artistAlbums.get("missing")).toBeUndefined();
-    expect(engineMemory.albumTracks.get("missing")).toBeUndefined();
-    expect((engineMemory.albumTracks.get("earlier") ?? [])[0]).toBe(
-      engineMemory.tracks.get("first"),
+    expect(engineSelection.cache!.artistAlbums.get("missing")).toBeUndefined();
+    expect(engineSelection.cache!.albumTracks.get("missing")).toBeUndefined();
+    expect((engineSelection.cache!.albumTracks.get("earlier") ?? [])[0]).toBe(
+      engineSelection.cache!.tracks.get("first"),
     );
     expect(JSON.parse(await storage.files.get(await snapshotPath(account))!.text())).toEqual(data);
     expect(storage.writes).toBe(0);
@@ -581,15 +576,15 @@ describe("metadata engine", () => {
         tracks: [{ id: "song", title: "Song", artist: "Guest" }],
       }),
     );
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadLibrary(engine, createConnection(auth), engineMemory);
-    const ids = [...engineMemory.artists.values()].map((artist) => artist.id);
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadLibrary(engine, createConnection(auth), engineSelection);
+    const ids = [...engineSelection.cache!.artists.values()].map((artist) => artist.id);
     expect(ids).toHaveLength(2);
-    expect(ids).toContain(engineMemory.albums.get("album")?.artistId);
-    expect(ids).toContain(engineMemory.tracks.get("song")?.artistId);
+    expect(ids).toContain(engineSelection.cache!.albums.get("album")?.artistId);
+    expect(ids).toContain(engineSelection.cache!.tracks.get("song")?.artistId);
     await engine.refresh();
-    expect([...engineMemory.artists.values()].map((artist) => artist.id)).toEqual(ids);
+    expect([...engineSelection.cache!.artists.values()].map((artist) => artist.id)).toEqual(ids);
     engine.destroy();
   });
 
@@ -602,10 +597,10 @@ describe("metadata engine", () => {
         ...data,
         [collection]: [...data[collection], data[collection][0]],
       });
-      const engineMemory = new Memory();
-      const engine = new MetadataEngine(engineMemory);
-      await expect(loadCache(engineMemory, new Cache(account))).rejects.toBeInstanceOf(Error);
-      expect([...engineMemory.artists.values()]).toEqual([]);
+      const engineSelection = new TestSelection();
+      const engine = new MetadataEngine(engineSelection);
+      await expect(loadCache(engineSelection, new Cache(account))).rejects.toBeInstanceOf(Error);
+      expect([...engineSelection.cache!.artists.values()]).toEqual([]);
       engine.destroy();
     },
   );
@@ -615,9 +610,9 @@ describe("metadata engine", () => {
     const data = snapshot();
     data.account = { ...account, username: "other" };
     await storage.seed(account, data);
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await expect(loadCache(engineMemory, new Cache(account))).rejects.toBeInstanceOf(Error);
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await expect(loadCache(engineSelection, new Cache(account))).rejects.toBeInstanceOf(Error);
     engine.destroy();
   });
 
@@ -625,12 +620,12 @@ describe("metadata engine", () => {
     const storage = installMetadataStorage();
     await storage.seed(account, snapshot());
     vi.stubGlobal("fetch", serveLibrary());
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadCache(engineMemory, new Cache(account));
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadCache(engineSelection, new Cache(account));
     const before = await storage.files.get(await snapshotPath(account))!.text();
     storage.beforeWrite = vi.fn(() => engine.destroy());
-    loadLibrary(engine, createConnection(auth), engineMemory);
+    loadLibrary(engine, createConnection(auth), engineSelection);
     await vi.waitFor(() => expect(storage.beforeWrite).toHaveBeenCalledOnce());
     expect(await storage.files.get(await snapshotPath(account))!.text()).toBe(before);
     expect(storage.writes).toBe(0);
@@ -646,13 +641,13 @@ describe("metadata engine", () => {
       return result;
     });
     Object.assign(navigator, { locks: { request } });
-    const firstMemory = new Memory();
-    const first = new MetadataEngine(firstMemory);
-    const secondMemory = new Memory();
-    const second = new MetadataEngine(secondMemory);
+    const firstSelection = new TestSelection();
+    const first = new MetadataEngine(firstSelection);
+    const secondSelection = new TestSelection();
+    const second = new MetadataEngine(secondSelection);
     await Promise.all([
-      loadCache(firstMemory, new Cache(account)),
-      loadCache(secondMemory, new Cache(account)),
+      loadCache(firstSelection, new Cache(account)),
+      loadCache(secondSelection, new Cache(account)),
     ]);
     // Each account cache loads its library, queue and images independently.
     expect(request).toHaveBeenCalledTimes(8);
@@ -671,13 +666,13 @@ describe("metadata engine", () => {
     const storage = installMetadataStorage();
     await storage.seed(account, { invalid: true });
     vi.stubGlobal("fetch", serveLibrary());
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await expect(loadCache(engineMemory, new Cache(account))).rejects.toBeInstanceOf(Error);
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await expect(loadCache(engineSelection, new Cache(account))).rejects.toBeInstanceOf(Error);
     engine.setConnection(createConnection(auth));
     await engine.refresh(false);
 
-    expect(engineMemory.tracks.get("song")?.title).toBe("Song");
+    expect(engineSelection.cache!.tracks.get("song")?.title).toBe("Song");
     expect(storage.writes).toBe(1);
     expect(JSON.parse(await storage.files.get(await snapshotPath(account))!.text())).toMatchObject({
       account,
@@ -702,34 +697,39 @@ describe("metadata engine", () => {
         return serve(input);
       }),
     );
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadLibrary(engine, createConnection(auth), engineMemory);
-    expect(engineMemory.tracks.get("song")?.title).toBe("Newer");
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadLibrary(engine, createConnection(auth), engineSelection);
+    expect(engineSelection.cache!.tracks.get("song")?.title).toBe("Newer");
     expect(storage.writes).toBe(0);
     engine.destroy();
   });
 
-  it("publishes restored and refreshed entities into injected memory without retaining old maps", async () => {
+  it("reads restored and refreshed entities from the selected Cache without retaining old maps", async () => {
     const storage = installMetadataStorage();
     await storage.seed(account, snapshot());
-    const memory = new Memory();
-    memory.account = account;
+    const selection = new TestSelection();
 
-    const engine = new MetadataEngine(memory);
-    await loadCache(memory, new Cache(account));
-    expect(memory.account).toBe(account);
-    expect(memory.tracks.get("song")).toEqual(snapshot().tracks[0]);
+    const engine = new MetadataEngine(selection);
+    await loadCache(selection, new Cache(account));
+    expect(selection.cache!.account).toEqual(account);
+    expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
 
-    expect(memory.albumTracks.get("album")?.[0]).toBe(memory.tracks.get("song"));
-    expect(memory.artistAlbums.get("artist")?.[0]).toBe(memory.albums.get("album"));
-    const oldTracks = memory.tracks;
+    expect(selection.cache!.albumTracks.get("album")?.[0]).toBe(
+      selection.cache!.tracks.get("song"),
+    );
+    expect(selection.cache!.artistAlbums.get("artist")?.[0]).toBe(
+      selection.cache!.albums.get("album"),
+    );
+    const oldTracks = selection.cache!.tracks;
     vi.stubGlobal("fetch", serveLibrary());
-    await loadLibrary(engine, createConnection(auth), memory);
-    expect(memory.tracks).not.toBe(oldTracks);
-    expect(memory.tracks.get("song")?.title).toBe("Song");
+    await loadLibrary(engine, createConnection(auth), selection);
+    expect(selection.cache!.tracks).not.toBe(oldTracks);
+    expect(selection.cache!.tracks.get("song")?.title).toBe("Song");
     expect(oldTracks.get("song")).toEqual(snapshot().tracks[0]);
-    expect(memory.albumTracks.get("album")?.[0]).toBe(memory.tracks.get("song"));
+    expect(selection.cache!.albumTracks.get("album")?.[0]).toBe(
+      selection.cache!.tracks.get("song"),
+    );
     engine.destroy();
   });
 
@@ -738,15 +738,15 @@ describe("metadata engine", () => {
     await storage.seed(account, snapshot());
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadCache(engineMemory, new Cache(account));
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadCache(engineSelection, new Cache(account));
 
-    expect([...engineMemory.artists.values()]).toEqual(snapshot().artists);
-    expect(engineMemory.albums.get("album")).toEqual(snapshot().albums[0]);
-    expect(engineMemory.tracks.get("song")).toEqual(snapshot().tracks[0]);
-    expect(engineMemory.artistAlbums.get("artist") ?? []).toEqual(snapshot().albums);
-    expect(engineMemory.albumTracks.get("album") ?? []).toEqual(snapshot().tracks);
+    expect([...engineSelection.cache!.artists.values()]).toEqual(snapshot().artists);
+    expect(engineSelection.cache!.albums.get("album")).toEqual(snapshot().albums[0]);
+    expect(engineSelection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
+    expect(engineSelection.cache!.artistAlbums.get("artist") ?? []).toEqual(snapshot().albums);
+    expect(engineSelection.cache!.albumTracks.get("album") ?? []).toEqual(snapshot().tracks);
     expect(fetcher).not.toHaveBeenCalled();
     engine.destroy();
   });
@@ -762,14 +762,14 @@ describe("metadata engine", () => {
         }),
     );
     vi.stubGlobal("fetch", fetcher);
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadCache(engineMemory, new Cache(account));
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadCache(engineSelection, new Cache(account));
     storage.getDirectory.mockClear();
     engine.setConnection(createConnection(auth));
     const refreshing = engine.refresh(false);
 
-    expect(engineMemory.tracks.get("song")?.title).toBe("Song");
+    expect(engineSelection.cache!.tracks.get("song")?.title).toBe("Song");
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
     resolve(response({ indexes: { lastModified: 10 } }));
     await refreshing;
@@ -781,10 +781,10 @@ describe("metadata engine", () => {
   it("persists a complete normalized snapshot and restores it in a new engine", async () => {
     const storage = installMetadataStorage();
     vi.stubGlobal("fetch", serveLibrary());
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadLibrary(engine, createConnection(auth), engineMemory);
-    expect(engineMemory.tracks.get("song")).toMatchObject({
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadLibrary(engine, createConnection(auth), engineSelection);
+    expect(engineSelection.cache!.tracks.get("song")).toMatchObject({
       albumId: "album",
       artistId: "artist",
       mimeType: "audio/flac",
@@ -796,10 +796,10 @@ describe("metadata engine", () => {
     expect(text).not.toContain(auth.salt);
     expect(text).not.toContain("contentType");
     engine.destroy();
-    const restoredMemory = new Memory();
-    const restored = new MetadataEngine(restoredMemory);
-    await loadCache(restoredMemory, new Cache(account));
-    expect(restoredMemory.tracks.get("song")?.mimeType).toBe("audio/flac");
+    const restoredSelection = new TestSelection();
+    const restored = new MetadataEngine(restoredSelection);
+    await loadCache(restoredSelection, new Cache(account));
+    expect(restoredSelection.cache!.tracks.get("song")?.mimeType).toBe("audio/flac");
     restored.destroy();
   });
 
@@ -808,29 +808,33 @@ describe("metadata engine", () => {
     await storage.seed(account, snapshot());
     vi.stubGlobal("fetch", serveLibrary());
     storage.failWrites = true;
-    const memory = new Memory();
+    const selection = new TestSelection();
 
-    const engine = new MetadataEngine(memory);
-    await loadCache(memory, new Cache(account));
+    const engine = new MetadataEngine(selection);
+    await loadCache(selection, new Cache(account));
     const accepted = [
-      memory.artists,
-      memory.albums,
-      memory.tracks,
-      memory.artistAlbums,
-      memory.albumTracks,
+      selection.cache!.artists,
+      selection.cache!.albums,
+      selection.cache!.tracks,
+      selection.cache!.artistAlbums,
+      selection.cache!.albumTracks,
     ];
     engine.setConnection(createConnection(auth));
     await expect(engine.refresh(false)).rejects.toBeInstanceOf(Error);
-    [memory.artists, memory.albums, memory.tracks, memory.artistAlbums, memory.albumTracks].forEach(
-      (map, i) => expect(map).toBe(accepted[i]),
-    );
-    expect(memory.tracks.get("song")).toEqual(snapshot().tracks[0]);
+    [
+      selection.cache!.artists,
+      selection.cache!.albums,
+      selection.cache!.tracks,
+      selection.cache!.artistAlbums,
+      selection.cache!.albumTracks,
+    ].forEach((map, i) => expect(map).toBe(accepted[i]));
+    expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
 
     engine.destroy();
-    const restoredMemory = new Memory();
-    const restored = new MetadataEngine(restoredMemory);
-    await loadCache(restoredMemory, new Cache(account));
-    expect(restoredMemory.tracks.get("song")).toEqual(snapshot().tracks[0]);
+    const restoredSelection = new TestSelection();
+    const restored = new MetadataEngine(restoredSelection);
+    await loadCache(restoredSelection, new Cache(account));
+    expect(restoredSelection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
     restored.destroy();
   });
 
@@ -839,16 +843,16 @@ describe("metadata engine", () => {
     await storage.seed(account, snapshot());
     const fetcher = vi.fn(async () => response({ indexes: { lastModified: 10 } }));
     vi.stubGlobal("fetch", fetcher);
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadCache(engineMemory, new Cache(account));
-    await loadLibrary(engine, createConnection(auth), engineMemory);
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadCache(engineSelection, new Cache(account));
+    await loadLibrary(engine, createConnection(auth), engineSelection);
 
     storage.getDirectory.mockClear();
     fetcher.mockClear();
     engine.setConnection(undefined);
 
-    expect(engineMemory.tracks.get("song")).toBeDefined();
+    expect(engineSelection.cache!.tracks.get("song")).toBeDefined();
     expect(storage.getDirectory).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
     engine.destroy();
@@ -868,20 +872,20 @@ describe("metadata engine", () => {
         return serve(input);
       }),
     );
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadCache(engineMemory, new Cache(account));
-    await loadLibrary(engine, createConnection(auth), engineMemory);
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadCache(engineSelection, new Cache(account));
+    await loadLibrary(engine, createConnection(auth), engineSelection);
 
     expect(storage.writes).toBe(0);
     const refreshing = engine.refresh();
-    expect(engineMemory.tracks.get("song")).toBeDefined();
+    expect(engineSelection.cache!.tracks.get("song")).toBeDefined();
     await refreshing;
     expect(storage.writes).toBe(1);
-    expect(engineMemory.tracks.get("song")).toBeUndefined();
-    expect((engineMemory.albumTracks.get("album") ?? []).map((track) => track.id)).toEqual([
-      "new-song",
-    ]);
+    expect(engineSelection.cache!.tracks.get("song")).toBeUndefined();
+    expect(
+      (engineSelection.cache!.albumTracks.get("album") ?? []).map((track) => track.id),
+    ).toEqual(["new-song"]);
     engine.destroy();
   });
 
@@ -896,17 +900,17 @@ describe("metadata engine", () => {
         }),
     );
     vi.stubGlobal("fetch", fetcher);
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadCache(engineMemory, new Cache(account));
-    loadLibrary(engine, createConnection(auth), engineMemory);
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadCache(engineSelection, new Cache(account));
+    loadLibrary(engine, createConnection(auth), engineSelection);
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
     engine.setConnection(undefined);
     resolve(response({ indexes: { lastModified: 20 } }));
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(engineMemory.tracks.get("song")).toBeDefined();
+    expect(engineSelection.cache!.tracks.get("song")).toBeDefined();
     expect(fetcher).toHaveBeenCalledOnce();
     expect(storage.writes).toBe(0);
     engine.destroy();
@@ -916,19 +920,19 @@ describe("metadata engine", () => {
     const storage = installMetadataStorage();
     const indexedDB = { open: vi.fn() };
     vi.stubGlobal("indexedDB", indexedDB);
-    const engineMemory = new Memory();
-    const engine = new MetadataEngine(engineMemory);
-    await loadCache(engineMemory, new Cache(account));
+    const engineSelection = new TestSelection();
+    const engine = new MetadataEngine(engineSelection);
+    await loadCache(engineSelection, new Cache(account));
     await engine.refresh(false);
 
-    expect([...engineMemory.artists.values()]).toEqual([]);
+    expect([...engineSelection.cache!.artists.values()]).toEqual([]);
     expect(indexedDB.open).not.toHaveBeenCalled();
     engine.destroy();
     await storage.seed(account, { data: [] });
-    const invalidMemory = new Memory();
-    const invalid = new MetadataEngine(invalidMemory);
-    await expect(loadCache(invalidMemory, new Cache(account))).rejects.toBeInstanceOf(Error);
-    expect([...invalidMemory.artists.values()]).toEqual([]);
+    const invalidSelection = new TestSelection();
+    const invalid = new MetadataEngine(invalidSelection);
+    await expect(loadCache(invalidSelection, new Cache(account))).rejects.toBeInstanceOf(Error);
+    expect([...invalidSelection.cache!.artists.values()]).toEqual([]);
     invalid.destroy();
   });
 
@@ -950,23 +954,21 @@ describe("metadata engine", () => {
           }),
       ),
     );
-    const memory = new Memory();
-    memory.account = account;
+    const selection = new TestSelection();
 
-    const engine = new MetadataEngine(memory);
-    loadLibrary(engine, createConnection(auth), memory);
+    const engine = new MetadataEngine(selection);
+    loadLibrary(engine, createConnection(auth), selection);
     await vi.waitFor(() => expect(resolve).toBeDefined());
-    memory.account = other;
     engine.setConnection(undefined);
-    await loadCache(memory, new Cache(other));
-    const accepted = memory.artists;
-    expect(memory.account).toEqual(other);
+    await loadCache(selection, new Cache(other));
+    const accepted = selection.cache!.artists;
+    expect(selection.cache!.account).toEqual(other);
     resolve(response({ indexes: { lastModified: 20 } }));
     await Promise.resolve();
     await Promise.resolve();
-    expect(memory.artists.get("artist")?.name).toBe("Other");
-    expect(memory.artists).toBe(accepted);
-    expect(memory.artists.get("artist")?.name).toBe("Other");
+    expect(selection.cache!.artists.get("artist")?.name).toBe("Other");
+    expect(selection.cache!.artists).toBe(accepted);
+    expect(selection.cache!.artists.get("artist")?.name).toBe("Other");
     expect(storage.files.size).toBe(1);
     expect(storage.writes).toBe(0);
     engine.destroy();

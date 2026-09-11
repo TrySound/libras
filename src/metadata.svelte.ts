@@ -1,6 +1,5 @@
 import type { MetadataConnection } from "./network.svelte";
-import type { Memory } from "./memory.svelte";
-import type { LibrarySnapshot } from "./cache.svelte";
+import type { CacheSelection, LibrarySnapshot } from "./cache.svelte";
 import type { Account } from "./schema";
 
 export type MetadataSnapshot = LibrarySnapshot & { account: Readonly<Account> };
@@ -17,19 +16,15 @@ async function readMetadataSnapshot(
 }
 
 export class MetadataEngine {
-  #memory: Readonly<Pick<Memory, "cache">>;
+  #selection: CacheSelection;
   #connection?: MetadataConnection;
   #generation = 0;
   #updateController?: AbortController;
   #candidateController?: AbortController;
   #destroyed = false;
 
-  constructor(memory: Readonly<Pick<Memory, "cache">>) {
-    this.#memory = memory;
-  }
-
-  get savedAt() {
-    return this.#memory.cache?.savedAt;
+  constructor(selection: CacheSelection) {
+    this.#selection = selection;
   }
 
   #invalidate() {
@@ -58,9 +53,9 @@ export class MetadataEngine {
       this.#destroyed
     )
       return;
-    const cache = this.#memory.cache;
+    const cache = this.#selection.cache;
     if (
-      !cache ||
+      !cache?.account ||
       cache.account.host !== connection.account.host ||
       cache.account.username !== connection.account.username
     )
@@ -73,7 +68,7 @@ export class MetadataEngine {
       !this.#destroyed &&
       generation === this.#generation &&
       !signal.aborted &&
-      cache === this.#memory.cache;
+      cache === this.#selection.cache;
     try {
       const modified =
         (await connection.getModifiedAt(cache.lastModified ?? undefined)) ??
