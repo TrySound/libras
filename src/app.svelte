@@ -31,13 +31,17 @@
   const selection = $state<{ cache: Cache | undefined }>({ cache: undefined });
   const emptyCache = new Cache();
   const cache = $derived(selection.cache ?? emptyCache);
-  const cachedQueue = $derived(cache.queue);
+  const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
+  const hasNextTrack = $derived(
+    cache.queue.index >= 0 && cache.queue.index < cache.queue.tracks.length - 1,
+  );
+  const hasPreviousTrack = $derived(cache.queue.index > 0);
   const metadataEngine = new MetadataEngine(selection);
   const queueEngine = new QueueEngine(selection);
   let navigate = $state<RouterNavigate>(() => {});
   let artists = $derived([...cache.artists.values()]);
   let queue = $derived(
-    cachedQueue.tracks.flatMap((id, index) => {
+    cache.queue.tracks.flatMap((id, index) => {
       const track = cache.tracks.get(id);
       return track && (!offlineMode || trackEngine.getStatus(id) === "downloaded")
         ? [{ track, index }]
@@ -79,7 +83,7 @@
   const offlineMode = $derived(session.offlineMode);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);
-  const playbackDuration = $derived(player?.duration || playback.track?.duration || 0);
+  const playbackDuration = $derived(player?.duration || currentTrack?.duration || 0);
   let playbackLoading = $derived(
     ["loading", "buffering", "seeking"].includes(player?.status ?? "idle"),
   );
@@ -163,19 +167,19 @@
   function playNext(tracks: readonly Track[]) {
     const items = availableTracks(tracks);
     if (items.length === 0) return;
-    if (cachedQueue.tracks.length === 0) {
+    if (cache.queue.tracks.length === 0) {
       replaceQueueAndPlay(items);
       return;
     }
 
-    const insertAt = Math.max(0, cachedQueue.index + 1);
+    const insertAt = Math.max(0, cache.queue.index + 1);
     queueEngine.update({
-      index: cachedQueue.index,
-      position: cachedQueue.position,
+      index: cache.queue.index,
+      position: cache.queue.position,
       tracks: [
-        ...cachedQueue.tracks.slice(0, insertAt),
+        ...cache.queue.tracks.slice(0, insertAt),
         ...items.map((track) => track.id),
-        ...cachedQueue.tracks.slice(insertAt),
+        ...cache.queue.tracks.slice(insertAt),
       ],
     });
   }
@@ -183,15 +187,15 @@
   function playLast(tracks: readonly Track[]) {
     const items = availableTracks(tracks);
     if (items.length === 0) return;
-    if (cachedQueue.tracks.length === 0) {
+    if (cache.queue.tracks.length === 0) {
       replaceQueueAndPlay(items);
       return;
     }
 
     queueEngine.update({
-      index: cachedQueue.index,
-      position: cachedQueue.position,
-      tracks: [...cachedQueue.tracks, ...items.map((track) => track.id)],
+      index: cache.queue.index,
+      position: cache.queue.position,
+      tracks: [...cache.queue.tracks, ...items.map((track) => track.id)],
     });
   }
 
@@ -258,7 +262,7 @@
 
   function playbackPercent() {
     if (!Number.isFinite(playbackDuration) || playbackDuration <= 0) return 0;
-    return Math.min(100, Math.max(0, (cachedQueue.position / playbackDuration) * 100));
+    return Math.min(100, Math.max(0, (cache.queue.position / playbackDuration) * 100));
   }
 
   function formatTime(value: number) {
@@ -298,8 +302,8 @@
 
 <Player
   bind:this={player}
-  hasPrevious={playback.hasPrevious || (!!playback.track && cachedQueue.position > 0)}
-  hasNext={playback.hasNext}
+  hasPrevious={hasPreviousTrack || (cache.queue.index >= 0 && cache.queue.position > 0)}
+  hasNext={hasNextTrack}
   onprevious={() => playback.previous()}
   onnext={() => playback.next()}
   onposition={(position) => playback.setPosition(position)}
@@ -599,8 +603,8 @@
 {/snippet}
 
 {#snippet playerDialog()}
-  {@const artist = playback.track && cache.artists.get(playback.track.artistId)}
-  {@const album = playback.track && cache.albums.get(playback.track.albumId)}
+  {@const artist = currentTrack && cache.artists.get(currentTrack.artistId)}
+  {@const album = currentTrack && cache.albums.get(currentTrack.albumId)}
   {@const albumArtist = album && cache.artists.get(album.artistId)}
   <dialog id="player-dialog" class="player-dialog" closedby="any" use:swipeToDismiss>
     <header class="topbar wings">
@@ -620,8 +624,8 @@
     <section class="view player-view">
       <div class="player-main">
         <div class="artwork">
-          {#if playback.track}
-            {@const cover = coverEngine.ensureTrackCover(playback.track.id, {
+          {#if currentTrack}
+            {@const cover = coverEngine.ensureTrackCover(currentTrack.id, {
               allowNetwork: !offlineMode,
             })}
             {#if cover.source}
@@ -634,9 +638,9 @@
           {/if}
         </div>
 
-        {#if playback.track}
+        {#if currentTrack}
           <p class="type-body">
-            <strong class="type-heading">{playback.track.title}</strong>
+            <strong class="type-heading">{currentTrack.title}</strong>
             <br />
             {#if artist && album && albumArtist}
               <a
@@ -667,15 +671,15 @@
             min="0"
             max={Number.isFinite(playbackDuration) ? playbackDuration : 0}
             step="0.1"
-            value={cachedQueue.position}
+            value={cache.queue.position}
             disabled={!playbackDuration ||
               (offlineMode &&
-                playback.track &&
-                trackEngine.getStatus(playback.track.id) !== "downloaded")}
+                currentTrack &&
+                trackEngine.getStatus(currentTrack.id) !== "downloaded")}
             oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
           />
           <div class="playback-time type-caption">
-            <span>{formatTime(cachedQueue.position)}</span>
+            <span>{formatTime(cache.queue.position)}</span>
             <span>{formatTime(playbackDuration)}</span>
           </div>
         </div>
@@ -686,7 +690,7 @@
             data-size="md"
             data-variant="neutral"
             onclick={() => playback.previous()}
-            disabled={!playback.hasPrevious && cachedQueue.position <= 0}
+            disabled={!hasPreviousTrack && cache.queue.position <= 0}
             title="Previous">{@render icon("previous")}</button
           >
           <button
@@ -710,7 +714,7 @@
             data-size="md"
             data-variant="neutral"
             onclick={() => playback.next()}
-            disabled={!playback.hasNext}
+            disabled={!hasNextTrack}
             title="Next">{@render icon("next")}</button
           >
         </div>
@@ -738,7 +742,7 @@
               {queue.length} track{queue.length === 1 ? "" : "s"}
             </h2>
           </div>
-          {#if cachedQueue.tracks.length > 0}
+          {#if cache.queue.tracks.length > 0}
             <button class="button" data-size="sm" data-variant="neutral" onclick={clearQueue}
               >Clear</button
             >
@@ -755,15 +759,15 @@
                   onclick={() => playback.playIndex(index)}
                 ></button>
                 <span class="track-leading">
-                  {#if index === cachedQueue.index && playbackLoading}
+                  {#if index === cache.queue.index && playbackLoading}
                     <span role="img" aria-label="Loading playback">
                       {@render icon("loading")}
                     </span>
-                  {:else if index === cachedQueue.index && player?.playing}
+                  {:else if index === cache.queue.index && player?.playing}
                     <span role="img" aria-label="Playing">
                       {@render icon("sound-bars")}
                     </span>
-                  {:else if index === cachedQueue.index}
+                  {:else if index === cache.queue.index}
                     <span role="img" aria-label="Current track, not playing">
                       {@render icon("pause")}
                     </span>
@@ -783,7 +787,7 @@
               </div>
             {/each}
           </div>
-        {:else if cachedQueue.tracks.length > 0}
+        {:else if cache.queue.tracks.length > 0}
           <p class="type-body text-muted">No available tracks.</p>
         {:else}
           <p class="type-body text-muted">The queue is empty.</p>
@@ -1254,15 +1258,15 @@
                 title={`${track.title} — hold for actions`}
               ></button>
               <span class="track-leading">
-                {#if playback.track?.id === track.id && playbackLoading}
+                {#if currentTrack?.id === track.id && playbackLoading}
                   <span role="img" aria-label="Loading playback">
                     {@render icon("loading")}
                   </span>
-                {:else if playback.track?.id === track.id && player?.playing}
+                {:else if currentTrack?.id === track.id && player?.playing}
                   <span role="img" aria-label="Playing">
                     {@render icon("sound-bars")}
                   </span>
-                {:else if playback.track?.id === track.id}
+                {:else if currentTrack?.id === track.id}
                   <span role="img" aria-label="Current track, not playing">
                     {@render icon("pause")}
                   </span>
@@ -1428,8 +1432,8 @@
 {/snippet}
 
 {#snippet miniPlayer()}
-  {#if playback.track}
-    {@const cover = coverEngine.ensureTrackCover(playback.track.id, {
+  {#if currentTrack}
+    {@const cover = coverEngine.ensureTrackCover(currentTrack.id, {
       allowNetwork: !offlineMode,
     })}
     <div class="mini-player wings">
@@ -1448,10 +1452,10 @@
       </span>
       <span class="mini-copy stack-xs">
         <strong class="type-title">
-          {playback.track.title}
+          {currentTrack.title}
         </strong>
         <small class="type-small text-muted">
-          {cache.artists.get(playback.track.artistId)?.name}
+          {cache.artists.get(currentTrack.artistId)?.name}
         </small>
       </span>
       <button

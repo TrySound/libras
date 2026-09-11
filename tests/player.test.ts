@@ -97,7 +97,139 @@ function setup() {
   return { player, audio, getSource, release, props, item, session, handlers, detach, navigation };
 }
 
+class TestElement extends EventTarget {
+  constructor(readonly control?: string) {
+    super();
+  }
+  closest(selector: string) {
+    return this.control && selector.split(", ").includes(this.control) ? this : null;
+  }
+}
+
+async function setupShortcuts() {
+  const { player, audio, item, detach } = setup();
+  await player.play(item);
+  player.pause();
+  audio.play.mockClear();
+  const doc = document;
+  vi.stubGlobal("Element", TestElement);
+  const toggle = audio.play;
+  const dispatch = (
+    { handled = false, ...options }: Partial<KeyboardEvent> & { handled?: boolean } = {},
+    target = new TestElement(),
+  ) => {
+    const event = new Event("keydown", { cancelable: true });
+    Object.assign(event, { key: " ", composedPath: () => [target, doc] }, options);
+    if (handled) event.preventDefault();
+    doc.dispatchEvent(event);
+    return event;
+  };
+  return { toggle, dispatch, cleanup: detach };
+}
+
 describe("Player component", () => {
+  describe("keyboard shortcuts", async () => {
+    it("toggles playback with Space and prevents scrolling", async () => {
+      const { toggle, dispatch } = await setupShortcuts();
+      expect(dispatch().defaultPrevented).toBe(true);
+      expect(toggle).toHaveBeenCalledOnce();
+    });
+
+    it("suppresses scrolling without toggling again on key repeat", async () => {
+      const { toggle, dispatch } = await setupShortcuts();
+      dispatch();
+      expect(dispatch({ repeat: true }).defaultPrevented).toBe(true);
+      expect(toggle).toHaveBeenCalledOnce();
+    });
+
+    it.each(["button", "a[href]", '[role="button"]'])(
+      "uses Space for playback on %s but leaves Enter alone",
+      async (control) => {
+        const { toggle, dispatch } = await setupShortcuts();
+        const target = new TestElement(control);
+        expect(dispatch({}, target).defaultPrevented).toBe(true);
+        expect(toggle).toHaveBeenCalledOnce();
+        expect(dispatch({ key: "Enter" }, target).defaultPrevented).toBe(false);
+        expect(toggle).toHaveBeenCalledOnce();
+      },
+    );
+
+    it.each([
+      "input",
+      "textarea",
+      "select",
+      "summary",
+      "audio",
+      "video",
+      '[contenteditable]:not([contenteditable="false"])',
+      '[role="slider"]',
+      '[role="textbox"]',
+    ])("preserves keyboard interaction on %s", async (control) => {
+      const { toggle, dispatch } = await setupShortcuts();
+      expect(dispatch({}, new TestElement(control)).defaultPrevented).toBe(false);
+      expect(toggle).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { key: "Enter" },
+      { ctrlKey: true },
+      { altKey: true },
+      { metaKey: true },
+      { shiftKey: true },
+      { isComposing: true },
+    ])("ignores other keys, modified shortcuts, and composition: %j", async (options) => {
+      const { toggle, dispatch } = await setupShortcuts();
+      expect(dispatch(options).defaultPrevented).toBe(false);
+      expect(toggle).not.toHaveBeenCalled();
+    });
+
+    it("respects already handled events and removes its listener on cleanup", async () => {
+      const { toggle, dispatch, cleanup } = await setupShortcuts();
+      dispatch({ handled: true });
+      expect(toggle).not.toHaveBeenCalled();
+      await cleanup();
+      expect(dispatch().defaultPrevented).toBe(false);
+      expect(toggle).not.toHaveBeenCalled();
+    });
+  });
+
+  it("uses Space to pause/resume only a loaded track", async () => {
+    const { player, audio, item, getSource } = setup();
+    const space = () => {
+      const event = new KeyboardEvent("keydown", { key: " ", cancelable: true });
+      document.dispatchEvent(event);
+      return event;
+    };
+    expect(space().defaultPrevented).toBe(false);
+    expect(audio.play).not.toHaveBeenCalled();
+    await player.play(item);
+    expect(space().defaultPrevented).toBe(true);
+    expect(player.playing).toBe(false);
+    expect(space().defaultPrevented).toBe(true);
+    expect(player.playing).toBe(true);
+    expect(getSource).toHaveBeenCalledOnce();
+    player.unload();
+    expect(space().defaultPrevented).toBe(false);
+  });
+
+  it("pauses a pending load with Space and ignores its late source", async () => {
+    const { player, audio, item, getSource } = setup();
+    let resolve!: (source: PlayerSource) => void;
+    getSource.mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const pending = player.play(item);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: " ", cancelable: true }));
+    const release = vi.fn();
+    resolve({ url: "blob:late", seekMode: "full", release });
+    await pending;
+    expect(audio.play).not.toHaveBeenCalled();
+    expect(player.playing).toBe(false);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it("plays a supplied item and reports progress and completion", async () => {
     const { player, audio, getSource, props, item } = setup();
     await player.play(item);

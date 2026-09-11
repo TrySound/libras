@@ -7,34 +7,6 @@ import type { PlayerTrack } from "./player.svelte";
 import type { TrackEngine } from "./track.svelte";
 
 const emptyQueue = { tracks: [] as readonly string[], index: -1, position: 0 };
-const interactive =
-  'input, textarea, select, summary, audio, video, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]';
-
-function installPlaybackShortcuts(toggle: () => void, root: Document = document) {
-  const keydown = (event: KeyboardEvent) => {
-    if (
-      event.key !== " " ||
-      event.defaultPrevented ||
-      event.isComposing ||
-      event.ctrlKey ||
-      event.altKey ||
-      event.metaKey ||
-      event.shiftKey
-    )
-      return;
-    if (
-      event
-        .composedPath()
-        .some((target) => target instanceof Element && target.closest(interactive))
-    )
-      return;
-    event.preventDefault();
-    if (!event.repeat) toggle();
-  };
-  root.addEventListener("keydown", keydown);
-  return () => root.removeEventListener("keydown", keydown);
-}
-
 interface PlaybackControllerOptions {
   queue: Pick<QueueEngine, "select" | "seek" | "progress" | "playback" | "flush" | "subscribe">;
   selection: CacheSelection;
@@ -82,12 +54,6 @@ export class PlaybackController {
     const current = this.#localQueue.tracks[this.#localQueue.index];
     return current ? this.#selection.cache?.tracks.get(current) : undefined;
   }
-  get hasNext() {
-    return this.#localQueue.index >= 0 && this.#nextIndex(this.#localQueue.index) >= 0;
-  }
-  get hasPrevious() {
-    return this.#previousIndex() >= 0;
-  }
 
   #queueChanged = () => {
     const id = this.track?.id;
@@ -102,7 +68,7 @@ export class PlaybackController {
   ended() {
     if (!this.#player) return;
     this.#queue.playback("inactive");
-    if (this.hasNext) void this.next();
+    void this.next();
   }
 
   attach(player: ReturnType<typeof Player>) {
@@ -123,9 +89,6 @@ export class PlaybackController {
         });
       });
     });
-    const removeShortcuts = installPlaybackShortcuts(() => {
-      void this.toggle();
-    });
     const unsubscribeQueue = this.#queue.subscribe(this.#queueChanged);
     const hidden = () => {
       if (document.visibilityState === "hidden") void this.#queue.flush();
@@ -137,7 +100,6 @@ export class PlaybackController {
       if (disposed) return;
       disposed = true;
       stopEffects();
-      removeShortcuts();
       unsubscribeQueue();
       document.removeEventListener("visibilitychange", hidden);
       this.suspend();
@@ -219,15 +181,15 @@ export class PlaybackController {
     await this.play();
   }
   async next() {
-    if (this.hasNext) await this.playIndex(this.#nextIndex(this.#localQueue.index));
+    if (this.#localQueue.index < 0) return;
+    const index = this.#nextIndex(this.#localQueue.index);
+    if (index >= 0) await this.playIndex(index);
   }
   async previous() {
-    if (
-      this.#canPlay(this.#localQueue.index) &&
-      (this.#localQueue.position > 3 || !this.hasPrevious)
-    )
+    const index = this.#previousIndex();
+    if (this.#canPlay(this.#localQueue.index) && (this.#localQueue.position > 3 || index < 0))
       await this.seek(0);
-    else if (this.hasPrevious) await this.playIndex(this.#previousIndex());
+    else if (index >= 0) await this.playIndex(index);
   }
   async seek(position: number) {
     if (!Number.isFinite(position) || !this.#canPlay(this.#localQueue.index)) return;

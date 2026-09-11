@@ -47,6 +47,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
+  const interactive =
+    'input, textarea, select, summary, audio, video, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]';
+
   let {
     hasPrevious = false,
     hasNext = false,
@@ -261,7 +264,32 @@
       },
     };
     for (const [event, handler] of Object.entries(events)) element.addEventListener(event, handler);
+    const keydown = (event: KeyboardEvent) => {
+      if (
+        !track ||
+        event.key !== " " ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        event.shiftKey
+      )
+        return;
+      if (
+        event
+          .composedPath()
+          .some((target) => target instanceof Element && target.closest(interactive))
+      )
+        return;
+      event.preventDefault();
+      if (event.repeat) return;
+      if (intent) pause();
+      else void resume();
+    };
+    document.addEventListener("keydown", keydown);
     return () => {
+      document.removeEventListener("keydown", keydown);
       for (const [event, handler] of Object.entries(events))
         element.removeEventListener(event, handler);
       unload();

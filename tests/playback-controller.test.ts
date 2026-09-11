@@ -143,10 +143,12 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       target: document.createElement("div"),
       props: {
         get hasNext() {
-          return player.hasNext;
+          const queue = selection.cache?.queue;
+          return !!queue && queue.index >= 0 && queue.index < queue.tracks.length - 1;
         },
         get hasPrevious() {
-          return player.hasPrevious || (!!player.track && queuePosition() > 0);
+          const queue = selection.cache?.queue;
+          return !!queue && (queue.index > 0 || (queue.index >= 0 && queue.position > 0));
         },
         onnext: () => {
           void player.next();
@@ -219,32 +221,6 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-class TestElement extends EventTarget {
-  constructor(readonly control?: string) {
-    super();
-  }
-  closest(selector: string) {
-    return this.control && selector.split(", ").includes(this.control) ? this : null;
-  }
-}
-
-function setupShortcuts() {
-  const { player, doc, detach } = setup();
-  vi.stubGlobal("Element", TestElement);
-  const toggle = vi.spyOn(player, "toggle").mockResolvedValue(undefined);
-  const dispatch = (
-    { handled = false, ...options }: Partial<KeyboardEvent> & { handled?: boolean } = {},
-    target = new TestElement(),
-  ) => {
-    const event = new Event("keydown", { cancelable: true });
-    Object.assign(event, { key: " ", composedPath: () => [target, doc] }, options);
-    if (handled) event.preventDefault();
-    doc.dispatchEvent(event);
-    return event;
-  };
-  return { toggle, dispatch, cleanup: detach };
-}
-
 describe("playback engine", () => {
   it("reads a new cache atomically and ignores a suspended account's late source", async () => {
     const { selection, queue, player, getPlayer, queuePosition, tracks, audio } = setup();
@@ -273,7 +249,6 @@ describe("playback engine", () => {
     queue.activate();
     expect(player.track).toBeUndefined();
     expect(queuePosition()).toBe(0);
-    expect(player.hasNext).toBe(false);
   });
   it("keeps cached playback running when network sources are suspended", async () => {
     const { player, getPlayer, audio, tracks } = setup();
@@ -412,7 +387,6 @@ describe("playback engine", () => {
     queue.update({ tracks: ["missing", "a", "missing", "a"], index: 1, position: 0 });
     await player.next();
     expect(selection.cache!.queue.index).toBe(3);
-    expect(player.hasNext).toBe(false);
     await player.previous();
     expect(selection.cache!.queue.index).toBe(1);
     restoreTrack("missing");
@@ -477,7 +451,6 @@ describe("playback engine", () => {
     await player.next();
     expect(selection.cache!.queue.index).toBe(2);
     expect(player.track?.id).toBe("a");
-    expect(player.hasNext).toBe(false);
   });
 
   it.each([false, true])(
@@ -549,9 +522,19 @@ describe("playback engine", () => {
     expect(player.track?.id).toBe("a");
     expect(queuePosition()).toBe(20);
     expect(getPlayer().playing).toBe(true);
-    expect(player.hasNext).toBe(false);
     expect(audio.src).toBe("blob:a");
     expect(audio.play).toHaveBeenCalledOnce();
+  });
+
+  it("keeps navigation enabled for queued IDs missing from metadata", async () => {
+    const { player, queue, selection, handlers, audio } = setup();
+    queue.update({ tracks: ["missing", "a", "missing"], index: 1, position: 0 });
+    flushSync();
+    expect(handlers.get("previoustrack")).toEqual(expect.any(Function));
+    expect(handlers.get("nexttrack")).toEqual(expect.any(Function));
+    await player.next();
+    expect(selection.cache!.queue.index).toBe(1);
+    expect(audio.play).not.toHaveBeenCalled();
   });
 
   it("computes audio request and catalog fields from metadata at playback time", async () => {
@@ -580,76 +563,10 @@ describe("playback engine", () => {
     queue.update({ tracks: ["a", "b", "c"], index: 0, position: 0 });
     await player.play();
     removeTrack("b");
-    expect(player.hasNext).toBe(true);
     await player.next();
     expect(selection.cache!.queue.tracks).toEqual(["a", "b", "c"]);
     expect(player.track?.id).toBe("c");
     expect(selection.cache!.queue.index).toBe(2);
-  });
-
-  describe("keyboard shortcuts", () => {
-    it("toggles playback with Space and prevents scrolling", () => {
-      const { toggle, dispatch } = setupShortcuts();
-      expect(dispatch().defaultPrevented).toBe(true);
-      expect(toggle).toHaveBeenCalledOnce();
-    });
-
-    it("suppresses scrolling without toggling again on key repeat", () => {
-      const { toggle, dispatch } = setupShortcuts();
-      dispatch();
-      expect(dispatch({ repeat: true }).defaultPrevented).toBe(true);
-      expect(toggle).toHaveBeenCalledOnce();
-    });
-
-    it.each(["button", "a[href]", '[role="button"]'])(
-      "uses Space for playback on %s but leaves Enter alone",
-      (control) => {
-        const { toggle, dispatch } = setupShortcuts();
-        const target = new TestElement(control);
-        expect(dispatch({}, target).defaultPrevented).toBe(true);
-        expect(toggle).toHaveBeenCalledOnce();
-        expect(dispatch({ key: "Enter" }, target).defaultPrevented).toBe(false);
-        expect(toggle).toHaveBeenCalledOnce();
-      },
-    );
-
-    it.each([
-      "input",
-      "textarea",
-      "select",
-      "summary",
-      "audio",
-      "video",
-      '[contenteditable]:not([contenteditable="false"])',
-      '[role="slider"]',
-      '[role="textbox"]',
-    ])("preserves keyboard interaction on %s", (control) => {
-      const { toggle, dispatch } = setupShortcuts();
-      expect(dispatch({}, new TestElement(control)).defaultPrevented).toBe(false);
-      expect(toggle).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      { key: "Enter" },
-      { ctrlKey: true },
-      { altKey: true },
-      { metaKey: true },
-      { shiftKey: true },
-      { isComposing: true },
-    ])("ignores other keys, modified shortcuts, and composition: %j", (options) => {
-      const { toggle, dispatch } = setupShortcuts();
-      expect(dispatch(options).defaultPrevented).toBe(false);
-      expect(toggle).not.toHaveBeenCalled();
-    });
-
-    it("respects already handled events and removes its listener on cleanup", () => {
-      const { toggle, dispatch, cleanup } = setupShortcuts();
-      dispatch({ handled: true });
-      expect(toggle).not.toHaveBeenCalled();
-      cleanup();
-      expect(dispatch().defaultPrevented).toBe(false);
-      expect(toggle).not.toHaveBeenCalled();
-    });
   });
 
   it("creates audio only when mounted and configures metadata preloading", () => {
@@ -661,24 +578,12 @@ describe("playback engine", () => {
     expect(audio.play).not.toHaveBeenCalled();
   });
 
-  it("owns the Space shortcut and removes it along with audio listeners", async () => {
-    const { player, audio, doc, selection } = setup();
-    const toggle = vi.spyOn(player, "toggle");
-    const space = () => {
-      const event = new Event("keydown", { cancelable: true });
-      Object.assign(event, { key: " ", composedPath: () => [] });
-      doc.dispatchEvent(event);
-      return event;
-    };
-    expect(space().defaultPrevented).toBe(true);
-    expect(toggle).toHaveBeenCalledOnce();
-    await toggle.mock.results[0].value;
-    expect(audio.paused).toBe(false);
+  it("unloads playback and ignores stale audio progress when detached", async () => {
+    const { player, audio, selection } = setup();
+    await player.play();
     player.destroy();
     expect(audio.paused).toBe(true);
     expect(audio.src).toBe("");
-    expect(space().defaultPrevented).toBe(false);
-    expect(toggle).toHaveBeenCalledOnce();
     audio.currentTime = 40;
     audio.src = "blob:stale";
     audio.dispatchEvent(new Event("timeupdate"));
@@ -707,15 +612,13 @@ describe("playback engine", () => {
       destroy();
     }
   });
-  it("restores selection without autoplay and disables unavailable next/previous actions", async () => {
+  it("restores selection without autoplay and disables navigation at queue boundaries", async () => {
     const { player, audio, handlers } = setup();
     expect(audio.play).not.toHaveBeenCalled();
     expect(player.track?.id).toBe("a");
-    expect(player.hasPrevious).toBe(false);
     expect(handlers.get("previoustrack")).toBeNull();
     await player.next();
     expect(player.track?.id).toBe("b");
-    expect(player.hasNext).toBe(false);
     expect(handlers.get("nexttrack")).toBeNull();
     const count = audio.play.mock.calls.length;
     await player.next();
