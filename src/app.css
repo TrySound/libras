@@ -2,6 +2,25 @@
   display: none !important;
 }
 
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-group(mini-player) {
+  z-index: 20;
+  animation: none;
+}
+
+::view-transition-old(mini-player) {
+  display: none;
+}
+
+::view-transition-new(mini-player) {
+  animation: none;
+}
+
 [data-viewport-hidden] {
   content-visibility: hidden;
 }
@@ -907,6 +926,7 @@ a {
 }
 
 .cover,
+.tile-artwork,
 .tile-image {
   position: relative;
   display: grid;
@@ -932,6 +952,11 @@ a {
   width: 100%;
   aspect-ratio: 1;
   font-size: 2.2rem;
+}
+
+.tile-artwork {
+  position: absolute;
+  inset: 0;
 }
 
 .tile-image::after {
@@ -1100,6 +1125,7 @@ a {
 }
 
 .mini-player {
+  view-transition-name: mini-player;
   position: fixed;
   z-index: 20;
   right: var(--space-sm);
