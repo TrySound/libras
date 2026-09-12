@@ -13,7 +13,6 @@ Libras is a browser-based music player that connects to your own Navidrome serve
 - Download music for offline playback and manage it in Settings → Downloads.
 - Restore your playback queue and position between sessions.
 - Install as a standalone web app.
-- Choose when to apply app updates, without automatic playback interruptions.
 
 ## Get started
 
@@ -35,13 +34,16 @@ Installation options vary by browser and device. Offline storage and background 
 
 ## Listen offline
 
-Open Libras online first and download the music you want to keep. Use **Offline Library** mode to listen to downloaded tracks without a connection.
+Download music while online, then switch to **Offline Library** to listen without a connection.
 
-Library metadata and the server queue refresh at online startup or when you choose **Refresh library** in Settings. Cached data stays available during refresh; refreshing the server queue does not interrupt active playback. **Disconnect** removes saved credentials but keeps your library, artwork, downloaded audio, and queue—including after restarting the app. Offline mode stays on until you successfully connect again. To change servers, disconnect first; each server/account keeps its own offline library.
+- **Manage downloads:** Settings → Downloads.
+- **Refresh library:** Automatic when opening online, or via Settings → Refresh library.
+- **Disconnect:** Removes credentials but keeps saved music and your queue. Reconnect to leave offline mode; disconnect first to switch servers.
+- **Storage:** Each server/account has its own offline library, saved only in this browser on this device. **Clearing site data deletes it.**
 
-Downloads and saved app data live in your browser on that device. Clearing site data removes them, and they don't automatically transfer to another browser or app address.
+## App updates
 
-When an update is available, a dot appears on the settings button. Open **Settings → Update now** when you're ready. The update stays available without a popup; applying it reloads the app and interrupts playback.
+A dot on Settings means an update is ready. Choose **Settings → Update now** to install it—this reloads the app and interrupts playback.
 
 ## Development
 
