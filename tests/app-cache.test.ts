@@ -87,6 +87,25 @@ it("uses the empty fallback before account selection and when selection is clear
   flushSync();
   expect(mocks.options!.selection.cache).toBeUndefined();
   expect(target.textContent).toContain("Connect your library");
+  const brand = target.querySelector(".topbar-brand svg");
+  expect(brand?.getAttribute("role")).toBe("img");
+  expect(brand?.getAttribute("aria-label")).toBe("Libras");
+  expect(brand?.getAttribute("viewBox")).toBe("0 0 256 256");
+  expect(brand?.getAttribute("fill")).toBe("currentColor");
+  expect(brand?.querySelectorAll("path")).toHaveLength(1);
+  expect(target.querySelector(".topbar-brand")?.textContent?.trim()).toBe("");
+  for (const link of target.querySelectorAll(".topbar-brand a")) {
+    expect(link.getAttribute("href")).toBe("#/library");
+    expect(link.getAttribute("aria-label")).toBe("Libras home");
+    expect(link.getAttribute("data-variant")).toBe("ghost");
+    expect(link.classList.contains("icon-button")).toBe(true);
+  }
+  const dialog = target.querySelector<HTMLDialogElement>("#player-dialog")!;
+  const close = vi.spyOn(dialog, "close");
+  const home = dialog.querySelector<HTMLAnchorElement>(".topbar-brand a")!;
+  home.addEventListener("click", (event) => event.preventDefault(), { once: true });
+  home.click();
+  expect(close).toHaveBeenCalledOnce();
   expect(mocks.navigate).toHaveBeenCalledWith("/settings", "replace");
   expect(disk.getDirectory).not.toHaveBeenCalled();
 
@@ -103,6 +122,25 @@ it("uses the empty fallback before account selection and when selection is clear
   flushSync();
   expect(target.querySelector(".artist-name")).toBeNull();
   expect(target.textContent).toContain("Connect your library");
+});
+
+it.each([
+  "/library",
+  "/settings",
+  "/downloads",
+  "/library/artist/:artistId",
+  "/library/artist/:artistId/album/:albumId",
+])("uses ghost controls in the topbars on %s", (route) => {
+  installDisk();
+  mocks.route = route;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const controls = target.querySelectorAll(".topbar a, .topbar button");
+  expect(controls.length).toBeGreaterThan(0);
+  for (const control of controls) expect(control.getAttribute("data-variant")).toBe("ghost");
 });
 
 it("renders the selected cache, reacts to replacements, and stops observing a previous account", async () => {

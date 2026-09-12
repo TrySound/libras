@@ -46,6 +46,8 @@ Open `/libras/` on the preview server. Normal local builds default to `/`. The N
 
 The production app is installable as a standalone PWA. It includes regular and maskable icons and an offline app shell. Service workers are disabled in development to avoid interfering with hot reload.
 
+The favicon set follows [Evil Martians' minimal setup](https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs): `public/icon.svg` is the theme-aware Phosphor scales source, `public/favicon.ico` is the 32×32 fallback, and `public/apple-touch-icon.png` is the opaque 180×180 Apple icon. The manifest uses the 192×192, 512×512, and maskable 512×512 PNGs under `public/icons/`. PNGs use white scales on the app's crimson background; the Apple icon has a 140×140 SVG viewport centered on its canvas, and the maskable icon uses a 320×320 viewport to keep the complete symbol inside the central 409×409 safe circle. These raster assets are generated from the SVG with resvg (and png-to-ico for the ICO), not at runtime. All six icons are precached. Keep their geometry in sync with the inline header logo; attribution lives in `public/icons/phosphor-license.txt`.
+
 Build and serve it on the machine containing the project:
 
 ```sh

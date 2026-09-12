@@ -34,7 +34,14 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["index.html", "assets/*.{js,css}", "icons/*.png"],
+        globPatterns: [
+          "index.html",
+          "assets/*.{js,css}",
+          "favicon.ico",
+          "icon.svg",
+          "apple-touch-icon.png",
+          "icons/*.png",
+        ],
         navigateFallback: `${base}index.html`,
         navigateFallbackAllowlist: [new RegExp(`^${escapedBase}(?:index\\.html)?$`)],
         runtimeCaching: [],
