@@ -14,10 +14,13 @@
   } from "./schema";
   import { Cache, type Immutable } from "./cache.svelte";
   import { QueueEngine } from "./queue.svelte";
-  import { type RouteParams } from "./router-engine";
   import { Session } from "./session.svelte";
   import { Network } from "./network.svelte";
-  import Router, { type RouteControls, type RouterNavigate } from "./router.svelte";
+  import Router, {
+    type RouteControls,
+    type RouteParams,
+    type RouterNavigate,
+  } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { swipeToDismiss } from "./swipe-to-dismiss";
 

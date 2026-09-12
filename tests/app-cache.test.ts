@@ -1,15 +1,14 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
+import { installNavigation } from "./router-test-helpers";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { TrackEngine } from "../src/track.svelte";
 
 const mocks = vi.hoisted(() => ({
   cache: undefined as import("../src/cache.svelte").Cache | undefined,
-  route: "/library",
-  params: {} as Record<string, string>,
   navigate: vi.fn(),
   options: undefined as
     | ConstructorParameters<typeof import("../src/session.svelte").Session>[0]
@@ -33,27 +32,12 @@ vi.mock("../src/session.svelte", () => ({
     destroy() {}
   },
 }));
-vi.mock("../src/router-engine", () => ({
-  RouterEngine: class {
-    match;
-    constructor(routes: { pattern: string }[]) {
-      this.match = {
-        route: routes.find((route) => route.pattern === mocks.route),
-        params: mocks.params,
-      };
-    }
-    start() {}
-    destroy() {}
-    back() {}
-    href(path: string) {
-      return `#${path}`;
-    }
-    navigate(path: string, history?: string) {
-      mocks.navigate(path, history);
-    }
-  },
-}));
+
 vi.mock("virtual:pwa-register", () => ({ registerSW: () => async () => {} }));
+
+beforeEach(() => {
+  installNavigation("/library", mocks.navigate);
+});
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -61,8 +45,6 @@ afterEach(async () => {
   document.body.innerHTML = "";
   mocks.options = undefined;
   mocks.cache = undefined;
-  mocks.route = "/library";
-  mocks.params = {};
   mocks.navigate.mockClear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -182,7 +164,7 @@ it.each([
   "/library/artist/:artistId/album/:albumId",
 ])("uses ghost controls in the topbars on %s", (route) => {
   installDisk();
-  mocks.route = route;
+  window.history.replaceState(null, "", `#${route}`);
   const target = document.createElement("main");
   document.body.append(target);
   const component = mount(App, { target });
@@ -227,7 +209,7 @@ it("renders the selected cache, reacts to replacements, and stops observing a pr
 
 it("renders download records and jobs without duplicates and switches account projections", async () => {
   installDisk();
-  mocks.route = "/downloads";
+  window.history.replaceState(null, "", "#/downloads");
   const first = new Cache({ host: "https://music.example", username: "first" });
   const track = { id: "track", title: "First download", artist: "Artist", album: "Album" };
   await first.saveDownload(
@@ -318,8 +300,11 @@ it.each([
     .spyOn(TrackEngine.prototype, "cache")
     .mockResolvedValue(new File([], "audio"));
   mocks.cache = cache;
-  mocks.route = route;
-  mocks.params = { artistId: "artist", albumId: "album" };
+  window.history.replaceState(
+    null,
+    "",
+    `#${route.replace(":artistId", "artist").replace(":albumId", "album")}`,
+  );
   const target = document.createElement("main");
   document.body.append(target);
   const component = mount(App, { target });

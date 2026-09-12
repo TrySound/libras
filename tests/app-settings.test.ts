@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
+import { installNavigation } from "./router-test-helpers";
 import { createSession, credentials, deferred } from "./session-test-helpers";
 
 const mocks = vi.hoisted(() => ({
@@ -18,24 +19,12 @@ vi.mock("../src/session.svelte", async (importOriginal) => {
   };
 });
 
-// Keep these tests on the settings route; router behavior is tested separately.
-vi.mock("../src/router-engine", () => ({
-  RouterEngine: class {
-    match;
-    constructor(routes: { pattern: string }[]) {
-      this.match = { route: routes.find((route) => route.pattern === "/settings"), params: {} };
-    }
-    start() {}
-    destroy() {}
-    back() {}
-    href(path: string) {
-      return `#${path}`;
-    }
-    navigate = mocks.navigate;
-  },
-}));
-
 vi.mock("virtual:pwa-register", () => ({ registerSW: () => async () => {} }));
+
+// Start these tests on the settings route; router behavior is tested separately.
+beforeEach(() => {
+  installNavigation("/settings", mocks.navigate);
+});
 
 const cleanups: (() => Promise<void>)[] = [];
 
@@ -45,6 +34,7 @@ afterEach(async () => {
   mocks.session = undefined;
   mocks.navigate.mockClear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 async function setup(saved = false) {
@@ -129,6 +119,6 @@ describe("app settings", () => {
     expect(offline().checked).toBe(false);
     expect(offline().disabled).toBe(false);
     expect(navigate).toHaveBeenCalledOnce();
-    expect(navigate).toHaveBeenCalledWith("/library", undefined);
+    expect(navigate).toHaveBeenCalledWith("/library", "push");
   });
 });
