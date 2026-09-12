@@ -5,11 +5,14 @@ import type { RouteControls } from "../src/router.svelte";
 import RouterTestApp from "./router-test-app.svelte";
 import { installNavigation } from "./router-test-helpers";
 
+const originalStartViewTransition = document.startViewTransition;
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   document.body.innerHTML = "";
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  document.startViewTransition = originalStartViewTransition;
 });
 
 function setup(path = "/library") {
@@ -64,6 +67,39 @@ describe("router", () => {
     const { target } = setup(path);
     expect(target.querySelector("p")!.textContent).toBe(expected);
   });
+
+  it.each([false, true])(
+    "uses view transitions unless reduced motion is enabled: %s",
+    async (reducedMotion) => {
+      const { navigation, target } = setup();
+      vi.spyOn(window, "matchMedia").mockReturnValue({ matches: reducedMotion } as MediaQueryList);
+      const scroll = vi.fn(() => {
+        expect(target.querySelector("p")!.textContent).toBe("player:{}");
+      });
+      const start = vi.fn((update: () => Promise<void>) => {
+        expect(target.querySelector("p")!.textContent).toBe("library:{}");
+        const done = Promise.resolve().then(update);
+        return { updateCallbackDone: done, ready: done, finished: done, skipTransition: vi.fn() };
+      });
+      document.startViewTransition = start as unknown as typeof document.startViewTransition;
+      let finished: Promise<void> | undefined;
+      navigation.dispatchEvent(
+        Object.assign(new Event("navigate"), {
+          navigationType: "push",
+          canIntercept: true,
+          destination: { url: new URL("#/player", window.location.href).href },
+          scroll,
+          intercept({ handler }: { handler: () => Promise<void> }) {
+            finished = handler();
+          },
+        }),
+      );
+      await finished;
+      expect(target.querySelector("p")!.textContent).toBe("player:{}");
+      expect(start).toHaveBeenCalledTimes(reducedMotion ? 0 : 1);
+      expect(scroll).toHaveBeenCalledTimes(reducedMotion ? 0 : 1);
+    },
+  );
 
   it("builds hash links and navigates through the browser", () => {
     const { controls, navigation } = setup();

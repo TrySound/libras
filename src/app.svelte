@@ -838,11 +838,16 @@
               title={`${artist.name} — hold for actions`}
             >
               <span class="tile-image">
-                {#if cover.source}
-                  <img src={cover.source} alt="" />
-                {:else}
-                  <span>{@render icon("music")}</span>
-                {/if}
+                <span
+                  class="tile-artwork"
+                  style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
+                >
+                  {#if cover.source}
+                    <img src={cover.source} alt="" />
+                  {:else}
+                    <span>{@render icon("music")}</span>
+                  {/if}
+                </span>
                 <strong class="tile-name type-small">{artist.name}</strong>
               </span>
             </a>
@@ -935,7 +940,12 @@
   <section class="view collection-view">
     {#if libraryAvailable && artist}
       {@const artwork = coverEngine.ensureArtistCover(artist.id)}
-      <div class="artwork" aria-hidden="true" {@attach immediateCover(artwork)}>
+      <div
+        class="artwork"
+        style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
+        aria-hidden="true"
+        {@attach immediateCover(artwork)}
+      >
         {#if artwork.source}
           <img src={artwork.source} alt="" />
         {:else}
@@ -998,7 +1008,10 @@
                 title={`${album.title} — hold for actions`}
               ></a>
               <span class="track-leading">
-                <span class="cover album-cover">
+                <span
+                  class="cover album-cover"
+                  style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
+                >
                   {#if cover.source}
                     <img src={cover.source} alt="" />
                   {:else}
@@ -1166,7 +1179,12 @@
   <section class="view collection-view">
     {#if libraryAvailable && artist && album}
       {@const artwork = coverEngine.ensureAlbumCover(album.id)}
-      <div class="artwork" aria-hidden="true" {@attach immediateCover(artwork)}>
+      <div
+        class="artwork"
+        style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
+        aria-hidden="true"
+        {@attach immediateCover(artwork)}
+      >
         {#if artwork.source}
           <img src={artwork.source} alt="" />
         {:else}

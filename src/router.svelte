@@ -81,9 +81,29 @@
 
       event.intercept({
         handler: async () => {
-          match = resolve(destination);
-          // Let the browser restore scroll after Svelte renders the destination.
-          await tick();
+          const update = async () => {
+            if (event.signal?.aborted) return;
+            match = resolve(destination);
+            await tick();
+          };
+          if (
+            !document.startViewTransition ||
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ) {
+            await update();
+            return;
+          }
+
+          const transition = document.startViewTransition(async () => {
+            await update();
+            if (event.signal?.aborted) return;
+            // Capture destination artwork at its final scroll position, including Back.
+            event.scroll();
+          });
+          // Skipped/overlapping transitions must not turn into unhandled rejections.
+          void transition.ready.catch(() => {});
+          void transition.finished.catch(() => {});
+          await transition.updateCallbackDone;
         },
       });
     };
