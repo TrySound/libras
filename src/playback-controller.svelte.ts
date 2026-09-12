@@ -8,7 +8,10 @@ import type { TrackEngine } from "./track.svelte";
 
 const emptyQueue = { tracks: [] as readonly string[], index: -1, position: 0 };
 interface PlaybackControllerOptions {
-  queue: Pick<QueueEngine, "select" | "seek" | "progress" | "playback" | "flush" | "subscribe">;
+  queue: Pick<
+    QueueEngine,
+    "replace" | "enqueue" | "select" | "seek" | "progress" | "playback" | "flush" | "subscribe"
+  >;
   selection: CacheSelection;
   tracks: Pick<TrackEngine, "getSource">;
   covers: Pick<CoverEngine, "ensureTrackCover">;
@@ -165,6 +168,23 @@ export class PlaybackController {
     if (player && (player.playing || ["loading", "buffering", "seeking"].includes(player.status)))
       this.pause();
     else await this.play();
+  }
+  async replaceQueueAndPlay(tracks: readonly string[], startIndex = 0) {
+    if (!tracks.length) {
+      this.clearQueue();
+      return;
+    }
+    this.#queue.replace(tracks);
+    await this.playIndex(Math.max(0, Math.min(startIndex, tracks.length - 1)));
+  }
+  async enqueue(tracks: readonly string[], placement: "next" | "last") {
+    if (!tracks.length) return;
+    if (!this.#localQueue.tracks.length) await this.replaceQueueAndPlay(tracks);
+    else this.#queue.enqueue(tracks, placement);
+  }
+  clearQueue() {
+    this.suspend();
+    this.#queue.replace([]);
   }
   async playIndex(index: number) {
     if (!Number.isInteger(index) || index < 0 || index >= this.#localQueue.tracks.length) return;

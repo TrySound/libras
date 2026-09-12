@@ -418,6 +418,76 @@ describe("playback engine", () => {
     expect(selection.cache!.queue.tracks).toEqual(["a", "b"]);
   });
 
+  it.each(["next", "last"] as const)(
+    "enqueues %s without interrupting playback",
+    async (placement) => {
+      const { player, queue, selection, audio, getPlayer } = setup();
+      await player.play();
+      queue.setPosition(12);
+      await player.enqueue(["c", "a"], placement);
+      expect(selection.cache!.queue).toEqual({
+        tracks: placement === "next" ? ["a", "c", "a", "b"] : ["a", "b", "c", "a"],
+        index: 0,
+        position: 12,
+      });
+      expect(getPlayer().playing).toBe(true);
+      expect(audio.play).toHaveBeenCalledOnce();
+      player.pause();
+      await player.enqueue(["b"], placement);
+      expect(getPlayer().playing).toBe(false);
+      expect(audio.play).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["next", "last"] as const)(
+    "starts playback when enqueuing %s into an empty queue",
+    async (placement) => {
+      const { player, queue, selection, audio } = setup();
+      queue.replace([]);
+      await player.enqueue([], placement);
+      expect(audio.play).not.toHaveBeenCalled();
+      await player.enqueue(["b", "a"], placement);
+      expect(selection.cache!.queue).toEqual({ tracks: ["b", "a"], index: 0, position: 0 });
+      expect(audio.src).toBe("blob:b");
+      expect(audio.play).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("does not autoplay when inserting into an unselected nonempty queue", async () => {
+    const { player, queue, selection, audio } = setup();
+    queue.replace(["missing"]);
+    await player.enqueue(["a"], "next");
+    expect(selection.cache!.queue).toEqual({ tracks: ["a", "missing"], index: -1, position: 0 });
+    expect(audio.play).not.toHaveBeenCalled();
+  });
+
+  it.each([-10, 0, 2, 10])(
+    "replaces and plays a clamped start index %s, restarting duplicate tracks",
+    async (startIndex) => {
+      const { player, queue, selection, audio } = setup();
+      await player.play();
+      queue.setPosition(12);
+      await player.replaceQueueAndPlay(["a", "b", "a"], startIndex);
+      expect(selection.cache!.queue).toEqual({
+        tracks: ["a", "b", "a"],
+        index: Math.max(0, Math.min(startIndex, 2)),
+        position: 0,
+      });
+      expect(audio.src).toBe("blob:a");
+      expect(audio.play).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each(["clear", "replace"])("unloads playback when clearing via %s", async (command) => {
+    const { player, getPlayer, selection, audio } = setup();
+    await player.play();
+    if (command === "clear") player.clearQueue();
+    else await player.replaceQueueAndPlay([]);
+    expect(selection.cache!.queue).toEqual({ tracks: [], index: -1, position: 0 });
+    expect(getPlayer().status).toBe("idle");
+    expect(audio.src).toBe("");
+  });
+
   it("starts at raw index zero and leaves out-of-range navigation unchanged", async () => {
     const { player, queue, tracks, selection } = setup();
     queue.update({ tracks: ["missing", "a"], position: 0 });

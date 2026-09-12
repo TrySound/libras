@@ -4,10 +4,12 @@ import { afterEach, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
+import { TrackEngine } from "../src/track.svelte";
 
 const mocks = vi.hoisted(() => ({
   cache: undefined as import("../src/cache.svelte").Cache | undefined,
   route: "/library",
+  params: {} as Record<string, string>,
   navigate: vi.fn(),
   options: undefined as
     | ConstructorParameters<typeof import("../src/session.svelte").Session>[0]
@@ -35,7 +37,10 @@ vi.mock("../src/router-engine", () => ({
   RouterEngine: class {
     match;
     constructor(routes: { pattern: string }[]) {
-      this.match = { route: routes.find((route) => route.pattern === mocks.route), params: {} };
+      this.match = {
+        route: routes.find((route) => route.pattern === mocks.route),
+        params: mocks.params,
+      };
     }
     start() {}
     destroy() {}
@@ -57,6 +62,7 @@ afterEach(async () => {
   mocks.options = undefined;
   mocks.cache = undefined;
   mocks.route = "/library";
+  mocks.params = {};
   mocks.navigate.mockClear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -196,6 +202,55 @@ it("renders download records and jobs without duplicates and switches account pr
   await loading;
   flushSync();
   expect(target.textContent).not.toContain("Reading downloaded files");
+});
+
+it.each([
+  { route: "/library", ids: ["one", "two", "three"] },
+  { route: "/library/artist/:artistId/album/:albumId", ids: ["one", "two"] },
+])("downloads the selected collection on $route", async ({ route, ids }) => {
+  installDisk();
+  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  await cache.replaceLibrary({
+    ...library("Artist", 1),
+    albums: [
+      { id: "album", artistId: "artist", title: "Album", genres: [] },
+      { id: "other", artistId: "artist", title: "Other", genres: [] },
+    ],
+    tracks: ["one", "two", "three"].map((id, index) => ({
+      id,
+      title: id,
+      artistId: "artist",
+      albumId: index < 2 ? "album" : "other",
+      number: index + 1,
+      mimeType: "audio/mpeg",
+      genres: [],
+    })),
+  });
+  const download = vi
+    .spyOn(TrackEngine.prototype, "cache")
+    .mockResolvedValue(new File([], "audio"));
+  mocks.cache = cache;
+  mocks.route = route;
+  mocks.params = { artistId: "artist", albumId: "album" };
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const button = [...target.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => button.textContent?.trim() === "Download",
+  );
+  expect(button).toBeDefined();
+  button!.click();
+  await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(ids.length));
+  expect(download.mock.calls.map(([track]) => track.id)).toEqual(ids);
+  expect(download).toHaveBeenCalledWith({
+    id: "one",
+    title: "one",
+    artist: "Artist",
+    album: "Album",
+    contentType: "audio/mpeg",
+  });
 });
 
 it("renders cached artwork and drops the previous account's object URLs", async () => {

@@ -13,10 +13,6 @@
     Track as TrackRecord,
   } from "./schema";
   import { Cache, type Immutable } from "./cache.svelte";
-
-  type Album = Immutable<AlbumRecord>;
-  type Artist = Immutable<ArtistRecord>;
-  type Track = Immutable<TrackRecord>;
   import { QueueEngine } from "./queue.svelte";
   import { type RouteParams } from "./router-engine";
   import { Session } from "./session.svelte";
@@ -24,6 +20,10 @@
   import Router, { type RouteControls, type RouterNavigate } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { swipeToDismiss } from "./swipe-to-dismiss";
+
+  type Album = Immutable<AlbumRecord>;
+  type Artist = Immutable<ArtistRecord>;
+  type Track = Immutable<TrackRecord>;
 
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
@@ -95,7 +95,6 @@
         ? String(player.error)
         : "",
   );
-  let downloadingCollection = $state("");
   const offlineScanning = $derived(offlineMode && trackEngine.downloadsLoading);
   let loading = $derived(!session.localReady);
 
@@ -156,53 +155,33 @@
       : items;
   }
 
+  function availableTrackIds(tracks: readonly Track[]) {
+    return availableTracks(tracks).map((track) => track.id);
+  }
+
   function playAlbum(album: Album) {
-    replaceQueueAndPlay(availableTracks(cache.albumTracks.get(album.id) ?? []));
+    void playback.replaceQueueAndPlay(availableTrackIds(cache.albumTracks.get(album.id) ?? []));
   }
 
   function playArtist(artist: Artist) {
-    replaceQueueAndPlay(availableTracks(artistTracks(artist)));
+    void playback.replaceQueueAndPlay(availableTrackIds(artistTracks(artist)));
   }
 
   function playNext(tracks: readonly Track[]) {
-    const items = availableTracks(tracks);
-    if (items.length === 0) return;
-    if (cache.queue.tracks.length === 0) {
-      replaceQueueAndPlay(items);
-      return;
-    }
-
-    const insertAt = Math.max(0, cache.queue.index + 1);
-    queueEngine.update({
-      index: cache.queue.index,
-      position: cache.queue.position,
-      tracks: [
-        ...cache.queue.tracks.slice(0, insertAt),
-        ...items.map((track) => track.id),
-        ...cache.queue.tracks.slice(insertAt),
-      ],
-    });
+    void playback.enqueue(availableTrackIds(tracks), "next");
   }
 
   function playLast(tracks: readonly Track[]) {
-    const items = availableTracks(tracks);
-    if (items.length === 0) return;
-    if (cache.queue.tracks.length === 0) {
-      replaceQueueAndPlay(items);
-      return;
-    }
-
-    queueEngine.update({
-      index: cache.queue.index,
-      position: cache.queue.position,
-      tracks: [...cache.queue.tracks, ...items.map((track) => track.id)],
-    });
+    void playback.enqueue(availableTrackIds(tracks), "last");
   }
 
   function playTrack(track: Track) {
     const albumTracks = availableTracks(cache.albumTracks.get(track.albumId) ?? []);
     const selectedIndex = albumTracks.findIndex((item) => item.id === track.id);
-    replaceQueueAndPlay(albumTracks, Math.max(0, selectedIndex));
+    void playback.replaceQueueAndPlay(
+      albumTracks.map((track) => track.id),
+      selectedIndex,
+    );
   }
 
   async function downloadTrack(track: Track) {
@@ -222,42 +201,16 @@
     }
   }
 
-  async function downloadTracks(items: readonly Track[]) {
-    await Promise.all(items.map(downloadTrack));
+  function downloadCollection(tracks: readonly Track[]) {
+    return Promise.all(tracks.map(downloadTrack));
   }
 
-  async function downloadAlbum(album: Album) {
-    const key = `album:${album.id}`;
-    downloadingCollection = key;
-    try {
-      await downloadTracks(cache.albumTracks.get(album.id) ?? []);
-    } finally {
-      if (downloadingCollection === key) downloadingCollection = "";
-    }
+  function downloadAlbum(album: Album) {
+    return downloadCollection(cache.albumTracks.get(album.id) ?? []);
   }
 
-  async function downloadArtist(artist: Artist) {
-    const key = `artist:${artist.id}`;
-    downloadingCollection = key;
-    try {
-      await downloadTracks(artistTracks(artist));
-    } finally {
-      if (downloadingCollection === key) downloadingCollection = "";
-    }
-  }
-
-  function replaceQueueAndPlay(items: readonly Track[], startIndex = 0) {
-    if (!items.length) {
-      clearQueue();
-      return;
-    }
-    queueEngine.update({ tracks: items.map((track) => track.id), position: 0 });
-    void playback.playIndex(Math.max(0, Math.min(startIndex, items.length - 1)));
-  }
-
-  function clearQueue() {
-    playback.stop();
-    queueEngine.update({ tracks: [], position: 0 });
+  function downloadArtist(artist: Artist) {
+    return downloadCollection(artistTracks(artist));
   }
 
   function playbackPercent() {
@@ -743,8 +696,11 @@
             </h2>
           </div>
           {#if cache.queue.tracks.length > 0}
-            <button class="button" data-size="sm" data-variant="neutral" onclick={clearQueue}
-              >Clear</button
+            <button
+              class="button"
+              data-size="sm"
+              data-variant="neutral"
+              onclick={() => playback.clearQueue()}>Clear</button
             >
           {/if}
         </div>

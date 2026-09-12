@@ -102,6 +102,66 @@ describe("queue engine using the selected cache", () => {
   });
 
   it.each([
+    { placement: "next" as const, index: 1, expected: ["a", "b", "b", "missing", "a"] },
+    { placement: "last" as const, index: 1, expected: ["a", "b", "a", "b", "missing"] },
+    { placement: "next" as const, index: -1, expected: ["b", "missing", "a", "b", "a"] },
+    { placement: "last" as const, index: -1, expected: ["a", "b", "a", "b", "missing"] },
+  ])(
+    "enqueues $placement preserving raw selection $index",
+    async ({ placement, index, expected }) => {
+      const { queue, cache } = await setup();
+      const position = index < 0 ? 0 : 12;
+      queue.update({ tracks: ["a", "b", "a"], index, position });
+      const incoming = ["b", "missing"];
+      queue.enqueue(incoming, placement);
+      incoming.length = 0;
+      expect(cache.queue).toEqual({ tracks: expected, index, position });
+      await queue.flush();
+      expect((await json()).value).toEqual(cache.queue);
+    },
+  );
+
+  it("replaces and clears membership without selecting or playing a track", async () => {
+    const { queue, cache } = await setup();
+    queue.update(local());
+    const incoming = ["missing", "b", "b"];
+    queue.replace(incoming);
+    incoming.length = 0;
+    expect(cache.queue).toEqual({ tracks: ["missing", "b", "b"], index: -1, position: 0 });
+    queue.replace([]);
+    expect(cache.queue).toEqual({ tracks: [], index: -1, position: 0 });
+    await queue.flush();
+    expect((await json()).value).toEqual(cache.queue);
+  });
+
+  it("does not publish or grant upload permission for an empty enqueue", async () => {
+    const { queue, cache } = await setup();
+    queue.replace(["a"]);
+    const connection = client();
+    queue.setConnection(connection);
+    const revision = cache.queueRevision;
+    queue.enqueue([], "next");
+    queue.enqueue([], "last");
+    expect(cache.queueRevision).toBe(revision);
+    await queue.flush();
+    expect(connection.write).not.toHaveBeenCalled();
+    queue.enqueue(["b"], "next");
+    await queue.flush();
+    expect(connection.write).toHaveBeenCalledWith({
+      trackIds: ["b", "a"],
+      currentTrackId: undefined,
+      position: 0,
+    });
+    queue.replace([]);
+    await queue.flush();
+    expect(connection.write).toHaveBeenLastCalledWith({
+      trackIds: [],
+      currentTrackId: undefined,
+      position: 0,
+    });
+  });
+
+  it.each([
     { ids: ["a", "b", "a"], selected: "a", index: 2, position: 9 },
     { ids: ["a", "a"], selected: "a", index: 0, position: 9 },
     { ids: ["a", "b", "a"], selected: "b", index: 1, position: 9 },

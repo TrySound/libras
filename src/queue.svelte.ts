@@ -150,6 +150,18 @@ export class QueueEngine {
     this.#change(state);
     this.save();
   }
+  replace(tracks: readonly string[]) {
+    this.update({ tracks, position: 0 });
+  }
+  enqueue(tracks: readonly string[], placement: "next" | "last") {
+    const queue = this.#selection.cache?.queue;
+    if (!queue || tracks.length === 0) return;
+    const index = placement === "next" ? queue.index + 1 : queue.tracks.length;
+    this.update({
+      ...queue,
+      tracks: [...queue.tracks.slice(0, index), ...tracks, ...queue.tracks.slice(index)],
+    });
+  }
   select(index: number) {
     const cache = this.#selection.cache;
     if (!cache || this.#destroyed) return;
