@@ -20,7 +20,7 @@ export function immediateCover(cover: Pick<Cover, "load">): Attachment {
   return () => cover.load();
 }
 
-/** Laziness gates network acquisition; cached-file reads still begin at ensure*. */
+/** Defer cached-file reads, decoding and network acquisition until near the viewport. */
 export function lazyCover(cover: Pick<Cover, "load">): Attachment {
   return (node) => {
     if (typeof IntersectionObserver === "undefined") {
@@ -182,6 +182,8 @@ export class CoverEngine {
     return this.#selection.cache?.[referenceFields[entry.entity]].get(entry.id) ?? emptyCandidates;
   }
   async #resolve(entry: CoverEntry, revalidate: boolean) {
+    // Refreshes, reconnects and shared image updates must not acquire offscreen artwork.
+    if (!entry.demanded) return;
     const request = ++entry.generation;
     const signal = this.#scope.signal;
     const cache = this.#selection.cache;
@@ -307,7 +309,7 @@ export class CoverEngine {
       });
   }
 
-  /** Resolve cached bytes eagerly; reading a handle never schedules I/O. load() gates network. */
+  /** Creating or reading a handle never schedules I/O. load() gates all acquisition. */
   #ensureCover(entity: Entity, id: string): Cover {
     this.#version;
     const key = JSON.stringify([entity, id]);
@@ -333,10 +335,6 @@ export class CoverEngine {
       },
     });
     this.#covers.set(key, entry);
-    void Promise.resolve().then(() => {
-      if (this.#covers.get(key) === entry && !this.#destroyed && !entry.demanded)
-        return this.#resolve(entry, false);
-    });
     return entry.cover;
   }
   ensureArtistCover(id: string) {

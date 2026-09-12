@@ -326,8 +326,24 @@ it.each([
   });
 });
 
-it("renders cached artwork and drops the previous account's object URLs", async () => {
+it("renders cached artwork only near the viewport and drops the previous account's object URLs", async () => {
   installDisk();
+  const intersections: (() => void)[] = [];
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        intersections.push(() =>
+          this.callback(
+            [{ target, isIntersecting: true } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          ),
+        );
+      }
+      disconnect() {}
+    },
+  );
   let sequence = 0;
   vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:artwork-${++sequence}`);
   const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
@@ -347,7 +363,13 @@ it("renders cached artwork and drops the previous account's object URLs", async 
   await mocks.options!.covers.refresh();
   flushSync();
   expect(mocks.options!.selection.cache!.images).toBe(first.images);
-  expect(target.querySelector(".tile-image img")?.getAttribute("src")).toBe("blob:artwork-1");
+  expect(target.querySelector(".tile-image img")).toBeNull();
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
+  intersections[0]();
+  await vi.waitFor(() => {
+    flushSync();
+    expect(target.querySelector(".tile-image img")?.getAttribute("src")).toBe("blob:artwork-1");
+  });
 
   const second = new Cache({ ...first.account!, username: "second" });
   await second.replaceLibrary(data);

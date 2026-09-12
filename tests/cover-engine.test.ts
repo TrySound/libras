@@ -91,13 +91,62 @@ describe("cover engine using Cache", () => {
     disk.getDirectory.mockClear();
     const cover = covers.ensureAlbumCover("album");
     await covers.refresh();
-    expect(candidates).toHaveBeenCalled();
+    expect(candidates).not.toHaveBeenCalled();
     expect(cover.source).toBeUndefined();
     expect(read).not.toHaveBeenCalled();
     expect(disk.state.writes).toBe(writes);
     expect(disk.getDirectory).not.toHaveBeenCalled();
     expect([...disk.files.keys()].some((path) => path.endsWith("images.json"))).toBe(false);
     expect(disk.blobs.size).toBe(0);
+  });
+
+  it("keeps thousands of cached covers idle through refresh and reconnect until demanded", async () => {
+    installOpfs();
+    const { cache, covers } = await engine(await seed());
+    const library = snapshot();
+    library.artists = Array.from({ length: 3804 }, (_, index) => ({
+      id: `artist-${index}`,
+      name: `Artist ${index}`,
+      artworkId: "album-cover",
+      genres: [],
+    }));
+    await cache.replaceLibrary({ ...library, savedAt: 200 });
+    const read = vi.spyOn(cache, "readImage");
+    const decode = vi.fn(async () => {});
+    vi.stubGlobal(
+      "Image",
+      class {
+        src = "";
+        decode() {
+          return decode();
+        }
+      },
+    );
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const handles = library.artists.map((artist) => covers.ensureArtistCover(artist.id));
+    await covers.refresh();
+    covers.setConnection(createConnection());
+    await covers.refresh();
+    covers.setConnection(undefined);
+    await cache.replaceLibrary({ ...library, savedAt: 300 });
+    await covers.refresh();
+    expect(handles.every((cover) => cover.source === undefined)).toBe(true);
+    expect(read).not.toHaveBeenCalled();
+    expect(decode).not.toHaveBeenCalled();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+
+    handles[0].load();
+    await vi.waitFor(() => expect(handles[0].source).toBe("blob:cover-1"));
+    expect(read).toHaveBeenCalledOnce();
+    expect(decode).toHaveBeenCalledOnce();
+    expect(handles.slice(1).every((cover) => cover.source === undefined)).toBe(true);
+    handles[1].load();
+    await vi.waitFor(() => expect(handles[1].source).toBe(handles[0].source));
+    expect(read).toHaveBeenCalledOnce();
+    expect(decode).toHaveBeenCalledOnce();
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("restores through Cache and shares lazy offline bytes and object URLs across handles", async () => {
@@ -113,6 +162,9 @@ describe("cover engine using Cache", () => {
     const artist = covers.ensureArtistCover("artist");
     const album = covers.ensureAlbumCover("album");
     const track = covers.ensureTrackCover("one");
+    artist.load();
+    album.load();
+    track.load();
     await vi.waitFor(() => expect(artist.source).toBe("blob:cover-1"));
     expect(album.source).toBe(artist.source);
     expect(track.source).toBe(artist.source);
@@ -136,6 +188,7 @@ describe("cover engine using Cache", () => {
     const disk = installOpfs();
     const { covers, cache, selection } = await engine(await seed());
     const old = covers.ensureTrackCover("one");
+    old.load();
     await vi.waitFor(() => expect(old.source).toBeDefined());
     const references = selection.cache!.trackArtwork;
     const images = selection.cache!.images;
@@ -158,6 +211,7 @@ describe("cover engine using Cache", () => {
     const { covers } = await engine(cache);
     const references = cache.albumArtwork;
     const cover = covers.ensureAlbumCover("album");
+    cover.load();
     await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
     expect(cache.images.has("album-cover")).toBe(false);
     expect(cache.albumArtwork).toBe(references);
@@ -174,6 +228,7 @@ describe("cover engine using Cache", () => {
     await competing.load();
     await competing.saveImage("album-cover", image("replacement"));
     const cover = covers.ensureAlbumCover("album");
+    cover.load();
     await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
     expect(await (vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob).text()).toBe(
       "replacement",
@@ -181,7 +236,7 @@ describe("cover engine using Cache", () => {
     expect(read).toHaveBeenCalledOnce();
   });
 
-  it("shares one explicit download across demanded and undemanded handles", async () => {
+  it("shares one explicit download without acquiring undemanded handles", async () => {
     const disk = installOpfs();
     const { covers, selection } = await engine();
     covers.setConnection(createConnection());
@@ -206,7 +261,9 @@ describe("cover engine using Cache", () => {
     album.load();
     track.load();
     await vi.waitFor(() => expect(cached.source).toBe("blob:cover-1"));
-    expect(artist.source).toBe(cached.source);
+    expect(artist.source).toBeUndefined();
+    artist.load();
+    await vi.waitFor(() => expect(artist.source).toBe(cached.source));
     expect(album.source).toBe(cached.source);
     expect(fetcher).toHaveBeenCalledOnce();
     flushSync();
@@ -221,6 +278,7 @@ describe("cover engine using Cache", () => {
     await restored.load();
     const other = await engine(restored);
     const cover = other.covers.ensureTrackCover("two");
+    cover.load();
     await vi.waitFor(() => expect(cover.source).toMatch(/^blob:/));
     expect(fetcher).toHaveBeenCalledOnce();
   });
@@ -335,6 +393,7 @@ describe("cover engine using Cache", () => {
     installOpfs();
     const { covers, cache } = await engine(await seed({ etag: '"old"' }));
     const cover = covers.ensureAlbumCover("album");
+    cover.load();
     await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
     const oldFile = cache.images.get("album-cover")!.fileName;
     const save = vi.spyOn(cache, "saveImage").mockRejectedValue(new Error("Storage full"));
@@ -359,6 +418,7 @@ describe("cover engine using Cache", () => {
       installOpfs();
       const { covers, cache } = await engine(await seed({ etag: '"old"' }));
       const cover = covers.ensureAlbumCover("album");
+      cover.load();
       await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
       const decoded = deferred<void>();
       const decode = vi.fn(() => decoded.promise);
@@ -399,6 +459,7 @@ describe("cover engine using Cache", () => {
     const disk = installOpfs();
     const { covers, cache } = await engine(await seed({ etag: '"v1"', freshUntil: 0 }));
     const cover = covers.ensureAlbumCover("album");
+    cover.load();
     await vi.waitFor(() => expect(cover.source).toMatch(/^blob:/));
     const source = cover.source;
     disk.state.beforeWrite = (path) => {
@@ -474,6 +535,7 @@ describe("cover engine using Cache", () => {
     const { covers } = await engine(await seed({ etag: '"old"', lastModified: "Yesterday" }));
     const writes = disk.state.writes;
     const cached = covers.ensureAlbumCover("album");
+    cached.load();
     await vi.waitFor(() => expect(cached.source).toBe("blob:cover-1"));
     const fetcher = vi.fn(
       async (..._args: Parameters<typeof fetch>) =>
@@ -603,6 +665,7 @@ describe("cover engine using Cache", () => {
     });
     await cache.replaceLibrary({ ...library, savedAt: 200 });
     const cached = covers.ensureAlbumCover("album");
+    cached.load();
     await vi.waitFor(() => expect(cached.source).toBe("blob:cover-1"));
     const images = cache.images;
     const writes = disk.state.writes;
@@ -636,6 +699,7 @@ describe("cover engine using Cache", () => {
       .spyOn(File.prototype, "arrayBuffer")
       .mockImplementationOnce(() => bytes.promise);
     const cover = covers.ensureAlbumCover("album");
+    cover.load();
     await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
     if (action === "switch") {
       selection.cache = new Cache({ ...account, username: "other" });
