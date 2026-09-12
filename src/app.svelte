@@ -645,7 +645,7 @@
             min="0"
             max={Number.isFinite(playbackDuration) ? playbackDuration : 0}
             step="0.1"
-            value={cache.queue.position}
+            value={Math.min(cache.queue.position, playbackDuration)}
             disabled={!playbackDuration ||
               (offlineMode &&
                 currentTrack &&

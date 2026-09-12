@@ -8,7 +8,8 @@ import { QueueEngine } from "../src/queue.svelte";
 import { Cache } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import type { Track } from "../src/schema";
-import type { TrackSource } from "../src/track.svelte";
+import { TrackEngine, type TrackSource } from "../src/track.svelte";
+import { Network } from "../src/network.svelte";
 import { TestSelection, playbackLibrary } from "./cache-selection-test-helpers.svelte";
 
 class AudioStub extends EventTarget {
@@ -503,6 +504,52 @@ describe("playback engine", () => {
     for (const index of [-1, 2, 0.5, NaN]) await player.playIndex(index);
     expect(selection.cache!.queue.index).toBe(1);
     expect(tracks.getSource).toHaveBeenCalledOnce();
+  });
+
+  it("resumes a restored MP3 queue using the audio clock, not an assumed server offset", async () => {
+    const { player, getPlayer, queue, selection, audio, tracks } = setup();
+    const cache = selection.cache!;
+    await cache.replaceLibrary({
+      artists: [],
+      albums: [],
+      tracks: [{ ...song("a"), duration: 120, mimeType: "audio/mpeg" }],
+      lastModified: 1,
+      savedAt: 1,
+    });
+    queue.update({ tracks: ["a"], index: 0, position: 45.5 });
+    await queue.flush();
+    const restored = new Cache(cache.account!);
+    await restored.load();
+    selection.cache = restored;
+    queue.activate();
+    const network = new Network();
+    const engine = new TrackEngine({
+      selection,
+      connection: network.accept(
+        network.prepare({ ...cache.account!, token: "token", salt: "salt" }),
+      ).audio,
+    });
+    cleanups.push(() => {
+      engine.destroy();
+      network.setMode("offline");
+    });
+    tracks.getSource.mockImplementation((track, options) => engine.getSource(track, options));
+    expect(restored.queue.position).toBe(45.5);
+    expect(audio.play).not.toHaveBeenCalled();
+    await player.play();
+    // Navidrome may return an original MP3, ignoring timeOffset when no
+    // transcoding is needed. This source's audio clock starts at zero.
+    expect(new URL(audio.src).searchParams.has("timeOffset")).toBe(false);
+    expect(audio.currentTime).toBe(45.5);
+    audio.currentTime = 119;
+    audio.dispatchEvent(new Event("timeupdate"));
+    expect(getPlayer().position).toBe(119);
+    expect(restored.queue.position).toBe(119);
+    audio.currentTime = 120;
+    audio.dispatchEvent(new Event("timeupdate"));
+    audio.dispatchEvent(new Event("ended"));
+    expect(restored.queue.position).toBe(120);
+    expect(getPlayer().status).toBe("ended");
   });
 
   it("preserves a restored duplicate index and position without autoplay", async () => {

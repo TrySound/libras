@@ -128,6 +128,52 @@ it("uses the empty fallback before account selection and when selection is clear
   expect(target.textContent).toContain("Connect your library");
 });
 
+it("restores the large player slider when queue hydration finishes before metadata", async () => {
+  installDisk();
+  // Happy DOM does not clamp range values like browsers do. Model the native
+  // setter so a value assigned while max=0 cannot survive as a hidden 45.5.
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  vi.spyOn(HTMLInputElement.prototype, "value", "set").mockImplementation(
+    function (this: HTMLInputElement, value) {
+      if (this.type === "range") value = String(Math.min(Number(value), Number(this.max || 100)));
+      setter.call(this, value);
+    },
+  );
+  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  cache.setQueue({ tracks: ["track"], index: 0, position: 45.5 });
+  await cache.flush();
+  mocks.cache = cache;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const slider = target.querySelector<HTMLInputElement>(".playback-slider")!;
+  expect(slider.max).toBe("0");
+  expect(slider.valueAsNumber).toBe(0);
+  await cache.replaceLibrary({
+    ...library("Artist", 1),
+    tracks: [
+      {
+        id: "track",
+        title: "Track",
+        artistId: "artist",
+        albumId: "album",
+        duration: 120,
+        genres: [],
+      },
+    ],
+  });
+  flushSync();
+  expect(slider.max).toBe("120");
+  expect(slider.valueAsNumber).toBe(45.5);
+  expect(target.querySelector(".playback-time")?.textContent).toContain("0:45");
+  expect(
+    parseFloat(target.querySelector<HTMLElement>(".mini-progress > span")!.style.width),
+  ).toBeCloseTo((45.5 / 120) * 100);
+  expect(cache.queue.position).toBe(45.5);
+});
+
 it.each([
   "/library",
   "/settings",

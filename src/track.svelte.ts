@@ -247,7 +247,13 @@ export class TrackEngine {
       throw new DOMException("Source request superseded.", "AbortError");
     if (!cached) {
       const offset = Math.max(0, Math.floor(options.position ?? 0));
-      if (offset > 0)
+      const type = track.contentType?.split(";")[0].trim().toLowerCase();
+      // timeOffset applies only to transcoding. Navidrome can return an
+      // original MP3 unchanged even with format=mp3, so it has no offset.
+      // Unknown formats likewise use the full source and native currentTime.
+      const needsConversion =
+        type?.startsWith("audio/") && !["audio/mpeg", "audio/mp3", "audio/x-mp3"].includes(type);
+      if (offset > 0 && needsConversion)
         return {
           cached: false,
           offset,

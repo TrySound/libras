@@ -319,6 +319,26 @@ describe("TrackEngine using Cache", () => {
     },
   );
 
+  it.each([
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/x-mp3",
+    "Audio/MPEG; charset=binary",
+    "application/octet-stream",
+    undefined,
+  ])("does not assume a server-side offset for %s sources", async (contentType) => {
+    install("probably");
+    const { engine } = setup({ online: true });
+    for (const forceTranscode of [false, true]) {
+      const source = await engine.getSource(
+        { ...track, contentType },
+        { position: 45.5, forceTranscode },
+      );
+      expect(new URL(source.url).searchParams.has("timeOffset")).toBe(false);
+      expect(source.offset).toBeUndefined();
+    }
+  });
+
   it("uses an MP3 offset URL without saving partial tracks, but prefers cached originals", async () => {
     const disk = install("probably");
     const fetcher = vi.fn();
