@@ -24,9 +24,10 @@
     routes: readonly RenderRoute[];
     fallback?: RenderRoute;
     navigate?: RouterNavigate;
+    onNavigate?: () => void;
   }
 
-  let { routes, fallback = routes[0], navigate = $bindable() }: Props = $props();
+  let { routes, fallback = routes[0], navigate = $bindable(), onNavigate }: Props = $props();
 
   const initial = untrack(() => {
     if (!fallback) throw new Error("Router requires at least one route.");
@@ -81,6 +82,7 @@
 
       event.intercept({
         handler: async () => {
+          onNavigate?.();
           match = resolve(destination);
           // Let the browser restore scroll after Svelte renders the destination.
           await tick();

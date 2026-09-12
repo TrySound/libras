@@ -102,6 +102,29 @@
   const offlineScanning = $derived(offlineMode && trackEngine.downloadsLoading);
   let loading = $derived(!session.localReady);
 
+  const artistPageSize = 48;
+  let artistLimit = $state(artistPageSize);
+  $effect(() => {
+    // Also reset when the library or offline filter changes.
+    void cache;
+    void offlineMode;
+    artistLimit = artistPageSize;
+  });
+
+  function resetArtistPagination() {
+    artistLimit = artistPageSize;
+  }
+
+  function loadMoreArtists() {
+    artistLimit += artistPageSize;
+  }
+
+  function artistPageSentinel(node: Element) {
+    return nearViewport((visible) => {
+      if (visible) loadMoreArtists();
+    })(node);
+  }
+
   onMount(() => installLongPress());
   onMount(() => playback.attach(player!));
 
@@ -782,11 +805,12 @@
 {/snippet}
 
 {#snippet libraryRoute(_params: RouteParams, router: RouteControls)}
-  {@const visibleArtists = offlineMode
+  {@const filteredArtists = offlineMode
     ? artists.filter((artist) =>
         artistTracks(artist).some((track) => trackEngine.getStatus(track.id) === "downloaded"),
       )
-    : artists}
+    : Array.from(Array(100), () => artists).flat()}
+  {@const visibleArtists = filteredArtists.slice(0, artistLimit)}
 
   <header class="topbar wings">
     <span class="icon-button visually-hidden" aria-hidden="true"></span>
@@ -814,7 +838,7 @@
           <span class="type-eyebrow text-muted">
             {offlineMode ? "Downloaded music" : "Your music"}
           </span>
-          <h2 class="type-heading">{visibleArtists.length} artists</h2>
+          <h2 class="type-heading">{filteredArtists.length} artists</h2>
         </div>
       </div>
 
@@ -848,6 +872,12 @@
             </a>
           {/each}
         </div>
+        {#if visibleArtists.length < filteredArtists.length}
+          {#key artistLimit}
+            <!-- Reobserve each batch so a still-visible sentinel keeps filling the viewport. -->
+            <div aria-hidden="true" style="height: 1px" {@attach artistPageSentinel}></div>
+          {/key}
+        {/if}
       {:else}
         <div class="empty-state">
           <span>{@render icon("music")}</span>
@@ -1447,6 +1477,7 @@
 
 <main class="app-shell">
   <Router
+    onNavigate={resetArtistPagination}
     routes={[
       { pattern: "/library", render: libraryRoute },
       {

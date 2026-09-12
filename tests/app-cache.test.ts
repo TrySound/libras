@@ -111,6 +111,97 @@ it("uses the empty fallback before account selection and when selection is clear
   expect(target.textContent).toContain("Connect your library");
 });
 
+it("automatically loads another batch each time the new sentinel is nearby", async () => {
+  installDisk();
+  let callback: IntersectionObserverCallback;
+  const observed = new Set<Element>();
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(cb: IntersectionObserverCallback) {
+        callback = cb;
+      }
+      observe(node: Element) {
+        observed.add(node);
+      }
+      unobserve(node: Element) {
+        observed.delete(node);
+      }
+      disconnect() {
+        observed.clear();
+      }
+    },
+  );
+  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  await cache.replaceLibrary(library("Artist", 1));
+  mocks.cache = cache;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const assertCount = (count: number) => {
+    expect(target.querySelectorAll(".tiles-grid > .tile")).toHaveLength(count);
+    expect(target.querySelectorAll('dialog[id^="artist-menu-"]')).toHaveLength(count);
+  };
+  assertCount(48);
+  expect(target.textContent).toContain("100 artists");
+  expect(target.textContent).not.toContain("Load more");
+  const sentinel = () =>
+    [...observed].find((node) => node.matches('.library-view [aria-hidden="true"]'));
+  for (const count of [96, 100]) {
+    const node = sentinel()!;
+    expect(node).toBeDefined();
+    callback!(
+      [{ target: node, isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+    flushSync();
+    assertCount(count);
+    expect(observed.has(node)).toBe(false);
+  }
+  expect(sentinel()).toBeUndefined();
+
+  let currentEntry = { key: "home", index: 0 };
+  async function visit(path: string, key: string, index: number, navigationType = "push") {
+    Object.assign(window.navigation, { currentEntry });
+    let finished: Promise<void> | undefined;
+    const event = Object.assign(new Event("navigate"), {
+      canIntercept: true,
+      navigationType,
+      destination: { url: new URL(`#${path}`, window.location.href).href, key, index },
+      intercept({ handler }: { handler: () => Promise<void> }) {
+        finished = handler();
+      },
+    });
+    window.navigation.dispatchEvent(event);
+    await finished;
+    flushSync();
+    currentEntry = { key, index };
+  }
+  await visit("/library/artist/artist", "artist", 1);
+  await visit("/library", "home", 0, "traverse");
+  assertCount(48); // Back navigation also starts fresh.
+  await visit("/library/artist/artist", "artist", 1, "traverse");
+  await visit("/library", "new-home", 2);
+  assertCount(48); // A normal Home link starts fresh.
+  callback!(
+    [{ target: sentinel()!, isIntersecting: true } as IntersectionObserverEntry],
+    {} as IntersectionObserver,
+  );
+  flushSync();
+  assertCount(96);
+  await visit("/library", "replacement", 2, "replace");
+  assertCount(48);
+
+  const other = new Cache({ host: "https://other.example", username: "listener" });
+  await other.replaceLibrary(library("Other", 2));
+  mocks.options!.selection.cache = other;
+  flushSync();
+  await visit("/library", "home", 0, "traverse");
+  assertCount(48);
+});
+
 it("restores the large player slider when queue hydration finishes before metadata", async () => {
   installDisk();
   // Happy DOM does not clamp range values like browsers do. Model the native
@@ -186,7 +277,9 @@ it("renders the selected cache, reacts to replacements, and stops observing a pr
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const names = () => [...target.querySelectorAll(".tile-name")].map((node) => node.textContent);
+  const names = () => [
+    ...new Set([...target.querySelectorAll(".tile-name")].map((node) => node.textContent)),
+  ];
   await vi.waitFor(() => expect(names()).toEqual(["First artist"]));
   expect(mocks.options!.selection.cache!.artists).toBe(first.artists);
 
@@ -399,7 +492,7 @@ it("renders cached artwork only near the viewport and drops the previous account
     class {
       constructor(private callback: IntersectionObserverCallback) {}
       observe(target: Element) {
-        expect(target.matches("a.tile")).toBe(true);
+        if (!target.matches("a.tile")) return;
         intersections.push((visible) =>
           this.callback(
             [{ target, isIntersecting: visible } as IntersectionObserverEntry],
