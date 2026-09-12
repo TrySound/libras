@@ -11,7 +11,7 @@ pnpm install
 pnpm dev
 ```
 
-The Navidrome server must allow browser requests from the app's origin (CORS), and HTTPS should be used outside local development.
+The music server must allow browser requests from the app's origin (CORS), and HTTPS should be used outside local development.
 
 ## Checks
 
@@ -40,7 +40,13 @@ BASE_PATH=/libras/ pnpm build
 pnpm preview
 ```
 
-Open `/libras/` on the preview server. Normal local builds default to `/`. The Navidrome server must allow `https://trysound.github.io` through CORS and use HTTPS.
+Open `/libras/` on the preview server. Normal local builds default to `/`. The music server must allow `https://trysound.github.io` through CORS and use HTTPS.
+
+## Social preview
+
+`index.html` includes Open Graph and Twitter large-image card metadata with absolute URLs for the hosted app at `https://trysound.github.io/libras/`. Sharing the app URL uses `public/og.png` (1200×630). Its editable source is `public/og.svg`; rasterize it with resvg using DejaVu Sans after editing. The image is a build-time asset, with no runtime image service or dependency. It is not part of the offline app-shell precache.
+
+For a different public deployment, update the canonical, `og:url`, and image URLs in `index.html`. After deployment, use a social platform's sharing debugger to request a fresh scrape; existing previews may remain cached.
 
 ## Testing installation on Android
 
@@ -63,7 +69,7 @@ ssh -N -L 4173:127.0.0.1:4173 user@your-server
 
 Keep the preview server and tunnel running, then open `http://localhost:4173` on the phone. Use Chrome's **Install app / Add to home screen** option and launch the installed app from the home screen. Localhost is a secure-context exception; a remote or LAN deployment needs HTTPS. Vite preview is for testing, not production hosting.
 
-The Navidrome server must be reachable **from the phone** and permit the frontend origin through CORS. Switching ports or hosts creates a different origin: saved authentication and downloaded music do not carry over automatically.
+The music server must be reachable **from the phone** and permit the frontend origin through CORS. Switching ports or hosts creates a different origin: saved authentication and downloaded music do not carry over automatically.
 
 ## State and synchronization architecture
 

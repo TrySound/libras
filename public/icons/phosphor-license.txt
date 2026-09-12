@@ -1,5 +1,5 @@
 Libras uses the Phosphor scales icon (ph:scales) for its header logo,
-favicons, Apple touch icon, and PWA icons.
+favicons, Apple touch icon, PWA icons, and social preview artwork.
 Source: https://api.iconify.design/ph/scales.svg
 
 MIT License

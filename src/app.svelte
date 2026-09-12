@@ -321,7 +321,7 @@
       <p class="type-body text-muted">
         {session.auth
           ? "Disconnect first to change servers. Your offline library will stay on this device."
-          : "Enter your Navidrome server details. Authentication stays on this device."}
+          : "Enter your music server details. Authentication stays on this device."}
       </p>
     </div>
 
@@ -1387,7 +1387,7 @@
   <div class="empty-state">
     <span>{@render icon("music")}</span>
     <h2 class="type-heading">Connect your library</h2>
-    <p class="type-body">Add your Navidrome server to start listening.</p>
+    <p class="type-body">Add your music server to start listening.</p>
     <a class="button" data-size="md" data-variant="neutral" href={router.href("/settings")}
       >Open settings</a
     >

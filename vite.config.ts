@@ -16,7 +16,7 @@ export default defineConfig({
         id: base,
         name: "Libras",
         short_name: "Libras",
-        description: "Your Navidrome music library, online and offline.",
+        description: "Your music library, online and offline.",
         start_url: base,
         scope: base,
         display: "standalone",
