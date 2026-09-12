@@ -121,7 +121,7 @@ export class PlaybackController {
         artist: descriptor.artist,
         album: descriptor.album,
         duration: track.duration,
-        artwork: this.#covers.ensureTrackCover(track.id, { allowNetwork: false }).source,
+        artwork: this.#covers.ensureTrackCover(track.id).source,
       },
       position: this.#localQueue.position,
       getSource: async (options) => {

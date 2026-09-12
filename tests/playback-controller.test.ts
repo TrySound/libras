@@ -100,7 +100,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
       artworkId: id,
       cached: true,
       release: vi.fn(),
-      cache: () => {},
+      load: () => {},
     })),
   };
   const handlers = new Map<MediaSessionAction, MediaSessionActionHandler | null>();
@@ -796,7 +796,7 @@ describe("playback engine", () => {
       title: "a",
       artwork: [{ src: "data:image/jpeg;base64,bmV3" }],
     });
-    expect(covers.ensureTrackCover).toHaveBeenLastCalledWith("a", { allowNetwork: false });
+    expect(covers.ensureTrackCover).toHaveBeenLastCalledWith("a");
   });
 
   it("advances at end but retains the final queue entry", async () => {

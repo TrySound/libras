@@ -1,6 +1,8 @@
+import { tick, untrack } from "svelte";
+import type { Attachment } from "svelte/attachments";
 import type { Cache, CacheSelection, Immutable } from "./cache.svelte";
-import type { ArtworkConnection } from "./network.svelte";
-import type { ImageRecord } from "./schema";
+import { artworkNoStore, type ArtworkConnection } from "./network.svelte";
+import type { ImageMetadata, ImageRecord } from "./schema";
 
 const referenceFields = {
   artists: "artistArtwork",
@@ -9,26 +11,48 @@ const referenceFields = {
 } as const;
 const emptyCandidates: readonly string[] = [];
 type Entity = keyof typeof referenceFields;
-interface CoverOptions {
-  allowNetwork: boolean;
-}
 interface Cover {
   readonly source: string | undefined;
-  readonly cache: () => void;
+  readonly load: () => void;
 }
+/** Load prominent artwork as soon as its container mounts. */
+export function immediateCover(cover: Pick<Cover, "load">): Attachment {
+  return () => cover.load();
+}
+
+/** Laziness gates network acquisition; cached-file reads still begin at ensure*. */
+export function lazyCover(cover: Pick<Cover, "load">): Attachment {
+  return (node) => {
+    if (typeof IntersectionObserver === "undefined") {
+      cover.load();
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        cover.load();
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  };
+}
+
 interface CoverEntry {
   entity: Entity;
   id: string;
-  allowNetwork: boolean;
   cover: Cover;
   generation: number;
-  selected?: string;
   source?: string;
-  network: boolean;
+  demanded: boolean;
 }
 interface InstalledImage {
-  fileName: string;
   source: string;
+  metadata: ImageMetadata;
+  // Set only when these exact bytes are persisted. Memory-only images survive disk changes.
+  persistedFileName?: string;
 }
 
 /** Resource acquisition and browser URLs; Cache owns references, records and bytes. */
@@ -46,9 +70,6 @@ export class CoverEngine {
   constructor(selection: CacheSelection) {
     this.#selection = selection;
   }
-  #notify() {
-    this.#version++;
-  }
 
   /** Session selected another cache. Invalidate resources, not persisted data. */
   activate() {
@@ -60,52 +81,96 @@ export class CoverEngine {
     for (const entry of this.#covers.values()) {
       entry.generation++;
       entry.source = undefined;
-      entry.network = false;
     }
     this.#covers.clear();
-    this.#releaseObjectUrls();
-    this.#notify();
+    for (const image of this.#objectUrls.values()) URL.revokeObjectURL(image.source);
+    this.#objectUrls.clear();
+    this.#version++;
   }
 
-  /** Re-resolve existing handles from Cache's derived references; no catalog writes. */
+  /** Re-resolve references and check freshness for demanded covers. */
   async refresh() {
     if (this.#destroyed) return;
-    const cache = this.#selection.cache;
-    if (!cache) return;
-    for (const [id, image] of this.#objectUrls)
-      if (cache.images.get(id)?.fileName !== image.fileName) this.#discardUrl(id);
-    await Promise.all([...this.#covers.values()].map((entry) => this.#resolve(entry, false)));
+    await Promise.all(
+      [...this.#covers.values()].map((entry) => this.#resolve(entry, entry.demanded)),
+    );
+    const sources = new Set([...this.#covers.values()].map((entry) => entry.source));
+    for (const [id, image] of this.#objectUrls) {
+      if (this.#currentImage(id) || sources.has(image.source)) continue;
+      this.#objectUrls.delete(id);
+      URL.revokeObjectURL(image.source);
+    }
   }
 
-  #discardUrl(id: string) {
+  #currentImage(id: string) {
     const image = this.#objectUrls.get(id);
-    if (!image) return;
-    this.#objectUrls.delete(id);
-    for (const entry of this.#covers.values())
-      if (entry.source === image.source) entry.source = undefined;
-    URL.revokeObjectURL(image.source);
+    return image &&
+      (!image.persistedFileName ||
+        image.persistedFileName === this.#selection.cache?.images.get(id)?.fileName)
+      ? image
+      : undefined;
   }
-  #installBlob(record: Immutable<ImageRecord>, blob: Blob): InstalledImage {
-    const existing = this.#objectUrls.get(record.id);
-    if (existing?.fileName === record.fileName) return existing;
-    this.#discardUrl(record.id);
-    const image = { fileName: record.fileName, source: URL.createObjectURL(blob) };
-    this.#objectUrls.set(record.id, image);
-    return image;
+
+  /** Decode before publication, keeping the previous URL live during replacement. */
+  async #decode(blob: Blob, metadata: ImageMetadata, signal: AbortSignal): Promise<InstalledImage> {
+    signal.throwIfAborted();
+    const source = URL.createObjectURL(blob);
+    let abort: (() => void) | undefined;
+    try {
+      if (typeof Image !== "undefined" && typeof Image.prototype.decode === "function") {
+        const image = new Image();
+        await new Promise<void>((resolve, reject) => {
+          abort = () => {
+            image.src = "";
+            reject(signal.reason);
+          };
+          signal.addEventListener("abort", abort, { once: true });
+          image.src = source;
+          image.decode().then(resolve, reject);
+        });
+      }
+      signal.throwIfAborted();
+      return { source, metadata };
+    } catch (error) {
+      URL.revokeObjectURL(source);
+      throw error;
+    } finally {
+      if (abort) signal.removeEventListener("abort", abort);
+    }
+  }
+
+  #replaceImage(id: string, image: InstalledImage) {
+    const previous = this.#objectUrls.get(id);
+    this.#objectUrls.set(id, image);
+    if (!previous) return;
+    for (const entry of this.#covers.values())
+      if (entry.source === previous.source) entry.source = image.source;
+    // Let Svelte switch mounted images before retiring the previous URL.
+    void tick().then(() => URL.revokeObjectURL(previous.source));
   }
 
   #install(cache: Cache, record: Immutable<ImageRecord>): Promise<InstalledImage | undefined> {
-    const existing = this.#objectUrls.get(record.id);
-    if (existing?.fileName === record.fileName) return Promise.resolve(existing);
+    const previous = this.#objectUrls.get(record.id);
+    if (previous?.persistedFileName === record.fileName) return Promise.resolve(previous);
     const loading = this.#loads.get(record.fileName);
     if (loading) return loading;
     const signal = this.#scope.signal;
     const valid = () => !this.#destroyed && !signal.aborted && cache === this.#selection.cache;
     const load: Promise<InstalledImage | undefined> = (async () => {
-      const image = await cache.readImage(record.id, signal);
-      if (!valid() || !image) return;
-      if (cache.images.get(record.id)?.fileName !== image.record.fileName) return;
-      return this.#installBlob(image.record, image.blob);
+      const opened = await cache.readImage(record.id, signal);
+      if (!valid() || !opened) return;
+      const image = await this.#decode(opened.blob, opened.record, signal);
+      if (
+        !valid() ||
+        cache.images.get(record.id)?.fileName !== opened.record.fileName ||
+        this.#objectUrls.get(record.id) !== previous
+      ) {
+        URL.revokeObjectURL(image.source);
+        return this.#currentImage(record.id);
+      }
+      image.persistedFileName = opened.record.fileName;
+      this.#replaceImage(record.id, image);
+      return image;
     })().finally(() => {
       if (this.#loads.get(record.fileName) === load) this.#loads.delete(record.fileName);
     });
@@ -129,35 +194,31 @@ export class CoverEngine {
       candidates === this.#candidates(entry);
     if (!cache) return;
     for (const id of candidates) {
-      const record = cache.images.get(id);
-      if (!record) continue;
       try {
-        const image = await this.#install(cache, record);
+        const record = cache.images.get(id);
+        const image =
+          this.#currentImage(id) ?? (record ? await this.#install(cache, record) : undefined);
         if (!valid()) return;
-        if (!image || cache.images.get(id)?.fileName !== image.fileName) continue;
+        if (!image || image !== this.#currentImage(id)) continue;
         entry.source = image.source;
-        entry.selected = id;
-        entry.network = false;
-        this.#notify();
-        if (revalidate && entry.allowNetwork) this.#cacheImage(id);
+        if (revalidate) this.#cacheImage(id);
         return;
       } catch {
         if (!valid()) return;
       }
     }
     if (!valid()) return;
-    entry.selected = candidates[0];
-    const connection = this.#networkConnection();
-    entry.network = !!(entry.selected && entry.allowNetwork && connection);
     entry.source = undefined;
-    if (entry.network && connection && entry.selected) {
-      try {
-        entry.source = connection.url(entry.selected, 500);
-      } catch {
-        entry.network = false;
-      }
-    }
-    this.#notify();
+    if (revalidate && candidates[0]) this.#cacheImage(candidates[0]);
+  }
+
+  /** Image changes only affect handles referencing that artwork, never the whole catalog. */
+  #refreshImage(id: string) {
+    return Promise.all(
+      [...this.#covers.values()]
+        .filter((entry) => this.#candidates(entry).includes(id))
+        .map((entry) => this.#resolve(entry, false)),
+    );
   }
 
   #networkConnection() {
@@ -175,6 +236,12 @@ export class CoverEngine {
     const connection = this.#networkConnection();
     const cache = this.#selection.cache;
     if (!connection || !cache || this.#destroyed || this.#downloads.has(id)) return;
+    const cached = cache.images.get(id);
+    const installed = this.#currentImage(id);
+    const policy = installed?.metadata ?? cached;
+    if (policy?.freshUntil !== undefined && policy.freshUntil > Date.now()) return;
+    // Legacy records without freshness or validators keep their cache-first behavior.
+    if (policy && policy.freshUntil === undefined && !policy.etag && !policy.lastModified) return;
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, connection.signal, this.#scope.signal]);
     const valid = () =>
@@ -184,19 +251,55 @@ export class CoverEngine {
       this.#networkConnection() === connection;
     this.#downloads.set(id, controller);
     void (async () => {
-      const cached = cache.images.get(id);
-      if (cached && !cached.etag && !cached.lastModified) return;
-      const result = await connection.read(id, {
-        size: 500,
-        etag: cached?.etag,
-        lastModified: cached?.lastModified,
-      });
-      if (!valid() || !result || cache.images.get(id)?.fileName !== cached?.fileName) return;
-      const image = await cache.saveImage(id, result, signal);
+      const result = await connection.read(id, { ...policy, size: 500 });
+      if (!valid() || cache.images.get(id)?.fileName !== cached?.fileName) return;
+      const metadata: ImageMetadata = {
+        cacheControl: result.cacheControl,
+        expires: result.expires,
+        freshUntil: result.freshUntil,
+        etag: result.etag,
+        lastModified: result.lastModified,
+      };
+      let memory = installed;
+      if (result.notModified) {
+        if (memory) memory.metadata = metadata;
+      } else {
+        memory = await this.#decode(
+          new Blob([result.blob], { type: result.type }),
+          metadata,
+          signal,
+        );
+        if (!valid() || cache.images.get(id)?.fileName !== cached?.fileName) {
+          URL.revokeObjectURL(memory.source);
+          return;
+        }
+        this.#replaceImage(id, memory);
+        await this.#refreshImage(id);
+      }
       if (!valid()) return;
-      if (image && cache.images.get(id)?.fileName === image.record.fileName)
-        this.#installBlob(image.record, image.blob);
-      await this.refresh();
+      if (artworkNoStore(metadata)) {
+        if (memory) memory.persistedFileName = undefined;
+        if (cached) await cache.evictImage(id, cached.fileName, signal);
+      } else if (result.notModified) {
+        if (cached) {
+          await cache.updateImage(id, cached.fileName, metadata, signal);
+          if (valid() && cache.images.get(id)?.fileName !== cached.fileName)
+            await this.#refreshImage(id);
+        }
+      } else {
+        const saved = await cache.saveImage(id, result, signal);
+        if (!valid()) return;
+        if (saved && cache.images.get(id)?.fileName === saved.record.fileName) {
+          if (memory) memory.persistedFileName = saved.record.fileName;
+        } else {
+          // Another tab won persistence: adopt its bytes rather than marking ours as saved.
+          const winner = cache.images.get(id);
+          if (winner) {
+            await this.#install(cache, winner);
+            if (valid()) await this.#refreshImage(id);
+          }
+        }
+      }
     })()
       .catch(() => {})
       .finally(() => {
@@ -204,67 +307,59 @@ export class CoverEngine {
       });
   }
 
-  // Acquisition is explicit. Reading a returned handle never schedules new I/O.
-  #ensureCover(entity: Entity, id: string, options: CoverOptions): Cover {
+  /** Resolve cached bytes eagerly; reading a handle never schedules I/O. load() gates network. */
+  #ensureCover(entity: Entity, id: string): Cover {
     this.#version;
-    const key = JSON.stringify([entity, id, options.allowNetwork]);
+    const key = JSON.stringify([entity, id]);
     const existing = this.#covers.get(key);
     if (existing) return existing.cover;
     const engine = this;
-    const entry: CoverEntry = {
+    const entry: CoverEntry = $state({
       entity,
       id,
-      allowNetwork: options.allowNetwork,
       generation: 0,
-      network: false,
+      demanded: false,
       cover: {
         get source() {
-          engine.#version;
           return entry.source;
         },
-        cache() {
-          if (entry.network && entry.selected && engine.#covers.get(key) === entry)
-            engine.#cacheImage(entry.selected);
+        load() {
+          untrack(() => {
+            if (engine.#covers.get(key) !== entry || engine.#destroyed) return;
+            entry.demanded = true;
+            void engine.#resolve(entry, true);
+          });
         },
       },
-    };
+    });
     this.#covers.set(key, entry);
     void Promise.resolve().then(() => {
-      if (this.#covers.get(key) === entry && !this.#destroyed) return this.#resolve(entry, true);
+      if (this.#covers.get(key) === entry && !this.#destroyed && !entry.demanded)
+        return this.#resolve(entry, false);
     });
     return entry.cover;
   }
-  ensureArtistCover(id: string, options: CoverOptions) {
-    return this.#ensureCover("artists", id, options);
+  ensureArtistCover(id: string) {
+    return this.#ensureCover("artists", id);
   }
-  ensureAlbumCover(id: string, options: CoverOptions) {
-    return this.#ensureCover("albums", id, options);
+  ensureAlbumCover(id: string) {
+    return this.#ensureCover("albums", id);
   }
-  ensureTrackCover(id: string, options: CoverOptions) {
-    return this.#ensureCover("tracks", id, options);
+  ensureTrackCover(id: string) {
+    return this.#ensureCover("tracks", id);
   }
 
+  /** Session owns network access; disconnected handles retain local artwork and demand. */
   setConnection(connection: ArtworkConnection | undefined) {
     if (connection === this.#connection || this.#destroyed) return;
     this.#cancelDownloads();
     this.#connection = connection;
-    for (const entry of this.#covers.values()) {
-      entry.generation++;
-      if (entry.network) {
-        entry.network = false;
-        entry.source = undefined;
-      }
-      void this.#resolve(entry, !!connection);
-    }
-    this.#notify();
+    for (const entry of this.#covers.values())
+      void this.#resolve(entry, !!connection && entry.demanded);
   }
   #cancelDownloads() {
     for (const controller of this.#downloads.values()) controller.abort();
     this.#downloads.clear();
-  }
-  #releaseObjectUrls() {
-    for (const image of this.#objectUrls.values()) URL.revokeObjectURL(image.source);
-    this.#objectUrls.clear();
   }
   destroy() {
     this.activate();

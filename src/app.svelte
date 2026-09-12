@@ -5,7 +5,7 @@
   import Player from "./player.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
-  import { CoverEngine } from "./cover.svelte";
+  import { CoverEngine, immediateCover, lazyCover } from "./cover.svelte";
   import { MetadataEngine } from "./metadata.svelte";
   import type {
     Album as AlbumRecord,
@@ -600,13 +600,16 @@
 
     <section class="view player-view">
       <div class="player-main">
-        <div class="artwork">
+        <div
+          class="artwork"
+          {@attach currentTrack
+            ? immediateCover(coverEngine.ensureTrackCover(currentTrack.id))
+            : undefined}
+        >
           {#if currentTrack}
-            {@const cover = coverEngine.ensureTrackCover(currentTrack.id, {
-              allowNetwork: !offlineMode,
-            })}
+            {@const cover = coverEngine.ensureTrackCover(currentTrack.id)}
             {#if cover.source}
-              <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
+              <img src={cover.source} alt="" />
             {:else}
               <span>{@render icon("music")}</span>
             {/if}
@@ -823,9 +826,7 @@
         <div class="tiles-grid">
           {#each visibleArtists as artist, index}
             {@const menuId = `artist-menu-${index}`}
-            {@const cover = coverEngine.ensureArtistCover(artist.id, {
-              allowNetwork: !offlineMode,
-            })}
+            {@const cover = coverEngine.ensureArtistCover(artist.id)}
             <a
               class="tile"
               href={router.href(artistPath(artist))}
@@ -833,9 +834,9 @@
               data-longpress="show-modal"
               title={`${artist.name} — hold for actions`}
             >
-              <span class="tile-image">
+              <span class="tile-image" {@attach lazyCover(cover)}>
                 {#if cover.source}
-                  <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
+                  <img src={cover.source} alt="" />
                 {:else}
                   <span>{@render icon("music")}</span>
                 {/if}
@@ -930,12 +931,10 @@
 
   <section class="view collection-view">
     {#if libraryAvailable && artist}
-      {@const artwork = coverEngine.ensureArtistCover(artist.id, {
-        allowNetwork: !offlineMode,
-      })}
-      <div class="artwork" aria-hidden="true">
+      {@const artwork = coverEngine.ensureArtistCover(artist.id)}
+      <div class="artwork" aria-hidden="true" {@attach immediateCover(artwork)}>
         {#if artwork.source}
-          <img src={artwork.source} alt="" onload={artwork.cache} />
+          <img src={artwork.source} alt="" />
         {:else}
           {@render icon("music")}
         {/if}
@@ -982,9 +981,7 @@
                   (track) => trackEngine.getStatus(track.id) === "downloaded",
                 )
               : (cache.albumTracks.get(album.id) ?? [])}
-            {@const cover = coverEngine.ensureAlbumCover(album.id, {
-              allowNetwork: !offlineMode,
-            })}
+            {@const cover = coverEngine.ensureAlbumCover(album.id)}
             <article class="wings-item row-button">
               <a
                 class="linkarea"
@@ -995,9 +992,9 @@
                 title={`${album.title} — hold for actions`}
               ></a>
               <span class="track-leading">
-                <span class="cover album-cover">
+                <span class="cover album-cover" {@attach lazyCover(cover)}>
                   {#if cover.source}
-                    <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
+                    <img src={cover.source} alt="" />
                   {:else}
                     <span>{@render icon("music")}</span>
                   {/if}
@@ -1162,12 +1159,10 @@
 
   <section class="view collection-view">
     {#if libraryAvailable && artist && album}
-      {@const artwork = coverEngine.ensureAlbumCover(album.id, {
-        allowNetwork: !offlineMode,
-      })}
-      <div class="artwork" aria-hidden="true">
+      {@const artwork = coverEngine.ensureAlbumCover(album.id)}
+      <div class="artwork" aria-hidden="true" {@attach immediateCover(artwork)}>
         {#if artwork.source}
-          <img src={artwork.source} alt="" onload={artwork.cache} />
+          <img src={artwork.source} alt="" />
         {:else}
           {@render icon("music")}
         {/if}
@@ -1399,9 +1394,7 @@
 
 {#snippet miniPlayer()}
   {#if currentTrack}
-    {@const cover = coverEngine.ensureTrackCover(currentTrack.id, {
-      allowNetwork: !offlineMode,
-    })}
+    {@const cover = coverEngine.ensureTrackCover(currentTrack.id)}
     <div class="mini-player wings">
       <button
         class="linkarea"
@@ -1409,9 +1402,9 @@
         command="show-modal"
         aria-label="Open player"
       ></button>
-      <span class="mini-art">
+      <span class="mini-art" {@attach immediateCover(cover)}>
         {#if cover.source}
-          <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
+          <img src={cover.source} alt="" />
         {:else}
           <span>{@render icon("music")}</span>
         {/if}

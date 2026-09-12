@@ -145,6 +145,30 @@ describe("artwork cache foundation", () => {
     expect(JSON.parse(disk.files.get(catalogPath(disk))!)).toEqual([...cache.images.values()]);
   });
 
+  it("updates metadata and evicts explicitly without overwriting a competing version", async () => {
+    const disk = installDisk();
+    const cache = new Cache(account);
+    const original = (await cache.saveImage("cover", image("old")))!;
+    await cache.updateImage("cover", original.record.fileName, { freshUntil: 1000 });
+    expect(cache.images.get("cover")).toMatchObject({
+      fileName: original.record.fileName,
+      freshUntil: 1000,
+    });
+    expect(await (await cache.readImage("cover"))!.blob.text()).toBe("old");
+
+    const other = new Cache(account);
+    await other.load();
+    const replacement = (await other.saveImage("cover", image("new")))!;
+    await cache.updateImage("cover", original.record.fileName, { freshUntil: 2000 });
+    await cache.evictImage("cover", original.record.fileName);
+    expect(cache.images.get("cover")).toEqual(replacement.record);
+    expect(await (await cache.readImage("cover"))!.blob.text()).toBe("new");
+    expect(disk.blobs.size).toBe(1);
+    await cache.evictImage("cover", replacement.record.fileName);
+    expect(cache.images.size).toBe(0);
+    expect(disk.blobs.size).toBe(0);
+  });
+
   it("lets the first completed image win without blocking reads or other writes", async () => {
     const disk = installDisk();
     const cache = new Cache(account);

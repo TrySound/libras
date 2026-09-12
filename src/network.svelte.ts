@@ -1,7 +1,7 @@
 import { SubsonicClient, createSubsonicAuth } from "./subsonic-client";
 import { authSchema, type Auth } from "./auth";
 import * as v from "valibot";
-import type { Album, Artist, Track, Account } from "./schema";
+import type { Album, Artist, Track, Account, ImageMetadata } from "./schema";
 
 /** Fetch failed before returning a response; browsers do not expose a reliable CORS diagnosis. */
 export class NetworkTransportError extends Error {
@@ -61,8 +61,55 @@ type AudioFormat = "raw" | "mp3";
 
 export type AudioConnection = ReturnType<typeof audioAccess>;
 
-type ArtworkValidators = { etag?: string; lastModified?: string };
-type RemoteArtwork = ArtworkValidators & { blob: Blob; type: string };
+/** HTTP freshness metadata shared by responses and the local image catalog. */
+type ArtworkCachePolicy = Pick<ImageMetadata, "cacheControl" | "expires" | "freshUntil">;
+
+export function artworkNoStore(policy: ArtworkCachePolicy) {
+  return /(?:^|,)\s*no-store\s*(?:,|$)/i.test(policy.cacheControl ?? "");
+}
+
+/** Use explicit server freshness only; Last-Modified is a validator, not a TTL. */
+export function artworkCachePolicy(
+  headers: Headers,
+  requestedAt: number,
+  receivedAt: number,
+  previous: ArtworkCachePolicy = {},
+): ArtworkCachePolicy {
+  const cacheControl = headers.get("Cache-Control") ?? previous.cacheControl;
+  const expires = headers.get("Expires") ?? previous.expires;
+  const directives = (cacheControl ?? "").split(",").map((value) => value.trim());
+  const maxAge = directives.find((value) => /^max-age\s*=/i.test(value));
+  const seconds = maxAge?.match(/^max-age\s*=\s*"?(\d+)"?$/i)?.[1];
+  const date = Date.parse(headers.get("Date") ?? "");
+  const responseDate = Number.isFinite(date) ? date : receivedAt;
+  const age = Number(headers.get("Age") ?? 0);
+  const currentAge = Math.max(
+    0,
+    receivedAt - responseDate,
+    (Number.isFinite(age) ? Math.max(0, age) * 1000 : 0) + receivedAt - requestedAt,
+  );
+  let lifetime =
+    seconds !== undefined
+      ? Number(seconds) * 1000
+      : maxAge
+        ? 0
+        : Date.parse(expires ?? "") - responseDate;
+  if (
+    !Number.isFinite(lifetime) ||
+    directives.some((value) => /^no-cache(?:\s*=|$)|^no-store$/i.test(value))
+  )
+    lifetime = 0;
+  return {
+    cacheControl,
+    expires,
+    freshUntil:
+      cacheControl === undefined && expires === undefined
+        ? undefined
+        : Math.max(0, Math.floor(receivedAt + Math.max(0, lifetime - currentAge))),
+  };
+}
+
+type RemoteArtwork = ImageMetadata & { notModified: false; blob: Blob; type: string };
 
 export type ArtworkConnection = ReturnType<typeof artworkAccess>;
 
@@ -261,24 +308,39 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicClient, reque
       signal.throwIfAborted();
       return client.getCoverArtUrl(id, size);
     },
-    read: (id: string, options: ArtworkValidators & { size: number }) =>
+    read: (id: string, options: ImageMetadata & { size: number }) =>
       request(async () => {
         const headers = new Headers();
         if (options.etag) headers.set("If-None-Match", options.etag);
         if (options.lastModified) headers.set("If-Modified-Since", options.lastModified);
+        const requestedAt = Date.now();
         const response = await networkFetch(client.getCoverArtUrl(id, options.size), {
           headers,
           signal,
         });
         signal.throwIfAborted();
-        if (response.status === 304 && (options.etag || options.lastModified)) return null;
+        const notModified = response.status === 304 && !!(options.etag || options.lastModified);
+        const policy = artworkCachePolicy(
+          response.headers,
+          requestedAt,
+          Date.now(),
+          notModified ? options : {},
+        );
+        const validators = {
+          etag: response.headers.get("ETag") ?? (notModified ? options.etag : undefined),
+          lastModified:
+            response.headers.get("Last-Modified") ??
+            (notModified ? options.lastModified : undefined),
+        };
+        if (notModified) return { ...policy, ...validators, notModified: true as const };
         if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
         const blob = await response.blob();
         return {
+          ...policy,
+          ...validators,
+          notModified: false,
           blob,
           type: response.headers.get("Content-Type")?.split(";")[0] ?? "image/jpeg",
-          etag: response.headers.get("ETag") ?? undefined,
-          lastModified: response.headers.get("Last-Modified") ?? undefined,
         } satisfies RemoteArtwork;
       }),
   });

@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { Network, NetworkTransportError } from "../src/network.svelte";
+import {
+  Network,
+  NetworkTransportError,
+  artworkCachePolicy,
+  artworkNoStore,
+} from "../src/network.svelte";
 
 const auth = {
   host: "https://music.example",
@@ -7,6 +12,75 @@ const auth = {
   token: "token",
   salt: "salt",
 };
+
+describe("artwork HTTP freshness", () => {
+  const now = Date.parse("2026-06-01T12:00:00Z");
+
+  it("accounts for response age, Date and request delay", () => {
+    const policy = artworkCachePolicy(
+      new Headers({
+        "Cache-Control": 'private, max-age="600"',
+        Date: new Date(now - 30_000).toUTCString(),
+        Age: "40",
+      }),
+      now - 2000,
+      now,
+    );
+    expect(policy.freshUntil).toBe(now + 558_000);
+  });
+
+  it("uses Expires unless max-age takes precedence", () => {
+    const headers = new Headers({
+      Date: new Date(now).toUTCString(),
+      Expires: new Date(now + 60_000).toUTCString(),
+    });
+    expect(artworkCachePolicy(headers, now, now).freshUntil).toBe(now + 60_000);
+    headers.set("Cache-Control", "max-age=120");
+    expect(artworkCachePolicy(headers, now, now).freshUntil).toBe(now + 120_000);
+  });
+
+  it.each(["no-cache", 'no-cache="ETag"', "no-store", "max-age=invalid", "max-age=0"])(
+    "does not consider %s fresh",
+    (directive) => {
+      expect(
+        artworkCachePolicy(
+          new Headers({
+            "Cache-Control": directive,
+            Expires: new Date(now + 60_000).toUTCString(),
+          }),
+          now,
+          now,
+        ).freshUntil,
+      ).toBe(now);
+    },
+  );
+
+  it("retains policy on 304 but calculates a new freshness deadline", () => {
+    expect(
+      artworkCachePolicy(new Headers(), now, now, {
+        cacheControl: "max-age=60",
+        freshUntil: now - 1000,
+      }).freshUntil,
+    ).toBe(now + 60_000);
+  });
+
+  it("does not invent freshness from Last-Modified", () => {
+    expect(
+      artworkCachePolicy(
+        new Headers({
+          "Last-Modified": new Date(now - 1000).toUTCString(),
+        }),
+        now,
+        now,
+      ).freshUntil,
+    ).toBeUndefined();
+  });
+
+  it("recognizes no-store without treating private as uncacheable", () => {
+    expect(artworkNoStore({ cacheControl: "private, NO-STORE" })).toBe(true);
+    expect(artworkNoStore({ cacheControl: "private, max-age=60" })).toBe(false);
+  });
+});
 
 describe("Network connection lifecycle", () => {
   it.each(["modified", "library", "queueRead", "queueWrite", "artwork", "audio"] as const)(
@@ -503,13 +577,19 @@ describe("Network connection lifecycle", () => {
       const options = { size: 500, etag: '"old"', lastModified: "earlier" };
       const result = await artwork.read("cover", options);
       expect(result).toMatchObject({ type: "image/png", etag: '"new"', lastModified: "yesterday" });
-      expect(await result!.blob.text()).toBe("image");
+      expect(result.notModified).toBe(false);
+      if (result.notModified) throw new Error("Expected image bytes");
+      expect(await result.blob.text()).toBe("image");
       const init = fetcher.mock.calls[0][1]!;
       expect(init.signal).toBe(client.signal);
       expect(new Headers(init.headers).get("If-None-Match")).toBe('"old"');
       expect(new Headers(init.headers).get("If-Modified-Since")).toBe("earlier");
       fetcher.mockResolvedValue(new Response(null, { status: 304 }));
-      await expect(artwork.read("cover", options)).resolves.toBeNull();
+      await expect(artwork.read("cover", options)).resolves.toMatchObject({
+        notModified: true,
+        etag: '"old"',
+        lastModified: "earlier",
+      });
       await expect(artwork.read("cover", { size: 500 })).rejects.toThrow("HTTP 304");
       fetcher.mockResolvedValue(new Response(null, { status: 404 }));
       await expect(artwork.read("cover", options)).rejects.toThrow("HTTP 404");

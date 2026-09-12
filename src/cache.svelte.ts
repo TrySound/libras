@@ -7,6 +7,7 @@ import {
   downloadTrackSchema,
   type Account,
   type ImageRecord,
+  type ImageMetadata,
 } from "./schema";
 
 /** Read-only selection dependency. Session is the application's only selector. */
@@ -42,11 +43,9 @@ export type CachedQueue = v.InferOutput<typeof queueSchema>;
 const queueRecordSchema = v.strictObject({ value: queueSchema, updatedAt: timestamp });
 
 const imagesSchema = v.array(imageSchema);
-export interface CachedImage {
+export interface CachedImage extends ImageMetadata {
   blob: Blob;
   type: string;
-  etag?: string;
-  lastModified?: string;
 }
 
 const downloadFormat = v.picklist(["raw", "mp3"]);
@@ -528,6 +527,28 @@ class BinaryCatalog<R extends BinaryRecord> {
     });
   }
 
+  /** Update metadata (or evict) without rewriting bytes; never overwrite a replacement. */
+  updateRecord(
+    key: string,
+    expected: string,
+    change: (record: R) => R | undefined,
+    signal?: AbortSignal,
+  ) {
+    return this.#serial(async () => {
+      signal?.throwIfAborted();
+      const result = await this.#update((records) => {
+        const record = records.find((item) => this.options.key(item) === key);
+        if (record?.fileName !== expected) return undefined;
+        const next = change(record);
+        return records.flatMap((item) => (item === record ? (next ? [next] : []) : [item]));
+      }, signal);
+      signal?.throwIfAborted();
+      this.#publish(result.value);
+      if (result.written && !result.value?.some((item) => item.fileName === expected))
+        await (await this.disk?.files())?.removeEntry(expected).catch(() => {});
+    });
+  }
+
   /** Stream independently; serialize only catalog commit and publication.
    * Preparing the result may open the file, but blob-backed callers need not. */
   async write<T>(
@@ -870,6 +891,9 @@ export class Cache {
         type: image.type,
         size: image.blob.size,
         cachedAt: Date.now(),
+        cacheControl: image.cacheControl,
+        expires: image.expires,
+        freshUntil: image.freshUntil,
         etag: image.etag,
         lastModified: image.lastModified,
       };
@@ -883,6 +907,23 @@ export class Cache {
         signal,
       );
     }, signal);
+  }
+
+  /** A 304 changes freshness/validators, not the file or its URL. */
+  updateImage(id: string, expected: string, metadata: ImageMetadata, signal?: AbortSignal) {
+    return this.#images.operation(
+      () =>
+        this.#images.updateRecord(id, expected, (record) => ({ ...record, ...metadata }), signal),
+      signal,
+    );
+  }
+
+  /** Evict only the observed version, preserving any competing replacement. */
+  evictImage(id: string, expected: string, signal?: AbortSignal) {
+    return this.#images.operation(
+      () => this.#images.updateRecord(id, expected, () => undefined, signal),
+      signal,
+    );
   }
 
   get downloads() {
