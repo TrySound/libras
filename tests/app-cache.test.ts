@@ -6,6 +6,7 @@ import { installNavigation } from "./router-test-helpers";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { TrackEngine } from "../src/track.svelte";
+import { CoverEngine } from "../src/cover.svelte";
 
 const mocks = vi.hoisted(() => ({
   cache: undefined as import("../src/cache.svelte").Cache | undefined,
@@ -326,21 +327,87 @@ it.each([
   });
 });
 
-it("renders cached artwork only near the viewport and drops the previous account's object URLs", async () => {
+it.each([
+  { route: "/library/artist/artist", selector: "a.linkarea", observesArtwork: true },
+  {
+    route: "/library/artist/artist/album/album",
+    selector: "button.linkarea",
+    observesArtwork: false,
+  },
+])("keeps row controls accessible on $route", async ({ route, selector, observesArtwork }) => {
   installDisk();
-  const intersections: (() => void)[] = [];
+  const load = vi.fn();
+  vi.spyOn(CoverEngine.prototype, "ensureAlbumCover").mockReturnValue({ source: undefined, load });
+  const observers = new Map<Element, (visible: boolean) => void>();
   vi.stubGlobal(
     "IntersectionObserver",
     class {
       constructor(private callback: IntersectionObserverCallback) {}
       observe(target: Element) {
-        intersections.push(() =>
+        observers.set(target, (isIntersecting) =>
           this.callback(
-            [{ target, isIntersecting: true } as IntersectionObserverEntry],
+            [{ target, isIntersecting } as IntersectionObserverEntry],
             this as unknown as IntersectionObserver,
           ),
         );
       }
+      unobserve(target: Element) {
+        observers.delete(target);
+      }
+      disconnect() {
+        observers.clear();
+      }
+    },
+  );
+  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  await cache.replaceLibrary({
+    ...library("Artist", 1),
+    albums: [{ id: "album", artistId: "artist", title: "Album", genres: [] }],
+    tracks: [{ id: "track", albumId: "album", artistId: "artist", title: "Track", genres: [] }],
+  });
+  mocks.cache = cache;
+  window.history.replaceState(null, "", `#${route}`);
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const control = target.querySelector<HTMLElement>(selector)!;
+  expect(control).not.toBeNull();
+  const row = control.parentElement!;
+  expect(row.hasAttribute("tabindex")).toBe(false);
+  expect(row.hasAttribute("data-viewport-hidden")).toBe(false);
+  control.focus();
+  expect(document.activeElement).toBe(control);
+  expect(observers.size).toBe(observesArtwork ? 1 : 0);
+  if (observesArtwork) {
+    expect(load).not.toHaveBeenCalled();
+    observers.get(control)!(false);
+    expect(load).not.toHaveBeenCalled();
+    observers.get(control)!(true);
+    expect(load).toHaveBeenCalledOnce();
+    observers.get(control)!(false);
+    expect(row.hasAttribute("data-viewport-hidden")).toBe(false);
+  }
+});
+
+it("renders cached artwork only near the viewport and drops the previous account's object URLs", async () => {
+  installDisk();
+  const intersections: ((visible: boolean) => void)[] = [];
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        expect(target.matches("a.tile")).toBe(true);
+        intersections.push((visible) =>
+          this.callback(
+            [{ target, isIntersecting: visible } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          ),
+        );
+      }
+      unobserve() {}
       disconnect() {}
     },
   );
@@ -365,11 +432,21 @@ it("renders cached artwork only near the viewport and drops the previous account
   expect(mocks.options!.selection.cache!.images).toBe(first.images);
   expect(target.querySelector(".tile-image img")).toBeNull();
   expect(URL.createObjectURL).not.toHaveBeenCalled();
-  intersections[0]();
+  const tile = target.querySelector("a.tile")!;
+  expect(tile.getAttribute("aria-label")).toBe("Artist");
+  expect(tile.hasAttribute("data-viewport-hidden")).toBe(true);
+  intersections[0](true);
+  expect(tile.hasAttribute("data-viewport-hidden")).toBe(false);
   await vi.waitFor(() => {
     flushSync();
     expect(target.querySelector(".tile-image img")?.getAttribute("src")).toBe("blob:artwork-1");
   });
+  intersections[0](false);
+  expect(tile.hasAttribute("data-viewport-hidden")).toBe(true);
+  intersections[0](true);
+  await mocks.options!.covers.refresh();
+  expect(tile.hasAttribute("data-viewport-hidden")).toBe(false);
+  expect(URL.createObjectURL).toHaveBeenCalledOnce();
 
   const second = new Cache({ ...first.account!, username: "second" });
   await second.replaceLibrary(data);

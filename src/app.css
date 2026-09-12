@@ -2,6 +2,16 @@
   display: none !important;
 }
 
+[data-viewport-hidden] {
+  content-visibility: hidden;
+}
+
+@media print {
+  [data-viewport-hidden] {
+    content-visibility: visible;
+  }
+}
+
 :root {
   --palette-transparent: transparent;
   --palette-black: #000;
@@ -852,6 +862,8 @@ a {
 }
 
 .tile {
+  /* Preserve the observed box and scroll geometry while its contents are skipped. */
+  aspect-ratio: 1;
   position: relative;
   min-width: 0;
   overflow: hidden;

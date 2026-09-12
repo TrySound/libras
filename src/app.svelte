@@ -5,7 +5,8 @@
   import Player from "./player.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
-  import { CoverEngine, immediateCover, lazyCover } from "./cover.svelte";
+  import { CoverEngine, immediateCover } from "./cover.svelte";
+  import { nearViewport, viewportContent } from "./viewport";
   import { MetadataEngine } from "./metadata.svelte";
   import type {
     Album as AlbumRecord,
@@ -829,12 +830,14 @@
             {@const cover = coverEngine.ensureArtistCover(artist.id)}
             <a
               class="tile"
+              {@attach viewportContent(cover.load)}
+              aria-label={artist.name}
               href={router.href(artistPath(artist))}
               data-longpressfor={menuId}
               data-longpress="show-modal"
               title={`${artist.name} — hold for actions`}
             >
-              <span class="tile-image" {@attach lazyCover(cover)}>
+              <span class="tile-image">
                 {#if cover.source}
                   <img src={cover.source} alt="" />
                 {:else}
@@ -985,6 +988,9 @@
             <article class="wings-item row-button">
               <a
                 class="linkarea"
+                {@attach nearViewport((visible) => {
+                  if (visible) cover.load();
+                })}
                 href={router.href(albumPath(artist, album))}
                 aria-label={`Open ${album.title}`}
                 data-longpressfor={albumMenuId}
@@ -992,7 +998,7 @@
                 title={`${album.title} — hold for actions`}
               ></a>
               <span class="track-leading">
-                <span class="cover album-cover" {@attach lazyCover(cover)}>
+                <span class="cover album-cover">
                   {#if cover.source}
                     <img src={cover.source} alt="" />
                   {:else}
