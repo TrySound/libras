@@ -326,6 +326,29 @@
         </div>
       </section>
 
+      <section class="styleguide-panel stack-lg" aria-labelledby="focus-heading">
+        <header class="stack-xs">
+          <h2 class="type-heading" id="focus-heading">Keyboard focus</h2>
+          <p class="type-body text-muted">
+            Use Tab and Shift+Tab throughout this page. Links, tiles, sliders, buttons, and text
+            fields share a visible outline. Switches and full-row controls highlight their visible
+            container; secondary row actions highlight only themselves.
+          </p>
+        </header>
+        <a class="text-link" href="#switches-heading">Jump to switches</a>
+        <div class="tiles-grid">
+          <a class="tile" href="#tracks-heading">
+            <span class="tile-image">
+              <strong class="tile-name type-small">Library tile</strong>
+            </span>
+          </a>
+        </div>
+        <label class="stack-xs">
+          <span class="type-small">Playback position</span>
+          <input class="playback-slider" type="range" min="0" max="120" value="45" />
+        </label>
+      </section>
+
       <section class="styleguide-panel stack-lg" aria-labelledby="tracks-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="tracks-heading">Track lists</h2>
@@ -337,7 +360,7 @@
 
         <div class="wings track-demo">
           <article class="wings-item row-button">
-            <a class="row-area" href="#tracks-heading" aria-label="Open album item"></a>
+            <a class="linkarea" href="#tracks-heading" aria-label="Open album item"></a>
             <span class="track-leading album-leading"><span class="guide-cover"></span></span>
             <span class="track-content stack-xs">
               <strong class="type-title">Album item</strong>
@@ -366,7 +389,7 @@
           </article>
           <article class="wings-item row-button">
             <button
-              class="row-area"
+              class="linkarea"
               aria-label="Play a track with a longer title that truncates"
             ></button>
             <span class="track-leading">1</span>
@@ -393,7 +416,7 @@
             </span>
           </article>
           <article class="wings-item row-button">
-            <button class="row-area" aria-label="Play queue item"></button>
+            <button class="linkarea" aria-label="Play queue item"></button>
             <span class="track-leading">12</span>
             <span class="track-content"><span>Queue item</span></span>
             <span class="track-actions">

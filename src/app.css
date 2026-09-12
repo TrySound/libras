@@ -95,6 +95,9 @@
   --type-eyebrow-line: 1rem;
   --type-eyebrow-weight: var(--weight-bold);
 
+  --focus-outline: 2px solid var(--color-accent-text);
+  --focus-outline-offset: 2px;
+
   --popover-bg: rgb(from var(--palette-gray-900) r g b / 75%);
   --popover-blur: 14px;
   --popover-border: 1px solid var(--palette-gray-600);
@@ -231,8 +234,8 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-accent-text);
-    outline-offset: 2px;
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
   }
 }
 
@@ -253,9 +256,9 @@
     }
   }
 
-  &:has(.linkare:focus-visible) {
-    outline: 2px solid var(--color-accent-text);
-    outline-offset: 2px;
+  &:has(.linkarea:focus-visible) {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
   }
 }
 
@@ -303,11 +306,21 @@
   &:has(input:disabled) {
     opacity: 0.5;
   }
+
+  &:has(input:focus-visible) {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+  }
 }
 
 .text-link {
   text-decoration: underline;
   text-underline-offset: 0.3em;
+
+  &:focus-visible {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+  }
 
   @media (hover: hover) {
     &:hover {
@@ -452,9 +465,13 @@ input:not([type="range"]):not([type="checkbox"]) {
   padding: 0.8rem 0.9rem;
   border: 1px solid var(--color-border-strong);
   border-radius: 0.7rem;
-  outline: none;
   color: var(--color-text-primary);
   background: var(--color-surface-input);
+
+  &:focus-visible {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+  }
 
   @media (hover: hover) {
     &:hover:not(:disabled) {
@@ -677,8 +694,8 @@ a {
 
 .button:focus-visible,
 .icon-button:focus-visible {
-  outline: 2px solid var(--color-accent-text);
-  outline-offset: 2px;
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
 }
 
 .section-heading {
@@ -806,6 +823,11 @@ a {
   margin: 0;
   accent-color: var(--color-accent);
 
+  &:focus-visible {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+  }
+
   @media (hover: hover) {
     &:hover:not(:disabled) {
       cursor: pointer;
@@ -844,6 +866,11 @@ a {
   display: grid;
   width: 100%;
   padding: 0;
+
+  &:focus-visible {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+  }
 
   @media (hover: hover) {
     &:hover:not(:active) {
@@ -1104,8 +1131,8 @@ a {
   }
 
   &:has(.linkarea:focus-visible) {
-    outline: 2px solid var(--color-accent-text);
-    outline-offset: 2px;
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
   }
 }
 
