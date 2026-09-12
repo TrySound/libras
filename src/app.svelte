@@ -267,8 +267,8 @@
   <title>Libras</title>
 </svelte:head>
 
-{#snippet icon(name: string)}
-  <svg aria-hidden="true" width="20" height="20">
+{#snippet icon(name: string, size = 20)}
+  <svg aria-hidden="true" width={size} height={size}>
     <use href={`#icon-${name}`}></use>
   </svg>
 {/snippet}
@@ -676,11 +676,11 @@
             title={player?.playing ? "Pause" : "Play"}
           >
             {#if playbackLoading}
-              {@render icon("loading")}
+              {@render icon("loading", 32)}
             {:else if player?.playing}
-              {@render icon("pause")}
+              {@render icon("pause", 32)}
             {:else}
-              {@render icon("play")}
+              {@render icon("play", 32)}
             {/if}
           </button>
           <button
@@ -817,41 +817,28 @@
           <p class="type-body">Checking downloaded music…</p>
         </div>
       {:else if visibleArtists.length > 0}
-        <div class="artist-grid">
+        <div class="tiles-grid">
           {#each visibleArtists as artist, index}
             {@const menuId = `artist-menu-${index}`}
             {@const cover = coverEngine.ensureArtistCover(artist.id, {
               allowNetwork: !offlineMode,
             })}
-            <article class="artist-card">
-              <a
-                class="artist-main"
-                href={router.href(artistPath(artist))}
-                data-longpressfor={menuId}
-                data-longpress="show-modal"
-                title={`${artist.name} — hold for actions`}
-              >
-                <span class="cover artist-cover">
-                  {#if cover.source}
-                    <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
-                  {:else}
-                    <span>{@render icon("music")}</span>
-                  {/if}
-                  <strong class="artist-name type-small">{artist.name}</strong>
-                </span>
-              </a>
-              <button
-                class="icon-button artist-menu-trigger"
-                hidden
-                data-size="sm"
-                data-variant="overlay"
-                commandfor={menuId}
-                command="show-modal"
-                title={`Open menu for ${artist.name}`}
-              >
-                {@render icon("menu")}
-              </button>
-            </article>
+            <a
+              class="tile"
+              href={router.href(artistPath(artist))}
+              data-longpressfor={menuId}
+              data-longpress="show-modal"
+              title={`${artist.name} — hold for actions`}
+            >
+              <span class="tile-image">
+                {#if cover.source}
+                  <img src={cover.source} alt="" loading="lazy" onload={cover.cache} />
+                {:else}
+                  <span>{@render icon("music")}</span>
+                {/if}
+                <strong class="tile-name type-small">{artist.name}</strong>
+              </span>
+            </a>
           {/each}
         </div>
       {:else}
@@ -952,7 +939,6 @@
       </div>
       <div class="section-heading collection-heading">
         <div>
-          <span class="type-eyebrow text-muted">Albums</span>
           <h2 class="type-heading">{artist.name}</h2>
           <p class="library-meta type-small">
             {visibleAlbums.length} album{visibleAlbums.length === 1 ? "" : "s"}

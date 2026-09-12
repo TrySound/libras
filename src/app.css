@@ -378,6 +378,12 @@
   }
 }
 
+.tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(10rem, 100%), 1fr));
+  gap: var(--space-sm);
+}
+
 body {
   margin: 0;
 }
@@ -439,7 +445,7 @@ input {
 }
 
 .view {
-  padding: 1.25rem;
+  padding: var(--space-md);
 }
 
 input:not([type="range"]):not([type="checkbox"]) {
@@ -464,7 +470,7 @@ input:not([type="range"]):not([type="checkbox"]):focus {
 .connection-card {
   overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 0.9rem;
+  border-radius: var(--space-sm);
   background: var(--color-surface);
 }
 
@@ -530,7 +536,7 @@ input:not([type="range"]):not([type="checkbox"]):focus {
   align-items: center;
   gap: 1rem;
   border: 1px solid var(--color-border);
-  border-radius: 0.9rem;
+  border-radius: var(--space-sm);
   background: var(--color-surface);
 }
 
@@ -723,14 +729,14 @@ a {
 .player-dialog {
   --dialog-dismiss-offset: calc(50dvh + 50%);
   box-sizing: border-box;
-  width: calc(100% - 2rem);
+  width: calc(100% - 1rem);
   max-width: 80rem;
-  height: min(calc(100dvh - 2rem), 52rem);
+  height: min(calc(100dvh - 1rem), 52rem);
   max-height: none;
   padding: 0;
   overflow-y: auto;
   border: 1px solid var(--color-border-strong);
-  border-radius: 1rem;
+  border-radius: var(--space-sm);
   color: var(--color-text-primary);
   background: var(--color-background);
   box-shadow: 0 1.5rem 4rem var(--color-shadow-dialog);
@@ -764,7 +770,6 @@ a {
   margin: 0 auto var(--space-lg);
   overflow: hidden;
   place-items: center;
-  border-radius: 1.25rem;
   color: var(--color-artwork-foreground);
   background: linear-gradient(
     145deg,
@@ -824,29 +829,15 @@ a {
   gap: 0.75rem;
 }
 
-.artist-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(10rem, 100%), 1fr));
-  gap: 0.8rem;
-}
-
-.artist-card {
+.tile {
   position: relative;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--color-border-subtle);
+  border: 0;
   border-radius: 0;
   background: var(--color-surface);
-}
-
-.artist-main {
-  border-radius: 0;
   color: inherit;
-  background: var(--palette-transparent);
   text-align: left;
-}
-
-.artist-main {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
   user-select: none;
@@ -865,18 +856,19 @@ a {
       scale 160ms ease-out,
       filter 160ms ease-out;
   }
-}
 
-.artist-main:active {
-  filter: brightness(0.85);
+  &:active {
+    filter: brightness(0.85);
 
-  @media (prefers-reduced-motion: no-preference) {
-    scale: 0.98;
-    transition-duration: 50ms;
+    @media (prefers-reduced-motion: no-preference) {
+      scale: 0.98;
+      transition-duration: 50ms;
+    }
   }
 }
 
-.cover {
+.cover,
+.tile-image {
   position: relative;
   display: grid;
   overflow: hidden;
@@ -890,26 +882,27 @@ a {
   );
 }
 
-.cover img {
+.cover img,
+.tile-image img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.artist-cover {
+.tile-image {
   width: 100%;
   aspect-ratio: 1;
   font-size: 2.2rem;
 }
 
-.artist-cover::after {
+.tile-image::after {
   position: absolute;
   inset: 35% 0 0;
   content: "";
   background: linear-gradient(var(--palette-transparent), var(--color-image-scrim));
 }
 
-.artist-name {
+.tile-name {
   position: absolute;
   z-index: 1;
   right: 0.7rem;
@@ -922,17 +915,10 @@ a {
   white-space: nowrap;
 }
 
-.artist-menu-trigger {
-  position: absolute;
-  z-index: 2;
-  right: 0.55rem;
-  bottom: 0.45rem;
-}
-
 .action-menu {
   position: fixed;
   inset: auto 0 0;
-  width: calc(100dvw - 1.2rem);
+  width: calc(100dvw - var(--space-md) * 2);
   max-width: none;
   margin: 0 auto;
   padding: var(--space-md);
@@ -941,7 +927,7 @@ a {
   overflow-y: auto;
   box-sizing: border-box;
   border: 1px solid var(--color-border-strong);
-  border-radius: 1rem 1rem 0 0;
+  border-radius: var(--space-sm) var(--space-sm) 0 0;
   color: var(--color-text-primary);
   background: var(--color-surface-raised);
   box-shadow: 0 -1rem 3rem var(--color-shadow-raised);
@@ -1034,7 +1020,7 @@ a {
 .album-cover {
   width: 3.8rem;
   height: 3.8rem;
-  border-radius: 0.55rem;
+  border-radius: var(--space-xs);
 }
 
 .player-queue {
@@ -1077,11 +1063,11 @@ a {
 .mini-player {
   position: fixed;
   z-index: 20;
-  right: 0.6rem;
-  bottom: max(0.6rem, env(safe-area-inset-bottom));
-  left: 0.6rem;
+  right: var(--space-sm);
+  bottom: max(var(--space-sm), env(safe-area-inset-bottom));
+  left: var(--space-sm);
   border: 1px solid var(--color-border-strong);
-  border-radius: 0.9rem;
+  border-radius: var(--space-sm);
   text-align: left;
   background: var(--color-surface-raised);
   box-shadow: 0 0.8rem 2rem var(--color-shadow-raised);
@@ -1130,7 +1116,7 @@ a {
   overflow: hidden;
   flex: none;
   place-items: center;
-  border-radius: 0.65rem;
+  border-radius: var(--space-xs);
   background: linear-gradient(
     145deg,
     var(--color-gradient-primary),

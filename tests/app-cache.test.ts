@@ -115,12 +115,16 @@ it("uses the empty fallback before account selection and when selection is clear
   mocks.options!.covers.activate();
   mocks.options!.tracks.activate();
   flushSync();
-  expect(target.querySelector(".artist-name")?.textContent).toBe("Selected artist");
+  const tile = target.querySelector(".tiles-grid > a.tile");
+  expect(tile?.querySelector(".tile-name")?.textContent).toBe("Selected artist");
+  expect(tile?.getAttribute("href")).toBe("#/library/artist/artist");
+  expect(tile?.getAttribute("data-longpress")).toBe("show-modal");
+  expect(tile?.querySelector("a, button")).toBeNull();
   mocks.options!.selection.cache = undefined;
   mocks.options!.covers.activate();
   mocks.options!.tracks.activate();
   flushSync();
-  expect(target.querySelector(".artist-name")).toBeNull();
+  expect(target.querySelector(".tile-name")).toBeNull();
   expect(target.textContent).toContain("Connect your library");
 });
 
@@ -153,7 +157,7 @@ it("renders the selected cache, reacts to replacements, and stops observing a pr
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const names = () => [...target.querySelectorAll(".artist-name")].map((node) => node.textContent);
+  const names = () => [...target.querySelectorAll(".tile-name")].map((node) => node.textContent);
   await vi.waitFor(() => expect(names()).toEqual(["First artist"]));
   expect(mocks.options!.selection.cache!.artists).toBe(first.artists);
 
@@ -306,13 +310,13 @@ it("renders cached artwork and drops the previous account's object URLs", async 
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  expect(target.querySelector(".artist-cover img")).toBeNull();
+  expect(target.querySelector(".tile-image img")).toBeNull();
 
   await first.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" });
   await mocks.options!.covers.refresh();
   flushSync();
   expect(mocks.options!.selection.cache!.images).toBe(first.images);
-  expect(target.querySelector(".artist-cover img")?.getAttribute("src")).toBe("blob:artwork-1");
+  expect(target.querySelector(".tile-image img")?.getAttribute("src")).toBe("blob:artwork-1");
 
   const second = new Cache({ ...first.account!, username: "second" });
   await second.replaceLibrary(data);
@@ -321,7 +325,7 @@ it("renders cached artwork and drops the previous account's object URLs", async 
   flushSync();
   await mocks.options!.covers.refresh();
   flushSync();
-  expect(target.querySelector(".artist-cover img")).toBeNull();
+  expect(target.querySelector(".tile-image img")).toBeNull();
   expect(revoke).toHaveBeenCalledWith("blob:artwork-1");
   expect(mocks.options!.selection.cache!.images).toBe(second.images);
   expect(mocks.options!.selection.cache!.images.size).toBe(0);
@@ -329,5 +333,5 @@ it("renders cached artwork and drops the previous account's object URLs", async 
   await first.saveImage("cover", { blob: new Blob(["late old image"]), type: "image/png" });
   await mocks.options!.covers.refresh();
   flushSync();
-  expect(target.querySelector(".artist-cover img")).toBeNull();
+  expect(target.querySelector(".tile-image img")).toBeNull();
 });
