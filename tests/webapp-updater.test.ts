@@ -7,9 +7,10 @@ import WebappUpdater from "../src/webapp-updater.svelte";
 vi.mock("virtual:pwa-register", () => ({ registerSW: vi.fn() }));
 
 const cleanups: (() => Promise<void>)[] = [];
+const worker = (state: ServiceWorkerState) => Object.assign(new EventTarget(), { state });
 function setup(controlled = true) {
   vi.useFakeTimers();
-  const initial = controlled ? { state: "activated" as ServiceWorkerState } : null;
+  const initial = controlled ? worker("activated") : null;
   const serviceWorker = Object.assign(new EventTarget(), { controller: initial });
   vi.stubGlobal("navigator", { serviceWorker, onLine: true });
   const apply = vi.fn(async () => {});
@@ -21,7 +22,7 @@ function setup(controlled = true) {
   flushSync();
   const callbacks = vi.mocked(registerSW).mock.calls.at(-1)![0]!;
   const registration = {
-    waiting: null as { state: ServiceWorkerState } | null,
+    waiting: null as ReturnType<typeof worker> | null,
     installing: null,
     active: initial,
     update: vi.fn(async () => {}),
@@ -33,17 +34,20 @@ function setup(controlled = true) {
   };
   cleanups.push(destroy);
   const ready = () => {
-    registration.waiting = { state: "installed" };
+    registration.waiting = worker("installed");
     callbacks.onNeedRefresh?.();
     flushSync();
   };
-  const activate = () => {
-    const worker = registration.waiting ?? { state: "activated" as ServiceWorkerState };
-    worker.state = "activated";
-    registration.active = worker;
+  const activate = (claim = true) => {
+    const next = registration.waiting ?? worker("activated");
+    next.state = "activated";
+    registration.active = next;
     registration.waiting = null;
-    serviceWorker.controller = worker;
-    serviceWorker.dispatchEvent(new Event("controllerchange"));
+    next.dispatchEvent(new Event("statechange"));
+    if (claim) {
+      serviceWorker.controller = next;
+      serviceWorker.dispatchEvent(new Event("controllerchange"));
+    }
     flushSync();
   };
   const update = async () => {
@@ -115,6 +119,29 @@ describe("webapp updater", () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
+  it("reloads a hard-refreshed page when activation does not emit controllerchange", async () => {
+    const { ready, activate, update, reload, registration, status } = setup(false);
+    ready();
+    await update();
+    registration.waiting!.state = "activating";
+    registration.waiting!.dispatchEvent(new Event("statechange"));
+    expect(reload).not.toHaveBeenCalled();
+    activate(false);
+    expect(reload).toHaveBeenCalledOnce();
+    expect(status().busy).toBe(true);
+  });
+
+  it("requires approval after a waiting update activates without claiming the page", async () => {
+    const { ready, activate, update, reload, apply, status } = setup(false);
+    ready();
+    activate(false);
+    expect(reload).not.toHaveBeenCalled();
+    expect(status().hasUpdate).toBe(true);
+    await update();
+    expect(reload).toHaveBeenCalledOnce();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
   it("clears an update that disappeared before approval instead of reloading", async () => {
     const { ready, registration, update, status, apply, reload } = setup();
     ready();
@@ -125,9 +152,32 @@ describe("webapp updater", () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
+  it("drops a redundant waiting update without reloading", () => {
+    const { ready, registration, status, reload } = setup(false);
+    ready();
+    const waiting = registration.waiting!;
+    registration.waiting = null;
+    waiting.state = "redundant";
+    waiting.dispatchEvent(new Event("statechange"));
+    flushSync();
+    expect(status().hasUpdate).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("ignores state changes from a replaced waiting worker", async () => {
+    const { ready, registration, update, reload } = setup(false);
+    ready();
+    const old = registration.waiting!;
+    ready();
+    await update();
+    old.state = "activated";
+    old.dispatchEvent(new Event("statechange"));
+    expect(reload).not.toHaveBeenCalled();
+  });
+
   it("notices a waiting worker during registration before the plugin's refresh callback", () => {
     const { callbacks, registration, status } = setup();
-    registration.waiting = { state: "installed" };
+    registration.waiting = worker("installed");
     callbacks.onRegisteredSW?.("/sw.js", registration as unknown as ServiceWorkerRegistration);
     flushSync();
     expect(status().hasUpdate).toBe(true);
@@ -200,28 +250,35 @@ describe("webapp updater", () => {
     }
   });
 
-  it("offers retry on timeout and does not reload on a late callback", async () => {
+  it.each([false, true])(
+    "requires retry after late activation (claims page: %s)",
+    async (claim) => {
+      const { ready, activate, update, status, reload } = setup(claim);
+      ready();
+      await update();
+      await vi.advanceTimersByTimeAsync(15_000);
+      flushSync();
+      expect(status()).toMatchObject({ hasUpdate: true, busy: false });
+      expect(status().message).toContain("taking too long");
+      activate(claim);
+      expect(reload).not.toHaveBeenCalled();
+      await update();
+      expect(reload).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("does not leave the UI stuck if a reload fails to navigate", async () => {
     const { ready, activate, update, status, reload } = setup();
     ready();
     await update();
-    await vi.advanceTimersByTimeAsync(15_000);
-    flushSync();
-    expect(status()).toMatchObject({ hasUpdate: true, busy: false });
-    expect(status().message).toContain("taking too long");
     activate();
-    flushSync();
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it("does not leave the UI stuck if a reload fails to navigate", async () => {
-    const { ready, activate, update, status } = setup();
-    ready();
-    await update();
-    activate();
+    expect(reload).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(15_000);
     flushSync();
     expect(status().busy).toBe(false);
     expect(status().message).toContain("taking too long");
+    await update();
+    expect(reload).toHaveBeenCalledTimes(2);
   });
 
   it("shows plugin errors and allows another attempt", async () => {

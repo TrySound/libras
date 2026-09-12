@@ -13,6 +13,7 @@
   let updateServiceWorker: () => Promise<void>;
   let updateTimeout: ReturnType<typeof setTimeout> | undefined;
   let reloadAvailable = false;
+  let reloadRequested = false;
 
   const busy = $derived(state.status === "updating");
   const hasUpdate = $derived(
@@ -30,6 +31,8 @@
   );
 
   function reloadHome() {
+    if (reloadRequested) return;
+    reloadRequested = true;
     const url = new URL(window.location.href);
     url.hash = "/library";
     window.history.replaceState(window.history.state, "", url);
@@ -40,8 +43,26 @@
     const lifetime = new AbortController();
     const serviceWorker = navigator.serviceWorker;
     let controller = serviceWorker?.controller;
+    let waiting: ServiceWorker | undefined;
+    const waitingChanged = () => {
+      if (lifetime.signal.aborted) return;
+      // A hard refresh can bypass service-worker control, so activation need
+      // not emit controllerchange for this page. Observe the approved worker too.
+      if (waiting?.state === "activated") {
+        reloadAvailable = true;
+        if (busy) reloadHome();
+      }
+      syncAvailability();
+    };
     const syncAvailability = () => {
-      if (lifetime.signal.aborted || busy) return;
+      if (lifetime.signal.aborted) return;
+      const next = registration?.waiting;
+      if (next && next !== waiting) {
+        waiting?.removeEventListener("statechange", waitingChanged);
+        waiting = next;
+        waiting.addEventListener("statechange", waitingChanged, { signal: lifetime.signal });
+      }
+      if (busy) return;
       // Workbox can also announce an external installation that is already current.
       if (registration?.waiting || reloadAvailable) state = { status: "ready" };
       else if (hasUpdate) state = { status: "idle" };
@@ -66,7 +87,7 @@
     updateServiceWorker = registerSW({
       onNeedRefresh: syncAvailability,
       onNeedReload() {
-        // Native controllerchange handles activation; suppress the plugin's default reload.
+        // Native lifecycle events handle activation; suppress the plugin's default reload.
       },
       onRegisteredSW(_url, value) {
         if (lifetime.signal.aborted) return;
@@ -110,6 +131,7 @@
       return;
     }
     state = { status: "updating" };
+    reloadRequested = false;
     const fail = (cause: unknown) => {
       if (updateTimeout !== timeout) return;
       clearTimeout(timeout);
