@@ -1,4 +1,4 @@
-<h1><img src="public/logo.svg" alt="Libras logo" width="32" height="32" /> Libras</h1>
+<h1><img src="public/logo.svg" alt="Libras logo" width="64" height="64" /> Libras</h1>
 
 Libras is a browser-based music player that connects to your own music server. Browse your library, play music, and download tracks to take with you.
 
