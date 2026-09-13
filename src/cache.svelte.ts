@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { SvelteMap } from "svelte/reactivity";
 import {
   artistSchema,
   albumSchema,
@@ -278,7 +279,7 @@ interface CatalogOptions<R> {
 
 /** Bytes stream directly to disk; records share the ordinary checkpoint path. */
 class BinaryCatalog<R extends BinaryRecord> {
-  readonly store: CheckpointStore<ReadonlyMap<string, R>>;
+  readonly store: CheckpointStore<SvelteMap<string, R>>;
   #error = $state.raw<unknown>();
   #loads = $state(0);
   #serial = serial();
@@ -289,11 +290,13 @@ class BinaryCatalog<R extends BinaryRecord> {
     readonly disk: Disk | undefined,
     readonly options: CatalogOptions<R>,
   ) {
-    this.store = new CheckpointStore<ReadonlyMap<string, R>>(disk, {
+    this.store = new CheckpointStore<SvelteMap<string, R>>(disk, {
       document: options.document,
-      initial: new Map<string, R>(),
+      initial: new SvelteMap<string, R>(),
       parse: (value) =>
-        new Map(options.parse(value).map((record) => [options.key(record), record])),
+        new SvelteMap(options.parse(value).map((record) => [options.key(record), record])),
+      // Capture membership synchronously before disk I/O yields. Records themselves
+      // are immutable, so subsequent edits cannot change an in-flight checkpoint.
       serialize: (records) => [...records.values()],
       saved: async (revision) => {
         const obsolete = [...this.#obsolete].filter(([, removedAt]) => removedAt <= revision);
@@ -311,7 +314,7 @@ class BinaryCatalog<R extends BinaryRecord> {
   get error() {
     return this.store.error ?? this.#error;
   }
-  get records() {
+  get records(): ReadonlyMap<string, R> {
     return this.store.value;
   }
   get loading() {
@@ -344,7 +347,7 @@ class BinaryCatalog<R extends BinaryRecord> {
 
   #replace(key: string, next?: R) {
     const previous = this.records.get(key);
-    const records = new Map(this.records);
+    const records = this.store.value;
     if (next) records.set(key, next);
     else records.delete(key);
     const revision = this.store.set(records);
@@ -511,7 +514,8 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
 /**
  * Account-scoped local data owner, or an empty unscoped UI fallback.
  * Construction performs no I/O.
- * Collections and records are immutable by contract; consumers never mutate them.
+ * Consumers never mutate collections or records. Library maps are snapshots;
+ * binary catalogs are read-only live reactive views with immutable records.
  * Mutations publish in memory; checkpoints acknowledge only the revision committed.
  * OPFS is read once per document, not reconciled with other cache instances.
  */
