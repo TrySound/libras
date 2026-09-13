@@ -756,17 +756,22 @@ a {
 .player-dialog {
   --dialog-dismiss-offset: calc(50dvh + 50%);
   box-sizing: border-box;
-  width: calc(100% - 1rem);
-  max-width: 80rem;
-  height: min(calc(100dvh - 1rem), 52rem);
+  width: 100dvw;
+  height: 100dvh;
+  max-width: none;
   max-height: none;
   padding: 0;
   overflow-y: auto;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--space-sm);
+  border: 0;
   color: var(--color-text-primary);
   background: var(--color-background);
-  box-shadow: 0 1.5rem 4rem var(--color-shadow-dialog);
+  @media (width >= 800px) {
+    width: min(calc(100dvw - 2rem), 80rem);
+    height: min(calc(100dvh - 2rem), 52rem);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--space-sm);
+    box-shadow: 0 1.5rem 4rem var(--color-shadow-dialog);
+  }
 }
 
 .player-dialog::backdrop {
