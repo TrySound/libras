@@ -5,13 +5,26 @@ import type { Cache, CacheSelection, Immutable } from "./cache.svelte";
 import { artworkNoStore, type ArtworkConnection } from "./network.svelte";
 import type { ImageMetadata, ImageRecord } from "./schema";
 
-const referenceFields = {
-  artists: "artistArtwork",
-  albums: "albumArtwork",
-  tracks: "trackArtwork",
-} as const;
-const emptyCandidates: readonly string[] = [];
-type Entity = keyof typeof referenceFields;
+type Entity = "artists" | "albums" | "tracks";
+
+/** Select one metadata reference; unavailable bytes do not select another image.
+ * Track fallbacks use the album artist, including for compilation tracks. */
+export function resolveArtworkId(
+  library: Pick<Cache, "artists" | "albums" | "tracks">,
+  entity: Entity,
+  id: string,
+): string | undefined {
+  if (entity === "artists") return library.artists.get(id)?.artworkId;
+  const track = entity === "tracks" ? library.tracks.get(id) : undefined;
+  if (entity === "tracks" && !track) return undefined;
+  const album = library.albums.get(track ? track.albumId : id);
+  return (
+    track?.artworkId ??
+    album?.artworkId ??
+    (album && library.artists.get(album.artistId)?.artworkId)
+  );
+}
+
 interface Cover {
   readonly source: string | undefined;
   readonly load: () => void;
@@ -166,8 +179,9 @@ export class CoverEngine {
     return load;
   }
 
-  #candidates(entry: Pick<CoverEntry, "entity" | "id">) {
-    return this.#selection.cache?.[referenceFields[entry.entity]].get(entry.id) ?? emptyCandidates;
+  #artworkId(entry: Pick<CoverEntry, "entity" | "id">) {
+    const cache = this.#selection.cache;
+    return cache && resolveArtworkId(cache, entry.entity, entry.id);
   }
   async #resolve(entry: CoverEntry, revalidate: boolean) {
     // Refreshes, reconnects and shared image updates must not acquire offscreen artwork.
@@ -175,38 +189,39 @@ export class CoverEngine {
     const request = ++entry.generation;
     const signal = this.#scope.signal;
     const cache = this.#selection.cache;
-    const candidates = this.#candidates(entry);
+    const id = this.#artworkId(entry);
     const valid = () =>
       !this.#destroyed &&
       !signal.aborted &&
       cache === this.#selection.cache &&
       request === entry.generation &&
-      candidates === this.#candidates(entry);
+      id === this.#artworkId(entry);
     if (!cache) return;
-    for (const id of candidates) {
+    if (id !== undefined) {
       try {
         const record = cache.images.get(id);
         const image =
           this.#currentImage(id) ?? (record ? await this.#install(cache, record) : undefined);
         if (!valid()) return;
-        if (!image || image !== this.#currentImage(id)) continue;
-        entry.source = image.source;
-        if (revalidate) this.#cacheImage(id);
-        return;
+        if (image && image === this.#currentImage(id)) {
+          entry.source = image.source;
+          if (revalidate) this.#cacheImage(id);
+          return;
+        }
       } catch {
         if (!valid()) return;
       }
     }
     if (!valid()) return;
     entry.source = undefined;
-    if (revalidate && candidates[0]) this.#cacheImage(candidates[0]);
+    if (revalidate && id !== undefined) this.#cacheImage(id);
   }
 
   /** Image changes only affect handles referencing that artwork, never the whole catalog. */
   #refreshImage(id: string) {
     return Promise.all(
       [...this.#covers.values()]
-        .filter((entry) => this.#candidates(entry).includes(id))
+        .filter((entry) => entry.demanded && this.#artworkId(entry) === id)
         .map((entry) => this.#resolve(entry, false)),
     );
   }

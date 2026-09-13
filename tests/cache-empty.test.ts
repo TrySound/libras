@@ -20,9 +20,6 @@ describe("unscoped empty Cache", () => {
       cache.tracks,
       cache.artistAlbums,
       cache.albumTracks,
-      cache.artistArtwork,
-      cache.albumArtwork,
-      cache.trackArtwork,
       cache.images,
       cache.downloads,
     ];

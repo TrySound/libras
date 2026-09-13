@@ -497,45 +497,6 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
       (a.number ?? Infinity) - (b.number ?? Infinity) ||
       a.title.localeCompare(b.title),
   );
-  const candidates = (ids: readonly (string | undefined)[]) => [
-    ...new Set(ids.filter((id): id is string => id !== undefined)),
-  ];
-  const albumArtwork = new Map<string, readonly string[]>();
-  for (const album of albums.values())
-    albumArtwork.set(
-      album.id,
-      candidates([
-        album.artworkId,
-        ...(albumTracks.get(album.id) ?? []).map((track) => track.artworkId),
-      ]),
-    );
-  const artistArtwork = new Map<string, readonly string[]>();
-  const firstAlbumArtwork = new Map<string, string | undefined>();
-  for (const artist of artists.values()) {
-    const related = artistAlbums.get(artist.id) ?? [];
-    artistArtwork.set(
-      artist.id,
-      candidates([
-        artist.artworkId,
-        ...related.flatMap((album) => albumArtwork.get(album.id) ?? []),
-      ]),
-    );
-    firstAlbumArtwork.set(artist.id, related.find((album) => album.artworkId)?.artworkId);
-  }
-  const trackArtwork = new Map<string, readonly string[]>();
-  for (const track of tracks.values()) {
-    const album = albums.get(track.albumId);
-    const artist = album && artists.get(album.artistId);
-    trackArtwork.set(
-      track.id,
-      candidates([
-        track.artworkId,
-        album?.artworkId,
-        artist?.artworkId,
-        artist && firstAlbumArtwork.get(artist.id),
-      ]),
-    );
-  }
   return {
     savedAt: snapshot?.savedAt,
     lastModified: snapshot?.lastModified,
@@ -544,9 +505,6 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
     tracks,
     artistAlbums,
     albumTracks,
-    artistArtwork,
-    albumArtwork,
-    trackArtwork,
   };
 }
 
@@ -620,15 +578,6 @@ export class Cache {
   }
   get albumTracks() {
     return this.#library.value.albumTracks;
-  }
-  get artistArtwork() {
-    return this.#library.value.artistArtwork;
-  }
-  get albumArtwork() {
-    return this.#library.value.albumArtwork;
-  }
-  get trackArtwork() {
-    return this.#library.value.trackArtwork;
   }
   get images() {
     return this.#images.records;
