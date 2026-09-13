@@ -67,9 +67,7 @@ describe("unscoped empty Cache", () => {
     expect(cache.images.size).toBe(0);
     expect(cache.downloads.size).toBe(0);
     expect(cache.savedAt).toBeUndefined();
-    expect(cache.queueError).toBeUndefined();
-    expect(cache.imagesError).toBeUndefined();
-    expect(cache.downloadsError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
     expect(disk.getDirectory).not.toHaveBeenCalled();
   });
 

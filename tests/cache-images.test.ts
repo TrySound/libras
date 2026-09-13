@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Cache, CacheLoadError, type LibrarySnapshot } from "../src/cache.svelte";
+import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
@@ -255,7 +255,7 @@ describe("memory-first artwork", () => {
       const invalid = JSON.stringify(records);
       disk.files.set(path(disk), invalid);
       const cache = new Cache(account);
-      await expect(cache.load()).rejects.toBeInstanceOf(CacheLoadError);
+      await expect(cache.load()).rejects.toBeInstanceOf(AggregateError);
       await expect(cache.saveImage("other", image())).rejects.toThrow();
       expect(disk.files.get(path(disk))).toBe(invalid);
       expect(disk.blobs.size).toBe(1);

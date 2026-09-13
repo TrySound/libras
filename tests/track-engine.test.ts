@@ -169,7 +169,8 @@ describe("TrackEngine using Cache", () => {
     disk.files.set(path, "broken");
     const { cache, engine } = setup();
     await expect(cache.load()).rejects.toThrow();
-    expect(engine.error).toBe(cache.downloadsError);
+    expect(engine.error).toBeUndefined();
+    expect(cache.error).toBeInstanceOf(AggregateError);
     expect(engine.downloadsLoading).toBe(false);
     engine.activate();
     expect(disk.files.get(path)).toBe("broken");

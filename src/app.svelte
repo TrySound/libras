@@ -706,13 +706,6 @@
         {#if playbackError}
           <p class="error type-small">{playbackError}</p>
         {/if}
-        {#if queueEngine.storageError}
-          <p class="error type-small" role="status">
-            Queue could not be saved or restored locally: {queueEngine.storageError instanceof Error
-              ? queueEngine.storageError.message
-              : String(queueEngine.storageError)}.
-          </p>
-        {/if}
       </div>
 
       <div class="player-queue">

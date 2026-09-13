@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MetadataSnapshot } from "../src/metadata.svelte";
-import { CacheLoadError, Cache } from "../src/cache.svelte";
+import { Cache } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { NetworkTransportError } from "../src/network.svelte";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
@@ -35,22 +35,20 @@ describe("session", () => {
     loadCache.mockRejectedValueOnce(new Error("Corrupt library"));
     session.start();
     await vi.waitFor(() => expect(session.localReady).toBe(true));
-    expect(session.error).toContain("Could not restore library: Corrupt library");
+    expect(session.error).toContain("Could not restore cache: Corrupt library");
     expect(queue.activate).toHaveBeenCalledOnce();
     expect(metadata.refresh).not.toHaveBeenCalled();
   });
 
-  it.each(["queue", "images", "downloads"] as const)(
-    "keeps %s load failures separate from library refresh warnings",
+  it.each(["library", "queue", "images", "downloads"] as const)(
+    "reports %s load failures reactively without duplicating startup warnings",
     async (domain) => {
       const { session, selection, loadCache, queue } = setup(true);
       const failure = new Error(`Corrupt cached ${domain}`);
-      const field = (
-        { queue: "queueError", images: "imagesError", downloads: "downloadsError" } as const
-      )[domain];
       loadCache.mockImplementationOnce(async function (this: Cache) {
-        vi.spyOn(this, field, "get").mockReturnValue(failure);
-        throw new CacheLoadError({ [domain]: failure });
+        const error = new AggregateError([failure]);
+        vi.spyOn(this, "error", "get").mockReturnValue(error);
+        throw error;
       });
       session.start();
       await vi.waitFor(() => expect(session.status).toBe("connected"));
@@ -60,7 +58,7 @@ describe("session", () => {
       expect(queue.activate).toHaveBeenCalledOnce();
       await session.refresh();
       expect(session.refreshError).toContain(`Corrupt cached ${domain}`);
-      vi.spyOn(selection.cache!, field, "get").mockReturnValue(undefined);
+      vi.spyOn(selection.cache!, "error", "get").mockReturnValue(undefined);
       expect(session.refreshError).toBe("");
     },
   );
@@ -92,11 +90,18 @@ describe("session", () => {
     expect(session.status).toBe("connected");
   });
 
-  it("reports queue storage errors without failing the connection", async () => {
-    const { session, queue } = await connected();
-    vi.spyOn(queue, "storageError", "get").mockReturnValue(new Error("Storage unavailable"));
+  it("formats nested cache errors centrally without failing the connection", async () => {
+    const { session, selection } = await connected();
+    vi.spyOn(selection.cache!, "error", "get").mockReturnValue(
+      new AggregateError([
+        new Error("Storage unavailable"),
+        new AggregateError([new Error("Corrupt images"), new Error("Corrupt downloads")]),
+      ]),
+    );
     await session.refresh();
-    expect(session.refreshError).toContain("Storage unavailable");
+    expect(session.refreshError).toBe(
+      "Synchronization failed: Storage unavailable; Corrupt images; Corrupt downloads",
+    );
     expect(session.status).toBe("connected");
     expect(session.syncing).toBe(false);
   });

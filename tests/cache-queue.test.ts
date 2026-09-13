@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
-import { Cache, CacheLoadError, type CachedQueue, type LibrarySnapshot } from "../src/cache.svelte";
+import { Cache, type CachedQueue, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { observeCache } from "./cache-reactivity.test.svelte";
 import { deferred } from "./session-test-helpers";
@@ -39,7 +39,7 @@ describe("queue cache", () => {
     const cache = new Cache(account);
     expect(cache.queue).toEqual({ tracks: [], index: -1, position: 0 });
     expect(cache.queueDirty).toBe(false);
-    expect(cache.queueError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
     await cache.flush();
     expect(disk.getDirectory).not.toHaveBeenCalled();
   });
@@ -167,7 +167,7 @@ describe("queue cache", () => {
     await cache.flush();
     expect(controller.signal.aborted).toBe(true);
     expect(cache.queue).toEqual(queue(20));
-    expect(cache.queueError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
     expect(cache.queueDirty).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
     expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").value).toEqual(queue(20));
@@ -254,15 +254,17 @@ describe("queue cache", () => {
     const original = disk.files.get(path);
     const revision = cache.setQueue(queue(20));
     disk.state.failClose = true;
-    await expect(cache.flush()).rejects.toThrow("Storage full");
-    expect(cache.queueError).toBeInstanceOf(Error);
+    await expect(cache.flush()).rejects.toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ message: "Storage full" })]),
+    });
+    expect(cache.error).toBeInstanceOf(Error);
     expect(cache.queueDirty).toBe(true);
     expect(cache.queue.position).toBe(20);
     expect(disk.files.get(path)).toBe(original);
     disk.state.failClose = false;
     await cache.flush();
     expect(cache.queueRevision).toBe(revision);
-    expect(cache.queueError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
     expect(cache.queueDirty).toBe(false);
   });
 
@@ -275,13 +277,13 @@ describe("queue cache", () => {
     disk.state.failClose = true;
     cache.setQueue(queue());
     await vi.advanceTimersByTimeAsync(300);
-    expect(cache.queueError).toBeInstanceOf(Error);
+    expect(cache.error).toBeInstanceOf(Error);
     expect(cache.queueDirty).toBe(true);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(close).toHaveBeenCalledOnce();
     disk.state.failClose = false;
     await cache.flush();
-    expect(cache.queueError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
   });
 
   it("keeps checkpoint timestamps monotonic after loading and clock rollback", async () => {
@@ -312,23 +314,21 @@ describe("queue cache", () => {
       const original = [...disk.files];
       const cache = new Cache(account);
       const error = await cache.load().catch((error: unknown) => error);
-      expect(error).toBeInstanceOf(CacheLoadError);
-      if (!(error instanceof CacheLoadError)) throw new Error("Expected a load error");
-      expect(Object.keys(error.failures)).toEqual(
-        corrupt === "both" ? ["library", "queue"] : [corrupt],
-      );
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) throw new Error("Expected a load error");
+      expect(error.errors).toHaveLength(corrupt === "both" ? 2 : 1);
       expect(cache.artists.size).toBe(corrupt === "queue" ? 1 : 0);
       expect(cache.queue).toEqual(
         corrupt === "library" ? queue() : { tracks: [], index: -1, position: 0 },
       );
-      expect(cache.queueError).toBe(error.failures.queue);
+      expect(cache.error?.errors).toEqual(error.errors);
       expect([...disk.files]).toEqual(original);
       await cache.replaceLibrary(library);
-      expect(cache.queueError).toBe(error.failures.queue);
+      expect(cache.error?.errors).toEqual(error.errors);
       cache.setQueue(queue());
       await cache.flush();
       await expect(cache.load()).resolves.toBeUndefined();
-      expect(cache.queueError).toBeUndefined();
+      expect(cache.error).toBeUndefined();
     },
   );
 
@@ -349,12 +349,12 @@ describe("queue cache", () => {
       );
       disk.files.set(path, corrupt);
       const restored = new Cache(account);
-      await expect(restored.load()).rejects.toBeInstanceOf(CacheLoadError);
+      await expect(restored.load()).rejects.toBeInstanceOf(AggregateError);
       expect(restored.queue.index).toBe(-1);
       expect(disk.files.get(path)).toBe(corrupt);
       restored.setQueue(queue(20));
       await restored.flush();
-      expect(restored.queueError).toBeUndefined();
+      expect(restored.error).toBeUndefined();
       expect(JSON.parse(disk.files.get(path) ?? "null").value.index).toBe(2);
     },
   );
@@ -378,7 +378,7 @@ describe("queue cache", () => {
     release.resolve();
     await expect(loaded).rejects.toMatchObject({ name: "AbortError" });
     expect(cache.queue.index).toBe(-1);
-    expect(cache.queueError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
     await cache.load();
     expect(cache.queue).toEqual(queue());
   });

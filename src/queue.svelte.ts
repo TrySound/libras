@@ -55,9 +55,6 @@ export class QueueEngine {
   get error() {
     return this.#error;
   }
-  get storageError() {
-    return this.#selection.cache?.queueError;
-  }
 
   subscribe(listener: () => void) {
     this.#listeners.add(listener);
@@ -208,14 +205,7 @@ export class QueueEngine {
       if (!cache || !connection || !valid()) return;
       const revision = cache.queueRevision;
       await cache.flush();
-      if (
-        !valid() ||
-        !this.#dirty ||
-        cache.queueError ||
-        cache.queueDirty ||
-        revision !== cache.queueRevision
-      )
-        return;
+      if (!valid() || !this.#dirty || cache.queueDirty || revision !== cache.queueRevision) return;
       const state = cache.queue;
       this.#error = undefined;
       try {
@@ -247,7 +237,12 @@ export class QueueEngine {
       !connection.signal.aborted;
     return (this.#refreshPending = (async () => {
       try {
-        await this.#writeServer();
+        try {
+          await this.#writeServer();
+        } catch {
+          // Cache reports checkpoint failures; do not retain a duplicate engine error.
+          return;
+        }
         if (!current()) return;
         this.#error = undefined;
         const revision = cache.queueRevision;
@@ -266,7 +261,7 @@ export class QueueEngine {
         this.#serverWritable = true;
         this.#notify();
       } catch (error) {
-        if (current() && !signal.aborted && error !== cache.queueError) this.#error = error;
+        if (current() && !signal.aborted) this.#error = error;
       }
     })().finally(() => {
       if (this.#refreshController === controller) this.#refreshController = undefined;
