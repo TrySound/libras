@@ -19,7 +19,7 @@ interface SessionOptions {
   selection: { cache: Cache | undefined };
   network: Network;
   auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
-  metadata: Pick<MetadataEngine, "prepareConnection" | "setConnection" | "refresh">;
+  metadata: Pick<MetadataEngine, "prepareConnection" | "setConnection" | "refresh" | "progress">;
   covers: Pick<CoverEngine, "activate" | "refresh" | "setConnection">;
   queue: Pick<QueueEngine, "activate" | "refresh" | "flush" | "setConnection" | "error">;
   tracks: Pick<TrackEngine, "activate" | "setConnection">;
@@ -53,6 +53,10 @@ export class Session {
 
   constructor(options: SessionOptions) {
     this.#options = options;
+  }
+
+  get libraryProgress() {
+    return this.#options.metadata.progress;
   }
 
   get syncing() {

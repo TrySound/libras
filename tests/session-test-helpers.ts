@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import { AuthStore } from "../src/auth";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
-import { Network, type MetadataConnection } from "../src/network.svelte";
+import { Network, type LibraryProgress, type MetadataConnection } from "../src/network.svelte";
 import type { MetadataSnapshot } from "../src/metadata.svelte";
 import { Cache } from "../src/cache.svelte";
 import type { Account } from "../src/schema";
@@ -83,6 +83,7 @@ export function createSession(saved = false, storage = createStorage()) {
       vi.spyOn(this, "savedAt", "get").mockReturnValue(value.savedAt);
     });
   const metadata = {
+    progress: undefined as LibraryProgress | undefined,
     prepareConnection: vi.fn(async (connection: MetadataConnection) =>
       snapshot(connection.account),
     ),

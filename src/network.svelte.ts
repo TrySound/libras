@@ -31,6 +31,8 @@ type RemoteTrack = Omit<Track, "artistId" | "albumId"> & {
   albumId?: string;
 };
 
+export type LibraryProgress = { albums: number; tracks: number };
+
 export type Library = {
   artists: Artist[];
   albums: Album[];
@@ -153,8 +155,10 @@ function normalizeLibrary(
   };
   const albums: Album[] = [];
   const tracks: Track[] = [];
+  const albumArtistIds = new Set<string>();
   for (const source of sourceAlbums) {
     const owner = artistFor(source.artistId, source.artistName);
+    albumArtistIds.add(owner.id);
     albums.push({
       id: source.id,
       title: source.title,
@@ -164,11 +168,13 @@ function normalizeLibrary(
       genres: source.genres,
     });
     for (const sourceTrack of tracksByAlbum.get(source.id) ?? []) {
+      const trackArtist = artistFor(sourceTrack.artistId, sourceTrack.artistName, owner);
       tracks.push({
         id: sourceTrack.id,
         title: sourceTrack.title,
         albumId: source.id,
-        artistId: artistFor(sourceTrack.artistId, sourceTrack.artistName, owner).id,
+        artistId: trackArtist.id,
+        artistName: sourceTrack.artistName || trackArtist.name,
         artworkId: sourceTrack.artworkId,
         number: sourceTrack.number,
         disc: sourceTrack.disc,
@@ -178,7 +184,13 @@ function normalizeLibrary(
       });
     }
   }
-  return { artists: [...artists.values()], albums, tracks };
+  // Search includes contributors and track-only artists; only album owners belong
+  // in the library's artist collection. Tracks retain their own artist identity/name.
+  return {
+    artists: [...artists.values()].filter((artist) => albumArtistIds.has(artist.id)),
+    albums,
+    tracks,
+  };
 }
 
 type Request = <T>(run: () => Promise<T>) => Promise<T>;
@@ -198,7 +210,10 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
     account,
     signal: client.signal,
     getModifiedAt: (since?: number) => request(() => client.getIndexes(since)),
-    async readLibrary(workflowSignal: AbortSignal): Promise<Library> {
+    async readLibrary(
+      workflowSignal: AbortSignal,
+      onProgress?: (progress: LibraryProgress) => void,
+    ): Promise<Library> {
       const controller = new AbortController();
       const signal = AbortSignal.any([workflowSignal, controller.signal]);
       const read = async <T>(run: () => Promise<T>) => {
@@ -207,68 +222,99 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
         signal.throwIfAborted();
         return result;
       };
-      const listArtists = () =>
-        read(async () =>
-          (await client.getArtists(signal)).map((artist) => ({
-            id: artist.id,
-            name: artist.name,
-            artworkId: artist.coverArt || undefined,
-            genres: genres(artist),
-          })),
-        );
-      const listAlbums = (offset: number) =>
-        read(async () =>
-          (
-            await client.getAlbumList2({ type: "alphabeticalByArtist", size: 500, offset }, signal)
-          ).map((album) => ({
-            id: album.id,
-            title: album.name,
-            artistId: album.artistId,
-            artistName: album.artist,
-            artworkId: album.coverArt || undefined,
-            year: album.year && album.year > 0 ? album.year : undefined,
-            genres: genres(album),
-          })),
-        );
-      const getAlbumTracks = (albumId: string) =>
-        read(async () =>
-          (await client.getAlbum(albumId, signal)).map((track) => ({
-            id: track.id,
-            title: track.title,
-            albumId: track.albumId,
-            artistId: track.artistId,
-            artistName: track.artist,
-            artworkId: track.coverArt || undefined,
-            number: track.track && track.track > 0 ? track.track : undefined,
-            disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,
-            duration: track.duration,
-            mimeType: track.contentType,
-            genres: genres(track),
-          })),
-        );
-      const fetchAlbums = async () => {
-        const albums: RemoteAlbum[] = [];
-        for (let offset = 0; ; offset += 500) {
-          const page = await listAlbums(offset);
-          albums.push(...page);
-          if (page.length < 500) return albums;
+      const artists = new Map<string, RemoteArtist>();
+      const albums = new Map<string, RemoteAlbum>();
+      const tracks = new Map<string, RemoteTrack>();
+      const offsets = { artists: 0, albums: 0, tracks: 0 };
+      const done = { artists: false, albums: false, tracks: false };
+      // Empty pages mark completion, even when servers cap pages below our requested size.
+      const collect = <T>(
+        key: keyof typeof offsets,
+        page: T[],
+        target: Map<string, T>,
+        id: (item: T) => string,
+      ) => {
+        if (done[key]) return;
+        if (page.length === 0) {
+          done[key] = true;
+          return;
         }
+        const before = target.size;
+        for (const item of page) target.set(id(item), item);
+        if (target.size === before)
+          throw new Error("The server returned a metadata page with no progress.");
+        offsets[key] += page.length;
       };
       try {
-        const [artists, albums] = await Promise.all([listArtists(), fetchAlbums()]);
+        while (!done.artists || !done.albums || !done.tracks) {
+          const page = await read(() =>
+            client.search3(
+              {
+                artistCount: done.artists ? 0 : 500,
+                artistOffset: offsets.artists,
+                albumCount: done.albums ? 0 : 500,
+                albumOffset: offsets.albums,
+                songCount: done.tracks ? 0 : 500,
+                songOffset: offsets.tracks,
+              },
+              signal,
+            ),
+          );
+          collect(
+            "artists",
+            page.artists.map((artist) => ({
+              id: artist.id,
+              name: artist.name,
+              artworkId: artist.coverArt || undefined,
+              genres: genres(artist),
+            })),
+            artists,
+            (artist) => artist.id || `local:artist:${encodeURIComponent(artist.name)}`,
+          );
+          collect(
+            "albums",
+            page.albums.map((album) => ({
+              id: album.id,
+              title: album.name,
+              artistId: album.artistId,
+              artistName: album.artist,
+              artworkId: album.coverArt || undefined,
+              year: album.year && album.year > 0 ? album.year : undefined,
+              genres: genres(album),
+            })),
+            albums,
+            (album) => album.id,
+          );
+          collect(
+            "tracks",
+            page.tracks.map((track) => ({
+              id: track.id,
+              title: track.title,
+              albumId: track.albumId,
+              artistId: track.artistId,
+              artistName: track.artist,
+              artworkId: track.coverArt || undefined,
+              number: track.track && track.track > 0 ? track.track : undefined,
+              disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,
+              duration: track.duration,
+              mimeType: track.contentType,
+              genres: genres(track),
+            })),
+            tracks,
+            (track) => track.id,
+          );
+          onProgress?.({ albums: albums.size, tracks: tracks.size });
+        }
+        const tracksByAlbum = new Map<string, RemoteTrack[]>();
+        for (const track of tracks.values()) {
+          if (!track.albumId || !albums.has(track.albumId))
+            throw new Error("The server returned a track without a matching album.");
+          const albumTracks = tracksByAlbum.get(track.albumId) ?? [];
+          albumTracks.push(track);
+          tracksByAlbum.set(track.albumId, albumTracks);
+        }
         signal.throwIfAborted();
-        const tracksByAlbum = new Map<string, readonly RemoteTrack[]>();
-        let next = 0;
-        const worker = async () => {
-          while (next < albums.length) {
-            signal.throwIfAborted();
-            const album = albums[next++];
-            tracksByAlbum.set(album.id, await getAlbumTracks(album.id));
-          }
-        };
-        await Promise.all(Array.from({ length: Math.min(6, albums.length) }, worker));
-        signal.throwIfAborted();
-        return normalizeLibrary(artists, albums, tracksByAlbum);
+        return normalizeLibrary([...artists.values()], [...albums.values()], tracksByAlbum);
       } finally {
         controller.abort();
       }

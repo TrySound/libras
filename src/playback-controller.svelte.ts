@@ -117,7 +117,7 @@ export class PlaybackController {
     const descriptor = {
       id: track.id,
       title: track.title,
-      artist: this.#selection.cache?.artists.get(track.artistId)?.name,
+      artist: track.artistName ?? this.#selection.cache?.artists.get(track.artistId)?.name,
       album: this.#selection.cache?.albums.get(track.albumId)?.title,
       contentType: track.mimeType,
     };

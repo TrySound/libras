@@ -9,6 +9,15 @@ const auth = {
   salt: "salt",
 };
 
+const page = {
+  artistCount: 500,
+  artistOffset: 0,
+  albumCount: 500,
+  albumOffset: 0,
+  songCount: 500,
+  songOffset: 0,
+};
+
 function response(data: Record<string, unknown> = {}) {
   return new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...data } }));
 }
@@ -36,14 +45,21 @@ describe("subsonic client", () => {
 
   it("adds authentication and validates metadata responses", async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL) =>
-      response({ artists: { index: [{ artist: [{ id: "artist-1", name: "Artist" }] }] } }),
+      response({ searchResult3: { artist: [{ id: "artist-1", name: "Artist" }] } }),
     );
     vi.stubGlobal("fetch", fetcher);
     const client = new SubsonicClient(auth);
 
-    await expect(client.getArtists()).resolves.toEqual([{ id: "artist-1", name: "Artist" }]);
+    await expect(client.search3(page)).resolves.toEqual({
+      artists: [{ id: "artist-1", name: "Artist" }],
+      albums: [],
+      tracks: [],
+    });
     const url = new URL(String(fetcher.mock.calls[0][0]));
-    expect(url.pathname).toBe("/rest/getArtists.view");
+    expect(url.pathname).toBe("/rest/search3.view");
+    expect(url.searchParams.get("query")).toBe("");
+    for (const [key, value] of Object.entries(page))
+      expect(url.searchParams.get(key)).toBe(String(value));
     expect(url.searchParams.get("u")).toBe(auth.username);
     expect(url.searchParams.get("c")).toBe("libras");
   });
@@ -58,12 +74,12 @@ describe("subsonic client", () => {
     );
     vi.stubGlobal("fetch", fetcher);
     const client = new SubsonicClient(auth);
-    const pending = client.getArtists();
+    const pending = client.search3(page);
     client.abort();
     expect(fetcher.mock.calls[0][1].signal?.aborted).toBe(true);
-    resolve(response({ artists: { index: [] } }));
+    resolve(response({ searchResult3: {} }));
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
-    await expect(client.getArtists()).rejects.toMatchObject({ name: "AbortError" });
+    await expect(client.search3(page)).rejects.toMatchObject({ name: "AbortError" });
     await expect(client.savePlayQueue({ tracks: [], position: 0 })).rejects.toMatchObject({
       name: "AbortError",
     });
@@ -73,11 +89,11 @@ describe("subsonic client", () => {
   it("rejects malformed responses", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => response({ artists: { index: "invalid" } })),
+      vi.fn(async () => response({ searchResult3: { artist: "invalid" } })),
     );
     const client = new SubsonicClient(auth);
 
-    await expect(client.getArtists()).rejects.toThrow("invalid Subsonic response");
+    await expect(client.search3(page)).rejects.toThrow("invalid Subsonic response");
   });
 
   it("builds authenticated media URLs", () => {
