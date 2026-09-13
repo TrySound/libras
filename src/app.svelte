@@ -36,6 +36,9 @@
   const emptyCache = new Cache();
   const cache = $derived(selection.cache ?? emptyCache);
   const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
+  const playerArtist = $derived(currentTrack && cache.artists.get(currentTrack.artistId));
+  const playerAlbum = $derived(currentTrack && cache.albums.get(currentTrack.albumId));
+  const playerAlbumArtist = $derived(playerAlbum && cache.artists.get(playerAlbum.artistId));
   const hasNextTrack = $derived(
     cache.queue.index >= 0 && cache.queue.index < cache.queue.tracks.length - 1,
   );
@@ -492,7 +495,6 @@
       </label>
     </div>
   </section>
-  {@render miniPlayer()}
 {/snippet}
 
 {#snippet downloadsRoute(_params: RouteParams, router: RouteControls)}
@@ -575,7 +577,6 @@
       <p class="type-body text-muted">No downloaded files yet.</p>
     {/if}
   </section>
-  {@render miniPlayer()}
 {/snippet}
 
 {#snippet alerts()}
@@ -588,204 +589,6 @@
       {refreshError} Your existing library is still available.
     </p>
   {/if}
-{/snippet}
-
-{#snippet playerDialog()}
-  {@const artist = currentTrack && cache.artists.get(currentTrack.artistId)}
-  {@const album = currentTrack && cache.albums.get(currentTrack.albumId)}
-  {@const albumArtist = album && cache.artists.get(album.artistId)}
-  <dialog id="player-dialog" class="player-dialog" closedby="any" use:swipeToDismiss>
-    <header class="topbar wings">
-      <button
-        class="icon-button"
-        data-size="md"
-        data-variant="ghost"
-        commandfor="player-dialog"
-        command="close"
-        title="Close player">{@render icon("chevron-down")}</button
-      >
-      {@render brand()}
-      <span class="icon-button visually-hidden" aria-hidden="true"></span>
-    </header>
-    {@render alerts()}
-
-    <section class="view player-view">
-      <div class="player-main">
-        <div
-          class="artwork"
-          {@attach currentTrack
-            ? immediateCover(coverEngine.ensureTrackCover(currentTrack.id))
-            : undefined}
-        >
-          {#if currentTrack}
-            {@const cover = coverEngine.ensureTrackCover(currentTrack.id)}
-            {#if cover.source}
-              <img src={cover.source} alt="" />
-            {:else}
-              <span>{@render icon("music", 64)}</span>
-            {/if}
-          {:else}
-            <span>{@render icon("music", 64)}</span>
-          {/if}
-        </div>
-
-        {#if currentTrack}
-          <p class="type-body">
-            <strong class="type-heading">{currentTrack.title}</strong>
-            <br />
-            {#if artist}
-              <a
-                class="text-link"
-                href={`#${artistPath(artist)}`}
-                onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-              >
-                {currentTrack.artistName ?? artist.name}
-              </a>
-            {:else}
-              {currentTrack.artistName}
-            {/if}
-            —
-            {#if album && albumArtist}
-              <a
-                class="text-link"
-                href={`#${albumPath(albumArtist, album)}`}
-                onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-              >
-                {album.title}
-              </a>
-            {:else}
-              {album?.title}
-            {/if}
-          </p>
-        {/if}
-
-        <div class="playback-progress">
-          <input
-            class="playback-slider"
-            type="range"
-            min="0"
-            max={Number.isFinite(playbackDuration) ? playbackDuration : 0}
-            step="0.1"
-            value={Math.min(cache.queue.position, playbackDuration)}
-            disabled={!playbackDuration ||
-              (offlineMode &&
-                currentTrack &&
-                trackEngine.getStatus(currentTrack.id) !== "downloaded")}
-            oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
-          />
-          <div class="playback-time type-caption">
-            <span>{formatTime(cache.queue.position)}</span>
-            <span>{formatTime(playbackDuration)}</span>
-          </div>
-        </div>
-
-        <div class="controls">
-          <button
-            class="icon-button"
-            data-size="md"
-            data-variant="neutral"
-            onclick={() => playback.previous()}
-            disabled={!hasPreviousTrack && cache.queue.position <= 0}
-            title="Previous">{@render icon("previous")}</button
-          >
-          <button
-            class="icon-button"
-            data-size="lg"
-            data-variant="primary"
-            onclick={() => playback.toggle()}
-            disabled={queue.length === 0}
-            title={player?.playing ? "Pause" : "Play"}
-          >
-            {#if playbackLoading}
-              {@render icon("loading", 32)}
-            {:else if player?.playing}
-              {@render icon("pause", 32)}
-            {:else}
-              {@render icon("play", 32)}
-            {/if}
-          </button>
-          <button
-            class="icon-button"
-            data-size="md"
-            data-variant="neutral"
-            onclick={() => playback.next()}
-            disabled={!hasNextTrack}
-            title="Next">{@render icon("next")}</button
-          >
-        </div>
-
-        {#if downloadError}
-          <p class="error type-small">{downloadError}</p>
-        {/if}
-        {#if playbackError}
-          <p class="error type-small">{playbackError}</p>
-        {/if}
-      </div>
-
-      <div class="player-queue">
-        <div class="section-heading">
-          <div>
-            <span class="type-eyebrow text-muted">Up next</span>
-            <h2 class="type-heading">
-              {queue.length} track{queue.length === 1 ? "" : "s"}
-            </h2>
-          </div>
-          {#if cache.queue.tracks.length > 0}
-            <button
-              class="button"
-              data-size="sm"
-              data-variant="neutral"
-              onclick={() => playback.clearQueue()}>Clear</button
-            >
-          {/if}
-        </div>
-        {#if queue.length > 0}
-          <div class="wings">
-            {#each queue as { track, index }, visibleIndex}
-              {@const downloadStatus = trackEngine.getStatus(track.id)}
-              <div class="wings-item row-button">
-                <button
-                  class="linkarea"
-                  aria-label={`Play ${track.title}`}
-                  onclick={() => playback.playIndex(index)}
-                ></button>
-                <span class="track-leading">
-                  {#if index === cache.queue.index && playbackLoading}
-                    <span role="img" aria-label="Loading playback">
-                      {@render icon("loading")}
-                    </span>
-                  {:else if index === cache.queue.index && player?.playing}
-                    <span role="img" aria-label="Playing">
-                      {@render icon("sound-bars")}
-                    </span>
-                  {:else if index === cache.queue.index}
-                    <span role="img" aria-label="Current track, not playing">
-                      {@render icon("pause")}
-                    </span>
-                  {:else if downloadStatus === "downloading"}
-                    <span role="img" aria-label="Downloading">
-                      {@render icon("loading")}
-                    </span>
-                  {:else if downloadStatus === "queued"}
-                    <span role="img" aria-label="Queued for download">
-                      {@render icon("clock")}
-                    </span>
-                  {:else}
-                    {visibleIndex + 1}
-                  {/if}
-                </span>
-                <span>{track.title}</span>
-              </div>
-            {/each}
-          </div>
-        {:else if cache.queue.tracks.length > 0}
-          <p class="type-body text-muted">No available tracks.</p>
-        {:else}
-          <p class="type-body text-muted">The queue is empty.</p>
-        {/if}
-      </div>
-    </section>
-  </dialog>
 {/snippet}
 
 {#snippet libraryRoute(_params: RouteParams, router: RouteControls)}
@@ -912,7 +715,6 @@
       </dialog>
     {/each}
   {/if}
-  {@render miniPlayer()}
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams, router: RouteControls)}
@@ -1161,7 +963,6 @@
       {/each}
     {/if}
   {/if}
-  {@render miniPlayer()}
 {/snippet}
 
 {#snippet albumRoute(params: RouteParams, router: RouteControls)}
@@ -1425,7 +1226,6 @@
       {/each}
     {/if}
   {/if}
-  {@render miniPlayer()}
 {/snippet}
 
 {#snippet connectLibrary(router: RouteControls)}
@@ -1437,53 +1237,6 @@
       >Open settings</a
     >
   </div>
-{/snippet}
-
-{#snippet miniPlayer()}
-  {#if currentTrack}
-    {@const cover = coverEngine.ensureTrackCover(currentTrack.id)}
-    <div class="mini-player wings">
-      <button
-        class="linkarea"
-        commandfor="player-dialog"
-        command="show-modal"
-        aria-label="Open player"
-      ></button>
-      <span class="mini-art" {@attach immediateCover(cover)}>
-        {#if cover.source}
-          <img src={cover.source} alt="" />
-        {:else}
-          <span>{@render icon("music")}</span>
-        {/if}
-      </span>
-      <span class="mini-copy stack-xs">
-        <strong class="type-title">
-          {currentTrack.title}
-        </strong>
-        <small class="type-small text-muted">
-          {currentTrack.artistName ?? cache.artists.get(currentTrack.artistId)?.name}
-        </small>
-      </span>
-      <button
-        class="icon-button"
-        data-size="md"
-        data-variant="primary"
-        onclick={() => playback.toggle()}
-        title={player?.playing ? "Pause" : "Play"}
-      >
-        {#if playbackLoading}
-          {@render icon("loading")}
-        {:else if player?.playing}
-          {@render icon("pause")}
-        {:else}
-          {@render icon("play")}
-        {/if}
-      </button>
-      <span class="mini-progress">
-        <span style:width={`${playbackPercent()}%`}></span>
-      </span>
-    </div>
-  {/if}
 {/snippet}
 
 <main class="app-shell">
@@ -1500,8 +1253,244 @@
     ]}
     bind:navigate
   />
-
-  {@render playerDialog()}
 </main>
+
+{#if currentTrack}
+  {@const cover = coverEngine.ensureTrackCover(currentTrack.id)}
+  <div class="mini-player wings">
+    <button
+      class="linkarea"
+      commandfor="player-dialog"
+      command="show-modal"
+      aria-label="Open player"
+    ></button>
+    <span class="mini-art" {@attach immediateCover(cover)}>
+      {#if cover.source}
+        <img src={cover.source} alt="" />
+      {:else}
+        <span>{@render icon("music")}</span>
+      {/if}
+    </span>
+    <span class="mini-copy stack-xs">
+      <strong class="type-title">
+        {currentTrack.title}
+      </strong>
+      <small class="type-small text-muted">
+        {currentTrack.artistName ?? cache.artists.get(currentTrack.artistId)?.name}
+      </small>
+    </span>
+    <button
+      class="icon-button"
+      data-size="md"
+      data-variant="primary"
+      onclick={() => playback.toggle()}
+      title={player?.playing ? "Pause" : "Play"}
+    >
+      {#if playbackLoading}
+        {@render icon("loading")}
+      {:else if player?.playing}
+        {@render icon("pause")}
+      {:else}
+        {@render icon("play")}
+      {/if}
+    </button>
+    <span class="mini-progress">
+      <span style:width={`${playbackPercent()}%`}></span>
+    </span>
+  </div>
+{/if}
+
+<dialog id="player-dialog" class="player-dialog" closedby="any" use:swipeToDismiss>
+  <header class="topbar wings">
+    <button
+      class="icon-button"
+      data-size="md"
+      data-variant="ghost"
+      commandfor="player-dialog"
+      command="close"
+      title="Close player">{@render icon("chevron-down")}</button
+    >
+    {@render brand()}
+    <span class="icon-button visually-hidden" aria-hidden="true"></span>
+  </header>
+  {@render alerts()}
+
+  <section class="view player-view">
+    <div class="player-main">
+      <div
+        class="artwork"
+        {@attach currentTrack
+          ? immediateCover(coverEngine.ensureTrackCover(currentTrack.id))
+          : undefined}
+      >
+        {#if currentTrack}
+          {@const cover = coverEngine.ensureTrackCover(currentTrack.id)}
+          {#if cover.source}
+            <img src={cover.source} alt="" />
+          {:else}
+            <span>{@render icon("music", 64)}</span>
+          {/if}
+        {:else}
+          <span>{@render icon("music", 64)}</span>
+        {/if}
+      </div>
+
+      {#if currentTrack}
+        <p class="type-body">
+          <strong class="type-heading">{currentTrack.title}</strong>
+          <br />
+          {#if playerArtist}
+            <a
+              class="text-link"
+              href={`#${artistPath(playerArtist)}`}
+              onclick={(event) => event.currentTarget.closest("dialog")?.close()}
+            >
+              {currentTrack.artistName ?? playerArtist.name}
+            </a>
+          {:else}
+            {currentTrack.artistName}
+          {/if}
+          —
+          {#if playerAlbum && playerAlbumArtist}
+            <a
+              class="text-link"
+              href={`#${albumPath(playerAlbumArtist, playerAlbum)}`}
+              onclick={(event) => event.currentTarget.closest("dialog")?.close()}
+            >
+              {playerAlbum.title}
+            </a>
+          {:else}
+            {playerAlbum?.title}
+          {/if}
+        </p>
+      {/if}
+
+      <div class="playback-progress">
+        <input
+          class="playback-slider"
+          type="range"
+          min="0"
+          max={Number.isFinite(playbackDuration) ? playbackDuration : 0}
+          step="0.1"
+          value={Math.min(cache.queue.position, playbackDuration)}
+          disabled={!playbackDuration ||
+            (offlineMode &&
+              currentTrack &&
+              trackEngine.getStatus(currentTrack.id) !== "downloaded")}
+          oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
+        />
+        <div class="playback-time type-caption">
+          <span>{formatTime(cache.queue.position)}</span>
+          <span>{formatTime(playbackDuration)}</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button
+          class="icon-button"
+          data-size="md"
+          data-variant="neutral"
+          onclick={() => playback.previous()}
+          disabled={!hasPreviousTrack && cache.queue.position <= 0}
+          title="Previous">{@render icon("previous")}</button
+        >
+        <button
+          class="icon-button"
+          data-size="lg"
+          data-variant="primary"
+          onclick={() => playback.toggle()}
+          disabled={queue.length === 0}
+          title={player?.playing ? "Pause" : "Play"}
+        >
+          {#if playbackLoading}
+            {@render icon("loading", 32)}
+          {:else if player?.playing}
+            {@render icon("pause", 32)}
+          {:else}
+            {@render icon("play", 32)}
+          {/if}
+        </button>
+        <button
+          class="icon-button"
+          data-size="md"
+          data-variant="neutral"
+          onclick={() => playback.next()}
+          disabled={!hasNextTrack}
+          title="Next">{@render icon("next")}</button
+        >
+      </div>
+
+      {#if downloadError}
+        <p class="error type-small">{downloadError}</p>
+      {/if}
+      {#if playbackError}
+        <p class="error type-small">{playbackError}</p>
+      {/if}
+    </div>
+
+    <div class="player-queue">
+      <div class="section-heading">
+        <div>
+          <span class="type-eyebrow text-muted">Up next</span>
+          <h2 class="type-heading">
+            {queue.length} track{queue.length === 1 ? "" : "s"}
+          </h2>
+        </div>
+        {#if cache.queue.tracks.length > 0}
+          <button
+            class="button"
+            data-size="sm"
+            data-variant="neutral"
+            onclick={() => playback.clearQueue()}>Clear</button
+          >
+        {/if}
+      </div>
+      {#if queue.length > 0}
+        <div class="wings">
+          {#each queue as { track, index }, visibleIndex}
+            {@const downloadStatus = trackEngine.getStatus(track.id)}
+            <div class="wings-item row-button">
+              <button
+                class="linkarea"
+                aria-label={`Play ${track.title}`}
+                onclick={() => playback.playIndex(index)}
+              ></button>
+              <span class="track-leading">
+                {#if index === cache.queue.index && playbackLoading}
+                  <span role="img" aria-label="Loading playback">
+                    {@render icon("loading")}
+                  </span>
+                {:else if index === cache.queue.index && player?.playing}
+                  <span role="img" aria-label="Playing">
+                    {@render icon("sound-bars")}
+                  </span>
+                {:else if index === cache.queue.index}
+                  <span role="img" aria-label="Current track, not playing">
+                    {@render icon("pause")}
+                  </span>
+                {:else if downloadStatus === "downloading"}
+                  <span role="img" aria-label="Downloading">
+                    {@render icon("loading")}
+                  </span>
+                {:else if downloadStatus === "queued"}
+                  <span role="img" aria-label="Queued for download">
+                    {@render icon("clock")}
+                  </span>
+                {:else}
+                  {visibleIndex + 1}
+                {/if}
+              </span>
+              <span>{track.title}</span>
+            </div>
+          {/each}
+        </div>
+      {:else if cache.queue.tracks.length > 0}
+        <p class="type-body text-muted">No available tracks.</p>
+      {:else}
+        <p class="type-body text-muted">The queue is empty.</p>
+      {/if}
+    </div>
+  </section>
+</dialog>
 
 <WebappUpdater bind:this={updater} />
