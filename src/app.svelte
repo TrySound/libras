@@ -612,10 +612,10 @@
             {#if cover.source}
               <img src={cover.source} alt="" />
             {:else}
-              <span>{@render icon("music")}</span>
+              <span>{@render icon("music", 64)}</span>
             {/if}
           {:else}
-            <span>{@render icon("music")}</span>
+            <span>{@render icon("music", 64)}</span>
           {/if}
         </div>
 
@@ -837,19 +837,20 @@
               data-longpress="show-modal"
               title={`${artist.name} — hold for actions`}
             >
-              <span class="tile-image">
+              <span
+                class="tile-image"
+                style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
+              >
                 {#if cover.source}
-                  <img
-                    src={cover.source}
-                    alt=""
-                    style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
-                  />
+                  <img src={cover.source} alt="" />
                 {:else}
-                  <span style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}>
-                    {@render icon("music")}
-                  </span>
+                  <span>{@render icon("music")}</span>
                 {/if}
-                <strong class="tile-name type-small">{artist.name}</strong>
+                <strong
+                  class="tile-name type-small"
+                  style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
+                  >{artist.name}</strong
+                >
               </span>
             </a>
           {/each}
@@ -941,22 +942,26 @@
   <section class="view collection-view">
     {#if libraryAvailable && artist}
       {@const artwork = coverEngine.ensureArtistCover(artist.id)}
-      <div class="artwork" aria-hidden="true" {@attach immediateCover(artwork)}>
+      <div
+        class="artwork"
+        style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
+        aria-hidden="true"
+        {@attach immediateCover(artwork)}
+      >
         {#if artwork.source}
-          <img
-            src={artwork.source}
-            alt=""
-            style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
-          />
+          <img src={artwork.source} alt="" />
         {:else}
-          <span style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}>
-            {@render icon("music")}
-          </span>
+          {@render icon("music", 64)}
         {/if}
       </div>
       <div class="section-heading collection-heading">
         <div>
-          <h2 class="type-heading">{artist.name}</h2>
+          <h2
+            class="type-heading"
+            style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
+          >
+            {artist.name}
+          </h2>
           <p class="library-meta type-small">
             {visibleAlbums.length} album{visibleAlbums.length === 1 ? "" : "s"}
           </p>
@@ -1010,22 +1015,23 @@
                 title={`${album.title} — hold for actions`}
               ></a>
               <span class="track-leading">
-                <span class="cover album-cover">
+                <span
+                  class="cover album-cover"
+                  style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
+                >
                   {#if cover.source}
-                    <img
-                      src={cover.source}
-                      alt=""
-                      style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
-                    />
+                    <img src={cover.source} alt="" />
                   {:else}
-                    <span style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}>
-                      {@render icon("music")}
-                    </span>
+                    <span>{@render icon("music")}</span>
                   {/if}
                 </span>
               </span>
               <span class="stack-xs">
-                <strong class="type-title">{album.title}</strong>
+                <strong
+                  class="type-title"
+                  style:view-transition-name={CSS.escape(`album-name-${album.id}`)}
+                  >{album.title}</strong
+                >
                 <small class="type-small text-muted">
                   {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
                 </small>
@@ -1184,17 +1190,16 @@
   <section class="view collection-view">
     {#if libraryAvailable && artist && album}
       {@const artwork = coverEngine.ensureAlbumCover(album.id)}
-      <div class="artwork" aria-hidden="true" {@attach immediateCover(artwork)}>
+      <div
+        class="artwork"
+        style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
+        aria-hidden="true"
+        {@attach immediateCover(artwork)}
+      >
         {#if artwork.source}
-          <img
-            src={artwork.source}
-            alt=""
-            style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
-          />
+          <img src={artwork.source} alt="" />
         {:else}
-          <span style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}>
-            {@render icon("music")}
-          </span>
+          {@render icon("music")}
         {/if}
       </div>
       <div class="section-heading collection-heading">
@@ -1202,7 +1207,12 @@
           <a class="text-link type-eyebrow text-muted" href={router.href(artistPath(artist))}>
             {artist.name}
           </a>
-          <h2 class="type-heading">{album.title}</h2>
+          <h2
+            class="type-heading"
+            style:view-transition-name={CSS.escape(`album-name-${album.id}`)}
+          >
+            {album.title}
+          </h2>
           <p class="library-meta type-small">
             {album.year ?? "Unknown year"} · {visibleTracks.length}
             track{visibleTracks.length === 1 ? "" : "s"}

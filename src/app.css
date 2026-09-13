@@ -205,6 +205,8 @@
 .linkarea {
   position: absolute;
   inset: 0;
+  /* lift right on top of default layer which are using positioning for internal reason */
+  z-index: 1;
   -webkit-tap-highlight-color: transparent;
   background: transparent;
   border: 0;
@@ -612,6 +614,9 @@ a {
   font-weight: var(--type-control-weight);
   line-height: var(--type-control-line);
   cursor: pointer;
+  /* rise above linkarea to keep buttons always clickable */
+  position: relative;
+  z-index: 2;
 }
 
 .button {
@@ -647,7 +652,6 @@ a {
 }
 
 .icon-button {
-  position: relative;
   -webkit-tap-highlight-color: transparent;
   display: inline-grid;
   width: var(--control-size);
