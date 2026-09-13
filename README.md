@@ -10,6 +10,8 @@ Libras is a browser-based music player that connects to your own music server. B
 
 **[Open Libras](https://trysound.github.io/libras/)**
 
+![Libras music player interface](libras-ui.jpg)
+
 ## Features
 
 - Browse artists, albums, and tracks.
