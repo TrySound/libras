@@ -29,6 +29,7 @@ export const trackSchema = v.strictObject({
   title: v.string(),
   albumId: id,
   artistId: id,
+  artistName: v.optional(v.string()),
   artworkId: v.optional(id),
   number: ordinal,
   disc: ordinal,

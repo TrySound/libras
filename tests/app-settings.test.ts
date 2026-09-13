@@ -3,7 +3,7 @@ import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
 import { installNavigation } from "./router-test-helpers";
-import { createSession, credentials, deferred } from "./session-test-helpers";
+import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
 const mocks = vi.hoisted(() => ({
   session: undefined as import("../src/session.svelte").Session | undefined,
@@ -72,6 +72,41 @@ async function setup(saved = false) {
 }
 
 describe("app settings", () => {
+  it.each([false, true])(
+    "shows album/track counters only while connecting or refreshing (saved: %s)",
+    async (saved) => {
+      const { target, metadata, session } = await setup(saved);
+      metadata.progress = { albums: 500, tracks: 1000 };
+      const pending = deferred();
+      if (saved) metadata.refresh.mockImplementationOnce(() => pending.promise);
+      else
+        metadata.prepareConnection.mockImplementationOnce(async (connection) => {
+          await pending.promise;
+          return snapshot(connection.account);
+        });
+      const loading = saved
+        ? session.refresh()
+        : session.connect({ ...credentials, password: "password" });
+      flushSync();
+      const counter = `${(500).toLocaleString()} albums · ${(1000).toLocaleString()} tracks`;
+      expect(
+        target.querySelector('[role="status"]')?.textContent?.replace(/\s+/g, " ").trim(),
+      ).toBe(counter);
+      expect(target.textContent).not.toContain("songs");
+      expect(target.querySelector(".connection-summary")?.textContent).toContain(
+        saved ? "Refreshing…" : "Connecting…",
+      );
+      expect(target.querySelector(".connection-dot")?.classList.contains("connecting")).toBe(true);
+      expect(target.querySelector(".connection-dot")?.classList.contains("connected")).toBe(false);
+      pending.resolve();
+      await loading;
+      flushSync();
+      expect(target.textContent?.replace(/\s+/g, " ")).not.toContain(counter);
+      expect(target.querySelector(".connection-summary")?.textContent).toContain("Connected");
+      expect(target.querySelector(".connection-dot")?.classList.contains("connecting")).toBe(false);
+      expect(target.querySelector(".connection-dot")?.classList.contains("connected")).toBe(true);
+    },
+  );
   it("shows read-only connection information and allows disconnect during refresh", async () => {
     const { target, session, auth, metadata, button, offline } = await setup(true);
     expect(target.textContent).toContain(credentials.host);

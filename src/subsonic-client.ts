@@ -65,13 +65,13 @@ const responseSchema = v.object({
     status: v.string(),
     error: v.optional(v.object({ message: v.optional(v.string()) })),
     indexes: v.optional(v.object({ lastModified: v.optional(v.union([v.number(), v.string()])) })),
-    artists: v.optional(
+    searchResult3: v.optional(
       v.object({
-        index: v.optional(v.array(v.object({ artist: v.optional(v.array(artistSchema)) }))),
+        artist: v.optional(v.array(artistSchema)),
+        album: v.optional(v.array(albumSchema)),
+        song: v.optional(v.array(trackSchema)),
       }),
     ),
-    albumList2: v.optional(v.object({ album: v.optional(v.array(albumSchema)) })),
-    album: v.optional(v.object({ song: v.optional(v.array(trackSchema)) })),
     playQueue: v.optional(
       v.object({
         current: v.optional(v.string()),
@@ -186,22 +186,24 @@ export class SubsonicClient {
     return Number.isFinite(lastModified) ? lastModified : null;
   }
 
-  async getArtists(signal?: AbortSignal) {
-    const result = await this.#get("getArtists", undefined, signal);
-    return (result.artists?.index ?? []).flatMap((index) => index.artist ?? []);
-  }
-
-  async getAlbumList2(
-    options: { type: "alphabeticalByArtist"; size: number; offset: number },
+  async search3(
+    options: {
+      artistCount: number;
+      artistOffset: number;
+      albumCount: number;
+      albumOffset: number;
+      songCount: number;
+      songOffset: number;
+    },
     signal?: AbortSignal,
   ) {
-    const result = await this.#get("getAlbumList2", options, signal);
-    return result.albumList2?.album ?? [];
-  }
-
-  async getAlbum(id: string, signal?: AbortSignal) {
-    const result = await this.#get("getAlbum", { id }, signal);
-    return result.album?.song ?? [];
+    const result = await this.#get("search3", { query: "", ...options }, signal);
+    if (!result.searchResult3) throw new Error("The server returned an invalid Subsonic response.");
+    return {
+      artists: result.searchResult3.artist ?? [],
+      albums: result.searchResult3.album ?? [],
+      tracks: result.searchResult3.song ?? [],
+    };
   }
 
   getCoverArtUrl(id: string, size?: number) {

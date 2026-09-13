@@ -194,7 +194,7 @@
       await trackEngine.cache({
         id: track.id,
         title: track.title,
-        artist: cache.artists.get(track.artistId)?.name,
+        artist: track.artistName ?? cache.artists.get(track.artistId)?.name,
         album: album?.title,
         contentType: track.mimeType,
       });
@@ -233,14 +233,16 @@
   let password = $state("");
   const statusLabel = $derived(
     session.busy
-      ? "Checking…"
+      ? "Connecting…"
       : !session.auth
         ? "Disconnected"
         : session.offlineMode
           ? "Offline mode"
           : session.status === "error"
             ? "Connection failed"
-            : "Connected",
+            : session.syncing
+              ? "Refreshing…"
+              : "Connected",
   );
 
   async function submitConnection(event: SubmitEvent) {
@@ -334,17 +336,25 @@
         <span
           class="connection-dot"
           class:offline={session.offlineMode}
-          class:connected={!session.offlineMode && session.status === "connected"}
-          class:connecting={session.busy}
+          class:connected={!session.offlineMode &&
+            session.status === "connected" &&
+            !session.syncing}
+          class:connecting={session.busy || session.syncing}
           class:failed={session.status === "error"}
         ></span>
         <span class="connection-summary stack-xs">
           <strong class="type-title">
             {session.auth?.host ?? "Add a server"}
           </strong>
-          {#if session.auth}
+          {#if session.auth || session.busy}
             <small class="type-small text-muted">
-              {`${session.auth.username} · ${statusLabel}`}
+              {session.auth ? `${session.auth.username} · ${statusLabel}` : statusLabel}
+            </small>
+          {/if}
+          {#if (session.busy || session.syncing) && session.libraryProgress}
+            <small class="type-small text-muted" role="status">
+              {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
+              tracks
             </small>
           {/if}
         </span>
@@ -623,15 +633,19 @@
           <p class="type-body">
             <strong class="type-heading">{currentTrack.title}</strong>
             <br />
-            {#if artist && album && albumArtist}
+            {#if artist}
               <a
                 class="text-link"
                 href={`#${artistPath(artist)}`}
                 onclick={(event) => event.currentTarget.closest("dialog")?.close()}
               >
-                {artist.name}
+                {currentTrack.artistName ?? artist.name}
               </a>
-              —
+            {:else}
+              {currentTrack.artistName}
+            {/if}
+            —
+            {#if album && albumArtist}
               <a
                 class="text-link"
                 href={`#${albumPath(albumArtist, album)}`}
@@ -640,7 +654,7 @@
                 {album.title}
               </a>
             {:else}
-              {artist?.name} — {album?.title}
+              {album?.title}
             {/if}
           </p>
         {/if}
@@ -1447,7 +1461,7 @@
           {currentTrack.title}
         </strong>
         <small class="type-small text-muted">
-          {cache.artists.get(currentTrack.artistId)?.name}
+          {currentTrack.artistName ?? cache.artists.get(currentTrack.artistId)?.name}
         </small>
       </span>
       <button

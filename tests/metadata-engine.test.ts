@@ -5,7 +5,7 @@ import { MetadataEngine } from "../src/metadata.svelte";
 import { Cache } from "../src/cache.svelte";
 import type { MetadataSnapshot } from "../src/metadata.svelte";
 import type { Account } from "../src/schema";
-import { Network } from "../src/network.svelte";
+import { Network, type LibraryProgress } from "../src/network.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
 
 const account = { host: "https://music.example.com", username: "listener" };
@@ -95,7 +95,8 @@ function createConnection(credentials = auth) {
     account: metadata.account,
     signal: metadata.signal,
     getModifiedAt: (since?: number) => metadata.getModifiedAt(since),
-    readLibrary: (signal: AbortSignal) => metadata.readLibrary(signal),
+    readLibrary: (signal: AbortSignal, onProgress?: (progress: LibraryProgress) => void) =>
+      metadata.readLibrary(signal, onProgress),
     abort: () => network.setMode("offline"),
   };
 }
@@ -106,29 +107,36 @@ function serveLibrary(data: { artists?: unknown[]; albums?: unknown[]; tracks?: 
   return vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
     if (url.includes("getIndexes")) return response({ indexes: { lastModified: 20 } });
-    if (url.includes("getArtists"))
+    if (url.includes("search3")) {
+      const params = new URL(url).searchParams;
+      const slice = (key: string, items: unknown[]) =>
+        items.slice(
+          Number(params.get(`${key}Offset`)),
+          Number(params.get(`${key}Offset`)) + Number(params.get(`${key}Count`)),
+        );
       return response({
-        artists: { index: [{ artist: data.artists ?? [{ id: "artist", name: "Artist" }] }] },
-      });
-    if (url.includes("getAlbumList2"))
-      return response({
-        albumList2: { album: data.albums ?? [{ id: "album", name: "Album", artistId: "artist" }] },
-      });
-    if (url.includes("getAlbum.view"))
-      return response({
-        album: {
-          song: data.tracks ?? [
-            {
-              id: "song",
-              title: "Song",
-              artistId: "artist",
-              albumId: "album",
-              track: 1,
-              contentType: "audio/flac",
-            },
-          ],
+        searchResult3: {
+          artist: slice("artist", data.artists ?? [{ id: "artist", name: "Artist" }]),
+          album: slice(
+            "album",
+            data.albums ?? [{ id: "album", name: "Album", artistId: "artist" }],
+          ),
+          song: slice(
+            "song",
+            data.tracks ?? [
+              {
+                id: "song",
+                title: "Song",
+                artistId: "artist",
+                albumId: "album",
+                track: 1,
+                contentType: "audio/flac",
+              },
+            ],
+          ),
         },
       });
+    }
     throw new Error(`Unexpected request: ${url}`);
   });
 }
@@ -363,7 +371,6 @@ describe("metadata engine", () => {
       const url = new URL(String(input));
       if (url.pathname.endsWith("getIndexes.view"))
         return response({ indexes: { lastModified: 20 } });
-      if (url.pathname.endsWith("getArtists.view")) return response({ artists: { index: [] } });
       signal = options?.signal;
       return new Promise<Response>((done) => {
         resolve = done;
@@ -377,13 +384,13 @@ describe("metadata engine", () => {
     expect(connection.signal.aborted).toBe(false);
     resolve(
       response({
-        albumList2: {
+        searchResult3: {
           album: Array.from({ length: 500 }, (_, i) => ({ id: String(i), name: String(i) })),
         },
       }),
     );
     await refreshing;
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
     expect(selection.cache!.tracks).toBe(previous);
     expect(storage.writes).toBe(0);
 
@@ -394,7 +401,7 @@ describe("metadata engine", () => {
     engine.destroy();
   });
 
-  it("paginates albums through Network while retaining bounded track-fetch concurrency", async () => {
+  it("paginates all metadata independently through search3", async () => {
     installMetadataStorage();
     const albums = Array.from({ length: 501 }, (_, index) => ({
       id: `album-${index}`,
@@ -402,9 +409,8 @@ describe("metadata engine", () => {
       artistId: "artist",
     }));
     const offsets: number[] = [];
-    let active = 0;
-    let peak = 0;
-    let trackRequests = 0;
+    const artistCounts: number[] = [];
+    const songOffsets: number[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
@@ -412,21 +418,22 @@ describe("metadata engine", () => {
         expect(url.searchParams.get("u")).toBe(auth.username);
         if (url.pathname.endsWith("getIndexes.view"))
           return response({ indexes: { lastModified: 20 } });
-        if (url.pathname.endsWith("getArtists.view"))
-          return response({ artists: { index: [{ artist: [{ id: "artist", name: "Artist" }] }] } });
-        if (url.pathname.endsWith("getAlbumList2.view")) {
-          expect(url.searchParams.get("type")).toBe("alphabeticalByArtist");
-          expect(url.searchParams.get("size")).toBe("500");
-          const offset = Number(url.searchParams.get("offset"));
+        if (url.pathname.endsWith("search3.view")) {
+          expect(url.searchParams.get("query")).toBe("");
+          const offset = Number(url.searchParams.get("albumOffset"));
           offsets.push(offset);
-          return response({ albumList2: { album: albums.slice(offset, offset + 500) } });
-        }
-        if (url.pathname.endsWith("getAlbum.view")) {
-          trackRequests++;
-          peak = Math.max(peak, ++active);
-          await new Promise((resolve) => setTimeout(resolve, 0));
-          active--;
-          return response({ album: { song: [] } });
+          artistCounts.push(Number(url.searchParams.get("artistCount")));
+          songOffsets.push(Number(url.searchParams.get("songOffset")));
+          return response({
+            searchResult3: {
+              artist:
+                Number(url.searchParams.get("artistOffset")) === 0
+                  ? [{ id: "artist", name: "Artist" }]
+                  : [],
+              album: albums.slice(offset, offset + 500),
+              song: [],
+            },
+          });
         }
         throw new Error(`Unexpected request: ${url.pathname}`);
       }),
@@ -434,15 +441,56 @@ describe("metadata engine", () => {
     const selection = new TestSelection();
     const engine = new MetadataEngine(selection);
     await loadLibrary(engine, createConnection(auth), selection);
-    expect(offsets).toEqual([0, 500]);
-    expect(trackRequests).toBe(501);
-    expect(peak).toBe(6);
+    expect(offsets).toEqual([0, 500, 501]);
+    expect(artistCounts).toEqual([500, 500, 0]);
+    expect(songOffsets).toEqual([0, 0, 0]);
     expect(selection.cache!.albums.size).toBe(501);
 
     engine.destroy();
   });
 
-  it("normalizes transport data and keeps album and track artists distinct", async () => {
+  it.each(["connect", "refresh"])(
+    "reports and clears %s counters and ignores cancelled updates",
+    async (mode) => {
+      installMetadataStorage();
+      const selection = new TestSelection();
+      await loadCache(selection, new Cache(account));
+      const engine = new MetadataEngine(selection);
+      const controller = new AbortController();
+      const pending = deferred<{ artists: []; albums: []; tracks: [] }>();
+      let report: ((progress: LibraryProgress) => void) | undefined;
+      const connection = {
+        account,
+        signal: controller.signal,
+        getModifiedAt: async () => 20,
+        readLibrary: async (_signal: AbortSignal, onProgress?: typeof report) => {
+          report = onProgress;
+          return pending.promise;
+        },
+      };
+      engine.setConnection(connection);
+      const run = () =>
+        mode === "connect" ? engine.prepareConnection(connection) : engine.refresh();
+      const loading = run();
+      const settled = loading.catch(() => undefined);
+      await vi.waitFor(() => expect(report).toBeDefined());
+      expect(engine.progress).toEqual({ albums: 0, tracks: 0 });
+      report!({ albums: 500, tracks: 1000 });
+      expect(engine.progress).toEqual({ albums: 500, tracks: 1000 });
+      engine.setConnection(undefined);
+      expect(engine.progress).toBeUndefined();
+      report!({ albums: 999, tracks: 999 });
+      expect(engine.progress).toBeUndefined();
+      pending.resolve({ artists: [], albums: [], tracks: [] });
+      await settled;
+      engine.setConnection(connection);
+      await run();
+      expect(engine.progress).toBeUndefined();
+      engine.destroy();
+    },
+  );
+
+  it("normalizes only album artists while preserving track artist names", async () => {
     const storage = installMetadataStorage();
     vi.stubGlobal(
       "fetch",
@@ -450,6 +498,7 @@ describe("metadata engine", () => {
         artists: [
           { id: "artist", name: "Artist", genre: " Rock | jazz ", genres: [{ name: "rock" }] },
           { id: "guest", name: "Guest" },
+          { id: "unused", name: "Unused contributor" },
         ],
         albums: [{ id: "album", name: "Album", artistId: "artist", coverArt: "cover", year: 2024 }],
         tracks: [
@@ -457,14 +506,13 @@ describe("metadata engine", () => {
             id: "second",
             title: "Second",
             artistId: "guest",
-            artist: "Guest",
             albumId: "album",
             track: 2,
             discNumber: 1,
             contentType: "audio/flac",
             duration: 120,
           },
-          { id: "first", title: "First", track: 1 },
+          { id: "first", title: "First", albumId: "album", track: 1 },
         ],
       }),
     );
@@ -481,6 +529,7 @@ describe("metadata engine", () => {
     });
     expect(engineSelection.cache!.tracks.get("second")).toMatchObject({
       artistId: "guest",
+      artistName: "Guest",
       albumId: "album",
       number: 2,
       disc: 1,
@@ -494,16 +543,52 @@ describe("metadata engine", () => {
     expect(
       (engineSelection.cache!.artistAlbums.get("artist") ?? []).map((album) => album.id),
     ).toEqual(["album"]);
+    expect([...engineSelection.cache!.artists.keys()]).toEqual(["artist"]);
     expect(engineSelection.cache!.artistAlbums.get("guest") ?? []).toEqual([]);
     expect(
       (engineSelection.cache!.albumTracks.get("album") ?? []).map((track) => track.id),
     ).toEqual(["first", "second"]);
     expect(engineSelection.cache!.albumTracks.get("missing") ?? []).toEqual([]);
     const persisted = JSON.parse(await storage.files.get(await snapshotPath(account))!.text());
+    expect(persisted.artists.map((artist: { id: string }) => artist.id)).toEqual(["artist"]);
+    expect(persisted.tracks.find((track: { id: string }) => track.id === "second").artistName).toBe(
+      "Guest",
+    );
     expect(persisted.artists[0]).not.toHaveProperty("albums");
     expect(persisted.albums[0]).not.toHaveProperty("tracks");
     expect(JSON.stringify(persisted)).not.toMatch(/contentType|coverArt|discNumber/);
     engine.destroy();
+  });
+
+  it("keeps artists who own later albums and removes unreferenced search artists", async () => {
+    vi.stubGlobal(
+      "fetch",
+      serveLibrary({
+        artists: [
+          { id: "unused", name: "Unused" },
+          { id: "guest", name: "Guest" },
+        ],
+        albums: [
+          { id: "first", name: "First", artistId: "owner", artist: "Owner" },
+          { id: "second", name: "Second", artistId: "guest", artist: "Guest" },
+        ],
+        tracks: [{ id: "song", title: "Song", albumId: "first", artistId: "guest" }],
+      }),
+    );
+    const connection = createConnection(auth);
+    const library = await connection.readLibrary(new AbortController().signal);
+    expect(library.artists.map((artist) => artist.id).sort()).toEqual(["guest", "owner"]);
+    expect(library.tracks[0]).toMatchObject({ artistId: "guest", artistName: "Guest" });
+    vi.stubGlobal(
+      "fetch",
+      serveLibrary({ artists: [{ id: "unused", name: "Unused" }], albums: [], tracks: [] }),
+    );
+    await expect(connection.readLibrary(new AbortController().signal)).resolves.toEqual({
+      artists: [],
+      albums: [],
+      tracks: [],
+    });
+    connection.abort();
   });
 
   it("restores sorted stable indexes without changing stored entity order", async () => {
@@ -556,16 +641,17 @@ describe("metadata engine", () => {
       serveLibrary({
         artists: [{ name: "Artist" }],
         albums: [{ id: "album", name: "Album", artist: "Artist" }],
-        tracks: [{ id: "song", title: "Song", artist: "Guest" }],
+        tracks: [{ id: "song", title: "Song", albumId: "album", artist: "Guest" }],
       }),
     );
     const engineSelection = new TestSelection();
     const engine = new MetadataEngine(engineSelection);
     await loadLibrary(engine, createConnection(auth), engineSelection);
     const ids = [...engineSelection.cache!.artists.values()].map((artist) => artist.id);
-    expect(ids).toHaveLength(2);
+    expect(ids).toHaveLength(1);
     expect(ids).toContain(engineSelection.cache!.albums.get("album")?.artistId);
-    expect(ids).toContain(engineSelection.cache!.tracks.get("song")?.artistId);
+    expect(ids).not.toContain(engineSelection.cache!.tracks.get("song")?.artistId);
+    expect(engineSelection.cache!.tracks.get("song")?.artistName).toBe("Guest");
     await engine.refresh();
     expect([...engineSelection.cache!.artists.values()].map((artist) => artist.id)).toEqual(ids);
     engine.destroy();
@@ -795,14 +881,14 @@ describe("metadata engine", () => {
   it("forces a whole replacement even when the server timestamp is unchanged", async () => {
     const storage = installMetadataStorage();
     await storage.seed(account, snapshot());
-    const serve = serveLibrary();
+    const serve = serveLibrary({
+      tracks: [{ id: "new-song", title: "New song", albumId: "album" }],
+    });
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
         if (String(input).includes("getIndexes"))
           return response({ indexes: { lastModified: 10 } });
-        if (String(input).includes("getAlbum.view"))
-          return response({ album: { song: [{ id: "new-song", title: "New song" }] } });
         return serve(input);
       }),
     );

@@ -344,7 +344,7 @@ describe("Network connection lifecycle", () => {
       async () =>
         new Response(
           JSON.stringify({
-            "subsonic-response": { status: "ok", artists: { index: [] } },
+            "subsonic-response": { status: "ok", searchResult3: {} },
           }),
         ),
     );
@@ -406,14 +406,14 @@ describe("Network connection lifecycle", () => {
       try {
         const result = connection.metadata.readLibrary(workflow.signal);
         const rejected = expect(result).rejects.toMatchObject({ name: "AbortError" });
-        await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
         if (action === "offline") network.setMode("offline");
         else network.accept(network.prepare({ ...auth, username: "other" }));
         await rejected;
         expect(signals.every((signal) => signal.aborted)).toBe(true);
         expect(workflow.signal.aborted).toBe(false);
         expect(connection.signal.aborted).toBe(true);
-        expect(fetcher).toHaveBeenCalledTimes(2);
+        expect(fetcher).toHaveBeenCalledTimes(1);
       } finally {
         network.setMode("offline");
         vi.unstubAllGlobals();
@@ -421,43 +421,104 @@ describe("Network connection lifecycle", () => {
     },
   );
 
-  it("cancels sibling library requests on failure without closing the connection", async () => {
+  it("handles capped and overlapping search pages without losing or duplicating tracks", async () => {
+    const network = new Network();
+    const metadata = network.prepare(auth).metadata;
+    const offsets: number[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input));
+        expect(url.pathname).toBe("/rest/search3.view");
+        const offset = Number(url.searchParams.get("songOffset"));
+        offsets.push(offset);
+        const ids = offset === 0 ? ["a", "b"] : offset === 2 ? ["b", "c"] : [];
+        return new Response(
+          JSON.stringify({
+            "subsonic-response": {
+              status: "ok",
+              searchResult3: {
+                artist: [],
+                album: offsets.length === 1 ? [{ id: "album", name: "Album" }] : [],
+                song: ids.map((id) => ({ id, title: id, albumId: "album" })),
+              },
+            },
+          }),
+        );
+      }),
+    );
+    try {
+      const progress = vi.fn();
+      const library = await metadata.readLibrary(new AbortController().signal, progress);
+      expect(progress.mock.calls.map(([counts]) => counts)).toEqual([
+        { albums: 1, tracks: 2 },
+        { albums: 1, tracks: 3 },
+        { albums: 1, tracks: 3 },
+      ]);
+      expect(offsets).toEqual([0, 2, 4]);
+      expect(library.tracks.map((track) => track.id)).toEqual(["a", "b", "c"]);
+    } finally {
+      network.setMode("offline");
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["repeated", "missing result", "orphan track"])(
+    "rejects %s search data without fallback",
+    async (kind) => {
+      const network = new Network();
+      const metadata = network.prepare(auth).metadata;
+      let calls = 0;
+      const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+        expect(new URL(String(input)).pathname).toBe("/rest/search3.view");
+        calls++;
+        const result =
+          kind === "missing result"
+            ? {}
+            : {
+                searchResult3: {
+                  song: kind === "orphan track" && calls > 1 ? [] : [{ id: "song", title: "Song" }],
+                },
+              };
+        return new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...result } }));
+      });
+      vi.stubGlobal("fetch", fetcher);
+      try {
+        await expect(metadata.readLibrary(new AbortController().signal)).rejects.toThrow(
+          kind === "repeated"
+            ? "no progress"
+            : kind === "missing result"
+              ? "invalid Subsonic response"
+              : "without a matching album",
+        );
+        expect(calls).toBe(kind === "missing result" ? 1 : 2);
+        expect(metadata.signal.aborted).toBe(false);
+      } finally {
+        network.setMode("offline");
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it("stops library pagination on failure without closing the connection", async () => {
     const network = new Network();
     const candidate = network.prepare(auth);
     const metadata = candidate.metadata;
-    const aborted = vi.fn();
     const requested: string[] = [];
     const fetcher = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
       const url = new URL(String(input));
       const reply = (data: object) =>
         new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...data } }));
-      if (url.pathname.endsWith("getArtists.view")) return reply({ artists: { index: [] } });
-      if (url.pathname.endsWith("getAlbumList2.view"))
-        return reply({
-          albumList2: {
-            album: Array.from({ length: 7 }, (_, i) => ({ id: String(i), name: String(i) })),
-          },
-        });
       if (url.pathname.endsWith("getIndexes.view")) return reply({ indexes: { lastModified: 20 } });
-      const id = url.searchParams.get("id")!;
-      requested.push(id);
-      if (id === "0") return new Response(null, { status: 500 });
-      return new Promise<Response>((_resolve, reject) => {
-        options!.signal!.addEventListener(
-          "abort",
-          () => {
-            aborted();
-            reject(options!.signal!.reason);
-          },
-          { once: true },
-        );
-      });
+      expect(url.pathname).toBe("/rest/search3.view");
+      requested.push(url.searchParams.get("songOffset")!);
+      expect(options?.signal?.aborted).toBe(false);
+      return new Response(null, { status: 500 });
     });
     vi.stubGlobal("fetch", fetcher);
     try {
       await expect(metadata.readLibrary(new AbortController().signal)).rejects.toThrow("HTTP 500");
-      expect(requested).toEqual(["0", "1", "2", "3", "4", "5"]);
-      expect(aborted).toHaveBeenCalledTimes(5);
+      expect(requested).toEqual(["0"]);
       expect(candidate.signal.aborted).toBe(false);
       await expect(metadata.getModifiedAt()).resolves.toBe(20);
       const cancelled = new AbortController();
