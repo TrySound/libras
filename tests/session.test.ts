@@ -282,9 +282,6 @@ describe("session", () => {
       "albumTracks",
       "downloads",
       "images",
-      "artistArtwork",
-      "albumArtwork",
-      "trackArtwork",
     ] as const;
     const data = fields.map((field) => selection.cache![field]);
     const queueState = [

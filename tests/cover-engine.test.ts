@@ -84,16 +84,16 @@ afterEach(() => {
 });
 
 describe("cover engine using Cache", () => {
-  it("uses the selected Cache without persisting candidates or writing on refresh", async () => {
+  it("does not resolve artwork or write on refresh for undemanded handles", async () => {
     const disk = installOpfs();
     const { cache, covers } = await engine();
-    const candidates = vi.spyOn(cache, "albumArtwork", "get");
+    const albums = vi.spyOn(cache, "albums", "get");
     const read = vi.spyOn(cache, "readImage");
     const writes = disk.state.writes;
     disk.getDirectory.mockClear();
     const cover = covers.ensureAlbumCover("album");
     await covers.refresh();
-    expect(candidates).not.toHaveBeenCalled();
+    expect(albums).not.toHaveBeenCalled();
     expect(cover.source).toBeUndefined();
     expect(read).not.toHaveBeenCalled();
     expect(disk.state.writes).toBe(writes);
@@ -163,20 +163,20 @@ describe("cover engine using Cache", () => {
     const read = vi.spyOn(restored, "readImage");
     const artist = covers.ensureArtistCover("artist");
     const album = covers.ensureAlbumCover("album");
-    const track = covers.ensureTrackCover("one");
+    const track = covers.ensureTrackCover("two");
     artist.load();
     album.load();
     track.load();
-    await vi.waitFor(() => expect(artist.source).toBe("blob:cover-1"));
-    expect(album.source).toBe(artist.source);
-    expect(track.source).toBe(artist.source);
+    await vi.waitFor(() => expect(track.source).toBe("blob:cover-1"));
+    expect(album.source).toBe(track.source);
+    expect(artist.source).toBeUndefined();
     expect(read).toHaveBeenCalledOnce();
     expect(read).toHaveBeenCalledWith("album-cover", expect.any(AbortSignal));
     expect(bytes).toHaveBeenCalledOnce();
     expect(vi.mocked(URL.createObjectURL).mock.calls[0][0]).not.toBeInstanceOf(File);
     disk.getDirectory.mockClear();
     for (let i = 0; i < 3; i++) {
-      expect(covers.ensureTrackCover("one")).toBe(track);
+      expect(covers.ensureTrackCover("two")).toBe(track);
       expect(track.source).toBe("blob:cover-1");
       track.load();
     }
@@ -189,37 +189,57 @@ describe("cover engine using Cache", () => {
   it("refreshes existing handles after metadata replacement without rewriting images", async () => {
     const disk = installOpfs();
     const { covers, cache, selection } = await engine(await seed());
-    const old = covers.ensureTrackCover("one");
+    const old = covers.ensureTrackCover("two");
     old.load();
     await vi.waitFor(() => expect(old.source).toBeDefined());
-    const references = selection.cache!.trackArtwork;
+    const references = selection.cache!.tracks;
     const images = selection.cache!.images;
     const saved = catalog(disk);
     await cache.replaceLibrary({ ...snapshot(), savedAt: 200, albums: [], tracks: [] });
     await covers.refresh();
     expect(old.source).toBeUndefined();
-    expect(selection.cache!.trackArtwork.size).toBe(0);
+    expect(selection.cache!.tracks.has("two")).toBe(false);
     expect(references.has("one")).toBe(true);
     expect(selection.cache!.images).toBe(images);
     expect(catalog(disk)).toEqual(saved);
   });
 
-  it("repairs missing bytes in Cache and chooses the next cached candidate", async () => {
+  it("does not publish a cached read after its computed artwork ID changes", async () => {
+    installOpfs();
+    const { cache, covers } = await engine(await seed());
+    const opened = await cache.readImage("album-cover");
+    const pending = deferred<typeof opened>();
+    const read = vi.spyOn(cache, "readImage").mockReturnValueOnce(pending.promise);
+    const cover = covers.ensureTrackCover("two");
+    cover.load();
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    const next = snapshot();
+    next.savedAt++;
+    next.tracks[1].artworkId = "new-cover";
+    await cache.replaceLibrary(next);
+    pending.resolve(opened);
+    await vi.waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledOnce());
+    expect(cover.source).toBeUndefined();
+    await covers.refresh();
+    expect(cover.source).toBeUndefined();
+  });
+
+  it("repairs missing bytes and shows the icon instead of another cached image", async () => {
     const disk = installOpfs();
     const cache = await seed();
     await cache.saveImage("track-cover", image("fallback"));
     const missing = cache.images.get("album-cover")!;
     disk.blobs.delete([...disk.blobs.keys()].find((path) => path.endsWith(missing.fileName))!);
     const { covers } = await engine(cache);
-    const references = cache.albumArtwork;
+    const references = cache.albums;
     const cover = covers.ensureAlbumCover("album");
     cover.load();
-    await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
-    expect(cache.images.has("album-cover")).toBe(false);
-    expect(cache.albumArtwork).toBe(references);
+    await vi.waitFor(() => expect(cache.images.has("album-cover")).toBe(false));
+    expect(cover.source).toBeUndefined();
+    expect(cache.albums).toBe(references);
     await cache.flush();
     expect(catalog(disk).map((record: { id: string }) => record.id)).toEqual(["track-cover"]);
-    expect(await (vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob).text()).toBe("fallback");
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 
   it("shares one explicit download without acquiring undemanded handles", async () => {
@@ -249,16 +269,16 @@ describe("cover engine using Cache", () => {
     await vi.waitFor(() => expect(cached.source).toBe("blob:cover-1"));
     expect(artist.source).toBeUndefined();
     artist.load();
-    await vi.waitFor(() => expect(artist.source).toBe(cached.source));
+    await vi.waitFor(() => expect(artist.source).toBe("blob:cover-2"));
     expect(album.source).toBe(cached.source);
-    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledTimes(2);
     flushSync();
     expect(sources.at(-1)).toBe("blob:cover-1");
     await selection.cache!.flush();
     const saved = catalog(disk);
     expect(saved).toEqual([...selection.cache!.images.values()]);
     expect(Array.isArray(saved)).toBe(true);
-    expect(disk.blobs.size).toBe(1);
+    expect(disk.blobs.size).toBe(2);
     for (const secret of ["blob:", "getCoverArt", auth.token, auth.salt])
       expect(JSON.stringify(saved)).not.toContain(secret);
     const restored = new Cache(account);
@@ -267,7 +287,7 @@ describe("cover engine using Cache", () => {
     const cover = other.covers.ensureTrackCover("two");
     cover.load();
     await vi.waitFor(() => expect(cover.source).toMatch(/^blob:/));
-    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it("persists freshness across reloads and renews it on 304 without changing bytes or URLs", async () => {

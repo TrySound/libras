@@ -63,24 +63,10 @@ afterEach(() => {
 });
 
 describe("memory-first artwork", () => {
-  it("derives ordered, deduplicated candidates without persisting relationships", async () => {
+  it("persists entity metadata without derived artwork relationships", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
     await cache.replaceLibrary(library());
-    expect(cache.albumArtwork.get("album")).toEqual(["album-art", "track-art"]);
-    expect(cache.artistArtwork.get("artist")).toEqual([
-      "artist-art",
-      "older-art",
-      "album-art",
-      "track-art",
-    ]);
-    expect(cache.trackArtwork.get("track")).toEqual([
-      "track-art",
-      "album-art",
-      "artist-art",
-      "older-art",
-    ]);
-    expect(cache.trackArtwork.get("first")).toEqual(["album-art", "artist-art", "older-art"]);
     await cache.flush();
     const json = JSON.parse([...disk.files.values()][0]);
     expect(Object.keys(json).sort()).toEqual([
@@ -106,7 +92,7 @@ describe("memory-first artwork", () => {
     next.tracks[0].artworkId = "new-art";
     await cache.replaceLibrary(next);
     await cache.flush();
-    expect(cache.trackArtwork.get("track")?.[0]).toBe("new-art");
+    expect(cache.tracks.get("track")?.artworkId).toBe("new-art");
     expect(cache.images).toBe(images);
     expect(disk.files.get(path(disk))).toBe(catalog);
   });
