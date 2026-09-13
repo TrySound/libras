@@ -29,6 +29,7 @@ export class PlaybackController {
   #cleanup?: () => void;
   #id?: string;
   #cached = false;
+  #cover = $state.raw<ReturnType<CoverEngine["ensureTrackCover"]>>();
 
   constructor(options: PlaybackControllerOptions) {
     this.#queue = options.queue;
@@ -69,6 +70,11 @@ export class PlaybackController {
     this.#cleanup?.();
     this.#player = player;
     const stopEffects = $effect.root(() => {
+      $effect(() => {
+        const cover = this.#cover;
+        const source = cover?.source;
+        if (cover) untrack(() => player.setArtwork(source));
+      });
       $effect(() => {
         const status = player.status;
         const playing = player.playing;
@@ -115,13 +121,16 @@ export class PlaybackController {
       album: this.#selection.cache?.albums.get(track.albumId)?.title,
       contentType: track.mimeType,
     };
+    const cover = this.#covers.ensureTrackCover(track.id);
+    this.#cover = cover;
+    cover.load();
     return {
       metadata: {
         title: descriptor.title,
         artist: descriptor.artist,
         album: descriptor.album,
         duration: track.duration,
-        artwork: this.#covers.ensureTrackCover(track.id).source,
+        artwork: cover.source,
       },
       position: this.#localQueue.position,
       getSource: async (options) => {
@@ -213,6 +222,7 @@ export class PlaybackController {
       this.suspend();
   }
   suspend() {
+    this.#cover = undefined;
     this.#player?.unload();
     this.#cached = false;
     this.#queue.playback("inactive");

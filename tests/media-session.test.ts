@@ -85,8 +85,8 @@ afterEach(async () => {
 });
 
 describe("Player Media Session integration", () => {
-  it("publishes track metadata and converts local artwork to self-contained bytes", async () => {
-    const { play, session } = setup();
+  it("publishes track metadata and converts late artwork to self-contained bytes", async () => {
+    const { play, player, session } = setup();
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -96,7 +96,9 @@ describe("Player Media Session integration", () => {
           }),
       ),
     );
-    await play({ title: "Song", artist: "Artist", album: "Album", artwork: "blob:cover" });
+    await play({ title: "Song", artist: "Artist", album: "Album" });
+    expect(session.metadata).toMatchObject({ title: "Song", artwork: [] });
+    player.setArtwork("blob:cover");
     await vi.waitFor(() =>
       expect(session.metadata).toMatchObject({
         title: "Song",

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlaybackController } from "../src/playback-controller.svelte";
 import { flushSync, mount as mountComponent, unmount } from "svelte";
 import Player from "../src/player.svelte";
+import { SvelteMap } from "svelte/reactivity";
 import { observePlayback } from "./playback-reactivity.test.svelte";
 import { QueueEngine } from "../src/queue.svelte";
 import { Cache } from "../src/cache.svelte";
@@ -93,14 +94,18 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     ),
     cache: vi.fn(async () => new File([], "track")),
   };
-  let artwork = "data:image/jpeg;base64,aW1hZ2U=";
+  const artwork = new SvelteMap<string, string | undefined>([
+    ["source", "data:image/jpeg;base64,aW1hZ2U="],
+  ]);
   const covers = {
     ensureTrackCover: vi.fn((id: string) => ({
-      source: artwork,
+      get source() {
+        return artwork.get("source");
+      },
       artworkId: id,
       cached: true,
       release: vi.fn(),
-      load: () => {},
+      load: vi.fn(),
     })),
   };
   const handlers = new Map<MediaSessionAction, MediaSessionActionHandler | null>();
@@ -202,8 +207,8 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     handlers,
     doc,
     detach,
-    artwork(value: string) {
-      artwork = value;
+    artwork(value: string | undefined) {
+      artwork.set("source", value);
     },
   };
 }
@@ -787,16 +792,25 @@ describe("playback engine", () => {
     expect(tracks.getSource).toHaveBeenCalledTimes(1);
   });
 
-  it("supplies cached artwork at play time without subscribing to later changes", async () => {
-    const { player, artwork, session, covers } = setup();
-    artwork("data:image/jpeg;base64,bmV3");
+  it("loads artwork and publishes it when it arrives without restarting audio", async () => {
+    const { player, artwork, session, covers, tracks } = setup();
+    artwork(undefined);
     await player.play();
+    flushSync();
+    expect(session.metadata).toMatchObject({ title: "a", artwork: [] });
+    expect(covers.ensureTrackCover).toHaveBeenLastCalledWith("a");
+    expect(covers.ensureTrackCover.mock.results.at(-1)!.value.load).toHaveBeenCalledOnce();
     artwork("data:image/jpeg;base64,bGF0ZXI=");
+    flushSync();
     expect(session.metadata).toMatchObject({
       title: "a",
-      artwork: [{ src: "data:image/jpeg;base64,bmV3" }],
+      artwork: [{ src: "data:image/jpeg;base64,bGF0ZXI=" }],
     });
-    expect(covers.ensureTrackCover).toHaveBeenLastCalledWith("a");
+    expect(tracks.getSource).toHaveBeenCalledOnce();
+    player.stop();
+    artwork("data:image/jpeg;base64,bmV3");
+    flushSync();
+    expect(session.metadata).toBeNull();
   });
 
   it("advances at end but retains the final queue entry", async () => {

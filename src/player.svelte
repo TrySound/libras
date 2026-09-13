@@ -425,6 +425,13 @@
     await load(position, true);
   }
 
+  /** Publish artwork arriving after play without restarting the transport. */
+  export function setArtwork(artwork: string | undefined) {
+    if (!audio || !track || track.metadata.artwork === artwork) return;
+    track = { ...track, metadata: { ...track.metadata, artwork } };
+    void syncMetadata();
+  }
+
   /** Resume the loaded track, or restart after end/retry after error.
    * Uses the same promise semantics as play(); no loaded track is a no-op.
    */
