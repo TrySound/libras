@@ -1,14 +1,8 @@
-<p align="center">
-  <img src="public/logo.svg" alt="Libras logo" width="120" height="120" />
-</p>
-
-<h1 align="center">Libras</h1>
+<h1><img src="public/logo.svg" alt="Libras logo" width="32" height="32" /> Libras</h1>
 
 Libras is a browser-based music player that connects to your own music server. Browse your library, play music, and download tracks to take with you.
 
 > Named after “3 Libras” by A Perfect Circle.
-
-**[Open Libras](https://trysound.github.io/libras/)**
 
 ![Libras music player interface](libras-ui.jpg)
 
@@ -25,6 +19,8 @@ Libras is a browser-based music player that connects to your own music server. B
 1. Open [Libras](https://trysound.github.io/libras/).
 2. Connect to your music server with your server address and credentials.
 3. Browse your library and start listening.
+
+Just trying it out? Connect to the [Navidrome demo server](https://demo.navidrome.org/) using `https://demo.navidrome.org` as the server address and `demo` as both the username and password.
 
 You'll need a reachable **HTTPS server with a Subsonic-compatible API**, such as [Navidrome](https://www.navidrome.org/), configured to allow browser requests from `https://trysound.github.io` (CORS). Libras is a player, not a music hosting service; bring your own server and library.
 
