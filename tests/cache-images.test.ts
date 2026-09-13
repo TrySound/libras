@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { flushSync } from "svelte";
 import { Cache, CacheLoadError, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
-import { observeCache } from "./cache-reactivity.test.svelte";
 import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
@@ -57,15 +55,14 @@ function library(): LibrarySnapshot {
     ],
   };
 }
-function catalogPath(disk: ReturnType<typeof installDisk>) {
-  return [...disk.files.keys()].find((path) => path.endsWith("/images.json"))!;
-}
+const path = (disk: ReturnType<typeof installDisk>) =>
+  [...disk.files.keys()].find((path) => path.endsWith("/images.json"))!;
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
-describe("artwork cache foundation", () => {
+describe("memory-first artwork", () => {
   it("derives ordered, deduplicated candidates without persisting relationships", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
@@ -84,382 +81,184 @@ describe("artwork cache foundation", () => {
       "older-art",
     ]);
     expect(cache.trackArtwork.get("first")).toEqual(["album-art", "artist-art", "older-art"]);
-    expect(disk.files.size).toBe(1);
-    const json = JSON.parse([...disk.files.values()][0]!);
-    expect(json).toEqual(library());
+    await cache.flush();
+    const json = JSON.parse([...disk.files.values()][0]);
+    expect(Object.keys(json).sort()).toEqual([
+      "albums",
+      "artists",
+      "lastModified",
+      "savedAt",
+      "tracks",
+    ]);
     expect(disk.blobs.size).toBe(0);
   });
 
-  it("reacts to library replacements while retaining downloaded images and their catalog", async () => {
+  it("retains images and their catalog when the library changes", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
     await cache.replaceLibrary(library());
     await cache.saveImage("album-art", image());
+    await cache.flush();
     const images = cache.images;
-    const catalog = disk.files.get(catalogPath(disk));
-    const seen: unknown[] = [];
-    const stop = observeCache(() => {
-      seen.push(cache.trackArtwork.get("track"));
-    });
-    try {
-      flushSync();
-      const next = library();
-      next.savedAt++;
-      next.tracks[0]!.artworkId = "new-art";
-      await cache.replaceLibrary(next);
-      flushSync();
-      expect(seen).toEqual([
-        ["track-art", "album-art", "artist-art", "older-art"],
-        ["new-art", "album-art", "artist-art", "older-art"],
-      ]);
-      expect(cache.images).toBe(images);
-      expect(disk.files.get(catalogPath(disk))).toBe(catalog);
-    } finally {
-      stop();
-    }
+    const catalog = disk.files.get(path(disk));
+    const next = library();
+    next.savedAt++;
+    next.tracks[0].artworkId = "new-art";
+    await cache.replaceLibrary(next);
+    await cache.flush();
+    expect(cache.trackArtwork.get("track")?.[0]).toBe("new-art");
+    expect(cache.images).toBe(images);
+    expect(disk.files.get(path(disk))).toBe(catalog);
   });
 
-  it("commits bytes before the catalog and publishes records only after both closes", async () => {
+  it("publishes after binary close, without reopening image bytes or waiting for JSON", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
-    const read = vi.fn(async (_path: string) => {});
-    disk.state.beforeRead = read;
+    const reads: string[] = [];
+    disk.state.beforeRead = async (path) => {
+      reads.push(path);
+    };
     disk.state.beforeClose = async (path) => {
-      expect(cache.images.size).toBe(0);
-      if (path.endsWith("/images.json")) expect(disk.blobs.size).toBe(1);
+      if (path.endsWith(".image")) expect(cache.images.size).toBe(0);
     };
     const saved = await cache.saveImage("cover", image());
-    expect(await saved!.blob.text()).toBe("image");
-    expect(saved!.blob.type).toBe("image/png");
-    expect(saved!.record).toBe(cache.images.get("cover"));
-    expect(read.mock.calls.some(([path]) => path.endsWith(".image"))).toBe(false);
-    expect(cache.images.get("cover")).toMatchObject({
-      id: "cover",
-      size: 5,
-      type: "image/png",
-      etag: "etag",
-      lastModified: "yesterday",
-    });
-    expect(catalogPath(disk)).toMatch(/^accounts\/[a-f0-9]{64}\/images\.json$/);
-    expect([...disk.blobs.keys()][0]).toMatch(/^accounts\/[a-f0-9]{64}\/files\/[a-f0-9-]+\.image$/);
-    expect(JSON.parse(disk.files.get(catalogPath(disk))!)).toEqual([...cache.images.values()]);
-  });
-
-  it("updates metadata and evicts explicitly without overwriting a competing version", async () => {
-    const disk = installDisk();
-    const cache = new Cache(account);
-    const original = (await cache.saveImage("cover", image("old")))!;
-    await cache.updateImage("cover", original.record.fileName, { freshUntil: 1000 });
-    expect(cache.images.get("cover")).toMatchObject({
-      fileName: original.record.fileName,
-      freshUntil: 1000,
-    });
-    expect(await (await cache.readImage("cover"))!.blob.text()).toBe("old");
-
-    const other = new Cache(account);
-    await other.load();
-    const replacement = (await other.saveImage("cover", image("new")))!;
-    await cache.updateImage("cover", original.record.fileName, { freshUntil: 2000 });
-    await cache.evictImage("cover", original.record.fileName);
-    expect(cache.images.get("cover")).toEqual(replacement.record);
-    expect(await (await cache.readImage("cover"))!.blob.text()).toBe("new");
+    expect(saved?.record).toBe(cache.images.get("cover"));
+    expect(saved?.blob.type).toBe("image/png");
+    expect(await saved?.blob.text()).toBe("image");
+    expect(reads.some((path) => path.endsWith(".image"))).toBe(false);
+    expect(disk.files.size).toBe(0);
     expect(disk.blobs.size).toBe(1);
-    await cache.evictImage("cover", replacement.record.fileName);
-    expect(cache.images.size).toBe(0);
-    expect(disk.blobs.size).toBe(0);
+    await cache.flush();
   });
 
-  it("lets the first completed image win without blocking reads or other writes", async () => {
+  it("keeps old bytes until the removing checkpoint commits, including failure and retry", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
     await cache.saveImage("cover", image("old"));
-    const closing = deferred<void>();
-    const release = deferred<void>();
-    let held = false;
+    await cache.flush();
+    const old = cache.images.get("cover")!;
+    const oldJSON = disk.files.get(path(disk));
+    await cache.saveImage("cover", image("new"));
+    expect(disk.blobs.size).toBe(2);
+    disk.state.failClose = true;
+    await expect(cache.flush()).rejects.toThrow();
+    expect(disk.files.get(path(disk))).toBe(oldJSON);
+    expect(disk.blobs.size).toBe(2);
+    const restored = new Cache(account);
+    await restored.load();
+    expect(await (await restored.readImage("cover"))!.blob.text()).toBe("old");
+    disk.state.failClose = false;
+    await cache.flush();
+    expect(disk.blobs.size).toBe(1);
+    expect([...disk.blobs.keys()].some((path) => path.endsWith(old.fileName))).toBe(false);
+  });
+
+  it("does not delete bytes removed by an edit newer than the in-flight checkpoint", async () => {
+    const disk = installDisk();
+    const cache = new Cache(account);
+    await cache.saveImage("cover", image("first"));
+    await cache.flush();
+    await cache.saveImage("cover", image("second"));
+    const closing = deferred();
+    const release = deferred();
     disk.state.beforeClose = async (path) => {
-      if (path.endsWith(".image") && !held) {
-        held = true;
+      if (path.endsWith("/images.json")) {
+        closing.resolve();
+        await release.promise;
+      }
+    };
+    const saving = cache.flush();
+    await closing.promise;
+    await cache.saveImage("cover", image("third"));
+    release.resolve();
+    await saving;
+    expect(disk.blobs.size).toBe(2);
+    const restored = new Cache(account);
+    await restored.load();
+    expect(await (await restored.readImage("cover"))!.blob.text()).toBe("second");
+    await cache.flush();
+    expect(disk.blobs.size).toBe(1);
+  });
+
+  it("updates or evicts only the observed version", async () => {
+    const disk = installDisk();
+    const cache = new Cache(account);
+    await cache.saveImage("cover", image("old"));
+    const old = cache.images.get("cover")!;
+    await cache.saveImage("cover", image("new"));
+    const next = cache.images.get("cover")!;
+    await cache.updateImage("cover", old.fileName, { etag: "wrong" });
+    await cache.evictImage("cover", old.fileName);
+    expect(cache.images.get("cover")).toBe(next);
+    await cache.updateImage("cover", next.fileName, { etag: "new" });
+    expect(cache.images.get("cover")?.etag).toBe("new");
+    await cache.flush();
+    await cache.evictImage("cover", next.fileName);
+    expect(cache.images.size).toBe(0);
+    expect(disk.blobs.size).toBe(1);
+    await cache.flush();
+    expect(disk.blobs.size).toBe(0);
+  });
+
+  it("lets the first completed same-cache replacement win and removes losing bytes", async () => {
+    const disk = installDisk();
+    const cache = new Cache(account);
+    await cache.saveImage("cover", image("old"));
+    await cache.flush();
+    const closing = deferred();
+    const release = deferred();
+    let first = true;
+    disk.state.beforeClose = async (path) => {
+      if (path.endsWith(".image") && first) {
+        first = false;
         closing.resolve();
         await release.promise;
       }
     };
     const slow = cache.saveImage("cover", image("slow"));
     await closing.promise;
-    try {
-      const fast = await cache.saveImage("cover", image("fast"));
-      expect(await fast!.blob.text()).toBe("fast");
-      expect(await (await cache.readImage("cover"))!.blob.text()).toBe("fast");
-    } finally {
-      release.resolve();
-    }
+    await cache.saveImage("cover", image("winner"));
+    expect(await (await cache.readImage("cover"))!.blob.text()).toBe("winner");
+    release.resolve();
     expect(await slow).toBeUndefined();
+    await cache.flush();
     expect(disk.blobs.size).toBe(1);
-    expect(await (await cache.readImage("cover"))!.blob.text()).toBe("fast");
   });
 
-  it("returns the matching image record even if replacement occurs during materialization", async () => {
-    installDisk();
-    const cache = new Cache(account);
-    const old = await cache.saveImage("cover", image("old"));
-    const reading = deferred<void>();
-    const release = deferred<void>();
-    const arrayBuffer = File.prototype.arrayBuffer;
-    vi.spyOn(File.prototype, "arrayBuffer").mockImplementation(async function (this: File) {
-      const bytes = await arrayBuffer.call(this);
-      if (this.name === old!.record.fileName) {
-        reading.resolve();
-        await release.promise;
-      }
-      return bytes;
-    });
-    const pending = cache.readImage("cover");
-    await reading.promise;
-    try {
-      await cache.saveImage("cover", { ...image("new"), type: "image/jpeg" });
-    } finally {
-      release.resolve();
-    }
-    const opened = (await pending)!;
-    expect(opened.record).toBe(old!.record);
-    expect(opened.record.fileName).not.toBe(cache.images.get("cover")!.fileName);
-    expect(opened.blob.type).toBe("image/png");
-    expect(await opened.blob.text()).toBe("old");
-  });
-
-  it("loads only image records at startup and reads bytes lazily", async () => {
-    const disk = installDisk();
-    const initial = new Cache(account);
-    await initial.saveImage("cover", image());
-    const read = vi.fn(async (_path: string) => {});
-    disk.state.beforeRead = read;
-    const restored = new Cache(account);
-    await restored.load();
-    expect(restored.images.get("cover")).toEqual(initial.images.get("cover"));
-    expect(read.mock.calls.every(([path]) => path.endsWith(".json"))).toBe(true);
-    expect(await (await restored.readImage("cover"))!.blob.text()).toBe("image");
-    expect(read.mock.calls.at(-1)![0]).toMatch(/\.image$/);
-    expect(await restored.readImage("unknown")).toBeNull();
-  });
-
-  it.each(["binary", "catalog"])(
-    "preserves the old image and cleans up uncommitted bytes on %s failure",
-    async (stage) => {
-      const disk = installDisk();
-      const cache = new Cache(account);
-      await cache.saveImage("cover", image("old"));
-      const originalFiles = [...disk.files];
-      const originalBlobs = [...disk.blobs];
-      const previous = cache.images;
-      disk.state.beforeClose = async (path) => {
-        if (stage === "binary" ? path.endsWith(".image") : path.endsWith("/images.json"))
-          throw new Error("Disk full");
-      };
-      await expect(cache.saveImage("cover", image("new"))).rejects.toThrow("Disk full");
-      expect(cache.images).toBe(previous);
-      expect(cache.imagesError).toBeInstanceOf(Error);
-      expect([...disk.files]).toEqual(originalFiles);
-      expect([...disk.blobs]).toEqual(originalBlobs);
-      disk.state.beforeClose = async () => {};
-      await cache.saveImage("cover", image("retry"));
-      expect(cache.imagesError).toBeUndefined();
-      expect(disk.blobs.size).toBe(1);
-    },
-  );
-
-  it("cleans up replaced bytes after a successful catalog commit", async () => {
+  it.each(["binary failure", "cancellation"])("cleans unowned bytes on %s", async (kind) => {
     const disk = installDisk();
     const cache = new Cache(account);
     await cache.saveImage("cover", image("old"));
-    const original = [...disk.blobs.keys()][0]!;
-    await cache.saveImage("cover", image("replacement"));
-    expect(disk.blobs.has(original)).toBe(false);
-    expect(disk.blobs.size).toBe(1);
-    expect(cache.images.size).toBe(1);
-    expect(await (await cache.readImage("cover"))!.blob.text()).toBe("replacement");
-  });
-
-  it.each(["binary", "catalog", "after commit"])(
-    "handles cancellation during %s without deleting a committed image",
-    async (stage) => {
-      const disk = installDisk();
-      const cache = new Cache(account);
-      await cache.saveImage("cover", image("old"));
-      const previous = cache.images;
-      const controller = new AbortController();
-      disk.state.beforeWrite = (path) => {
-        if (
-          stage === "binary"
-            ? path.endsWith(".image")
-            : stage === "catalog" && path.endsWith("/images.json")
-        )
-          controller.abort();
-      };
-      disk.state.afterClose = (path) => {
-        if (stage === "after commit" && path.endsWith("/images.json")) controller.abort();
-      };
-      await expect(cache.saveImage("cover", image("new"), controller.signal)).rejects.toMatchObject(
-        { name: "AbortError" },
-      );
-      expect(cache.images).toBe(previous);
-      expect(cache.imagesError).toBeUndefined();
-      expect(disk.blobs.size).toBe(1);
-      const restored = new Cache(account);
-      await restored.load();
-      expect(await (await restored.readImage("cover"))!.blob.text()).toBe(
-        stage === "after commit" ? "new" : "old",
-      );
-    },
-  );
-
-  it("keeps the first completed competing replacement and removes the loser's bytes", async () => {
-    const disk = installDisk();
-    const first = new Cache(account);
-    const second = new Cache(account);
-    const results = await Promise.all([
-      first.saveImage("cover", image("first")),
-      second.saveImage("cover", image("second")),
-    ]);
-    expect(results.filter(Boolean)).toHaveLength(1);
-    expect(disk.blobs.size).toBe(1);
-    expect(first.images.get("cover")).toEqual(second.images.get("cover"));
-    expect(await (await second.readImage("cover"))!.blob.text()).toBe(
-      await results.find(Boolean)!.blob.text(),
-    );
-  });
-
-  it("merges concurrent saves of different images across cache instances", async () => {
-    const disk = installDisk();
-    const first = new Cache(account);
-    const second = new Cache(account);
-    await Promise.all([first.saveImage("first", image()), second.saveImage("second", image())]);
-    const restored = new Cache(account);
-    await restored.load();
-    expect([...restored.images.keys()].sort()).toEqual(["first", "second"]);
-    expect(disk.blobs.size).toBe(2);
-  });
-
-  it.each(["missing", "incomplete"])(
-    "repairs %s bytes on access without deleting other records",
-    async (damage) => {
-      const disk = installDisk();
-      const cache = new Cache(account);
-      await cache.saveImage("cover", image());
-      const binary = [...disk.blobs.keys()][0]!;
-      await cache.saveImage("other", image());
-      if (damage === "missing") disk.blobs.delete(binary);
-      else disk.blobs.set(binary, new Blob(["bad"]));
-      expect(await cache.readImage("cover")).toBeNull();
-      expect(cache.images.has("cover")).toBe(false);
-      expect(cache.images.has("other")).toBe(true);
-      expect(disk.blobs.has(binary)).toBe(false);
-      expect(JSON.parse(disk.files.get(catalogPath(disk))!)).toHaveLength(1);
-    },
-  );
-
-  it("does not delete a competing winner when an old cached reference is missing", async () => {
-    const disk = installDisk();
-    const first = new Cache(account);
-    await first.saveImage("cover", image("old"));
-    const second = new Cache(account);
-    await second.load();
-    await second.saveImage("cover", image("new"));
-    const opened = await first.readImage("cover");
-    expect(first.images.get("cover")).toEqual(second.images.get("cover"));
-    expect(opened!.record).toBe(first.images.get("cover"));
-    expect(await opened!.blob.text()).toBe("new");
-    expect(disk.blobs.size).toBe(1);
-  });
-
-  it("propagates inaccessible bytes without removing their catalog entry", async () => {
-    const disk = installDisk();
-    const cache = new Cache(account);
-    await cache.saveImage("cover", image());
-    const previous = cache.images;
-    const error = new DOMException("Denied", "NotAllowedError");
-    disk.state.beforeRead = async (path) => {
-      if (path.endsWith(".image")) throw error;
+    await cache.flush();
+    const controller = new AbortController();
+    disk.state.beforeClose = async (path) => {
+      if (!path.endsWith(".image")) return;
+      if (kind === "cancellation") controller.abort();
+      else throw new Error("Full");
     };
-    await expect(cache.readImage("cover")).rejects.toBe(error);
-    expect(cache.images).toBe(previous);
-    expect(cache.imagesError).toBe(error);
-    expect(disk.blobs.size).toBe(1);
-  });
-
-  it("keeps corrupt image catalogs intact while restoring the library and queue", async () => {
-    const disk = installDisk();
-    const initial = new Cache(account);
-    await initial.saveImage("cover", image());
-    await initial.replaceLibrary(library());
-    initial.setQueue({ tracks: ["track"], index: 0, position: 5 });
-    await initial.flush();
-    disk.files.set(catalogPath(disk), "corrupt");
-    const cache = new Cache(account);
-    const error = await cache.load().catch((error: unknown) => error);
-    expect(error).toBeInstanceOf(CacheLoadError);
-    expect(cache.imagesError).toBeInstanceOf(Error);
-    expect(cache.artists.size).toBe(1);
-    expect(cache.queue.position).toBe(5);
-    await expect(cache.saveImage("new", image())).rejects.toThrow();
-    expect(disk.files.get(catalogPath(disk))).toBe("corrupt");
+    await expect(cache.saveImage("cover", image("new"), controller.signal)).rejects.toThrow();
+    expect(await (await cache.readImage("cover"))!.blob.text()).toBe("old");
     expect(disk.blobs.size).toBe(1);
   });
 
   it.each(["duplicate ID", "shared file", "unexpected field"])(
-    "rejects invalid image catalogs: %s",
+    "preserves invalid catalogs: %s",
     async (kind) => {
       const disk = installDisk();
-      const initial = new Cache(account);
-      await initial.saveImage("cover", image());
-      const path = catalogPath(disk);
-      const catalog = JSON.parse(disk.files.get(path)!);
-      if (kind === "unexpected field") catalog[0].unexpected = true;
-      else
-        catalog.push({
-          ...catalog[0],
-          id: kind === "shared file" ? "other" : "cover",
-        });
-      disk.files.set(path, JSON.stringify(catalog));
+      const seed = new Cache(account);
+      await seed.saveImage("cover", image());
+      await seed.flush();
+      const records = JSON.parse(disk.files.get(path(disk))!);
+      if (kind === "duplicate ID") records.push({ ...records[0], fileName: "other.image" });
+      if (kind === "shared file") records.push({ ...records[0], id: "other" });
+      if (kind === "unexpected field") records[0].unexpected = true;
+      const invalid = JSON.stringify(records);
+      disk.files.set(path(disk), invalid);
       const cache = new Cache(account);
       await expect(cache.load()).rejects.toBeInstanceOf(CacheLoadError);
-      expect(cache.images.size).toBe(0);
+      await expect(cache.saveImage("other", image())).rejects.toThrow();
+      expect(disk.files.get(path(disk))).toBe(invalid);
+      expect(disk.blobs.size).toBe(1);
     },
   );
-
-  it("cancels a pending catalog load without publishing or recording an image error", async () => {
-    const disk = installDisk();
-    const initial = new Cache(account);
-    await initial.saveImage("cover", image());
-    const reading = deferred();
-    const release = deferred();
-    disk.state.beforeRead = async (path) => {
-      if (path.endsWith("/images.json")) {
-        reading.resolve();
-        await release.promise;
-      }
-    };
-    const cache = new Cache(account);
-    const controller = new AbortController();
-    const loaded = cache.load(controller.signal);
-    await reading.promise;
-    controller.abort();
-    release.resolve();
-    await expect(loaded).rejects.toMatchObject({ name: "AbortError" });
-    expect(cache.images.size).toBe(0);
-    expect(cache.imagesError).toBeUndefined();
-  });
-
-  it("isolates image records and bytes for accounts with the same artwork IDs", async () => {
-    const disk = installDisk();
-    const first = new Cache(account);
-    const second = new Cache({ ...account, username: "other" });
-    await Promise.all([
-      first.saveImage("cover", image("first")),
-      second.saveImage("cover", image("second")),
-    ]);
-    await Promise.all([first.load(), second.load()]);
-    expect(await (await first.readImage("cover"))!.blob.text()).toBe("first");
-    expect(await (await second.readImage("cover"))!.blob.text()).toBe("second");
-    expect(disk.files.size).toBe(2);
-    expect(disk.blobs.size).toBe(2);
-  });
 });

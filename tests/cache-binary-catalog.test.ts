@@ -9,6 +9,7 @@ const account = { host: "https://music.example", username: "listener" };
 // test-only catalog API. Their document formats and record identities stay distinct.
 function domain(name: "images" | "downloads", cache: Cache) {
   return {
+    flush: () => cache.flush(),
     records: () => (name === "images" ? cache.images : cache.downloads),
     key: (id: string) => (name === "images" ? id : downloadKey(id, "mp3")),
     read: async (id: string) =>
@@ -38,6 +39,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
     const disk = installDisk();
     const seed = domain(name, new Cache(account));
     await seed.save("item", "bytes");
+    await seed.flush();
     const reading = deferred<void>();
     const release = deferred<void>();
     disk.state.beforeRead = async (path) => {
@@ -75,12 +77,13 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
     expect([...store.records().keys()]).toEqual([store.key("kept")]);
     expect(await (await store.read("kept"))!.text()).toBe("second");
     expect(disk.blobs.size).toBe(1);
+    await store.flush();
     const cache = new Cache(account);
     await cache.load();
     expect([...domain(name, cache).records().keys()]).toEqual([store.key("kept")]);
   });
 
-  it("retains committed bytes without late publication when cancelled during catalog close", async () => {
+  it("does not tie checkpoints to a completed caller's cancellation signal", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
     const store = domain(name, cache);
@@ -89,10 +92,10 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
     disk.state.afterClose = (path) => {
       if (path.endsWith(`/${name}.json`)) controller.abort();
     };
-    await expect(store.save("late", "new", controller.signal)).rejects.toMatchObject({
-      name: "AbortError",
-    });
-    expect([...store.records().keys()]).toEqual([store.key("kept")]);
+    await store.save("late", "new", controller.signal);
+    await store.flush();
+    expect(controller.signal.aborted).toBe(true);
+    expect([...store.records().keys()]).toEqual([store.key("kept"), store.key("late")]);
     expect(name === "images" ? cache.imagesError : cache.downloadsError).toBeUndefined();
     expect(disk.blobs.size).toBe(2);
     const restored = new Cache(account);

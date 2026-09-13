@@ -523,6 +523,7 @@ describe("playback engine", () => {
     });
     queue.update({ tracks: ["a"], index: 0, position: 45.5 });
     await queue.flush();
+    await cache.flush();
     const restored = new Cache(cache.account!);
     await restored.load();
     selection.cache = restored;

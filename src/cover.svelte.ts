@@ -282,7 +282,7 @@ export class CoverEngine {
         if (saved && cache.images.get(id)?.fileName === saved.record.fileName) {
           if (memory) memory.persistedFileName = saved.record.fileName;
         } else {
-          // Another tab won persistence: adopt its bytes rather than marking ours as saved.
+          // Another local operation won: adopt its bytes rather than marking ours as saved.
           const winner = cache.images.get(id);
           if (winner) {
             await this.#install(cache, winner);

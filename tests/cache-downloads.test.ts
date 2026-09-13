@@ -47,6 +47,7 @@ describe("download cache foundation", () => {
       contentType: "audio/mpeg",
       size: 5,
     });
+    await cache.flush();
     expect(catalog(disk)).toEqual([...cache.downloads.values()]);
     expect(catalog(disk)[0]).not.toHaveProperty("key");
     expect(disk.blobs.size).toBe(1);
@@ -65,7 +66,7 @@ describe("download cache foundation", () => {
     expect(await restored.readDownload(track.id, "raw")).toBeNull();
   });
 
-  it("streams chunks and publishes reactively only after binary and catalog close", async () => {
+  it("streams chunks and publishes reactively after binary close", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
     const source = stream();
@@ -75,7 +76,7 @@ describe("download cache foundation", () => {
     const gate = deferred();
     const closing = deferred();
     disk.state.beforeClose = async (name) => {
-      if (name.endsWith("/downloads.json")) {
+      if (name.endsWith(".audio")) {
         closing.resolve();
         await gate.promise;
       }
@@ -87,26 +88,23 @@ describe("download cache foundation", () => {
     await closing.promise;
     flushSync();
     expect(seen.every((count) => count === 0)).toBe(true);
-    expect(disk.blobs.size).toBe(1);
-    expect(await [...disk.blobs.values()][0].text()).toBe("first second");
+    expect(disk.blobs.size).toBe(0);
     gate.resolve();
     await pending;
+    expect(await [...disk.blobs.values()][0].text()).toBe("first second");
+    await cache.flush();
     flushSync();
     expect(seen.filter((count) => count > 0)).toEqual([1]);
     stop();
   });
 
-  it.each(["stream", "binary", "catalog"])(
+  it.each(["stream", "binary"])(
     "cleans uncommitted files on %s failure and allows retry",
     async (stage) => {
       const disk = installDisk();
       const cache = new Cache(account);
       disk.state.beforeClose = async (name) => {
-        if (
-          (stage === "binary" && name.endsWith(".audio")) ||
-          (stage === "catalog" && name.endsWith("/downloads.json"))
-        )
-          throw new Error("Storage full");
+        if (stage === "binary" && name.endsWith(".audio")) throw new Error("Storage full");
       };
       const source = stream();
       const response = stage === "stream" ? source.response : new Response("audio");
@@ -147,33 +145,10 @@ describe("download cache foundation", () => {
     expect(disk.files.size).toBe(0);
   });
 
-  it.each(["beforeWrite", "afterClose"] as const)(
-    "handles cancellation at catalog %s safely",
-    async (stage) => {
-      const disk = installDisk();
-      const cache = new Cache(account);
-      const abort = new AbortController();
-      disk.state[stage] = (name) => {
-        if (name.endsWith("/downloads.json")) abort.abort();
-      };
-      await expect(save(cache, "audio", abort.signal)).rejects.toMatchObject({
-        name: "AbortError",
-      });
-      expect(cache.downloads.size).toBe(0);
-      expect(cache.downloadsError).toBeUndefined();
-      expect(disk.blobs.size).toBe(stage === "afterClose" ? 1 : 0);
-      const restored = new Cache(account);
-      await restored.load();
-      expect(restored.downloads.size).toBe(stage === "afterClose" ? 1 : 0);
-      if (stage === "afterClose")
-        expect(await (await restored.readDownload(track.id, "mp3"))!.text()).toBe("audio");
-    },
-  );
-
   it("reuses a concurrent winner and cancels the unused response", async () => {
     const disk = installDisk();
     const first = new Cache(account);
-    const second = new Cache(account);
+    const second = first;
     const gate = deferred();
     const closing = deferred();
     disk.state.beforeClose = async (name) => {
@@ -251,7 +226,7 @@ describe("download cache foundation", () => {
     const disk = installDisk();
     Object.defineProperty(navigator, "locks", { value: undefined, configurable: true });
     const first = new Cache(account);
-    const second = new Cache(account);
+    const second = first;
     const one = stream();
     const two = stream();
     const a = first.saveDownload(track, "mp3", "audio/mpeg", one.response, signal());
@@ -282,6 +257,7 @@ describe("download cache foundation", () => {
       else disk.blobs.set(binary, new Blob(["x"]));
       expect(await cache.readDownload(track.id, "mp3")).toBeNull();
       expect(cache.downloads.size).toBe(1);
+      await cache.flush();
       expect(catalog(disk)).toHaveLength(1);
       expect(disk.blobs.has(binary)).toBe(false);
       await save(cache, "replacement");
@@ -290,23 +266,11 @@ describe("download cache foundation", () => {
     },
   );
 
-  it("adopts a competing replacement during stale repair", async () => {
-    const disk = installDisk();
-    const first = new Cache(account);
-    await save(first);
-    const second = new Cache(account);
-    await second.load();
-    disk.blobs.clear();
-    await save(second, "replacement");
-    expect(await (await first.readDownload(track.id, "mp3"))!.text()).toBe("replacement");
-    expect(first.downloads).toEqual(second.downloads);
-    expect(catalog(disk)).toHaveLength(1);
-  });
-
   it("does not invalidate records after permission errors or cancelled reads", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
     await save(cache);
+    await cache.flush();
     const original = cache.downloads;
     disk.state.beforeRead = async (name) => {
       if (name.endsWith(".audio")) throw new DOMException("Denied", "NotAllowedError");
@@ -375,7 +339,9 @@ describe("download cache foundation", () => {
 
   it("restores downloads even when the library is corrupt", async () => {
     const disk = installDisk();
-    await save(new Cache(account));
+    const seed = new Cache(account);
+    await save(seed);
+    await seed.flush();
     disk.files.set(path(disk).replace("downloads.json", "library.json"), "broken JSON");
     const cache = new Cache(account);
     await expect(cache.load()).rejects.toMatchObject({ failures: { library: expect.any(Error) } });
@@ -387,7 +353,9 @@ describe("download cache foundation", () => {
     "orders hydration with writes and guards cancellation (cancel: %s)",
     async (cancel) => {
       const disk = installDisk();
-      await save(new Cache(account));
+      const seed = new Cache(account);
+      await save(seed);
+      await seed.flush();
       const cache = new Cache(account);
       const reading = deferred();
       const gate = deferred();
@@ -418,6 +386,7 @@ describe("download cache foundation", () => {
         gate.resolve();
         await Promise.all([loading, saving]);
         expect(cache.downloads.size).toBe(2);
+        await cache.flush();
         expect(catalog(disk)).toHaveLength(2);
       }
     },

@@ -34,7 +34,7 @@ describe("unscoped empty Cache", () => {
     expect(cache.queueDirty).toBe(false);
     expect(cache.downloadsLoading).toBe(false);
     await cache.load();
-    expect(await cache.flush()).toBe(0);
+    expect(await cache.flush()).toBeUndefined();
     expect(await cache.readImage("cover")).toBeNull();
     expect(await cache.readDownload("track", "mp3")).toBeNull();
     expect(cache.artists).toBe(collections[0]);

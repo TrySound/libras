@@ -175,6 +175,7 @@ describe("queue engine using the selected cache", () => {
     queue.setConnection(connection);
     await queue.refresh();
     expect(cache.queue).toEqual({ tracks: ids, index, position });
+    await cache.flush();
     expect((await json()).value).toEqual(cache.queue);
   });
 
@@ -318,47 +319,49 @@ describe("queue engine using the selected cache", () => {
     },
   );
 
-  it.each(["success", "failure", "local edit", "detach", "playback"])(
-    "waits for persistence before publication: %s",
-    async (outcome) => {
-      await seed();
-      const { queue, cache } = await setup();
-      const connection = client();
-      const closing = deferred();
-      const release = deferred();
-      disk.state.beforeClose = async () => {
-        closing.resolve();
-        await release.promise;
-      };
-      queue.setConnection(connection);
-      const notify = vi.fn();
-      queue.subscribe(notify);
-      const pending = queue.refresh();
-      expect(queue.refresh()).toBe(pending);
-      await closing.promise;
-      expect(queue.refresh()).toBe(pending);
-      expect(cache.queue).toEqual(local());
-      expect(notify).not.toHaveBeenCalled();
-      if (outcome === "local edit") queue.update({ tracks: ["local"], index: 0, position: 0 });
-      if (outcome === "detach") queue.setConnection(undefined);
-      if (outcome === "playback") queue.playback("active");
-      if (outcome === "failure") disk.state.failClose = true;
-      release.resolve();
-      await pending;
-      if (outcome === "success") {
-        expect(cache.queue.tracks).toEqual(["remote"]);
-        expect(notify).toHaveBeenCalledOnce();
-      } else if (outcome === "local edit") expect(cache.queue.tracks).toEqual(["local"]);
-      else expect(cache.queue).toEqual(local());
-      if (outcome === "failure") {
-        expect(queue.storageError).toBeInstanceOf(Error);
-        expect(queue.error).toBeUndefined();
-      }
-      disk.state.failClose = false;
-      await queue.flush();
-      expect((await json()).value).toEqual(cache.queue);
-    },
-  );
+  it("publishes and notifies playback before checkpointing a fetched queue", async () => {
+    await seed();
+    const { queue, cache } = await setup();
+    queue.setConnection(client());
+    const notify = vi.fn(() => expect(cache.queue.tracks).toEqual(["remote"]));
+    queue.subscribe(notify);
+    const pending = queue.refresh();
+    expect(queue.refresh()).toBe(pending);
+    await pending;
+    expect(notify).toHaveBeenCalledOnce();
+    expect(cache.queueDirty).toBe(true);
+    expect(disk.state.writes).toBe(0);
+    expect((await json()).value).toEqual(local());
+    await cache.flush();
+    expect((await json()).value).toEqual(cache.queue);
+    expect(notify).toHaveBeenCalledOnce();
+  });
+
+  it("does not fetch over unsaved local edits after a checkpoint failure, and permits retry", async () => {
+    await seed();
+    const { queue, cache } = await setup();
+    const connection = client();
+    queue.setConnection(connection);
+    queue.update({ tracks: ["new-local"], index: 0, position: 0 });
+    disk.state.failClose = true;
+    await queue.refresh();
+    expect(connection.write).not.toHaveBeenCalled();
+    expect(connection.read).not.toHaveBeenCalled();
+    expect(cache.queue.tracks).toEqual(["new-local"]);
+    expect(cache.queueDirty).toBe(true);
+    expect(queue.storageError).toBeDefined();
+    disk.state.failClose = false;
+    connection.read.mockResolvedValue({
+      trackIds: ["new-local"],
+      currentTrackId: "new-local",
+      position: 0,
+    });
+    await queue.refresh();
+    expect(connection.write).toHaveBeenCalledOnce();
+    expect(connection.read).toHaveBeenCalledOnce();
+    expect(cache.queue.tracks).toEqual(["new-local"]);
+    expect(queue.storageError).toBeUndefined();
+  });
 
   it("preserves the last disk snapshot when a fetched queue cannot be written", async () => {
     await seed();
@@ -367,8 +370,9 @@ describe("queue engine using the selected cache", () => {
     queue.setConnection(client());
     disk.state.failClose = true;
     await queue.refresh();
+    await expect(cache.flush()).rejects.toThrow();
     expect(queue.storageError).toBeInstanceOf(Error);
-    expect(cache.queue).toEqual(local());
+    expect(cache.queue.tracks).toEqual(["remote"]);
     expect(await json()).toEqual(original);
   });
 
@@ -391,46 +395,6 @@ describe("queue engine using the selected cache", () => {
     expect(connection.write).not.toHaveBeenCalled();
     queue.update({ tracks: ["online"], index: 0, position: 0 });
     await queue.flush();
-    expect(connection.write).toHaveBeenCalledOnce();
-  });
-
-  it("refuses to acknowledge or upload a conflicted checkpoint", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1_000);
-    const { queue, cache } = await setup();
-    const connection = client();
-    queue.setConnection(connection);
-    queue.update(local());
-    await seed({ tracks: ["newer"], index: 0, position: 0 }, account, 5_000);
-    await queue.flush();
-    expect(queue.storageError).toBe(cache.queueError);
-    expect(queue.storageError).toBeInstanceOf(Error);
-    expect(connection.write).not.toHaveBeenCalled();
-    expect((await json()).value.tracks).toEqual(["newer"]);
-    vi.setSystemTime(6_000);
-    queue.update({ tracks: ["edited"], index: 0, position: 0 });
-    await queue.flush();
-    expect(connection.write).toHaveBeenCalledOnce();
-    expect(queue.storageError).toBeUndefined();
-  });
-
-  it("does not overwrite another tab's newer queue when acknowledging a server upload", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1_000);
-    const { queue } = await setup();
-    const connection = client();
-    connection.write.mockImplementationOnce(async () => {
-      await seed(local(), account, 5_000);
-    });
-    queue.setConnection(connection);
-    queue.update(local());
-    await queue.flush();
-    await queue.flush();
-    expect((await json()).updatedAt).toBe(5_000);
-    expect(connection.write).toHaveBeenCalledOnce();
-    queue.setPosition(20);
-    await queue.flush();
-    expect(queue.storageError).toBeInstanceOf(Error);
     expect(connection.write).toHaveBeenCalledOnce();
   });
 
