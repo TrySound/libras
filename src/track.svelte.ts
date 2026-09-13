@@ -81,7 +81,7 @@ export class TrackEngine {
     return this.#selection.cache?.downloadsLoading ?? false;
   }
   get error() {
-    return this.#error ?? this.#selection.cache?.downloadsError;
+    return this.#error;
   }
 
   #track(track: EngineTrack): DownloadTrack {

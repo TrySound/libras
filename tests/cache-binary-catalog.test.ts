@@ -96,7 +96,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
     await store.flush();
     expect(controller.signal.aborted).toBe(true);
     expect([...store.records().keys()]).toEqual([store.key("kept"), store.key("late")]);
-    expect(name === "images" ? cache.imagesError : cache.downloadsError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
     expect(disk.blobs.size).toBe(2);
     const restored = new Cache(account);
     await restored.load();

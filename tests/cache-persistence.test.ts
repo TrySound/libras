@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Cache } from "../src/cache.svelte";
+import { flushSync } from "svelte";
+import { observeCache } from "./cache-reactivity.test.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
@@ -36,6 +38,45 @@ afterEach(() => {
 });
 
 describe("general checkpoints", () => {
+  it("aggregates failures reactively and clears only recovered domains", async () => {
+    const disk = installDisk();
+    const cache = new Cache(account);
+    const libraryFailure = new Error("Library full");
+    const imageFailure = new Error("Images full");
+    const seen: (AggregateError | undefined)[] = [];
+    const stop = observeCache(() => seen.push(cache.error));
+    try {
+      await edit(cache);
+      disk.state.beforeClose = async (path) => {
+        if (path.endsWith("/library.json")) throw libraryFailure;
+        if (path.endsWith("/images.json")) throw imageFailure;
+      };
+      await expect(cache.flush()).rejects.toMatchObject({
+        name: "AggregateError",
+        errors: [libraryFailure, imageFailure],
+      });
+      flushSync();
+      expect(cache.error).toBeInstanceOf(AggregateError);
+      expect(seen.at(-1)).toBe(cache.error);
+      expect(cache.error?.errors).toEqual([libraryFailure, imageFailure]);
+      disk.state.beforeClose = async (path) => {
+        if (path.endsWith("/images.json")) throw imageFailure;
+      };
+      await expect(cache.flush()).rejects.toMatchObject({
+        errors: expect.arrayContaining([expect.objectContaining({ message: "Images full" })]),
+      });
+      flushSync();
+      expect(seen.at(-1)?.errors).toEqual([imageFailure]);
+      disk.state.beforeClose = async () => {};
+      await cache.flush();
+      flushSync();
+      expect(cache.error).toBeUndefined();
+      expect(seen.at(-1)).toBeUndefined();
+    } finally {
+      stop();
+    }
+  });
+
   it("hashes once without opening storage and clean flushes do no I/O", async () => {
     const disk = installDisk();
     const digest = vi.spyOn(crypto.subtle, "digest");
@@ -104,20 +145,24 @@ describe("general checkpoints", () => {
     disk.state.beforeClose = async (path) => {
       if (path.endsWith("/images.json")) throw new Error("Full");
     };
-    await expect(cache.flush()).rejects.toThrow("Full");
-    expect(cache.imagesError).toBeDefined();
+    await expect(cache.flush()).rejects.toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ message: "Full" })]),
+    });
+    expect(cache.error).toBeDefined();
     expect(cache.queueDirty).toBe(false);
     const writes = disk.state.writes;
-    await expect(cache.flush()).rejects.toThrow("Full");
+    await expect(cache.flush()).rejects.toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ message: "Full" })]),
+    });
     expect(disk.state.writes).toBe(writes);
     expect(cache.savedAt).toBe(1);
     expect(cache.downloads.size).toBe(1);
     // A successful resource read must not hide the checkpoint error.
     await cache.readImage("cover");
-    expect(cache.imagesError).toBeDefined();
+    expect(cache.error).toBeDefined();
     disk.state.beforeClose = async () => {};
     await cache.flush();
-    expect(cache.imagesError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
   });
 
   it.each(["library", "queue", "images", "downloads"])(
@@ -129,7 +174,9 @@ describe("general checkpoints", () => {
       disk.state.beforeClose = async (path) => {
         if (path.endsWith(`/${name}.json`)) throw new Error("Close failed");
       };
-      await expect(cache.flush()).rejects.toThrow("Close failed");
+      await expect(cache.flush()).rejects.toMatchObject({
+        errors: expect.arrayContaining([expect.objectContaining({ message: "Close failed" })]),
+      });
       const path = [...disk.files.keys()].find((path) => path.endsWith(`/${name}.json`))!;
       expect(disk.files.get(path)).toBe("");
       expect(cache.dirty).toBe(true);
@@ -179,9 +226,13 @@ describe("general checkpoints", () => {
       .mockRejectedValueOnce(new Error("Hash unavailable"));
     const cache = new Cache(account);
     await Promise.resolve();
-    await expect(cache.load()).rejects.toThrow("Hash unavailable");
+    await expect(cache.load()).rejects.toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ message: "Hash unavailable" })]),
+    });
     await cache.replaceLibrary(library());
-    await expect(cache.flush()).rejects.toThrow("Hash unavailable");
+    await expect(cache.flush()).rejects.toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ message: "Hash unavailable" })]),
+    });
     expect(disk.getDirectory).not.toHaveBeenCalled();
     expect(digest).toHaveBeenCalledOnce();
   });

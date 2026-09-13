@@ -464,7 +464,7 @@ describe("cover engine using Cache", () => {
     vi.stubGlobal("fetch", fetcher);
     covers.setConnection(createConnection());
     cover.load();
-    await vi.waitFor(() => expect(cache.imagesError).toBeDefined());
+    await vi.waitFor(() => expect(cache.error).toBeDefined());
     expect(cover.source).toBe(source);
     expect(cache.images.get("album-cover")?.freshUntil).toBeGreaterThan(Date.now());
     covers.setConnection(undefined);
@@ -573,7 +573,7 @@ describe("cover engine using Cache", () => {
     covers.setConnection(createConnection());
     const cover = covers.ensureAlbumCover("album");
     cover.load();
-    await vi.waitFor(() => expect(cache.imagesError).toBeDefined());
+    await vi.waitFor(() => expect(cache.error).toBeDefined());
     expect(cover.source).toBe("blob:cover-2");
     expect(catalog(disk)).toEqual(original);
     expect(disk.blobs.size).toBe(2);

@@ -754,7 +754,7 @@ describe("metadata engine", () => {
     engine.setConnection(createConnection(auth));
     await engine.refresh(false);
     await expect(selection.cache!.flush()).rejects.toBeInstanceOf(Error);
-    expect(selection.cache!.libraryError).toBeDefined();
+    expect(selection.cache!.error).toBeDefined();
     [
       selection.cache!.artists,
       selection.cache!.albums,

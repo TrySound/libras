@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
-import { Cache, CacheLoadError, downloadKey } from "../src/cache.svelte";
+import { Cache, downloadKey } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { observeCache } from "./cache-reactivity.test.svelte";
 import { deferred } from "./session-test-helpers";
@@ -115,12 +115,12 @@ describe("download cache foundation", () => {
       }
       await expect(pending).rejects.toThrow();
       expect(cache.downloads.size).toBe(0);
-      expect(cache.downloadsError).toBeDefined();
+      expect(cache.error).toBeDefined();
       expect(disk.blobs.size).toBe(0);
       expect([...disk.files.keys()].some((name) => name.endsWith(".audio"))).toBe(false);
       disk.state.beforeClose = async () => {};
       expect(await (await save(cache)).text()).toBe("audio");
-      expect(cache.downloadsError).toBeUndefined();
+      expect(cache.error).toBeUndefined();
     },
   );
 
@@ -140,7 +140,7 @@ describe("download cache foundation", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(source.cancel).toHaveBeenCalledOnce();
     expect(cache.downloads.size).toBe(0);
-    expect(cache.downloadsError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
     expect(disk.blobs.size).toBe(0);
     expect(disk.files.size).toBe(0);
   });
@@ -324,8 +324,8 @@ describe("download cache foundation", () => {
       const value = kind === "broken" ? "broken JSON" : JSON.stringify(data);
       disk.files.set(path(disk), value);
       const cache = new Cache(account);
-      await expect(cache.load()).rejects.toBeInstanceOf(CacheLoadError);
-      expect(cache.downloadsError).toBeDefined();
+      await expect(cache.load()).rejects.toBeInstanceOf(AggregateError);
+      expect(cache.error).toBeDefined();
       expect(cache.queue.tracks).toEqual([track.id]);
       const unused = stream();
       await expect(
@@ -344,7 +344,7 @@ describe("download cache foundation", () => {
     await seed.flush();
     disk.files.set(path(disk).replace("downloads.json", "library.json"), "broken JSON");
     const cache = new Cache(account);
-    await expect(cache.load()).rejects.toMatchObject({ failures: { library: expect.any(Error) } });
+    await expect(cache.load()).rejects.toMatchObject({ errors: [expect.any(Error)] });
     expect(cache.downloads.size).toBe(1);
     expect(await (await cache.readDownload(track.id, "mp3"))!.text()).toBe("audio");
   });

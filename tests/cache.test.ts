@@ -109,14 +109,16 @@ describe("memory-first library", () => {
     const files = [...disk.files];
     disk.state.failClose = true;
     await cache.replaceLibrary(library(200));
-    await expect(cache.flush()).rejects.toThrow("Storage full");
+    await expect(cache.flush()).rejects.toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ message: "Storage full" })]),
+    });
     expect(cache.savedAt).toBe(200);
-    expect(cache.libraryError).toBeDefined();
+    expect(cache.error).toBeDefined();
     expect(cache.dirty).toBe(true);
     expect([...disk.files]).toEqual(files);
     disk.state.failClose = false;
     await cache.flush();
-    expect(cache.libraryError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
     expect(cache.dirty).toBe(false);
   });
 

@@ -65,29 +65,6 @@ export function downloadKey(trackId: string, format: DownloadFormat) {
   return JSON.stringify([trackId, format]);
 }
 
-/** Loading one local domain never prevents another from restoring. */
-export class CacheLoadError extends AggregateError {
-  constructor(
-    readonly failures: {
-      library?: unknown;
-      queue?: unknown;
-      images?: unknown;
-      downloads?: unknown;
-    },
-  ) {
-    super(
-      Object.values(failures),
-      Object.entries(failures)
-        .map(
-          ([domain, error]) =>
-            `${domain}: ${error instanceof Error ? error.message : String(error)}`,
-        )
-        .join("; "),
-    );
-    this.name = "CacheLoadError";
-  }
-}
-
 // Order hydration/checkpoints and short binary-record operations independently.
 function serial() {
   let tail: Promise<unknown> = Promise.resolve();
@@ -656,9 +633,6 @@ export class Cache {
   get images() {
     return this.#images.records;
   }
-  get imagesError() {
-    return this.#images.error;
-  }
 
   get lastModified() {
     return this.#library.value.lastModified;
@@ -671,25 +645,17 @@ export class Cache {
   async load(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
     if (!this.account) return;
-    const [library, queue, images, downloads] = await Promise.allSettled([
+    const results = await Promise.allSettled([
       this.#library.load(signal),
       this.#queue.load(signal),
       this.#images.load(signal),
       this.#downloads.load(signal),
     ]);
     signal?.throwIfAborted();
-    if (
-      library.status === "rejected" ||
-      queue.status === "rejected" ||
-      images.status === "rejected" ||
-      downloads.status === "rejected"
-    )
-      throw new CacheLoadError({
-        ...(library.status === "rejected" ? { library: library.reason } : {}),
-        ...(queue.status === "rejected" ? { queue: queue.reason } : {}),
-        ...(images.status === "rejected" ? { images: images.reason } : {}),
-        ...(downloads.status === "rejected" ? { downloads: downloads.reason } : {}),
-      });
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length) throw new AggregateError(errors, "Could not restore cache.");
   }
 
   get queue() {
@@ -700,9 +666,6 @@ export class Cache {
   }
   get queueDirty() {
     return this.#queue.dirty;
-  }
-  get queueError() {
-    return this.#queue.error;
   }
 
   /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
@@ -726,12 +689,24 @@ export class Cache {
       this.#images.store.flush(),
       this.#downloads.store.flush(),
     ]);
-    const failed = results.find((result) => result.status === "rejected");
-    if (failed?.status === "rejected") throw failed.reason;
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length) throw new AggregateError(errors, "Could not save cache.");
   }
 
-  get libraryError() {
-    return this.#library.error;
+  #error = $derived.by(() => {
+    const errors = [
+      this.#library.error,
+      this.#queue.error,
+      this.#images.error,
+      this.#downloads.error,
+    ].filter((error) => error !== undefined);
+    return errors.length ? new AggregateError(errors, "Cache failed.") : undefined;
+  });
+
+  get error() {
+    return this.#error;
   }
   get dirty() {
     return (
@@ -813,9 +788,6 @@ export class Cache {
 
   get downloads() {
     return this.#downloads.records;
-  }
-  get downloadsError() {
-    return this.#downloads.error;
   }
   get downloadsLoading() {
     return this.#downloads.loading;

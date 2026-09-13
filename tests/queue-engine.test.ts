@@ -349,7 +349,7 @@ describe("queue engine using the selected cache", () => {
     expect(connection.read).not.toHaveBeenCalled();
     expect(cache.queue.tracks).toEqual(["new-local"]);
     expect(cache.queueDirty).toBe(true);
-    expect(queue.storageError).toBeDefined();
+    expect(cache.error).toBeDefined();
     disk.state.failClose = false;
     connection.read.mockResolvedValue({
       trackIds: ["new-local"],
@@ -360,7 +360,7 @@ describe("queue engine using the selected cache", () => {
     expect(connection.write).toHaveBeenCalledOnce();
     expect(connection.read).toHaveBeenCalledOnce();
     expect(cache.queue.tracks).toEqual(["new-local"]);
-    expect(queue.storageError).toBeUndefined();
+    expect(cache.error).toBeUndefined();
   });
 
   it("preserves the last disk snapshot when a fetched queue cannot be written", async () => {
@@ -371,7 +371,7 @@ describe("queue engine using the selected cache", () => {
     disk.state.failClose = true;
     await queue.refresh();
     await expect(cache.flush()).rejects.toThrow();
-    expect(queue.storageError).toBeInstanceOf(Error);
+    expect(cache.error).toBeInstanceOf(Error);
     expect(cache.queue.tracks).toEqual(["remote"]);
     expect(await json()).toEqual(original);
   });
@@ -475,7 +475,7 @@ describe("queue engine using the selected cache", () => {
     disk.state.failClose = true;
     queue.update({ tracks: ["new"], index: 0, position: 2 });
     await queue.flush();
-    expect(queue.storageError).toBeInstanceOf(Error);
+    expect(cache.error).toBeInstanceOf(Error);
     expect(queue.error).toBeUndefined();
     expect(cache.queue.tracks).toEqual(["new"]);
     expect(await json()).toEqual(original);

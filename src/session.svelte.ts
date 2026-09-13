@@ -11,7 +11,7 @@ import type { PlaybackController } from "./playback-controller.svelte";
 import type { QueueEngine } from "./queue.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
-import { Cache, CacheLoadError } from "./cache.svelte";
+import { Cache } from "./cache.svelte";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -21,16 +21,15 @@ interface SessionOptions {
   auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
   metadata: Pick<MetadataEngine, "prepareConnection" | "setConnection" | "refresh">;
   covers: Pick<CoverEngine, "activate" | "refresh" | "setConnection">;
-  queue: Pick<
-    QueueEngine,
-    "activate" | "refresh" | "flush" | "setConnection" | "error" | "storageError"
-  >;
+  queue: Pick<QueueEngine, "activate" | "refresh" | "flush" | "setConnection" | "error">;
   tracks: Pick<TrackEngine, "activate" | "setConnection">;
   playback: Pick<PlaybackController, "suspend" | "suspendNetwork">;
   preferences: Pick<Storage, "getItem" | "setItem">;
 }
 
-function connectionError(error: unknown) {
+function connectionError(error: unknown): string {
+  if (error instanceof AggregateError)
+    return error.errors.length ? error.errors.map(connectionError).join("; ") : error.message;
   if (error instanceof NetworkTransportError)
     return "Could not reach the server. Check your connection, server address, and CORS settings.";
   return error instanceof Error ? error.message : "Could not connect to the server.";
@@ -62,12 +61,7 @@ export class Session {
 
   get refreshError() {
     const error =
-      this.#refreshError ??
-      this.#options.queue.error ??
-      this.#options.queue.storageError ??
-      this.#options.selection.cache?.libraryError ??
-      this.#options.selection.cache?.imagesError ??
-      this.#options.selection.cache?.downloadsError;
+      this.#refreshError ?? this.#options.queue.error ?? this.#options.selection.cache?.error;
     return error ? `Synchronization failed: ${connectionError(error)}` : "";
   }
 
@@ -168,10 +162,9 @@ export class Session {
     const current = () => !this.#destroyed && selection.cache === cache;
     try {
       await cache.load(controller.signal).catch((error) => {
-        // Other domain failures remain on Cache, separate from library warnings.
-        const libraryError = error instanceof CacheLoadError ? error.failures.library : error;
-        if (current() && libraryError !== undefined)
-          this.error = `Could not restore library: ${libraryError instanceof Error ? libraryError.message : String(libraryError)}`;
+        // Cache failures stay reactive and are reported through refreshError.
+        if (current() && !controller.signal.aborted && !(error instanceof AggregateError))
+          this.error = `Could not restore cache: ${connectionError(error)}`;
       });
       if (!current()) return;
       // Notify playback only after the cache's independent load attempts finish.
@@ -209,7 +202,7 @@ export class Session {
       // Restore local records before selecting this candidate. A fresh library
       // repairs library read failures; queue/image failures remain independent.
       await cache.load(connection.signal).catch((error) => {
-        if (!(error instanceof CacheLoadError)) throw error;
+        if (!(error instanceof AggregateError)) throw error;
       });
       if (!this.#valid(generation)) return false;
       const { account: _account, ...library } = prepared;
