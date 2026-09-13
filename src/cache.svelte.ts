@@ -88,8 +88,7 @@ export class CacheLoadError extends AggregateError {
   }
 }
 
-// Cache serializes complete domain operations, including publication. File I/O
-// needs cross-tab locks, but not a second layer of per-instance scheduling.
+// Order hydration/checkpoints and short binary-record operations independently.
 function serial() {
   let tail: Promise<unknown> = Promise.resolve();
   return <T>(operation: () => Promise<T>): Promise<T> => {
@@ -144,7 +143,6 @@ class Disk {
     directory: FileSystemDirectoryHandle,
     name: DocumentName,
     parse: (value: unknown) => T,
-    repair = false,
   ): Promise<T | null> {
     let file: File;
     try {
@@ -153,105 +151,28 @@ class Disk {
       if (error instanceof DOMException && error.name === "NotFoundError") return null;
       throw error;
     }
-    // Inaccessible bytes are not corrupt JSON. Never bypass conflict checks by
-    // treating a permission or transient read failure as an empty document.
     // An interrupted first write can leave a zero-byte placeholder, not a record.
+    // All other read/validation failures propagate; catalogs must not start empty.
     if (file.size === 0) return null;
     const text = await file.text();
-    try {
-      return parse(JSON.parse(text));
-    } catch (error) {
-      if (repair) return null;
-      throw error;
-    }
+    return parse(JSON.parse(text));
   }
   read<T>(name: DocumentName, parse: (value: unknown) => T) {
     return this.#locked(name, (directory) => this.#read(directory, name, parse));
   }
-  update<T>(
-    name: DocumentName,
-    parse: (value: unknown) => T,
-    change: (existing: T | null) => T | undefined,
-    options: { valid?: () => boolean; repair?: boolean } = {},
-  ): Promise<{ written: boolean; value: T | null }> {
+  write(name: DocumentName, value: unknown): Promise<void> {
     return this.#locked(name, async (directory) => {
-      const existing = await this.#read(directory, name, parse, options.repair);
-      const skipped = { written: false, value: existing };
-      if (options.valid && !options.valid()) return skipped;
-      const value = change(existing);
-      if (value === undefined) return skipped;
       const handle = await directory.getFileHandle(`${name}.json`, { create: true });
       let writable: FileSystemWritableFileStream | undefined;
       let committed = false;
       try {
         writable = await handle.createWritable();
         await writable.write(JSON.stringify(value));
-        if (options.valid && !options.valid()) return skipped;
         await writable.close();
         committed = true;
-        // Do not throw for cancellation after close: callers must know the disk
-        // commit owns its binary files even when they cannot publish locally.
-        return { written: true, value };
       } finally {
-        // Empty placeholders are harmless: reads treat them as absent.
         if (!committed) await writable?.abort().catch(() => {});
       }
-    });
-  }
-}
-
-interface SnapshotOptions<T, View> {
-  document: DocumentName;
-  initial: View;
-  parse: (value: unknown) => T;
-  project: (snapshot: T) => View;
-  shouldReplace: (candidate: T, existing: T) => boolean;
-}
-
-/** Complete snapshots publish only after persistence. Keep the projected view,
- * not a second copy of the source document. Domain callers prepare owned inputs. */
-class SnapshotStore<T, View> {
-  #value: View;
-  #serial = serial();
-
-  constructor(
-    readonly disk: Disk | undefined,
-    readonly options: SnapshotOptions<T, View>,
-  ) {
-    this.#value = $state.raw(options.initial);
-  }
-
-  get value() {
-    return this.#value;
-  }
-
-  load(signal?: AbortSignal): Promise<void> {
-    return this.#serial(async () => {
-      signal?.throwIfAborted();
-      const snapshot = await this.disk?.read(this.options.document, this.options.parse);
-      signal?.throwIfAborted();
-      this.#value = snapshot == null ? this.options.initial : this.options.project(snapshot);
-    });
-  }
-
-  async replace(candidate: T, signal?: AbortSignal): Promise<void> {
-    signal?.throwIfAborted();
-    const disk = this.disk;
-    if (!disk) throw new Error("No account selected.");
-    return this.#serial(async () => {
-      signal?.throwIfAborted();
-      const result = await disk.update(
-        this.options.document,
-        this.options.parse,
-        (existing) =>
-          existing === null || this.options.shouldReplace(candidate, existing)
-            ? candidate
-            : undefined,
-        // Complete authoritative snapshots can replace corrupt persisted data.
-        { valid: () => !signal?.aborted, repair: true },
-      );
-      signal?.throwIfAborted();
-      if (result.value !== null) this.#value = this.options.project(result.value);
     });
   }
 }
@@ -264,15 +185,17 @@ interface CheckpointRecord<T> {
 interface CheckpointOptions<T> {
   document: DocumentName;
   initial: T;
-  parse: (value: unknown) => CheckpointRecord<T>;
+  parse: (value: unknown) => T;
+  serialize: (value: T) => unknown;
+  saved?: (revision: number) => Promise<void>;
 }
 
-/** Optimistic publication, durable adoption, and revision-aware checkpoints.
- * Values are immutable by contract; domain callers own input preparation. */
+/** Memory is authoritative after hydration. Only flushes allocate disk snapshots. */
 class CheckpointStore<T> {
-  #record: CheckpointRecord<T>;
+  #value: T;
   #revision = $state(0);
   #savedRevision = $state(0);
+  #loaded = false;
   error = $state.raw<unknown>();
   #serial = serial();
   #debounceTimer?: ReturnType<typeof setTimeout>;
@@ -282,11 +205,11 @@ class CheckpointStore<T> {
     readonly disk: Disk | undefined,
     readonly options: CheckpointOptions<T>,
   ) {
-    this.#record = $state.raw({ value: options.initial, updatedAt: 0 });
+    this.#value = $state.raw(options.initial);
   }
 
   get value() {
-    return this.#record.value;
+    return this.#value;
   }
   get revision() {
     return this.#revision;
@@ -295,22 +218,22 @@ class CheckpointStore<T> {
     return this.#revision !== this.#savedRevision;
   }
 
-  #adopt(record: CheckpointRecord<T>) {
-    this.#record = record;
-    this.#savedRevision = ++this.#revision;
-    this.error = undefined;
-  }
-
-  load(signal?: AbortSignal) {
+  async load(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    if (this.#loaded) return;
     const revision = this.#revision;
     return this.#serial(async () => {
+      signal?.throwIfAborted();
+      if (this.#loaded) return;
       try {
+        const value = await this.disk?.read(this.options.document, this.options.parse);
         signal?.throwIfAborted();
-        const record = await this.disk?.read(this.options.document, this.options.parse);
-        signal?.throwIfAborted();
-        // Loading must not discard optimistic edits, including edits made before load().
-        if (this.dirty || revision !== this.#revision) return;
-        this.#adopt(record ?? { value: this.options.initial, updatedAt: 0 });
+        if (!this.dirty && revision === this.#revision) {
+          this.#value = value ?? this.options.initial;
+          this.#savedRevision = ++this.#revision;
+          this.error = undefined;
+        }
+        this.#loaded = true;
       } catch (error) {
         if (!signal?.aborted) this.error = error;
         throw error;
@@ -319,7 +242,8 @@ class CheckpointStore<T> {
   }
 
   set(value: T, checkpoint = false) {
-    this.#record = { value, updatedAt: Math.max(Date.now(), this.#record.updatedAt + 1) };
+    if (!this.disk) throw new Error("No account selected.");
+    this.#value = value;
     const revision = ++this.#revision;
     this.#schedule(checkpoint);
     return revision;
@@ -333,7 +257,6 @@ class CheckpointStore<T> {
       clearTimeout(this.#debounceTimer);
       this.#debounceTimer = setTimeout(save, 300);
     }
-    // Continuous edits must not starve disk checkpoints.
     this.#checkpointTimer ??= setTimeout(save, 5_000);
   }
 
@@ -343,70 +266,21 @@ class CheckpointStore<T> {
     this.#debounceTimer = this.#checkpointTimer = undefined;
   }
 
-  /** Acknowledge only the revision committed; edits during the write stay dirty. */
-  flush(): Promise<number> {
+  /** Capture at write time, never per edit. Later edits remain dirty. */
+  flush(): Promise<void> {
     this.#clearTimers();
     return this.#serial(async () => {
-      if (!this.dirty) return this.#savedRevision;
+      if (!this.dirty) return;
+      this.#clearTimers();
       const revision = this.#revision;
-      const record = this.#record;
+      const value = this.#value;
       try {
-        const result = await this.disk?.update(
-          this.options.document,
-          this.options.parse,
-          (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
-          { repair: true },
-        );
-        if (!result?.written)
-          throw new Error(
-            `A newer ${this.options.document} was saved in another tab. Local edits have not been saved.`,
-          );
+        await this.disk?.write(this.options.document, this.options.serialize(value));
         this.#savedRevision = revision;
+        this.#loaded = true;
         this.error = undefined;
-        return revision;
+        await this.options.saved?.(revision);
       } catch (error) {
-        this.error = error;
-        throw error;
-      }
-    });
-  }
-
-  /** Persist before publication, unless local work or cancellation supersedes it. */
-  replace(next: T, signal: AbortSignal): Promise<boolean> {
-    const revision = this.#revision;
-    const record = { value: next, updatedAt: Math.max(Date.now(), this.#record.updatedAt + 1) };
-    const valid = () => !signal.aborted && revision === this.#revision;
-    return this.#serial(async () => {
-      if (!valid()) return false;
-      try {
-        const result = await this.disk?.update(
-          this.options.document,
-          this.options.parse,
-          (previous) => (previous && previous.updatedAt > record.updatedAt ? undefined : record),
-          { valid, repair: true },
-        );
-        if (!valid()) {
-          // Close cannot be undone. Repair disk from the still-visible local state
-          // without advancing the revision for a cancelled adoption.
-          if (result?.written) {
-            this.#record = {
-              ...this.#record,
-              updatedAt: Math.max(this.#record.updatedAt, record.updatedAt),
-            };
-            this.#savedRevision = -1;
-            this.#schedule();
-          }
-          return false;
-        }
-        if (!result?.written)
-          throw new Error(
-            `A newer ${this.options.document} is already stored. The incoming snapshot was not saved.`,
-          );
-        this.#clearTimers();
-        this.#adopt(record);
-        return true;
-      } catch (error) {
-        if (!valid()) return false;
         this.error = error;
         throw error;
       }
@@ -425,21 +299,43 @@ interface CatalogOptions<R> {
   key: (record: R) => string;
 }
 
-/** Shared local records and bytes. Acquisition, per-item locks, and winner policy
- * stay in Cache's domain methods. R is immutable; publication replaces the map. */
+/** Bytes stream directly to disk; records share the ordinary checkpoint path. */
 class BinaryCatalog<R extends BinaryRecord> {
-  #records = $state.raw<ReadonlyMap<string, R>>(new Map());
-  error = $state.raw<unknown>();
+  readonly store: CheckpointStore<ReadonlyMap<string, R>>;
+  #error = $state.raw<unknown>();
   #loads = $state(0);
   #serial = serial();
+  // Only filenames, not old catalogs or binary data, survive until a checkpoint.
+  #obsolete = new Map<string, number>();
 
   constructor(
     readonly disk: Disk | undefined,
     readonly options: CatalogOptions<R>,
-  ) {}
+  ) {
+    this.store = new CheckpointStore<ReadonlyMap<string, R>>(disk, {
+      document: options.document,
+      initial: new Map<string, R>(),
+      parse: (value) =>
+        new Map(options.parse(value).map((record) => [options.key(record), record])),
+      serialize: (records) => [...records.values()],
+      saved: async (revision) => {
+        const obsolete = [...this.#obsolete].filter(([, removedAt]) => removedAt <= revision);
+        if (obsolete.length === 0) return;
+        const directory = await disk?.files().catch(() => undefined);
+        if (!directory) return;
+        for (const [fileName] of obsolete) {
+          await directory.removeEntry(fileName).catch(() => {});
+          this.#obsolete.delete(fileName);
+        }
+      },
+    });
+  }
 
+  get error() {
+    return this.store.error ?? this.#error;
+  }
   get records() {
-    return this.#records;
+    return this.store.value;
   }
   get loading() {
     return this.#loads > 0;
@@ -451,78 +347,53 @@ class BinaryCatalog<R extends BinaryRecord> {
       signal?.throwIfAborted();
       const value = await action();
       signal?.throwIfAborted();
-      this.error = undefined;
+      this.#error = undefined;
       return value;
     } catch (error) {
-      if (!signal?.aborted && this.disk) this.error = error;
+      if (!signal?.aborted && this.disk) this.#error = error;
       throw error;
     }
   }
 
-  #publish(records: readonly R[] | null) {
-    this.#records = new Map((records ?? []).map((record) => [this.options.key(record), record]));
-  }
-
-  /** Hydration is observable; internal disk rechecks need not show a loading state. */
+  /** Hydration is observable and does not open binary files. */
   async load(signal?: AbortSignal) {
     this.#loads++;
     try {
-      await this.operation(() => this.refresh(signal), signal);
+      await this.operation(() => this.store.load(signal), signal);
     } finally {
       this.#loads--;
     }
   }
 
-  refresh(signal?: AbortSignal) {
-    return this.#serial(async () => {
-      signal?.throwIfAborted();
-      const document = await this.disk?.read(this.options.document, this.options.parse);
-      signal?.throwIfAborted();
-      this.#publish(document ?? null);
-    });
+  #replace(key: string, next?: R) {
+    const previous = this.records.get(key);
+    const records = new Map(this.records);
+    if (next) records.set(key, next);
+    else records.delete(key);
+    const revision = this.store.set(records);
+    if (previous && previous.fileName !== next?.fileName)
+      this.#obsolete.set(previous.fileName, revision);
   }
 
-  #update(change: (records: readonly R[]) => readonly R[] | undefined, signal?: AbortSignal) {
-    if (!this.disk) throw new Error("No account selected.");
-    return this.disk.update(
-      this.options.document,
-      this.options.parse,
-      (records) => change(records ?? []),
-      { valid: () => !signal?.aborted },
-    );
-  }
-
-  /** Return bytes with their matching record, following competing replacements
-   * discovered during missing-file repair. No unlisted files are adopted. */
+  /** Return bytes with their matching in-memory record. No unlisted files are adopted. */
   read(key: string, signal?: AbortSignal) {
     return this.#serial(async () => {
       signal?.throwIfAborted();
-      let record = this.#records.get(key);
+      await this.store.load(signal);
+      const record = this.records.get(key);
       if (!record) return null;
       const directory = await this.disk?.files();
       if (!directory) return null;
-      while (record) {
+      signal?.throwIfAborted();
+      try {
+        const file = await (await directory.getFileHandle(record.fileName)).getFile();
         signal?.throwIfAborted();
-        try {
-          const file = await (await directory.getFileHandle(record.fileName)).getFile();
-          signal?.throwIfAborted();
-          if (file.size === record.size) return { file, record };
-        } catch (error) {
-          if (!(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
-        }
-        signal?.throwIfAborted();
-        const missing = record.fileName;
-        const result = await this.#update((records) => {
-          if (records.find((item) => this.options.key(item) === key)?.fileName !== missing)
-            return undefined;
-          return records.filter((item) => item.fileName !== missing);
-        }, signal);
-        signal?.throwIfAborted();
-        this.#publish(result.value);
-        if (!result.value?.some((item) => item.fileName === missing))
-          await directory.removeEntry(missing).catch(() => {});
-        record = this.#records.get(key);
+        if (file.size === record.size) return { file, record };
+      } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
       }
+      signal?.throwIfAborted();
+      this.#replace(key);
       return null;
     });
   }
@@ -536,20 +407,14 @@ class BinaryCatalog<R extends BinaryRecord> {
   ) {
     return this.#serial(async () => {
       signal?.throwIfAborted();
-      const result = await this.#update((records) => {
-        const record = records.find((item) => this.options.key(item) === key);
-        if (record?.fileName !== expected) return undefined;
-        const next = change(record);
-        return records.flatMap((item) => (item === record ? (next ? [next] : []) : [item]));
-      }, signal);
+      await this.store.load(signal);
       signal?.throwIfAborted();
-      this.#publish(result.value);
-      if (result.written && !result.value?.some((item) => item.fileName === expected))
-        await (await this.disk?.files())?.removeEntry(expected).catch(() => {});
+      const record = this.records.get(key);
+      if (record?.fileName === expected) this.#replace(key, change(record));
     });
   }
 
-  /** Stream independently; serialize only catalog commit and publication.
+  /** Stream independently; serialize only in-memory catalog publication.
    * Preparing the result may open the file, but blob-backed callers need not. */
   async write<T>(
     fileName: string,
@@ -559,6 +424,7 @@ class BinaryCatalog<R extends BinaryRecord> {
     signal?: AbortSignal,
   ): Promise<T | undefined> {
     signal?.throwIfAborted();
+    await this.store.load(signal);
     const directory = await this.disk?.files();
     if (!directory) throw new Error("No account selected.");
     let writable: FileSystemWritableFileStream | undefined;
@@ -573,16 +439,9 @@ class BinaryCatalog<R extends BinaryRecord> {
       const key = this.options.key(record);
       await this.#serial(async () => {
         signal?.throwIfAborted();
-        const result = await this.#update((records) => {
-          if (records.find((item) => this.options.key(item) === key)?.fileName !== expected)
-            return undefined;
-          return [...records.filter((item) => this.options.key(item) !== key), record];
-        }, signal);
-        // Mark ownership BEFORE checking cancellation or doing any further I/O.
-        committed = result.written;
-        if (committed && expected) await directory.removeEntry(expected).catch(() => {});
-        signal?.throwIfAborted();
-        this.#publish(result.value);
+        if (this.records.get(key)?.fileName !== expected) return;
+        this.#replace(key, record);
+        committed = true;
       });
       return committed ? value : undefined;
     } finally {
@@ -718,14 +577,14 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
  * Account-scoped local data owner, or an empty unscoped UI fallback.
  * Construction performs no I/O.
  * Collections and records are immutable by contract; consumers never mutate them.
- * Library state is published only after a successful read/commit. Queue edits are
- * optimistic; checkpoints acknowledge only the revision actually committed.
+ * Mutations publish in memory; checkpoints acknowledge only the revision committed.
+ * OPFS is read once per document, not reconciled with other cache instances.
  */
 export class Cache {
   readonly account: Readonly<Account> | undefined;
-  readonly #library: SnapshotStore<Immutable<LibrarySnapshot>, ReturnType<typeof prepareLibrary>>;
+  readonly #library: CheckpointStore<ReturnType<typeof prepareLibrary>>;
   readonly #disk: Disk | undefined;
-  readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
+  readonly #queue: CheckpointStore<CheckpointRecord<Immutable<CachedQueue>>>;
   readonly #images: BinaryCatalog<Immutable<ImageRecord>>;
   readonly #downloads: BinaryCatalog<Immutable<CachedDownload>>;
 
@@ -735,23 +594,23 @@ export class Cache {
     this.#disk = this.account
       ? new Disk(hash(JSON.stringify([this.account.host, this.account.username])))
       : undefined;
-    this.#library = new SnapshotStore(this.#disk, {
+    this.#library = new CheckpointStore(this.#disk, {
       document: "library",
       initial: prepareLibrary(null),
-      parse: parseLibrary,
-      project: prepareLibrary,
-      shouldReplace: (candidate, existing) =>
-        !(
-          (existing.lastModified !== null &&
-            candidate.lastModified !== null &&
-            existing.lastModified > candidate.lastModified) ||
-          (existing.lastModified === candidate.lastModified && existing.savedAt > candidate.savedAt)
-        ),
+      parse: (value) => prepareLibrary(parseLibrary(value)),
+      serialize: (value) => ({
+        savedAt: value.savedAt,
+        lastModified: value.lastModified,
+        artists: [...value.artists.values()],
+        albums: [...value.albums.values()],
+        tracks: [...value.tracks.values()],
+      }),
     });
     this.#queue = new CheckpointStore(this.#disk, {
       document: "queue",
-      initial: { tracks: [], index: -1, position: 0 },
+      initial: { value: { tracks: [], index: -1, position: 0 }, updatedAt: 0 },
       parse: parseQueue,
+      serialize: (value) => value,
     });
     this.#images = new BinaryCatalog(this.#disk, {
       document: "images",
@@ -834,7 +693,7 @@ export class Cache {
   }
 
   get queue() {
-    return this.#queue.value;
+    return this.#queue.value.value;
   }
   get queueRevision() {
     return this.#queue.revision;
@@ -849,22 +708,46 @@ export class Cache {
   /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
   setQueue(queue: Immutable<CachedQueue>, options: { checkpoint?: boolean } = {}): number {
     this.#requireAccount();
-    const tracks = this.#queue.value.tracks;
+    const tracks = this.queue.tracks;
     return this.#queue.set(
-      { ...queue, tracks: queue.tracks === tracks ? tracks : [...queue.tracks] },
+      {
+        value: { ...queue, tracks: queue.tracks === tracks ? tracks : [...queue.tracks] },
+        updatedAt: Math.max(Date.now(), this.#queue.value.updatedAt + 1),
+      },
       options.checkpoint ?? false,
     );
   }
 
-  /** Save pending edits and return the revision actually committed. */
-  flush(): Promise<number> {
-    return this.#queue.flush();
+  /** Checkpoint independent documents, waiting for every attempt before reporting failure. */
+  async flush(): Promise<void> {
+    const results = await Promise.allSettled([
+      this.#library.flush(),
+      this.#queue.flush(),
+      this.#images.store.flush(),
+      this.#downloads.store.flush(),
+    ]);
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
   }
 
-  /** Persist incoming queue state before adoption, unless local work supersedes it. */
+  get libraryError() {
+    return this.#library.error;
+  }
+  get dirty() {
+    return (
+      this.#library.dirty ||
+      this.#queue.dirty ||
+      this.#images.store.dirty ||
+      this.#downloads.store.dirty
+    );
+  }
+
+  /** Incoming data follows the same memory-first path as local edits. */
   async replaceQueue(queue: Immutable<CachedQueue>, signal: AbortSignal): Promise<boolean> {
     this.#requireAccount();
-    return this.#queue.replace({ ...queue, tracks: [...queue.tracks] }, signal);
+    if (signal.aborted) return false;
+    this.setQueue(queue);
+    return true;
   }
 
   /** Load bytes on demand. Missing/incomplete files invalidate only their matching record. */
@@ -878,13 +761,15 @@ export class Cache {
   }
 
   /**
-   * Commit bytes before the catalog, then publish. A competing replacement wins if
-   * it changed the record observed at call time. Return our committed blob and record;
+   * Close bytes, then publish the record in memory. A competing local replacement wins if
+   * it changed the record observed at call time. Return our blob and record;
    * callers can readImage() after an undefined result to use the competing winner.
    */
   saveImage(id: string, image: CachedImage, signal?: AbortSignal) {
     return this.#images.operation(async () => {
       this.#requireAccount();
+      await this.#images.store.load(signal);
+      signal?.throwIfAborted();
       const record: Immutable<ImageRecord> = {
         id,
         fileName: `${crypto.randomUUID()}.image`,
@@ -948,8 +833,8 @@ export class Cache {
     }, signal);
   }
 
-  /** Stream bytes under a per-download lock; publish only after catalog commit.
-   * A complete winner is reused and the unused response is cancelled. Different
+  /** Stream bytes under a per-download lock, then publish the record in memory.
+   * A complete local winner is reused and the unused response is cancelled. Different
    * downloads stream concurrently; only short catalog operations are serialized.
    */
   async saveDownload(
@@ -971,8 +856,8 @@ export class Cache {
         const key = downloadKey(candidate.track.id, candidate.format);
         const save = async () => {
           signal.throwIfAborted();
-          // Always take the per-file lock before any short-lived catalog lock.
-          await this.#downloads.refresh(signal);
+          // Hydrate once before checking the in-memory catalog.
+          await this.#downloads.store.load(signal);
           const cached = await this.#downloads.read(key, signal);
           if (cached) return cached.file;
           const expected = this.downloads.get(key)?.fileName;
@@ -1005,6 +890,17 @@ export class Cache {
 
   async replaceLibrary(snapshot: Immutable<LibrarySnapshot>, signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
-    return this.#library.replace(structuredClone(snapshot), signal);
+    this.#requireAccount();
+    const current = this.#library.value;
+    if (
+      (current.lastModified != null &&
+        snapshot.lastModified !== null &&
+        current.lastModified > snapshot.lastModified) ||
+      (current.lastModified === snapshot.lastModified &&
+        current.savedAt !== undefined &&
+        current.savedAt > snapshot.savedAt)
+    )
+      return;
+    this.#library.set(prepareLibrary(structuredClone(snapshot)));
   }
 }

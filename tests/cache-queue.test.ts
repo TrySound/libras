@@ -40,7 +40,7 @@ describe("queue cache", () => {
     expect(cache.queue).toEqual({ tracks: [], index: -1, position: 0 });
     expect(cache.queueDirty).toBe(false);
     expect(cache.queueError).toBeUndefined();
-    expect(await cache.flush()).toBe(cache.queueRevision);
+    await cache.flush();
     expect(disk.getDirectory).not.toHaveBeenCalled();
   });
 
@@ -65,7 +65,8 @@ describe("queue cache", () => {
         { queue: { tracks: [], index: -1, position: 0 }, dirty: false },
         { queue: queue(), dirty: true },
       ]);
-      expect(await cache.flush()).toBe(revision);
+      await cache.flush();
+      expect(cache.queueRevision).toBe(revision);
       flushSync();
       expect(seen.at(-1)).toEqual({ queue: queue(), dirty: false });
       const path = queuePath(disk);
@@ -141,46 +142,46 @@ describe("queue cache", () => {
     incoming.tracks.length = 0;
     incoming.index = -1;
     incoming.position = 0;
-    expect(cache.queue).toEqual(queue(10));
-    expect(await adopted).toBe(true);
     expect(cache.queue).toEqual(queue(20));
-    expect(cache.queueDirty).toBe(false);
+    expect(await adopted).toBe(true);
+    expect(cache.queueDirty).toBe(true);
+    expect(disk.files.size).toBe(0);
+    await cache.flush();
     expect(vi.getTimerCount()).toBe(0);
     expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").value).toEqual(queue(20));
     const writes = disk.state.writes;
-    expect(await cache.flush()).toBe(cache.queueRevision);
+    await cache.flush();
     expect(disk.state.writes).toBe(writes);
   });
 
-  it("repairs a cancelled adoption from the still-visible queue after document close", async () => {
+  it("does not undo adoption when its caller aborts during a later checkpoint", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
     cache.setQueue(queue(10));
     await cache.flush();
-    const revision = cache.queueRevision;
     const controller = new AbortController();
     disk.state.afterClose = (path) => {
       if (path.endsWith("/queue.json")) controller.abort();
     };
-    expect(await cache.replaceQueue(queue(20), controller.signal)).toBe(false);
-    expect(cache.queue).toEqual(queue(10));
-    expect(cache.queueRevision).toBe(revision);
-    expect(cache.queueDirty).toBe(true);
+    expect(await cache.replaceQueue(queue(20), controller.signal)).toBe(true);
+    await cache.flush();
+    expect(controller.signal.aborted).toBe(true);
+    expect(cache.queue).toEqual(queue(20));
     expect(cache.queueError).toBeUndefined();
-    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").value).toEqual(queue(20));
-    expect(await cache.flush()).toBe(revision);
     expect(cache.queueDirty).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
-    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").value).toEqual(queue(10));
+    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").value).toEqual(queue(20));
   });
 
   it("coalesces overlapping flushes without rewriting library.json", async () => {
     const disk = installDisk();
     const cache = new Cache(account);
     await cache.replaceLibrary(library);
+    await cache.flush();
     const original = [...disk.files][0]!;
-    const revision = cache.setQueue(queue());
-    expect(await Promise.all([cache.flush(), cache.flush()])).toEqual([revision, revision]);
+    cache.setQueue(queue());
+    await Promise.all([cache.flush(), cache.flush()]);
+    expect(cache.queueDirty).toBe(false);
     expect(disk.state.writes).toBe(2);
     expect(disk.files.get(original[0])).toBe(original[1]);
     expect(vi.getTimerCount()).toBe(0);
@@ -195,12 +196,12 @@ describe("queue cache", () => {
       closing.resolve();
       await release.promise;
     };
-    const first = cache.setQueue(queue(10));
+    cache.setQueue(queue(10));
     const saved = cache.flush();
     await closing.promise;
     const second = cache.setQueue(queue(20));
     release.resolve();
-    expect(await saved).toBe(first);
+    await saved;
     expect(cache.queueRevision).toBe(second);
     expect(cache.queueDirty).toBe(true);
     expect(cache.queue.position).toBe(20);
@@ -209,7 +210,8 @@ describe("queue cache", () => {
       updatedAt: 1_000,
     });
     expect(vi.getTimerCount()).toBe(2);
-    expect(await cache.flush()).toBe(second);
+    await cache.flush();
+    expect(cache.queueRevision).toBe(second);
     expect(cache.queueDirty).toBe(false);
     expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null")).toEqual({
       value: queue(20),
@@ -258,7 +260,8 @@ describe("queue cache", () => {
     expect(cache.queue.position).toBe(20);
     expect(disk.files.get(path)).toBe(original);
     disk.state.failClose = false;
-    expect(await cache.flush()).toBe(revision);
+    await cache.flush();
+    expect(cache.queueRevision).toBe(revision);
     expect(cache.queueError).toBeUndefined();
     expect(cache.queueDirty).toBe(false);
   });
@@ -279,26 +282,6 @@ describe("queue cache", () => {
     disk.state.failClose = false;
     await cache.flush();
     expect(cache.queueError).toBeUndefined();
-  });
-
-  it("reports a newer disk queue as a conflict, not a successful checkpoint or local replacement", async () => {
-    const disk = installDisk();
-    const first = new Cache(account);
-    first.setQueue(queue(10));
-    vi.setSystemTime(2_000);
-    const other = new Cache(account);
-    other.setQueue(queue(20));
-    await other.flush();
-    const original = disk.files.get(queuePath(disk));
-    await expect(first.flush()).rejects.toThrow("newer queue");
-    expect(first.queue.position).toBe(10);
-    expect(first.queueDirty).toBe(true);
-    expect(disk.files.get(queuePath(disk))).toBe(original);
-    vi.setSystemTime(3_000);
-    first.setQueue(queue(30));
-    await first.flush();
-    expect(first.queueError).toBeUndefined();
-    expect(first.queueDirty).toBe(false);
   });
 
   it("keeps checkpoint timestamps monotonic after loading and clock rollback", async () => {
@@ -365,13 +348,13 @@ describe("queue cache", () => {
         kind === "flat record" ? { ...value.value, updatedAt: value.updatedAt } : value,
       );
       disk.files.set(path, corrupt);
-      const previous = cache.queue;
-      await expect(cache.load()).rejects.toBeInstanceOf(CacheLoadError);
-      expect(cache.queue).toBe(previous);
+      const restored = new Cache(account);
+      await expect(restored.load()).rejects.toBeInstanceOf(CacheLoadError);
+      expect(restored.queue.index).toBe(-1);
       expect(disk.files.get(path)).toBe(corrupt);
-      cache.setQueue(queue(20));
-      await cache.flush();
-      expect(cache.queueError).toBeUndefined();
+      restored.setQueue(queue(20));
+      await restored.flush();
+      expect(restored.queueError).toBeUndefined();
       expect(JSON.parse(disk.files.get(path) ?? "null").value.index).toBe(2);
     },
   );
@@ -411,14 +394,15 @@ describe("queue cache", () => {
         await release.promise;
       }
     };
-    const savingLibrary = cache.replaceLibrary(library);
+    await cache.replaceLibrary(library);
+    const savingLibrary = cache.flush();
     await closing.promise;
     cache.setQueue(queue());
-    await cache.flush();
-    expect(cache.queueDirty).toBe(false);
-    expect(cache.savedAt).toBeUndefined();
+    const savingQueue = cache.flush();
+    await vi.waitFor(() => expect(cache.queueDirty).toBe(false));
+    expect(cache.savedAt).toBe(100);
     release.resolve();
-    await savingLibrary;
+    await Promise.all([savingLibrary, savingQueue]);
   });
 
   it("isolates account queues with overlapping track IDs", async () => {

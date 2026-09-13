@@ -59,6 +59,7 @@ function installOpfs() {
 }
 async function engine(cache = new Cache(account)) {
   if (cache.savedAt === undefined) await cache.replaceLibrary(snapshot());
+  await cache.flush();
   const selection = new TestSelection();
   selection.cache = cache;
   const covers = new CoverEngine(selection);
@@ -73,6 +74,7 @@ async function seed(validators = {}) {
   const cache = new Cache(account);
   await cache.replaceLibrary(snapshot());
   await cache.saveImage("album-cover", image("image", validators));
+  await cache.flush();
   return cache;
 }
 afterEach(() => {
@@ -215,25 +217,9 @@ describe("cover engine using Cache", () => {
     await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
     expect(cache.images.has("album-cover")).toBe(false);
     expect(cache.albumArtwork).toBe(references);
+    await cache.flush();
     expect(catalog(disk).map((record: { id: string }) => record.id)).toEqual(["track-cover"]);
     expect(await (vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob).text()).toBe("fallback");
-  });
-
-  it("reads a competing replacement on the first offline acquisition", async () => {
-    installOpfs();
-    const original = await seed();
-    const read = vi.spyOn(original, "readImage");
-    const { covers } = await engine(original);
-    const competing = new Cache(account);
-    await competing.load();
-    await competing.saveImage("album-cover", image("replacement"));
-    const cover = covers.ensureAlbumCover("album");
-    cover.load();
-    await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
-    expect(await (vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob).text()).toBe(
-      "replacement",
-    );
-    expect(read).toHaveBeenCalledOnce();
   });
 
   it("shares one explicit download without acquiring undemanded handles", async () => {
@@ -268,6 +254,7 @@ describe("cover engine using Cache", () => {
     expect(fetcher).toHaveBeenCalledOnce();
     flushSync();
     expect(sources.at(-1)).toBe("blob:cover-1");
+    await selection.cache!.flush();
     const saved = catalog(disk);
     expect(saved).toEqual([...selection.cache!.images.values()]);
     expect(Array.isArray(saved)).toBe(true);
@@ -305,6 +292,7 @@ describe("cover engine using Cache", () => {
       expect(first.cache.images.get("album-cover")?.freshUntil).toBe(now + 60_000),
     );
     first.covers.destroy();
+    await first.cache.flush();
 
     const restored = new Cache(account);
     await restored.load();
@@ -328,6 +316,7 @@ describe("cover engine using Cache", () => {
     expect(cover.source).toBe(source);
     expect(restored.images.get("album-cover")?.fileName).toBe(record.fileName);
     expect(disk.blobs.size).toBe(1);
+    await restored.flush();
     expect(disk.state.writes).toBe(writes + 1);
     const thirdCache = new Cache(account);
     await thirdCache.load();
@@ -477,7 +466,7 @@ describe("cover engine using Cache", () => {
     cover.load();
     await vi.waitFor(() => expect(cache.imagesError).toBeDefined());
     expect(cover.source).toBe(source);
-    expect(cache.images.get("album-cover")?.freshUntil).toBe(0);
+    expect(cache.images.get("album-cover")?.freshUntil).toBeGreaterThan(Date.now());
     covers.setConnection(undefined);
     covers.setConnection(createConnection());
     await covers.refresh();
@@ -525,14 +514,17 @@ describe("cover engine using Cache", () => {
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
       await vi.waitFor(() => expect(cover.source).toBe(existing ? "blob:cover-2" : "blob:cover-1"));
       await vi.waitFor(() => expect(cache.images.size).toBe(0));
-      await vi.waitFor(() => expect(disk.blobs.size).toBe(0));
+      await cache.flush();
+      expect(disk.blobs.size).toBe(0);
       expect(save).not.toHaveBeenCalled();
     },
   );
 
   it.each([200, 304])("revalidates cached artwork using HTTP validators (%s)", async (status) => {
     const disk = installOpfs();
-    const { covers } = await engine(await seed({ etag: '"old"', lastModified: "Yesterday" }));
+    const { covers, cache } = await engine(
+      await seed({ etag: '"old"', lastModified: "Yesterday" }),
+    );
     const writes = disk.state.writes;
     const cached = covers.ensureAlbumCover("album");
     cached.load();
@@ -556,6 +548,8 @@ describe("cover engine using Cache", () => {
       await vi.waitFor(() => expect(cover.source).toBe("blob:cover-2"));
       expect(cached.source).toBe(cover.source);
       expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:cover-1");
+      await vi.waitFor(() => expect(cache.images.get("album-cover")?.etag).toBe('"new"'));
+      await cache.flush();
       expect(catalog(disk)[0].etag).toBe('"new"');
       expect(disk.blobs.size).toBe(1);
     } else {
@@ -582,7 +576,7 @@ describe("cover engine using Cache", () => {
     await vi.waitFor(() => expect(cache.imagesError).toBeDefined());
     expect(cover.source).toBe("blob:cover-2");
     expect(catalog(disk)).toEqual(original);
-    expect(disk.blobs.size).toBe(1);
+    expect(disk.blobs.size).toBe(2);
     expect(await [...disk.blobs.values()][0].text()).toBe("image");
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:cover-1");
   });
@@ -746,7 +740,7 @@ describe("cover engine using Cache", () => {
   );
 
   it.each(["beforeWrite", "afterClose"] as const)(
-    "retains memory artwork when persistence is cancelled at catalog %s",
+    "retains memory artwork when binary persistence is cancelled at %s",
     async (stage) => {
       const disk = installOpfs();
       const { covers, cache } = await engine();
@@ -756,7 +750,7 @@ describe("cover engine using Cache", () => {
       );
       covers.setConnection(createConnection());
       disk.state[stage] = (path) => {
-        if (path.endsWith("/images.json")) covers.setConnection(undefined);
+        if (path.endsWith(".image")) covers.setConnection(undefined);
       };
       const save = vi.spyOn(cache, "saveImage");
       const cover = covers.ensureAlbumCover("album");
@@ -768,17 +762,12 @@ describe("cover engine using Cache", () => {
       expect(cover.source).toBe("blob:cover-1");
       expect(cache.images.size).toBe(0);
       expect(URL.createObjectURL).toHaveBeenCalledOnce();
-      expect(disk.blobs.size).toBe(stage === "afterClose" ? 1 : 0);
-      if (stage === "afterClose") {
-        const restored = new Cache(account);
-        await restored.load();
-        expect(await (await restored.readImage("album-cover"))!.blob.text()).toBe("image");
-      }
+      expect(disk.blobs.size).toBe(0);
     },
   );
 
   it.each(["album", "track"])(
-    "adopts concurrent image commits across tabs (%s)",
+    "shares concurrent image records within one cache (%s)",
     async (entity) => {
       const disk = installOpfs();
       vi.stubGlobal(
@@ -786,7 +775,7 @@ describe("cover engine using Cache", () => {
         vi.fn(async () => new Response("image", { headers: { "Content-Type": "image/jpeg" } })),
       );
       const first = await engine();
-      const second = await engine();
+      const second = await engine(first.cache);
       first.covers.setConnection(createConnection());
       second.covers.setConnection(createConnection());
       const one = first.covers.ensureAlbumCover("album");
@@ -801,6 +790,8 @@ describe("cover engine using Cache", () => {
         expect(one.source).toMatch(/^blob:/);
         expect(two.source).toMatch(/^blob:/);
       });
+      await vi.waitFor(() => expect(first.cache.images.size).toBe(entity === "album" ? 1 : 2));
+      await first.cache.flush();
       const expected = entity === "album" ? ["album-cover"] : ["album-cover", "track-cover"];
       expect(
         catalog(disk)

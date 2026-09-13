@@ -1,6 +1,24 @@
-import { expect, vi } from "vitest";
+import { expect, onTestFinished, vi } from "vitest";
+
+/** Real checkpoint timers must not write into the next test's mocked navigator. */
+export function clearTestTimers() {
+  const schedule = globalThis.setTimeout;
+  const cancel = globalThis.clearTimeout;
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  vi.spyOn(globalThis, "setTimeout").mockImplementation(
+    (...args: Parameters<typeof setTimeout>) => {
+      const timer = schedule(...args);
+      timers.push(timer);
+      return timer;
+    },
+  );
+  onTestFinished(() => {
+    for (const timer of timers) cancel(timer);
+  });
+}
 
 export function installDisk() {
+  clearTestTimers();
   const files = new Map<string, string>();
   const blobs = new Map<string, Blob>();
   const state = {

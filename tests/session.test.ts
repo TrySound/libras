@@ -363,9 +363,13 @@ describe("session", () => {
     const prepared = deferred<MetadataSnapshot>();
     prepareConnection.mockReturnValueOnce(prepared.promise);
     const next = { host: "https://other.example", username: "other" };
-    tracks.activate.mockImplementation(() => {
-      expect(selection.cache?.account).toEqual(next);
-    });
+    tracks.activate
+      .mockImplementationOnce(() => {
+        expect(selection.cache?.artists).toBe(previous);
+      })
+      .mockImplementation(() => {
+        expect(selection.cache?.account).toEqual(next);
+      });
     const connecting = session.connect({ ...next, password: "secret" });
     await vi.waitFor(() => expect(prepareConnection).toHaveBeenCalledOnce());
     expect(session.offlineMode).toBe(true);
@@ -377,8 +381,8 @@ describe("session", () => {
     expect(selection.cache!.account).toEqual(next);
     expect(selection.cache!.artists.get("artist")?.name).toBe("other");
     expect(selection.cache!.queue.tracks).toEqual(["other"]);
-    expect(covers.activate).toHaveBeenCalledTimes(2);
-    expect(tracks.activate).toHaveBeenCalledTimes(2);
+    expect(covers.activate).toHaveBeenCalledTimes(3);
+    expect(tracks.activate).toHaveBeenCalledTimes(3);
     expect(queue.activate).toHaveBeenCalledTimes(2);
     expect(session.auth).toMatchObject(next);
     expect(auth.load()).toEqual(session.auth);
@@ -475,7 +479,7 @@ describe("session", () => {
       const connecting = session.connect(input);
       await vi.waitFor(() => expect(saveLibrary).toHaveBeenCalledOnce());
       const signal = saveLibrary.mock.calls[0][1]!;
-      expect(saveLibrary.mock.contexts[0]).not.toBe(previous);
+      expect(saveLibrary.mock.contexts[0]).toBe(previous);
       expect(selection.cache).toBe(previous);
       expect(auth.load()).not.toBeNull();
       session[action]();
@@ -571,7 +575,7 @@ describe("session", () => {
       const save = saveLibrary.getMockImplementation()!;
       const committed = deferred();
       saveLibrary.mockImplementationOnce(async function (this: Cache, value, signal) {
-        expect(this).not.toBe(previous);
+        expect(this === previous).toBe(username === "listener");
         expect(selection.cache).toBe(previous);
         await committed.promise;
         await save.call(this, value, signal);
@@ -589,13 +593,13 @@ describe("session", () => {
       expect(await connecting).toBe(true);
       expect(playback.suspend).toHaveBeenCalledOnce();
       expect(selection.cache).toBe(saveLibrary.mock.contexts[0]);
-      expect(selection.cache).not.toBe(previous);
+      expect(selection.cache === previous).toBe(username === "listener");
       expect(selection.cache?.account?.username).toBe(username);
       expect(selection.cache!.artists.get("artist")?.name).toBe(username);
     },
   );
 
-  it("preserves same-account queue edits made while the candidate cache loads", async () => {
+  it("retains one live cache and preserves queue edits during same-account reconnect", async () => {
     const { session, selection, loadCache, saveLibrary } = setup(true);
     loadCache.mockRestore();
     saveLibrary.mockRestore();
@@ -620,7 +624,7 @@ describe("session", () => {
     previous.setQueue({ tracks: ["edited", "edited"], index: 1, position: 20 });
     release.resolve();
     expect(await connecting).toBe(true);
-    expect(selection.cache).not.toBe(previous);
+    expect(selection.cache).toBe(previous);
     expect(selection.cache!.queue).toEqual({
       tracks: ["edited", "edited"],
       index: 1,
@@ -630,19 +634,90 @@ describe("session", () => {
     await previous.flush().catch(() => {});
   });
 
-  it("keeps the selected cache if network acceptance fails after persistence", async () => {
-    const { session, selection, auth, network, saveLibrary } = await connected();
+  it("saves edits arriving during the old cache's flush before switching accounts", async () => {
+    const { session, selection, loadCache, saveLibrary, covers, tracks } = setup();
+    loadCache.mockRestore();
+    saveLibrary.mockRestore();
+    installDisk();
+    expect(await session.connect(input)).toBe(true);
     session.disconnect();
-    const previous = selection.cache;
+    const previous = selection.cache!;
+    previous.setQueue({ tracks: ["track"], index: 0, position: 1 });
+    const flushed = deferred();
+    const release = deferred();
+    const flush = previous.flush.bind(previous);
+    vi.spyOn(previous, "flush").mockImplementationOnce(async () => {
+      await flush();
+      flushed.resolve();
+      await release.promise;
+    });
+    covers.activate.mockClear();
+    tracks.activate.mockClear();
+    const switching = session.connect({ ...input, username: "other" });
+    await flushed.promise;
+    expect(selection.cache).toBe(previous);
+    expect(covers.activate).toHaveBeenCalledOnce();
+    expect(tracks.activate).toHaveBeenCalledOnce();
+    previous.setQueue({ tracks: ["track"], index: 0, position: 2 });
+    release.resolve();
+    expect(await switching).toBe(true);
+    expect(previous.dirty).toBe(false);
+    const restored = new Cache(previous.account);
+    await restored.load();
+    expect(restored.queue.position).toBe(2);
+  });
+
+  it("keeps failed download checkpoints live when switching accounts, then retries", async () => {
+    const { session, selection, loadCache, saveLibrary } = setup();
+    loadCache.mockRestore();
+    saveLibrary.mockRestore();
+    const disk = installDisk();
+    expect(await session.connect(input)).toBe(true);
+    session.disconnect();
+    const previous = selection.cache!;
+    await previous.saveDownload(
+      { id: "track", title: "Track", artist: "Artist", album: "Album" },
+      "mp3",
+      "audio/mpeg",
+      new Response("audio"),
+      new AbortController().signal,
+    );
+    disk.state.beforeClose = async (path) => {
+      if (path.endsWith("/downloads.json")) throw new Error("Catalog write failed");
+    };
+    expect(await session.connect({ ...input, username: "other" })).toBe(false);
+    expect(selection.cache).toBe(previous);
+    expect(session.error).toBe("Catalog write failed");
+    expect(previous.downloads.size).toBe(1);
+    expect(previous.dirty).toBe(true);
+    previous.setQueue({ tracks: ["track"], index: 0, position: 5 });
+    disk.state.beforeClose = async () => {};
+    expect(await session.connect({ ...input, username: "other" })).toBe(true);
+    session.disconnect();
+    expect(await session.connect(input)).toBe(true);
+    expect(selection.cache?.downloads.size).toBe(1);
+    expect(selection.cache?.queue.position).toBe(5);
+    expect(await (await selection.cache?.readDownload("track", "mp3"))?.text()).toBe("audio");
+  });
+
+  it("keeps the old cache writable when acceptance fails after flushing", async () => {
+    const { session, selection, loadCache, saveLibrary, network, auth } = setup();
+    loadCache.mockRestore();
+    saveLibrary.mockRestore();
+    installDisk();
+    expect(await session.connect(input)).toBe(true);
+    session.disconnect();
+    const previous = selection.cache!;
     vi.spyOn(network, "accept").mockImplementationOnce(() => {
       throw new Error("Acceptance failed");
     });
     expect(await session.connect({ ...input, username: "other" })).toBe(false);
-    expect(saveLibrary).toHaveBeenCalledOnce();
     expect(selection.cache).toBe(previous);
-    expect(selection.cache!.account).toEqual(previous?.account);
     expect(auth.load()).toBeNull();
     expect(session.error).toBe("Acceptance failed");
+    previous.setQueue({ tracks: ["retry"], index: 0, position: 0 });
+    await previous.flush();
+    expect(previous.queueDirty).toBe(false);
   });
 
   it("keeps credentials for voluntary offline mode and resumes with a fresh cancellable client", async () => {

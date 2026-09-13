@@ -65,6 +65,7 @@ export class Session {
       this.#refreshError ??
       this.#options.queue.error ??
       this.#options.queue.storageError ??
+      this.#options.selection.cache?.libraryError ??
       this.#options.selection.cache?.imagesError ??
       this.#options.selection.cache?.downloadsError;
     return error ? `Synchronization failed: ${connectionError(error)}` : "";
@@ -199,36 +200,41 @@ export class Session {
       auth.save(credentials);
       auth.saveAccount(prepared.account);
       preferences.setItem(offlineModeStorageKey, "false");
-      // Never prepare into the selected cache, including same-account reconnects.
+      // A live account has one writer. Reconnects retain its queue and catalogs.
       const previous = this.#options.selection.cache;
       const sameAccount =
         previous?.account?.host === prepared.account.host &&
         previous.account.username === prepared.account.username;
-      if (sameAccount) await previous.flush();
-      const previousRevision = previous?.queueRevision;
-      const cache = new Cache(prepared.account);
+      const cache = sameAccount ? previous : new Cache(prepared.account);
       // Restore local records before selecting this candidate. A fresh library
       // repairs library read failures; queue/image failures remain independent.
       await cache.load(connection.signal).catch((error) => {
         if (!(error instanceof CacheLoadError)) throw error;
       });
+      if (!this.#valid(generation)) return false;
       const { account: _account, ...library } = prepared;
       await cache.replaceLibrary(library, connection.signal);
+      await cache.flush();
       if (!this.#valid(generation)) return false;
+      if (previous && !sameAccount) {
+        // Stop old resource work, then save any edits arriving during the flush.
+        this.#options.playback.suspend();
+        covers.activate();
+        tracks.activate();
+        do {
+          await previous.flush();
+          if (!this.#valid(generation)) return false;
+        } while (previous.dirty);
+      }
       const activeConnection = this.#options.network.accept(connection);
-      this.#options.playback.suspend();
+      if (!previous || sameAccount) this.#options.playback.suspend();
       this.localReady = false;
       // Cancel old work before selecting the fully hydrated candidate.
       metadata.setConnection(undefined);
-      // Preserve edits made during a same-account reconnect, rather than adopting
-      // an older checkpoint. This remains an optimistic, local-only queue edit.
-      if (sameAccount && previous.queueRevision !== previousRevision)
-        cache.setQueue(previous.queue);
       this.#options.selection.cache = cache;
       covers.activate();
       tracks.activate();
       queue.activate();
-      if (previous) void previous.flush().catch(() => {});
       this.auth = credentials;
       this.#attach(activeConnection);
       this.localReady = true;

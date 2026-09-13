@@ -49,6 +49,7 @@ async function seed(cache = new Cache(account), format: "raw" | "mp3" = "mp3") {
     new Response("cached"),
     new AbortController().signal,
   );
+  await cache.flush();
   return cache;
 }
 const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -228,7 +229,7 @@ describe("TrackEngine using Cache", () => {
     expect(cache.downloads.size).toBe(3);
   });
 
-  it.each(["HTTP", "catalog"])(
+  it.each(["HTTP", "binary"])(
     "continues queued work after %s failure and permits retry",
     async (failure) => {
       const disk = install();
@@ -239,9 +240,9 @@ describe("TrackEngine using Cache", () => {
         )
         .mockImplementation(async () => new Response("good"));
       vi.stubGlobal("fetch", fetcher);
-      if (failure === "catalog")
+      if (failure === "binary")
         disk.state.beforeWrite = (path) => {
-          if (path.endsWith("/downloads.json")) {
+          if (path.endsWith(".audio")) {
             disk.state.beforeWrite = () => {};
             throw new Error("Storage full");
           }
@@ -515,7 +516,7 @@ describe("TrackEngine using Cache", () => {
   });
 
   it.each(["beforeWrite", "afterClose"] as const)(
-    "prevents late publication when detached at catalog %s",
+    "prevents late publication when detached at binary %s",
     async (stage) => {
       const disk = install();
       vi.stubGlobal(
@@ -525,35 +526,31 @@ describe("TrackEngine using Cache", () => {
       const { engine, cache } = setup({ online: true });
       const save = vi.spyOn(cache, "saveDownload");
       disk.state[stage] = (path) => {
-        if (path.endsWith("/downloads.json")) engine.setConnection(undefined);
+        if (path.endsWith(".audio")) engine.setConnection(undefined);
       };
       await expect(engine.cache(track)).rejects.toMatchObject({ name: "AbortError" });
       await expect(save.mock.results[0].value).rejects.toMatchObject({ name: "AbortError" });
       expect(cache.downloads.size).toBe(0);
       expect(engine.error).toBeUndefined();
-      expect(disk.blobs.size).toBe(stage === "afterClose" ? 1 : 0);
-      if (stage === "afterClose") {
-        const restored = new Cache(account);
-        await restored.load();
-        expect((await setup({ cache: restored }).engine.getSource(track)).cached).toBe(true);
-      }
+      expect(disk.blobs.size).toBe(0);
     },
   );
 
-  it("merges concurrent completions and reuses duplicate cross-tab downloads", async () => {
+  it("merges concurrent completions and reuses duplicate downloads in one cache", async () => {
     const disk = install();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("audio")),
     );
     const first = setup({ online: true });
-    const second = setup({ online: true });
+    const second = setup({ online: true, cache: first.cache });
     await Promise.all([
       first.engine.cache(track),
       second.engine.cache(track),
       second.engine.cache({ id: "other" }),
     ]);
     expect(disk.blobs.size).toBe(2);
+    await first.cache.flush();
     const restored = new Cache(account);
     await restored.load();
     expect(restored.downloads.size).toBe(2);

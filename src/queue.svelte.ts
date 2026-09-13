@@ -189,10 +189,10 @@ export class QueueEngine {
     this.#saveTimer = undefined;
     try {
       await this.#selection.cache?.flush();
+      await this.#writeServer();
     } catch {
-      return;
+      // Cache retains checkpoint errors and dirty data for retry.
     }
-    await this.#writeServer();
   }
   #writeServer(): Promise<void> {
     const connection = this.#connection;
@@ -206,21 +206,16 @@ export class QueueEngine {
       this.#connected(cache);
     const task = this.#serverWrites.then(async () => {
       if (!cache || !connection || !valid()) return;
-      let saved: number;
-      try {
-        saved = await cache.flush();
-      } catch {
-        return;
-      }
+      const revision = cache.queueRevision;
+      await cache.flush();
       if (
         !valid() ||
         !this.#dirty ||
         cache.queueError ||
         cache.queueDirty ||
-        saved !== cache.queueRevision
+        revision !== cache.queueRevision
       )
         return;
-      const revision = cache.queueRevision;
       const state = cache.queue;
       this.#error = undefined;
       try {
@@ -230,7 +225,8 @@ export class QueueEngine {
         if (valid()) this.#error = error;
       }
     });
-    this.#serverWrites = task;
+    // A failed checkpoint rejects this attempt without poisoning later attempts.
+    this.#serverWrites = task.catch(() => {});
     return task;
   }
 
