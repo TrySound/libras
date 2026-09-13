@@ -56,6 +56,7 @@ afterEach(async () => {
   mocks.navigate.mockClear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 function library(name: string, savedAt: number): LibrarySnapshot {
@@ -307,6 +308,34 @@ it("preserves artist pagination when offline eligibility changes", async () => {
   flags.clear();
   flushSync();
   expect(count()).toBe(96);
+});
+
+it("renders the cache stress fixture with unique tiles and one shared menu", async () => {
+  installDisk();
+  vi.stubEnv("VITE_STRESS_ARTISTS", "1");
+  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  await cache.replaceLibrary(library("Artist", 1));
+  mocks.cache = cache;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const tiles = [...target.querySelectorAll<HTMLAnchorElement>("a.tile")];
+  expect(tiles).toHaveLength(48);
+  expect(cache.artists.size).toBe(100);
+  expect(cache.albums.size).toBe(0);
+  expect(cache.tracks.size).toBe(0);
+  expect(new Set(tiles.map((tile) => tile.getAttribute("href"))).size).toBe(48);
+  expect(
+    new Set(
+      tiles.map((tile) => tile.querySelector<HTMLElement>(".tile-image")!.style.viewTransitionName),
+    ).size,
+  ).toBe(48);
+  expect(target.querySelectorAll("#artist-menu")).toHaveLength(1);
+  tiles[47].focus();
+  flushSync();
+  expect(target.querySelector("#artist-menu-title")?.textContent).toBe("Artist (47)");
 });
 
 it("restores the large player slider when queue hydration finishes before metadata", async () => {
@@ -778,7 +807,7 @@ it("renders cached artwork only near the viewport and drops the previous account
   expect(URL.createObjectURL).not.toHaveBeenCalled();
   const tile = target.querySelector("a.tile")!;
   expect(tile.getAttribute("aria-label")).toBe("Artist");
-  expect(tile.hasAttribute("data-viewport-hidden")).toBe(true);
+  expect(tile.hasAttribute("data-viewport-hidden")).toBe(false);
   intersections[0](true);
   expect(tile.hasAttribute("data-viewport-hidden")).toBe(false);
   await vi.waitFor(() => {
@@ -786,7 +815,7 @@ it("renders cached artwork only near the viewport and drops the previous account
     expect(target.querySelector(".tile-image img")?.getAttribute("src")).toBe("blob:artwork-1");
   });
   intersections[0](false);
-  expect(tile.hasAttribute("data-viewport-hidden")).toBe(true);
+  expect(tile.hasAttribute("data-viewport-hidden")).toBe(false);
   intersections[0](true);
   await mocks.options!.covers.refresh();
   expect(tile.hasAttribute("data-viewport-hidden")).toBe(false);

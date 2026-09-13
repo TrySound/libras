@@ -8,48 +8,20 @@ interface Registration {
 const registrations = new Map<Element, Registration>();
 let observer: IntersectionObserver | undefined;
 
-/** Hide a stable outer box's contents and acquire resources at the same boundary. */
-export function viewportContent(onVisible: () => void): Attachment {
-  return (node) => {
-    let nearby = false;
-    let visible = false;
-    let disposed = false;
-    const update = () => {
-      if (disposed) return;
-      const next = nearby || node.contains(node.ownerDocument.activeElement);
-      node.toggleAttribute("data-viewport-hidden", !next);
-      if (next && !visible) {
-        visible = true;
-        onVisible();
-      } else visible = next;
-    };
-    const onFocusOut = () => queueMicrotask(update);
-    node.addEventListener("focusin", update);
-    node.addEventListener("focusout", onFocusOut);
-    update();
-    const stop = observeViewport((value) => {
-      nearby = value;
-      update();
-    })(node);
-    return () => {
-      disposed = true;
-      stop?.();
-      node.removeEventListener("focusin", update);
-      node.removeEventListener("focusout", onFocusOut);
-      node.removeAttribute("data-viewport-hidden");
-    };
-  };
+/** Acquire resources near the viewport; CSS owns offscreen rendering. */
+export function viewportContent(callback: () => void): Attachment {
+  return onVisible(callback);
 }
 
 /** Run on entry and re-entry into the shared preload boundary. */
 export function onVisible(callback: () => void): Attachment {
-  return observeViewport((visible) => {
+  return nearViewport((visible) => {
     if (visible) callback();
   });
 }
 
-/** Share one preload boundary for rendering and resource acquisition. */
-function observeViewport(notify: (visible: boolean) => void): Attachment {
+/** Share one preload boundary for resource acquisition. */
+export function nearViewport(notify: (visible: boolean) => void): Attachment {
   return (node) => {
     if (typeof IntersectionObserver === "undefined") {
       notify(true);

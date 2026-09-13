@@ -1,11 +1,11 @@
 <script lang="ts">
   import type { Cache, Immutable } from "./cache.svelte";
-  import type { CoverEngine } from "./cover.svelte";
+  import { lazyCover, type CoverEngine } from "./cover.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Artist } from "./schema";
   import type { PlaybackController } from "./playback-controller.svelte";
   import type { Session } from "./session.svelte";
-  import { onVisible, viewportContent } from "./viewport";
+  import { onVisible } from "./viewport";
 
   interface Props {
     cache: Cache;
@@ -88,7 +88,7 @@
           {@const cover = coverEngine.ensureArtistCover(artist.id)}
           <a
             class="tile"
-            {@attach viewportContent(cover.load)}
+            {@attach lazyCover(cover)}
             aria-label={artist.name}
             href={`#/library/artist/${encodeURIComponent(artist.id)}`}
             data-longpressfor="artist-menu"

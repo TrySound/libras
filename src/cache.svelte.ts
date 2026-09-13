@@ -477,9 +477,17 @@ function groupBy<T>(
 }
 
 function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
-  const artists = entityMap(
-    [...(snapshot?.artists ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
-  );
+  let artistsList = (snapshot?.artists ?? []).toSorted((a, b) => a.name.localeCompare(b.name));
+  if (import.meta.env.VITE_STRESS_ARTISTS === "1") {
+    artistsList = artistsList.flatMap((artist) =>
+      Array.from({ length: 100 }, (_, index) =>
+        index === 0
+          ? artist
+          : { ...artist, id: `${artist.id}--stress-${index}`, name: `${artist.name} (${index})` },
+      ),
+    );
+  }
+  const artists = entityMap(artistsList);
   const albums = entityMap(snapshot?.albums ?? []);
   const tracks = entityMap(snapshot?.tracks ?? []);
   const artistAlbums = groupBy(
