@@ -2,7 +2,7 @@
   import type { Cache, Immutable } from "./cache.svelte";
   import type { CoverEngine } from "./cover.svelte";
   import type { TrackEngine } from "./track.svelte";
-  import type { Artist, Track } from "./schema";
+  import type { Artist } from "./schema";
   import type { PlaybackController } from "./playback-controller.svelte";
   import type { Session } from "./session.svelte";
   import { viewportContent } from "./viewport";
@@ -17,6 +17,23 @@
 
   let { cache, coverEngine, trackEngine, session, playback }: Props = $props();
 
+  // The long-press invoker focuses its tile before opening the shared dialog.
+  let menuArtistId = $state<string>();
+  const menuArtist = $derived(menuArtistId ? cache.artists.get(menuArtistId) : undefined);
+
+  function artistTracks(artist: Immutable<Artist>) {
+    return (cache.artistAlbums.get(artist.id) ?? []).flatMap(
+      (album) => cache.albumTracks.get(album.id) ?? [],
+    );
+  }
+
+  const tracks = $derived(menuArtist ? artistTracks(menuArtist) : []);
+  const availableTrackIds = $derived(
+    tracks
+      .filter((track) => !offlineMode || trackEngine.getStatus(track.id) === "downloaded")
+      .map((track) => track.id),
+  );
+
   const loading = $derived(!session.localReady);
   const offlineMode = $derived(session.offlineMode);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
@@ -28,18 +45,6 @@
         )
       : artists,
   );
-
-  function artistTracks(artist: Immutable<Artist>) {
-    return (cache.artistAlbums.get(artist.id) ?? []).flatMap(
-      (album) => cache.albumTracks.get(album.id) ?? [],
-    );
-  }
-
-  function availableTrackIds(items: readonly Immutable<Track>[]) {
-    return items
-      .filter((track) => !offlineMode || trackEngine.getStatus(track.id) === "downloaded")
-      .map((track) => track.id);
-  }
 </script>
 
 <section class="view library-view">
@@ -63,16 +68,16 @@
     {/if}
     {#if visibleArtists.length > 0}
       <div class="tiles-grid">
-        {#each visibleArtists as artist, index}
-          {@const menuId = `artist-menu-${index}`}
+        {#each visibleArtists as artist}
           {@const cover = coverEngine.ensureArtistCover(artist.id)}
           <a
             class="tile"
             {@attach viewportContent(cover.load)}
             aria-label={artist.name}
             href={`#/library/artist/${encodeURIComponent(artist.id)}`}
-            data-longpressfor={menuId}
+            data-longpressfor="artist-menu"
             data-longpress="show-modal"
+            onfocus={() => (menuArtistId = artist.id)}
             title={`${artist.name} — hold for actions`}
           >
             <span
@@ -83,24 +88,28 @@
                 <img src={cover.source} alt="" />
               {:else}
                 <span>
-                  <svg aria-hidden="true" width="20" height="20"><use href="#icon-music"></use></svg
-                  >
+                  <svg aria-hidden="true" width="20" height="20">
+                    <use href="#icon-music"></use>
+                  </svg>
                 </span>
               {/if}
               <strong
                 class="tile-name type-small"
                 style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
-                >{artist.name}</strong
               >
+                {artist.name}
+              </strong>
             </span>
           </a>
         {/each}
       </div>
     {:else if !loading}
       <div class="empty-state">
-        <span
-          ><svg aria-hidden="true" width="20" height="20"><use href="#icon-music"></use></svg></span
-        >
+        <span>
+          <svg aria-hidden="true" width="20" height="20">
+            <use href="#icon-music"></use>
+          </svg>
+        </span>
         <p class="type-body">
           {offlineMode ? "No downloaded artists." : "No artists found."}
         </p>
@@ -108,65 +117,68 @@
     {/if}
   {:else if !loading}
     <div class="empty-state">
-      <span
-        ><svg aria-hidden="true" width="20" height="20"><use href="#icon-music"></use></svg></span
-      >
+      <span>
+        <svg aria-hidden="true" width="20" height="20">
+          <use href="#icon-music"></use>
+        </svg>
+      </span>
       <h2 class="type-heading">Connect your library</h2>
       <p class="type-body">Add your music server to start listening.</p>
-      <a class="button" data-size="md" data-variant="neutral" href="#/settings">Open settings</a>
+      <a class="button" data-size="md" data-variant="neutral" href="#/settings"> Open settings </a>
     </div>
   {/if}
 </section>
 
-{#if libraryAvailable}
-  {#each visibleArtists as artist, index}
-    {@const menuId = `artist-menu-${index}`}
-    {@const tracks = artistTracks(artist)}
-    {@const visibleTrackIds = availableTrackIds(tracks)}
-    <dialog
-      id={menuId}
-      class="action-menu"
-      aria-labelledby={`${menuId}-title`}
-      closedby="closerequest"
-      data-swipedown="close"
-      onclick={(event) => event.currentTarget.close()}
-    >
-      <div class="stack-sm">
-        <header id={`${menuId}-title`} class="type-title">
-          {artist.name}
-        </header>
-        <div class="wings">
-          <button
-            class="wings-item row-button"
-            onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
-          >
-            <svg aria-hidden="true" width="20" height="20"><use href="#icon-play"></use></svg>
-            <span>Play</span>
-          </button>
-          <button
-            class="wings-item row-button"
-            onclick={() => void playback.enqueue(visibleTrackIds, "next")}
-          >
-            <svg aria-hidden="true" width="20" height="20"><use href="#icon-next"></use></svg>
-            <span>Play next</span>
-          </button>
-          <button
-            class="wings-item row-button"
-            onclick={() => void playback.enqueue(visibleTrackIds, "last")}
-          >
-            <svg aria-hidden="true" width="20" height="20"><use href="#icon-plus"></use></svg>
-            <span>Play last</span>
-          </button>
-          <button
-            class="wings-item row-button"
-            onclick={() => tracks.forEach((track) => void trackEngine.download(track.id))}
-          >
-            <svg aria-hidden="true" width="20" height="20"><use href="#icon-download"></use></svg>
-            <span>Download</span>
-          </button>
-          <button class="wings-item row-button"><span></span>Cancel</button>
-        </div>
-      </div>
-    </dialog>
-  {/each}
-{/if}
+<dialog
+  id="artist-menu"
+  class="action-menu"
+  aria-labelledby="artist-menu-title"
+  closedby="closerequest"
+  data-swipedown="close"
+  onclick={(event) => event.currentTarget.close()}
+>
+  <div class="stack-sm">
+    <header id="artist-menu-title" class="type-title">
+      {menuArtist?.name}
+    </header>
+    <div class="wings">
+      <button
+        class="wings-item row-button"
+        onclick={() => void playback.replaceQueueAndPlay(availableTrackIds)}
+      >
+        <svg aria-hidden="true" width="20" height="20">
+          <use href="#icon-play"></use>
+        </svg>
+        <span>Play</span>
+      </button>
+      <button
+        class="wings-item row-button"
+        onclick={() => void playback.enqueue(availableTrackIds, "next")}
+      >
+        <svg aria-hidden="true" width="20" height="20">
+          <use href="#icon-next"></use>
+        </svg>
+        <span>Play next</span>
+      </button>
+      <button
+        class="wings-item row-button"
+        onclick={() => void playback.enqueue(availableTrackIds, "last")}
+      >
+        <svg aria-hidden="true" width="20" height="20">
+          <use href="#icon-plus"></use>
+        </svg>
+        <span>Play last</span>
+      </button>
+      <button
+        class="wings-item row-button"
+        onclick={() => tracks.forEach((track) => void trackEngine.download(track.id))}
+      >
+        <svg aria-hidden="true" width="20" height="20">
+          <use href="#icon-download"></use>
+        </svg>
+        <span>Download</span>
+      </button>
+      <button class="wings-item row-button"><span></span>Cancel</button>
+    </div>
+  </div>
+</dialog>

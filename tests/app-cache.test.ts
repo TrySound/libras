@@ -193,7 +193,7 @@ it.each([
 });
 
 it.each([
-  { route: "/library", selector: ".tile", menu: "artist-menu-0" },
+  { route: "/library", selector: ".tile", menu: "artist-menu" },
   { route: "/library/artist/artist", selector: "a.linkarea", menu: "album-menu-0" },
   {
     route: "/library/artist/artist/album/album",
@@ -229,11 +229,54 @@ it.each([
     flushSync();
     expect(target.textContent).toContain("Restoring local library…");
     expect(target.querySelector(selector)).not.toBeNull();
+    target.querySelector<HTMLElement>(selector)!.focus();
+    flushSync();
     const dialog = target.querySelector(`#${menu}`);
     expect(dialog).not.toBeNull();
     expect(dialog?.querySelector("button")?.disabled).toBe(false);
   },
 );
+
+it("reuses one library menu for the long-pressed artist", async () => {
+  installDisk();
+  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  await cache.replaceLibrary({
+    artists: ["one", "two"].map((id) => ({ id, name: `Artist ${id}`, genres: [] })),
+    albums: ["one", "two"].map((id) => ({ id, artistId: id, title: id, genres: [] })),
+    tracks: ["one", "two"].map((id) => ({ id, artistId: id, albumId: id, title: id, genres: [] })),
+    lastModified: 1,
+    savedAt: 1,
+  });
+  mocks.cache = cache;
+  const download = vi
+    .spyOn(TrackEngine.prototype, "download")
+    .mockResolvedValue(new File([], "audio"));
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  expect(target.querySelectorAll(".action-menu")).toHaveLength(1);
+  const menu = target.querySelector<HTMLDialogElement>("#artist-menu")!;
+  const tiles = target.querySelectorAll<HTMLElement>(".tile");
+  for (const [index, id] of ["one", "two"].entries()) {
+    expect(tiles[index].dataset.longpressfor).toBe(menu.id);
+    const down = new Event("pointerdown", { bubbles: true });
+    Object.assign(down, { isPrimary: true, button: 0, pointerId: 1, clientX: 0, clientY: 0 });
+    tiles[index].dispatchEvent(down);
+    await vi.waitFor(() => expect(menu.open).toBe(true));
+    flushSync();
+    expect(menu.querySelector("header")?.textContent?.trim()).toBe(`Artist ${id}`);
+    const button = [...menu.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Download",
+    )!;
+    button.click();
+    expect(download).toHaveBeenLastCalledWith(id);
+    expect(menu.open).toBe(false);
+    expect(target.querySelectorAll(".action-menu")).toHaveLength(1);
+  }
+  expect(download).toHaveBeenCalledTimes(2);
+});
 
 it("shows only album genres on the album route", async () => {
   installDisk();
@@ -399,6 +442,8 @@ it.each([
   document.body.append(target);
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
+  flushSync();
+  target.querySelector<HTMLElement>(".tile")?.focus();
   flushSync();
   const button = [...target.querySelectorAll<HTMLButtonElement>("button")].find(
     (button) => button.textContent?.trim() === "Download",
