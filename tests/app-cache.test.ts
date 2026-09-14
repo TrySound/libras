@@ -75,7 +75,8 @@ it("uses the empty fallback before account selection and when selection is clear
   expect(brand?.getAttribute("aria-label")).toBe("Libras");
   expect(brand?.getAttribute("viewBox")).toBe("0 0 256 256");
   expect(brand?.getAttribute("fill")).toBe("currentColor");
-  expect(brand?.querySelectorAll("path")).toHaveLength(1);
+  expect(brand?.querySelectorAll("path")).toHaveLength(0);
+  expect(brand?.querySelector("use")?.getAttribute("href")).toBe("#icon-brand");
   expect(target.querySelector(".topbar-brand")?.textContent?.trim()).toBe("");
   for (const link of target.querySelectorAll(".topbar-brand a")) {
     expect(link.getAttribute("href")).toBe("#/library");
