@@ -84,11 +84,7 @@ it("uses the empty fallback before account selection and when selection is clear
     expect(link.classList.contains("icon-button")).toBe(true);
   }
   const dialog = target.querySelector<HTMLDialogElement>("#player-dialog")!;
-  const close = vi.spyOn(dialog, "close");
-  const home = dialog.querySelector<HTMLAnchorElement>(".topbar-brand a")!;
-  home.addEventListener("click", (event) => event.preventDefault(), { once: true });
-  home.click();
-  expect(close).toHaveBeenCalledOnce();
+  expect(dialog.querySelector(".topbar-brand")).toBeNull();
   expect(mocks.navigate).toHaveBeenCalledWith("/settings", "replace");
   expect(disk.getDirectory).not.toHaveBeenCalled();
 
@@ -171,6 +167,11 @@ it.each([
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
+  const topbar = target.querySelector(".app-shell > .topbar")!;
+  expect(target.querySelectorAll(".app-shell .topbar")).toHaveLength(1);
+  const links = topbar.querySelectorAll("a");
+  expect([...links].map((link) => link.getAttribute("href"))).toEqual(["#/library", "#/settings"]);
+  expect(target.querySelector("#player-dialog .topbar-brand")).toBeNull();
   const controls = target.querySelectorAll(".topbar a, .topbar button");
   expect(controls.length).toBeGreaterThan(0);
   for (const control of controls) expect(control.getAttribute("data-variant")).toBe("ghost");

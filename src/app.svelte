@@ -290,7 +290,6 @@
       href="#/library"
       aria-label="Libras home"
       title="Home"
-      onclick={(event) => event.currentTarget.closest("dialog")?.close()}
     >
       <!-- Phosphor scales icon (MIT); see public/icons/phosphor-license.txt. -->
       <svg
@@ -310,17 +309,6 @@
 {/snippet}
 
 {#snippet settingsRoute(_params: RouteParams, router: RouteControls)}
-  <header class="topbar wings">
-    <span class="icon-button visually-hidden" aria-hidden="true"></span>
-    {@render brand()}
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="ghost"
-      href={router.href("/library")}
-      title="Home">{@render icon("home")}</a
-    >
-  </header>
   <section class="view settings-view stack-md">
     <div class="stack-sm">
       <span class="type-eyebrow text-muted">Settings</span>
@@ -498,19 +486,6 @@
 {/snippet}
 
 {#snippet downloadsRoute(_params: RouteParams, router: RouteControls)}
-  <header class="topbar wings">
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="ghost"
-      href={router.href("/settings")}
-      title="Settings"
-    >
-      {@render icon("back")}
-    </a>
-    {@render brand()}
-    <span class="icon-button visually-hidden" aria-hidden="true"></span>
-  </header>
   <section class="view stack-md">
     <h2 class="type-heading">Downloads</h2>
     <p class="type-small text-muted">
@@ -598,23 +573,6 @@
       )
     : artists}
 
-  <header class="topbar wings">
-    <span class="icon-button visually-hidden" aria-hidden="true"></span>
-    {@render brand()}
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="ghost"
-      href={router.href("/settings")}
-      aria-label={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
-      title={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
-    >
-      {@render icon("settings")}
-      {#if appUpdate?.hasUpdate}
-        <span class="icon-button-notification" aria-hidden="true"></span>
-      {/if}
-    </a>
-  </header>
   {@render alerts()}
 
   <section class="view library-view">
@@ -729,23 +687,6 @@
       : (cache.artistAlbums.get(artist.id) ?? [])
     : []}
 
-  <header class="topbar wings">
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="ghost"
-      href={router.href("/library")}
-      title="Back">{@render icon("back")}</a
-    >
-    {@render brand()}
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="ghost"
-      href={router.href("/library")}
-      title="Home">{@render icon("home")}</a
-    >
-  </header>
   {@render alerts()}
 
   <section class="view collection-view">
@@ -976,23 +917,6 @@
       : (cache.albumTracks.get(album.id) ?? [])
     : []}
 
-  <header class="topbar wings">
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="ghost"
-      href={artist ? router.href(artistPath(artist)) : router.href("/library")}
-      title="Back">{@render icon("back")}</a
-    >
-    {@render brand()}
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="ghost"
-      href={router.href("/library")}
-      title="Home">{@render icon("home")}</a
-    >
-  </header>
   {@render alerts()}
 
   <section class="view collection-view">
@@ -1240,6 +1164,23 @@
 {/snippet}
 
 <main class="app-shell">
+  <header class="topbar wings">
+    {@render brand()}
+    <div></div>
+    <a
+      class="icon-button"
+      data-size="md"
+      data-variant="ghost"
+      href="#/settings"
+      aria-label={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+      title={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+    >
+      {@render icon("settings")}
+      {#if appUpdate?.hasUpdate}
+        <span class="icon-button-notification" aria-hidden="true"></span>
+      {/if}
+    </a>
+  </header>
   <Router
     routes={[
       { pattern: "/library", render: libraryRoute },
@@ -1310,8 +1251,6 @@
       command="close"
       title="Close player">{@render icon("chevron-down")}</button
     >
-    {@render brand()}
-    <span class="icon-button visually-hidden" aria-hidden="true"></span>
   </header>
   {@render alerts()}
 
