@@ -98,6 +98,24 @@
         : "",
   );
   let loading = $derived(!session.localReady);
+  const alerts = $derived([
+    { id: "session", message: error },
+    {
+      id: "refresh",
+      message: refreshError ? `${refreshError} Your existing library is still available.` : "",
+    },
+    {
+      id: "tracks",
+      message: trackEngine.error
+        ? trackEngine.error instanceof Error
+          ? trackEngine.error.message
+          : String(trackEngine.error)
+        : "",
+    },
+    { id: "download", message: downloadError },
+    { id: "playback", message: playbackError },
+  ]);
+  const hasErrors = $derived(alerts.some((alert) => alert.message));
 
   onMount(() => installLongPress());
   onMount(() => playback.attach(player!));
@@ -270,8 +288,8 @@
   <title>Libras</title>
 </svelte:head>
 
-{#snippet icon(name: string, size = 20)}
-  <svg aria-hidden="true" width={size} height={size}>
+{#snippet icon(name: string, size = 20, className = "")}
+  <svg class={className} aria-hidden="true" width={size} height={size}>
     <use href={`#icon-${name}`}></use>
   </svg>
 {/snippet}
@@ -366,16 +384,8 @@
           </div>
         {/if}
       </div>
-      {#if !session.auth || session.error || session.refreshError}
+      {#if !session.auth}
         <div class="connection-details">
-          {#if session.error}
-            <p class="error type-small" role="alert">{session.error}</p>
-          {/if}
-          {#if session.refreshError}
-            <p class="error type-small" role="status">
-              {session.refreshError} Your existing library is still available.
-            </p>
-          {/if}
           {#if !session.auth}
             <form class="stack-md" onsubmit={submitConnection}>
               <div class="stack-sm">
@@ -482,11 +492,6 @@
     <p class="type-small text-muted">
       Downloading first, then queued tracks and saved files, newest first.
     </p>
-    {#if trackEngine.error}
-      <p class="error type-small" role="status">
-        {trackEngine.error instanceof Error ? trackEngine.error.message : String(trackEngine.error)}
-      </p>
-    {/if}
     {#if loading}
       <p class="type-body text-muted" role="status">Restoring local library…</p>
     {/if}
@@ -545,26 +550,12 @@
   </section>
 {/snippet}
 
-{#snippet alerts()}
-  {#if error}
-    <p class="error type-small" role="alert">{error}</p>
-  {/if}
-
-  {#if refreshError}
-    <p class="error type-small">
-      {refreshError} Your existing library is still available.
-    </p>
-  {/if}
-{/snippet}
-
 {#snippet libraryRoute()}
   {@const visibleArtists = offlineMode
     ? artists.filter((artist) =>
         artistTracks(artist).some((track) => trackEngine.getStatus(track.id) === "downloaded"),
       )
     : artists}
-
-  {@render alerts()}
 
   <section class="view library-view">
     {#if libraryAvailable}
@@ -678,8 +669,6 @@
         )
       : (cache.artistAlbums.get(artist.id) ?? [])
     : []}
-
-  {@render alerts()}
 
   <section class="view collection-view">
     {#if libraryAvailable && artist}
@@ -907,8 +896,6 @@
         )
       : (cache.albumTracks.get(album.id) ?? [])
     : []}
-
-  {@render alerts()}
 
   <section class="view collection-view">
     {#if libraryAvailable && artist && album}
@@ -1155,19 +1142,51 @@
   <header class="topbar wings">
     {@render brand()}
     <div></div>
-    <a
-      class="icon-button"
-      data-size="md"
-      data-variant="ghost"
-      href="#/settings"
-      aria-label={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
-      title={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
-    >
-      {@render icon("settings")}
-      {#if appUpdate?.hasUpdate}
-        <span class="icon-button-notification" aria-hidden="true"></span>
+    <div class="row-sm">
+      {#if hasErrors}
+        <button
+          class="icon-button"
+          data-size="md"
+          data-variant="ghost"
+          commandfor="error-popover"
+          command="toggle-popover"
+          aria-label="Show errors"
+          title="Show errors"
+        >
+          {@render icon("error", 20, "text-danger")}
+        </button>
+        <div id="error-popover" class="error-popover" popover="auto" aria-label="Errors">
+          <div class="stack-sm">
+            {#each alerts as alert (alert.id)}
+              {#if alert.message}
+                <p class="type-small" role="alert">{alert.message}</p>
+              {/if}
+            {/each}
+          </div>
+          <button
+            class="icon-button"
+            data-size="sm"
+            data-variant="ghost"
+            aria-label="Close errors"
+            commandfor="error-popover"
+            command="hide-popover">{@render icon("cross")}</button
+          >
+        </div>
       {/if}
-    </a>
+      <a
+        class="icon-button"
+        data-size="md"
+        data-variant="ghost"
+        href="#/settings"
+        aria-label={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+        title={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+      >
+        {@render icon("settings")}
+        {#if appUpdate?.hasUpdate}
+          <span class="icon-button-notification" aria-hidden="true"></span>
+        {/if}
+      </a>
+    </div>
   </header>
   <Router
     routes={[
@@ -1239,7 +1258,6 @@
       title="Close player">{@render icon("chevron-down")}</button
     >
   </header>
-  {@render alerts()}
 
   <section class="view player-view">
     <div class="player-main">
@@ -1345,13 +1363,6 @@
           title="Next">{@render icon("next")}</button
         >
       </div>
-
-      {#if downloadError}
-        <p class="error type-small">{downloadError}</p>
-      {/if}
-      {#if playbackError}
-        <p class="error type-small">{playbackError}</p>
-      {/if}
     </div>
 
     <div class="player-queue">

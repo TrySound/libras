@@ -72,6 +72,29 @@ async function setup(saved = false) {
 }
 
 describe("app settings", () => {
+  it("offers error details beside Settings, never inside the player", async () => {
+    const { target, session, button } = await setup();
+    expect(button("Show errors")).toBeUndefined();
+    session.error = "Connection failed";
+    flushSync();
+    const trigger = button("Show errors");
+    expect(trigger.getAttribute("commandfor")).toBe("error-popover");
+    expect(trigger.getAttribute("command")).toBe("toggle-popover");
+    expect(trigger.nextElementSibling?.nextElementSibling?.getAttribute("href")).toBe("#/settings");
+    const popover = target.querySelector("#error-popover")!;
+    expect(popover.getAttribute("popover")).toBe("auto");
+    expect(popover.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(popover.textContent).toContain("Connection failed");
+    expect(button("Close errors").getAttribute("commandfor")).toBe("error-popover");
+    expect(button("Close errors").getAttribute("command")).toBe("hide-popover");
+    expect(target.querySelector("#player-dialog [role='alert']")).toBeNull();
+    expect(target.querySelector("#player-dialog [commandfor='error-popover']")).toBeNull();
+    session.error = "";
+    flushSync();
+    expect(button("Show errors")).toBeUndefined();
+    expect(target.querySelector("#error-popover")).toBeNull();
+  });
+
   it.each([false, true])(
     "shows album/track counters only while connecting or refreshing (saved: %s)",
     async (saved) => {
@@ -147,6 +170,10 @@ describe("app settings", () => {
     await vi.waitFor(() =>
       expect(target.querySelector('[role="alert"]')?.textContent).toBe("Unauthorized"),
     );
+    expect(target.querySelector(".connection-details [role='alert']")).toBeNull();
+    expect(target.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(button("Show errors").getAttribute("commandfor")).toBe("error-popover");
+    expect(session.error).toBe("Unauthorized");
     expect(offline().checked).toBe(true);
     expect(session.auth).toBeNull();
     fill();

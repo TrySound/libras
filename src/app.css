@@ -200,6 +200,10 @@
   color: var(--color-text-muted);
 }
 
+.text-danger {
+  color: var(--color-text-danger);
+}
+
 /* controls */
 
 .linkarea {
@@ -369,6 +373,25 @@
 }
 
 /* layout */
+
+.row-sm,
+.row-md,
+.row-lg {
+  display: flex;
+  align-items: center;
+}
+
+.row-sm {
+  gap: var(--space-sm);
+}
+
+.row-md {
+  gap: var(--space-md);
+}
+
+.row-lg {
+  gap: var(--space-lg);
+}
 
 .stack-xs,
 .stack-sm,
@@ -1229,4 +1252,28 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.error-popover {
+  position: fixed;
+  inset: 4rem 1rem auto auto;
+  top: anchor(bottom, 4rem);
+  margin: var(--space-sm) 0 0;
+  box-sizing: border-box;
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 6rem);
+  overflow: auto;
+  padding: var(--space-md);
+  border: var(--popover-border);
+  border-radius: var(--space-sm);
+  background: var(--popover-bg);
+  backdrop-filter: blur(var(--popover-blur));
+  color: var(--color-text-danger);
+  box-shadow: var(--popover-shadow);
+}
+
+.error-popover:popover-open {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
 }

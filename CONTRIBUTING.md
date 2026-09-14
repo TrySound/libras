@@ -25,6 +25,13 @@ pnpm build
 
 Use `pnpm format` to format the project. The pre-commit hook formats staged HTML, CSS, Svelte, and TypeScript files.
 
+## UI conventions
+
+- Store all UI icons in the SVG sprite in `index.html` as `<symbol id="icon-name">` elements. Render them with `<use href="#icon-name">` (or the `icon()` snippet in `src/app.svelte`), rather than embedding icon geometry in components. Use `currentColor` for themeable fills and strokes, and give icon-only controls accessible labels.
+- Prefer native invoker commands for popovers and dialogs: use `commandfor="element-id"` with `command="toggle-popover"`, `"show-popover"`, `"hide-popover"`, `"show-modal"`, or `"close"`. Prefer these over `popovertarget`/`popovertargetaction` and JavaScript click handlers that only open or close an overlay. Reserve imperative APIs for behavior that cannot be expressed declaratively, such as swipe-to-dismiss.
+
+- Popover invokers establish an implicit anchor automatically. Do not add `anchor-name` or `position-anchor` just to associate a popover with its invoker; use that implicit anchor for positioning (for example, `top: anchor(bottom)`).
+
 ## CI and GitHub Pages
 
 Tests and test-only helpers live in `tests/`, separate from production code in `src/`. Vitest discovers `tests/**/*.test.ts`; Svelte rune helpers use `.svelte.ts` and are imported by those tests. Type checks include both directories.
