@@ -3,18 +3,15 @@
 
   export type RouteParams = Record<string, string | undefined>;
 
-  export interface RouteControls {
-    /** Paths are slash-prefixed, without a hash. */
-    href(path: string): string;
-    navigate(path: string, history?: "push" | "replace"): void;
+  /** Paths are slash-prefixed, without a hash. */
+  export function navigate(path: string, history: "push" | "replace" = "push") {
+    void window.navigation.navigate(`#${path}`, { history }).finished?.catch(() => {});
   }
 
   export interface RenderRoute {
     pattern: string;
-    render: Snippet<[RouteParams, RouteControls]>;
+    render: Snippet<[RouteParams]>;
   }
-
-  export type RouterNavigate = RouteControls["navigate"];
 </script>
 
 <script lang="ts">
@@ -23,10 +20,9 @@
   interface Props {
     routes: readonly RenderRoute[];
     fallback?: RenderRoute;
-    navigate?: RouterNavigate;
   }
 
-  let { routes, fallback = routes[0], navigate = $bindable() }: Props = $props();
+  let { routes, fallback = routes[0] }: Props = $props();
 
   const initial = untrack(() => {
     if (!fallback) throw new Error("Router requires at least one route.");
@@ -59,14 +55,6 @@
     }
     return { route: initial.fallback, params: {} };
   }
-
-  const controls: RouteControls = {
-    href: (path) => `#${path}`,
-    navigate(path, history = "push") {
-      void window.navigation.navigate(controls.href(path), { history }).finished?.catch(() => {});
-    },
-  };
-  navigate = controls.navigate;
 
   onMount(() => {
     const handleNavigation = (event: NavigateEvent) => {
@@ -111,10 +99,10 @@
     if (window.location.hash.startsWith("#/")) {
       match = resolve(new URL(window.location.href));
     } else {
-      controls.navigate(initial.fallback.pattern, "replace");
+      navigate(initial.fallback.pattern, "replace");
     }
     return () => window.navigation.removeEventListener("navigate", handleNavigation);
   });
 </script>
 
-{@render match.route.render(match.params, controls)}
+{@render match.route.render(match.params)}

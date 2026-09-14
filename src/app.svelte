@@ -17,11 +17,7 @@
   import { QueueEngine } from "./queue.svelte";
   import { Session } from "./session.svelte";
   import { Network } from "./network.svelte";
-  import Router, {
-    type RouteControls,
-    type RouteParams,
-    type RouterNavigate,
-  } from "./router.svelte";
+  import Router, { navigate, type RouteParams } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { swipeToDismiss } from "./swipe-to-dismiss";
 
@@ -45,7 +41,6 @@
   const hasPreviousTrack = $derived(cache.queue.index > 0);
   const metadataEngine = new MetadataEngine(selection);
   const queueEngine = new QueueEngine(selection);
-  let navigate = $state<RouterNavigate>(() => {});
   let artists = $derived([...cache.artists.values()]);
   let queue = $derived(
     cache.queue.tracks.flatMap((id, index) => {
@@ -305,7 +300,7 @@
   </div>
 {/snippet}
 
-{#snippet settingsRoute(_params: RouteParams, router: RouteControls)}
+{#snippet settingsRoute()}
   <section class="view settings-view stack-md">
     <div class="stack-sm">
       <span class="type-eyebrow text-muted">Settings</span>
@@ -466,7 +461,7 @@
           {:else}
             Show only music downloaded to this device.
           {/if}
-          <a class="text-link" href={router.href("/downloads")}>View downloads</a>
+          <a class="text-link" href="#/downloads">View downloads</a>
         </small>
       </div>
       <label class="switch">
@@ -482,7 +477,7 @@
   </section>
 {/snippet}
 
-{#snippet downloadsRoute(_params: RouteParams, router: RouteControls)}
+{#snippet downloadsRoute()}
   <section class="view stack-md">
     <h2 class="type-heading">Downloads</h2>
     <p class="type-small text-muted">
@@ -563,7 +558,7 @@
   {/if}
 {/snippet}
 
-{#snippet libraryRoute(_params: RouteParams, router: RouteControls)}
+{#snippet libraryRoute()}
   {@const visibleArtists = offlineMode
     ? artists.filter((artist) =>
         artistTracks(artist).some((track) => trackEngine.getStatus(track.id) === "downloaded"),
@@ -597,7 +592,7 @@
               class="tile"
               {@attach viewportContent(cover.load)}
               aria-label={artist.name}
-              href={router.href(artistPath(artist))}
+              href={`#${artistPath(artist)}`}
               data-longpressfor={menuId}
               data-longpress="show-modal"
               title={`${artist.name} — hold for actions`}
@@ -629,7 +624,7 @@
         </div>
       {/if}
     {:else if !loading}
-      {@render connectLibrary(router)}
+      {@render connectLibrary()}
     {/if}
   </section>
   {#if libraryAvailable && !offlineScanning}
@@ -672,7 +667,7 @@
   {/if}
 {/snippet}
 
-{#snippet artistRoute(params: RouteParams, router: RouteControls)}
+{#snippet artistRoute(params: RouteParams)}
   {@const artist = params.artistId ? cache.artists.get(params.artistId) : undefined}
   {@const visibleAlbums = artist
     ? offlineMode
@@ -755,7 +750,7 @@
                 {@attach nearViewport((visible) => {
                   if (visible) cover.load();
                 })}
-                href={router.href(albumPath(artist, album))}
+                href={`#${albumPath(artist, album)}`}
                 aria-label={`Open ${album.title}`}
                 data-longpressfor={albumMenuId}
                 data-longpress="show-modal"
@@ -815,7 +810,7 @@
           class="button"
           data-size="md"
           data-variant="neutral"
-          href={router.href(libraryAvailable ? "/library" : "/settings")}
+          href={libraryAvailable ? "#/library" : "#/settings"}
         >
           {libraryAvailable ? "Open library" : "Open settings"}
         </a>
@@ -903,7 +898,7 @@
   {/if}
 {/snippet}
 
-{#snippet albumRoute(params: RouteParams, router: RouteControls)}
+{#snippet albumRoute(params: RouteParams)}
   {@const artist = params.artistId ? cache.artists.get(params.artistId) : undefined}
   {@const album = params.albumId ? cache.albums.get(params.albumId) : undefined}
   {@const visibleTracks = album
@@ -933,7 +928,7 @@
       </div>
       <div class="section-heading collection-heading">
         <div>
-          <a class="text-link type-eyebrow text-muted" href={router.href(artistPath(artist))}>
+          <a class="text-link type-eyebrow text-muted" href={`#${artistPath(artist)}`}>
             {artist.name}
           </a>
           <h2
@@ -1045,7 +1040,7 @@
           class="button"
           data-size="md"
           data-variant="neutral"
-          href={router.href(libraryAvailable ? "/library" : "/settings")}
+          href={libraryAvailable ? "#/library" : "#/settings"}
         >
           {libraryAvailable ? "Open library" : "Open settings"}
         </a>
@@ -1149,14 +1144,12 @@
   {/if}
 {/snippet}
 
-{#snippet connectLibrary(router: RouteControls)}
+{#snippet connectLibrary()}
   <div class="empty-state">
     <span>{@render icon("music")}</span>
     <h2 class="type-heading">Connect your library</h2>
     <p class="type-body">Add your music server to start listening.</p>
-    <a class="button" data-size="md" data-variant="neutral" href={router.href("/settings")}
-      >Open settings</a
-    >
+    <a class="button" data-size="md" data-variant="neutral" href="#/settings">Open settings</a>
   </div>
 {/snippet}
 
@@ -1189,7 +1182,6 @@
       { pattern: "/settings", render: settingsRoute },
       { pattern: "/downloads", render: downloadsRoute },
     ]}
-    bind:navigate
   />
 </main>
 

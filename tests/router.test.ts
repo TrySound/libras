@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RouteControls } from "../src/router.svelte";
+import { navigate } from "../src/router.svelte";
 import RouterTestApp from "./router-test-app.svelte";
 import { installNavigation } from "./router-test-helpers";
 
@@ -19,15 +19,10 @@ function setup(path = "/library") {
   const navigation = installNavigation(path);
   const target = document.createElement("main");
   document.body.append(target);
-  let controls!: RouteControls;
-  const component = mount(RouterTestApp, {
-    target,
-    props: { capture: (value) => (controls = value) },
-  });
+  const component = mount(RouterTestApp, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  target.querySelector("button")!.click();
-  return { navigation, target, controls };
+  return { navigation, target };
 }
 
 describe("router", () => {
@@ -101,12 +96,11 @@ describe("router", () => {
     },
   );
 
-  it("builds hash links and navigates through the browser", () => {
-    const { controls, navigation } = setup();
-    expect(controls.href("/player")).toBe("#/player");
-    controls.navigate("/player");
+  it("navigates through the browser with hash paths", () => {
+    const navigation = installNavigation("/library");
+    navigate("/player");
     expect(navigation.navigate).toHaveBeenCalledWith("#/player", { history: "push" });
-    controls.navigate("/library", "replace");
+    navigate("/library", "replace");
     expect(navigation.navigate).toHaveBeenLastCalledWith("#/library", { history: "replace" });
   });
 
@@ -136,11 +130,11 @@ describe("router", () => {
   });
 
   it("handles rejected navigation promises", async () => {
-    const { controls, navigation } = setup();
+    const navigation = installNavigation("/library");
     const finished = Promise.reject(new DOMException("Navigation aborted", "AbortError"));
     const caught = vi.spyOn(finished, "catch");
     navigation.navigate.mockReturnValueOnce({ finished });
-    controls.navigate("/player");
+    navigate("/player");
     expect(caught).toHaveBeenCalledOnce();
     await expect(caught.mock.results[0].value).resolves.toBeUndefined();
   });

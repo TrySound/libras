@@ -1,24 +1,21 @@
 <script lang="ts">
-  import Router, { type RouteControls, type RouteParams } from "../src/router.svelte";
-
-  let { capture }: { capture: (controls: RouteControls) => void } = $props();
+  import Router, { type RouteParams } from "../src/router.svelte";
 </script>
 
-{#snippet page(name: string, params: RouteParams, controls: RouteControls)}
+{#snippet page(name: string, params: RouteParams)}
   <p>{name}:{JSON.stringify(params)}</p>
-  <button onclick={() => capture(controls)}>Controls</button>
 {/snippet}
-{#snippet library(params: RouteParams, controls: RouteControls)}
-  {@render page("library", params, controls)}
+{#snippet library(params: RouteParams)}
+  {@render page("library", params)}
 {/snippet}
-{#snippet artist(params: RouteParams, controls: RouteControls)}
-  {@render page("artist", params, controls)}
+{#snippet artist(params: RouteParams)}
+  {@render page("artist", params)}
 {/snippet}
-{#snippet album(params: RouteParams, controls: RouteControls)}
-  {@render page("album", params, controls)}
+{#snippet album(params: RouteParams)}
+  {@render page("album", params)}
 {/snippet}
-{#snippet player(params: RouteParams, controls: RouteControls)}
-  {@render page("player", params, controls)}
+{#snippet player(params: RouteParams)}
+  {@render page("player", params)}
 {/snippet}
 
 <Router
