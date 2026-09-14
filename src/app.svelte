@@ -6,10 +6,11 @@
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
+  import ArtistRoute from "./_artist.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine, immediateCover } from "./cover.svelte";
-  import { nearViewport, viewportContent } from "./viewport";
+  import { viewportContent } from "./viewport";
   import { MetadataEngine } from "./metadata.svelte";
   import type {
     Album as AlbumRecord,
@@ -134,19 +135,6 @@
     return `${artistPath(artist)}/album/${encodeURIComponent(album.id)}`;
   }
 
-  function uniqueGenres(genres: string[]) {
-    return [...new Map(genres.map((genre) => [genre.toLocaleLowerCase(), genre])).values()].sort(
-      (a, b) => a.localeCompare(b),
-    );
-  }
-
-  function artistGenres(artist: Artist) {
-    return uniqueGenres([
-      ...artist.genres,
-      ...(cache.artistAlbums.get(artist.id) ?? []).flatMap((album) => album.genres),
-    ]);
-  }
-
   function artistTracks(artist: Artist): readonly Track[] {
     return (cache.artistAlbums.get(artist.id) ?? []).flatMap(
       (album) => cache.albumTracks.get(album.id) ?? [],
@@ -161,10 +149,6 @@
 
   function availableTrackIds(tracks: readonly Track[]) {
     return availableTracks(tracks).map((track) => track.id);
-  }
-
-  function playAlbum(album: Album) {
-    void playback.replaceQueueAndPlay(availableTrackIds(cache.albumTracks.get(album.id) ?? []));
   }
 
   function playArtist(artist: Artist) {
@@ -196,10 +180,6 @@
 
   function downloadCollection(tracks: readonly Track[]) {
     return Promise.all(tracks.map(downloadTrack));
-  }
-
-  function downloadAlbum(album: Album) {
-    return downloadCollection(cache.albumTracks.get(album.id) ?? []);
   }
 
   function downloadArtist(artist: Artist) {
@@ -379,231 +359,7 @@
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
-  {@const artist = params.artistId ? cache.artists.get(params.artistId) : undefined}
-  {@const visibleAlbums = artist
-    ? offlineMode
-      ? (cache.artistAlbums.get(artist.id) ?? []).filter((album) =>
-          (cache.albumTracks.get(album.id) ?? []).some(
-            (track) => trackEngine.getStatus(track.id) === "downloaded",
-          ),
-        )
-      : (cache.artistAlbums.get(artist.id) ?? [])
-    : []}
-
-  <section class="view collection-view">
-    {#if libraryAvailable && artist}
-      {@const artwork = coverEngine.ensureArtistCover(artist.id)}
-      <div
-        class="artwork"
-        style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
-        aria-hidden="true"
-        {@attach immediateCover(artwork)}
-      >
-        {#if artwork.source}
-          <img src={artwork.source} alt="" />
-        {:else}
-          {@render icon("music", 64)}
-        {/if}
-      </div>
-      <div class="section-heading collection-heading">
-        <div>
-          <h2
-            class="type-heading"
-            style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
-          >
-            {artist.name}
-          </h2>
-          <p class="library-meta type-small">
-            {visibleAlbums.length} album{visibleAlbums.length === 1 ? "" : "s"}
-          </p>
-          {#if artistGenres(artist).length > 0}
-            <div class="genre-list">
-              {#each artistGenres(artist) as genre}
-                <span class="type-caption">
-                  {genre}
-                </span>
-              {/each}
-            </div>
-          {/if}
-        </div>
-        <button
-          class="icon-button"
-          data-size="md"
-          data-variant="neutral"
-          commandfor="artist-page-menu"
-          command="show-modal"
-          title={`Open menu for ${artist.name}`}
-        >
-          {@render icon("menu")}
-        </button>
-      </div>
-
-      {#if loading}
-        <div class="empty-state">
-          <div class="scan-spinner">{@render icon("loading")}</div>
-          <p class="type-body">Restoring local library…</p>
-        </div>
-      {/if}
-      <div class="wings">
-        {#each visibleAlbums as album, index}
-          {@const albumMenuId = `album-menu-${index}`}
-          {@const visibleTracks = offlineMode
-            ? (cache.albumTracks.get(album.id) ?? []).filter(
-                (track) => trackEngine.getStatus(track.id) === "downloaded",
-              )
-            : (cache.albumTracks.get(album.id) ?? [])}
-          {@const cover = coverEngine.ensureAlbumCover(album.id)}
-          <article class="wings-item row-button">
-            <a
-              class="linkarea"
-              {@attach nearViewport((visible) => {
-                if (visible) cover.load();
-              })}
-              href={`#${albumPath(artist, album)}`}
-              aria-label={`Open ${album.title}`}
-              data-longpressfor={albumMenuId}
-              data-longpress="show-modal"
-              title={`${album.title} — hold for actions`}
-            ></a>
-            <span class="track-leading">
-              <span
-                class="cover album-cover"
-                style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
-              >
-                {#if cover.source}
-                  <img src={cover.source} alt="" />
-                {:else}
-                  <span>{@render icon("music")}</span>
-                {/if}
-              </span>
-            </span>
-            <span class="stack-xs">
-              <strong
-                class="type-title"
-                style:view-transition-name={CSS.escape(`album-name-${album.id}`)}
-                >{album.title}</strong
-              >
-              <small class="type-small text-muted">
-                {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
-              </small>
-            </span>
-            <span class="track-actions">
-              <button
-                class="icon-button"
-                data-size="sm"
-                data-variant="ghost"
-                commandfor={albumMenuId}
-                command="show-modal"
-                title={`Open menu for ${album.title}`}
-              >
-                {@render icon("menu")}
-              </button>
-            </span>
-          </article>
-        {:else}
-          {#if !loading}
-            <div class="empty-state">
-              <p class="type-body">
-                {offlineMode ? "No downloaded albums." : "No albums found."}
-              </p>
-            </div>
-          {/if}
-        {/each}
-      </div>
-    {:else if !loading}
-      <div class="empty-state">
-        <span>{@render icon("music")}</span>
-        <p class="type-body">
-          {libraryAvailable ? "Artist not found." : "Connect your library."}
-        </p>
-        <a
-          class="button"
-          data-size="md"
-          data-variant="neutral"
-          href={libraryAvailable ? "#/library" : "#/settings"}
-        >
-          {libraryAvailable ? "Open library" : "Open settings"}
-        </a>
-      </div>
-    {/if}
-  </section>
-  {#if libraryAvailable && artist}
-    <dialog
-      id="artist-page-menu"
-      class="action-menu"
-      aria-labelledby="artist-page-menu-title"
-      closedby="closerequest"
-      use:swipeToDismiss
-      onclick={(event) => event.currentTarget.close()}
-    >
-      <div class="stack-sm">
-        <header id="artist-page-menu-title" class="type-title">
-          {artist.name}
-        </header>
-        <div class="wings">
-          <button class="wings-item row-button" onclick={() => playArtist(artist)}>
-            {@render icon("play")}
-            <span>Play</span>
-          </button>
-          <button class="wings-item row-button" onclick={() => playNext(artistTracks(artist))}>
-            {@render icon("next")}
-            <span>Play next</span>
-          </button>
-          <button class="wings-item row-button" onclick={() => playLast(artistTracks(artist))}>
-            {@render icon("plus")}
-            <span>Play last</span>
-          </button>
-          <button class="wings-item row-button" onclick={() => downloadArtist(artist)}>
-            {@render icon("download")}
-            <span>Download</span>
-          </button>
-          <button class="wings-item row-button"><span></span>Cancel</button>
-        </div>
-      </div>
-    </dialog>
-    {#each visibleAlbums as album, index}
-      {@const albumMenuId = `album-menu-${index}`}
-      <dialog
-        id={albumMenuId}
-        class="action-menu"
-        aria-labelledby={`${albumMenuId}-title`}
-        closedby="closerequest"
-        use:swipeToDismiss
-        onclick={(event) => event.currentTarget.close()}
-      >
-        <div class="stack-sm">
-          <header id={`${albumMenuId}-title`} class="type-title">
-            {album.title}
-          </header>
-          <div class="wings">
-            <button class="wings-item row-button" onclick={() => playAlbum(album)}>
-              {@render icon("play")}
-              <span>Play</span>
-            </button>
-            <button
-              class="wings-item row-button"
-              onclick={() => playNext(cache.albumTracks.get(album.id) ?? [])}
-            >
-              {@render icon("next")}
-              <span>Play next</span>
-            </button>
-            <button
-              class="wings-item row-button"
-              onclick={() => playLast(cache.albumTracks.get(album.id) ?? [])}
-            >
-              {@render icon("plus")}
-              <span>Play last</span>
-            </button>
-            <button class="wings-item row-button" onclick={() => downloadAlbum(album)}>
-              {@render icon("download")}
-              <span>Download</span>
-            </button>
-            <button class="wings-item row-button"><span></span>Cancel</button>
-          </div>
-        </div>
-      </dialog>
-    {/each}
-  {/if}
+  <ArtistRoute {params} {cache} {coverEngine} {trackEngine} {session} {playback} />
 {/snippet}
 
 {#snippet albumRoute(params: RouteParams)}
