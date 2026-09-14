@@ -63,6 +63,23 @@ afterEach(() => {
 });
 
 describe("memory-first artwork", () => {
+  it("invalidates all image metadata without rewriting bytes or losing validators", async () => {
+    const disk = installDisk();
+    const cache = new Cache(account);
+    await cache.saveImage("one", { ...image(), freshUntil: Date.now() + 60_000 });
+    await cache.saveImage("two", image("other"));
+    const originals = [...cache.images.values()];
+    const blobs = new Map(disk.blobs);
+    await cache.invalidateImages();
+    await cache.flush();
+    const restored = new Cache(account);
+    await restored.load();
+    expect([...restored.images.values()]).toEqual(
+      originals.map((record) => ({ ...record, freshUntil: 0 })),
+    );
+    expect(disk.blobs).toEqual(blobs);
+  });
+
   it("persists entity metadata without derived artwork relationships", async () => {
     const disk = installDisk();
     const cache = new Cache(account);

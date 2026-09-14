@@ -291,7 +291,7 @@ export class Session {
         await metadata.refresh(force);
         if (!this.#valid(generation)) return;
         this.error = "";
-        await covers.refresh();
+        await covers.refresh(force);
       } catch (error) {
         if (this.#valid(generation)) this.#refreshError = error;
       }

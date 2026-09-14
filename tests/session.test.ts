@@ -122,6 +122,7 @@ describe("session", () => {
     pending.resolve();
     await refresh;
     expect(covers.refresh).toHaveBeenCalledOnce();
+    expect(covers.refresh).toHaveBeenCalledWith(true);
     expect(queue.refresh).toHaveBeenCalledOnce();
     expect(covers.refresh.mock.invocationCallOrder[0]).toBeLessThan(
       queue.refresh.mock.invocationCallOrder[0],
