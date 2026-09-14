@@ -24,20 +24,10 @@
       ? state.message
       : {
           idle: "",
-          ready:
-            "An app update is ready in Settings. Updating reloads the app and interrupts playback.",
+          ready: "An app update is ready. Updating reloads the app and interrupts playback.",
           updating: "Applying the update. The app will reload when it is ready.",
         }[state.status],
   );
-
-  function reloadHome() {
-    if (reloadRequested) return;
-    reloadRequested = true;
-    const url = new URL(window.location.href);
-    url.hash = "/library";
-    window.history.replaceState(window.history.state, "", url);
-    window.location.reload();
-  }
 
   onMount(() => {
     const lifetime = new AbortController();
@@ -50,7 +40,10 @@
       // not emit controllerchange for this page. Observe the approved worker too.
       if (waiting?.state === "activated") {
         reloadAvailable = true;
-        if (busy) reloadHome();
+        if (busy && !reloadRequested) {
+          reloadRequested = true;
+          location.reload();
+        }
       }
       syncAvailability();
     };
@@ -75,7 +68,10 @@
       controller = next;
       if (busy) {
         reloadAvailable = true;
-        reloadHome();
+        if (!reloadRequested) {
+          reloadRequested = true;
+          location.reload();
+        }
       } else {
         // Initial installation claims this page without requiring an update/reload.
         if (previous) reloadAvailable = true;
@@ -152,7 +148,8 @@
     try {
       // Another tab may have activated the update before this click.
       if (!registration?.waiting) {
-        reloadHome();
+        reloadRequested = true;
+        location.reload();
       } else {
         await updateServiceWorker();
       }

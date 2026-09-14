@@ -228,14 +228,14 @@ describe("webapp updater", () => {
     ["/#/settings", false],
     ["/libras/#/settings", false],
     ["/libras/#/settings", true],
-  ])("reloads the library from %s (already activated: %s)", async (path, activated) => {
+  ])("reloads the current page at %s (already activated: %s)", async (path, activated) => {
     const { ready, activate, update, reload } = setup();
     const previousUrl = window.location.href;
     const previousState = window.history.state;
     try {
       window.history.replaceState({ test: true }, "", path);
       reload.mockImplementation(() => {
-        expect(window.location.hash).toBe("#/library");
+        expect(window.location.hash).toBe("#/settings");
         expect(window.location.pathname).toBe(path.split("#")[0]);
         expect(window.history.state).toEqual({ test: true });
       });

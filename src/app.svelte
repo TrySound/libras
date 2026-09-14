@@ -440,25 +440,6 @@
       {/if}
     </section>
 
-    {#if appUpdate?.message}
-      <section class="settings-option" aria-label="App update">
-        <div class="stack-xs">
-          <strong class="type-title">App update</strong>
-          <small class="type-small text-muted">{appUpdate.message}</small>
-        </div>
-        {#if appUpdate.hasUpdate}
-          <button
-            class="button"
-            data-size="sm"
-            disabled={appUpdate.busy}
-            onclick={() => void updater?.update()}
-          >
-            {appUpdate.busy ? "Updating…" : "Update now"}
-          </button>
-        {/if}
-      </section>
-    {/if}
-
     <div class="settings-option">
       <div class="stack-xs">
         <strong class="type-title">Offline library</strong>
@@ -1155,8 +1136,8 @@
         >
           {@render icon("error", 20, "text-danger")}
         </button>
-        <div id="error-popover" class="error-popover" popover="auto" aria-label="Errors">
-          <div class="stack-sm">
+        <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
+          <div class="stack-sm text-danger">
             {#each alerts as alert (alert.id)}
               {#if alert.message}
                 <p class="type-small" role="alert">{alert.message}</p>
@@ -1173,18 +1154,57 @@
           >
         </div>
       {/if}
+      {#if appUpdate?.message}
+        <button
+          class="icon-button"
+          data-size="md"
+          data-variant="ghost"
+          commandfor="update-popover"
+          command="toggle-popover"
+          aria-label="App update"
+          title="App update"
+        >
+          {@render icon(appUpdate.busy ? "loading" : "refresh")}
+        </button>
+        <div
+          id="update-popover"
+          class="notification-popover"
+          popover="auto"
+          aria-label="App update"
+        >
+          <div class="stack-sm">
+            <strong class="type-title">App update</strong>
+            <p class="type-small">{appUpdate.message}</p>
+            {#if appUpdate.hasUpdate}
+              <button
+                class="button"
+                data-size="sm"
+                disabled={appUpdate.busy}
+                onclick={() => void updater?.update()}
+              >
+                {appUpdate.busy ? "Updating…" : "Update now"}
+              </button>
+            {/if}
+          </div>
+          <button
+            class="icon-button"
+            data-size="sm"
+            data-variant="ghost"
+            aria-label="Close app update"
+            commandfor="update-popover"
+            command="hide-popover">{@render icon("cross")}</button
+          >
+        </div>
+      {/if}
       <a
         class="icon-button"
         data-size="md"
         data-variant="ghost"
         href="#/settings"
-        aria-label={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
-        title={appUpdate?.hasUpdate ? "Settings — app update available" : "Settings"}
+        aria-label="Settings"
+        title="Settings"
       >
         {@render icon("settings")}
-        {#if appUpdate?.hasUpdate}
-          <span class="icon-button-notification" aria-hidden="true"></span>
-        {/if}
       </a>
     </div>
   </header>

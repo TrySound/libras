@@ -49,7 +49,7 @@ Download music while online, then switch to **Offline Library** to listen withou
 
 ## App updates
 
-A dot on Settings means an update is ready. Choose **Settings → Update now** to install it—this reloads the app and interrupts playback.
+An app-update button beside Settings appears when an update is ready. Open it and choose **Update now** to install it—this reloads the app and interrupts playback.
 
 ## Development
 

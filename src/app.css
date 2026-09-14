@@ -477,17 +477,6 @@ input {
   border: 0;
 }
 
-.icon-button-notification {
-  position: absolute;
-  top: 0.35rem;
-  right: 0.35rem;
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 50%;
-  background: var(--color-accent);
-  pointer-events: none;
-}
-
 .app-shell {
   position: relative;
   width: 100%;
@@ -1254,7 +1243,8 @@ a {
   white-space: nowrap;
 }
 
-.error-popover {
+.notification-popover {
+  color: var(--color-text-primary);
   position: fixed;
   inset: 4rem 1rem auto auto;
   top: anchor(bottom, 4rem);
@@ -1268,11 +1258,10 @@ a {
   border-radius: var(--space-sm);
   background: var(--popover-bg);
   backdrop-filter: blur(var(--popover-blur));
-  color: var(--color-text-danger);
   box-shadow: var(--popover-shadow);
 }
 
-.error-popover:popover-open {
+.notification-popover:popover-open {
   display: flex;
   align-items: flex-start;
   gap: var(--space-sm);

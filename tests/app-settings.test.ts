@@ -2,6 +2,7 @@
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
+import { registerSW } from "virtual:pwa-register";
 import { installNavigation } from "./router-test-helpers";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
@@ -19,7 +20,7 @@ vi.mock("../src/session.svelte", async (importOriginal) => {
   };
 });
 
-vi.mock("virtual:pwa-register", () => ({ registerSW: () => async () => {} }));
+vi.mock("virtual:pwa-register", () => ({ registerSW: vi.fn(() => async () => {}) }));
 
 // Start these tests on the settings route; router behavior is tested separately.
 beforeEach(() => {
@@ -33,6 +34,7 @@ afterEach(async () => {
   document.body.innerHTML = "";
   mocks.session = undefined;
   mocks.navigate.mockClear();
+  vi.mocked(registerSW).mockClear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -72,6 +74,42 @@ async function setup(saved = false) {
 }
 
 describe("app settings", () => {
+  it("offers updates in a header popover without modifying Settings", async () => {
+    const { target, button } = await setup();
+    expect(button("App update")).toBeUndefined();
+    const callbacks = vi.mocked(registerSW).mock.calls.at(-1)![0]!;
+    callbacks.onRegisteredSW?.("/sw.js", {
+      waiting: Object.assign(new EventTarget(), { state: "installed" }),
+    } as unknown as ServiceWorkerRegistration);
+    flushSync();
+    expect(button("App update").getAttribute("commandfor")).toBe("update-popover");
+    expect(button("App update").getAttribute("command")).toBe("toggle-popover");
+    const popover = target.querySelector("#update-popover")!;
+    expect(popover.getAttribute("popover")).toBe("auto");
+    expect(popover.textContent).toContain("interrupts playback");
+    expect(button("Close app update").getAttribute("command")).toBe("hide-popover");
+    expect(target.querySelector('.settings-view [aria-label="App update"]')).toBeNull();
+    const settings = target.querySelector('a[aria-label="Settings"]')!;
+    expect(settings.getAttribute("title")).toBe("Settings");
+    expect(settings.querySelector("span")).toBeNull();
+    expect(target.querySelector("#player-dialog #update-popover")).toBeNull();
+    button("Update now").click();
+    flushSync();
+    expect(button("Updating…").disabled).toBe(true);
+    expect(popover.textContent).toContain("Applying the update");
+  });
+
+  it("shows offline setup failures in the update popover without an update action", async () => {
+    const { target, button } = await setup();
+    vi.mocked(registerSW).mock.calls.at(-1)![0]!.onRegisterError?.(new Error("Failed"));
+    flushSync();
+    expect(button("App update")).toBeDefined();
+    expect(target.querySelector("#update-popover")?.textContent).toContain(
+      "Offline app setup failed",
+    );
+    expect(button("Update now")).toBeUndefined();
+  });
+
   it("offers error details beside Settings, never inside the player", async () => {
     const { target, session, button } = await setup();
     expect(button("Show errors")).toBeUndefined();
