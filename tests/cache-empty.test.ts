@@ -29,7 +29,6 @@ describe("unscoped empty Cache", () => {
     expect(cache.lastModified).toBeUndefined();
     expect(cache.queue).toEqual({ tracks: [], index: -1, position: 0 });
     expect(cache.queueDirty).toBe(false);
-    expect(cache.downloadsLoading).toBe(false);
     await cache.load();
     expect(await cache.flush()).toBeUndefined();
     expect(await cache.readImage("cover")).toBeNull();
@@ -45,9 +44,6 @@ describe("unscoped empty Cache", () => {
     const cache = new Cache();
     const timer = vi.spyOn(globalThis, "setTimeout");
     expect(() => cache.setQueue(queue)).toThrow("No account selected");
-    await expect(cache.replaceQueue(queue, new AbortController().signal)).rejects.toThrow(
-      "No account selected",
-    );
     await expect(cache.replaceLibrary(library)).rejects.toThrow("No account selected");
     await expect(
       cache.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" }),

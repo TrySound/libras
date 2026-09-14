@@ -74,7 +74,6 @@ describe("TrackEngine using Cache", () => {
     disk.getDirectory.mockClear();
     expect(engine.getStatus(track.id)).toBe("downloaded");
     expect(engine.downloadJobs).toEqual([]);
-    expect(engine.downloadsLoading).toBe(false);
     expect(disk.getDirectory).not.toHaveBeenCalled();
     const first = await engine.getSource(track);
     expect(first).toMatchObject({ cached: true, url: "blob:track-1" });
@@ -138,7 +137,7 @@ describe("TrackEngine using Cache", () => {
     expect(URL.createObjectURL).toHaveBeenCalledOnce();
   });
 
-  it("proxies hydration progress and waits behind Cache's pending load", async () => {
+  it("waits behind Cache's pending load", async () => {
     const disk = install();
     await seed();
     const reading = deferred();
@@ -152,13 +151,11 @@ describe("TrackEngine using Cache", () => {
     const { cache, engine } = setup();
     const loading = cache.load();
     await reading.promise;
-    expect(engine.downloadsLoading).toBe(true);
     const source = engine.getSource(track);
     expect(URL.createObjectURL).not.toHaveBeenCalled();
     gate.resolve();
     await loading;
     expect((await source).cached).toBe(true);
-    expect(engine.downloadsLoading).toBe(false);
     expect(engine.getStatus(track.id)).toBe("downloaded");
   });
 
@@ -171,7 +168,6 @@ describe("TrackEngine using Cache", () => {
     await expect(cache.load()).rejects.toThrow();
     expect(engine.error).toBeUndefined();
     expect(cache.error).toBeInstanceOf(AggregateError);
-    expect(engine.downloadsLoading).toBe(false);
     engine.activate();
     expect(disk.files.get(path)).toBe("broken");
   });

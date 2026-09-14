@@ -32,8 +32,8 @@ async function path(identity = account) {
   ).join("");
   return `accounts/${hash}/queue.json`;
 }
-async function seed(queue = local(), identity = account, updatedAt = 42) {
-  disk.files.set(await path(identity), JSON.stringify({ value: queue, updatedAt }));
+async function seed(queue = local(), identity = account) {
+  disk.files.set(await path(identity), JSON.stringify(queue));
 }
 async function json(identity = account) {
   return JSON.parse(disk.files.get(await path(identity))!);
@@ -117,7 +117,7 @@ describe("queue engine using the selected cache", () => {
       incoming.length = 0;
       expect(cache.queue).toEqual({ tracks: expected, index, position });
       await queue.flush();
-      expect((await json()).value).toEqual(cache.queue);
+      expect(await json()).toEqual(cache.queue);
     },
   );
 
@@ -131,7 +131,7 @@ describe("queue engine using the selected cache", () => {
     queue.replace([]);
     expect(cache.queue).toEqual({ tracks: [], index: -1, position: 0 });
     await queue.flush();
-    expect((await json()).value).toEqual(cache.queue);
+    expect(await json()).toEqual(cache.queue);
   });
 
   it("does not publish or grant upload permission for an empty enqueue", async () => {
@@ -176,7 +176,7 @@ describe("queue engine using the selected cache", () => {
     await queue.refresh();
     expect(cache.queue).toEqual({ tracks: ids, index, position });
     await cache.flush();
-    expect((await json()).value).toEqual(cache.queue);
+    expect(await json()).toEqual(cache.queue);
   });
 
   it.each([2, -1])("maps local occurrence %s to server selection", async (index) => {
@@ -331,9 +331,9 @@ describe("queue engine using the selected cache", () => {
     expect(notify).toHaveBeenCalledOnce();
     expect(cache.queueDirty).toBe(true);
     expect(disk.state.writes).toBe(0);
-    expect((await json()).value).toEqual(local());
+    expect(await json()).toEqual(local());
     await cache.flush();
-    expect((await json()).value).toEqual(cache.queue);
+    expect(await json()).toEqual(cache.queue);
     expect(notify).toHaveBeenCalledOnce();
   });
 
@@ -409,7 +409,7 @@ describe("queue engine using the selected cache", () => {
       await vi.advanceTimersByTimeAsync(250);
     }
     expect(disk.state.writes).toBe(1);
-    expect((await json()).value.position).toBe(20);
+    expect((await json()).position).toBe(20);
     expect(cache.queue.position).toBe(21);
     expect(connection.write).not.toHaveBeenCalled();
     expect(connection.read).not.toHaveBeenCalled();
@@ -516,7 +516,7 @@ describe("queue engine using the selected cache", () => {
     response.resolve(remote());
     await pending;
     expect(selection.cache!.queue.tracks).toEqual(["other"]);
-    expect((await json(other)).value.tracks).toEqual(["other"]);
+    expect((await json(other)).tracks).toEqual(["other"]);
   });
 
   it("preserves edits made during cache loading and activates without reloading", async () => {
@@ -534,7 +534,7 @@ describe("queue engine using the selected cache", () => {
     queue.activate();
     expect(cache.queue.tracks).toEqual(["local"]);
     await queue.flush();
-    expect((await json()).value.tracks).toEqual(["local"]);
+    expect((await json()).tracks).toEqual(["local"]);
   });
 
   it("uses configured network normalization without retaining server replicas or upload markers", async () => {

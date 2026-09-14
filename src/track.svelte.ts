@@ -77,9 +77,6 @@ export class TrackEngine {
       ...jobs.filter((job) => job.status === "queued"),
     ].map((job) => ({ ...job.descriptor, track: job.track, status: job.status }));
   }
-  get downloadsLoading() {
-    return this.#selection.cache?.downloadsLoading ?? false;
-  }
   get error() {
     return this.#error;
   }

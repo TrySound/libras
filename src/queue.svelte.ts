@@ -255,8 +255,7 @@ export class QueueEngine {
         )
           return;
         const next = fromRemoteQueue(remote, cache.queue);
-        const adopted = await cache.replaceQueue(next, signal);
-        if (!current() || !adopted) return;
+        cache.setQueue(next);
         this.#dirty = false;
         this.#serverWritable = true;
         this.#notify();

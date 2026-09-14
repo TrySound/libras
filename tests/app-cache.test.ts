@@ -9,6 +9,7 @@ import { TrackEngine } from "../src/track.svelte";
 import { CoverEngine } from "../src/cover.svelte";
 
 const mocks = vi.hoisted(() => ({
+  localReady: true,
   cache: undefined as import("../src/cache.svelte").Cache | undefined,
   navigate: vi.fn(),
   options: undefined as
@@ -20,7 +21,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../src/session.svelte", () => ({
   Session: class {
     offlineMode = false;
-    localReady = true;
+    localReady = mocks.localReady;
     constructor(options: NonNullable<typeof mocks.options>) {
       mocks.options = options;
     }
@@ -37,6 +38,7 @@ vi.mock("../src/session.svelte", () => ({
 vi.mock("virtual:pwa-register", () => ({ registerSW: () => async () => {} }));
 
 beforeEach(() => {
+  mocks.localReady = true;
   installNavigation("/library", mocks.navigate);
 });
 
@@ -60,6 +62,18 @@ function library(name: string, savedAt: number): LibrarySnapshot {
     savedAt,
   };
 }
+
+it("uses session restoration state on the downloads page", () => {
+  mocks.localReady = false;
+  installNavigation("/downloads", mocks.navigate);
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  expect(target.textContent).toContain("Restoring local library…");
+  expect(target.textContent).not.toContain("No downloaded files yet.");
+});
 
 it("uses the empty fallback before account selection and when selection is cleared", async () => {
   const disk = installDisk();
@@ -178,6 +192,49 @@ it.each([
   for (const control of controls) expect(control.getAttribute("data-variant")).toBe("ghost");
 });
 
+it.each([
+  { route: "/library", selector: ".tile", menu: "artist-menu-0" },
+  { route: "/library/artist/artist", selector: "a.linkarea", menu: "album-menu-0" },
+  {
+    route: "/library/artist/artist/album/album",
+    selector: "button.linkarea",
+    menu: "album-track-menu-0",
+  },
+])(
+  "keeps available content and menus usable during restoration on $route",
+  async ({ route, selector, menu }) => {
+    installDisk();
+    const cache = new Cache({ host: "https://music.example", username: "listener" });
+    await cache.replaceLibrary({
+      ...library("Artist", 1),
+      albums: [{ id: "album", artistId: "artist", title: "Album", genres: [] }],
+      tracks: [
+        {
+          id: "track",
+          albumId: "album",
+          artistId: "artist",
+          title: "Track",
+          mimeType: "audio/mpeg",
+          genres: [],
+        },
+      ],
+    });
+    mocks.cache = cache;
+    mocks.localReady = false;
+    installNavigation(route, mocks.navigate);
+    const target = document.createElement("main");
+    document.body.append(target);
+    const component = mount(App, { target });
+    cleanups.push(() => unmount(component));
+    flushSync();
+    expect(target.textContent).toContain("Restoring local library…");
+    expect(target.querySelector(selector)).not.toBeNull();
+    const dialog = target.querySelector(`#${menu}`);
+    expect(dialog).not.toBeNull();
+    expect(dialog?.querySelector("button")?.disabled).toBe(false);
+  },
+);
+
 it("renders the selected cache, reacts to replacements, and stops observing a previous account", async () => {
   installDisk();
   const first = new Cache({ host: "https://music.example", username: "first" });
@@ -271,10 +328,10 @@ it("renders download records and jobs without duplicates and switches account pr
   expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
   const loading = second.load();
   flushSync();
-  expect(target.textContent).toContain("Reading downloaded files");
+  expect(target.textContent).not.toContain("Restoring local library…");
   await loading;
   flushSync();
-  expect(target.textContent).not.toContain("Reading downloaded files");
+  expect(target.textContent).toContain("Second download");
 });
 
 it.each([

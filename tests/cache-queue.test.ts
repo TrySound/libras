@@ -71,10 +71,7 @@ describe("queue cache", () => {
       expect(seen.at(-1)).toEqual({ queue: queue(), dirty: false });
       const path = queuePath(disk);
       expect(path).toMatch(/^accounts\/[a-f0-9]{64}\/queue\.json$/);
-      expect(JSON.parse(disk.files.get(path) ?? "null")).toEqual({
-        value: queue(),
-        updatedAt: 1_000,
-      });
+      expect(JSON.parse(disk.files.get(path) ?? "null")).toEqual(queue());
       const restored = new Cache(account);
       await restored.load();
       expect(restored.queue).toEqual(queue());
@@ -97,7 +94,7 @@ describe("queue cache", () => {
     expect(disk.state.writes).toBe(0);
     await vi.advanceTimersByTimeAsync(1);
     expect(disk.state.writes).toBe(1);
-    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").value.position).toBe(20);
+    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").position).toBe(20);
     expect(cache.queueDirty).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -114,7 +111,7 @@ describe("queue cache", () => {
     expect(disk.state.writes).toBe(0);
     await vi.advanceTimersByTimeAsync(100);
     expect(disk.state.writes).toBe(1);
-    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").value.position).toBe(49);
+    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").position).toBe(49);
   });
 
   it("keeps the original five-second deadline for checkpoint-only edits", async () => {
@@ -130,7 +127,7 @@ describe("queue cache", () => {
     expect(disk.state.writes).toBe(1);
     expect(cache.queueDirty).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
-    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").value).toEqual(queue(5));
+    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null")).toEqual(queue(5));
   });
 
   it("copies incoming queue state before adoption and clears superseded checkpoints", async () => {
@@ -138,39 +135,19 @@ describe("queue cache", () => {
     const cache = new Cache(account);
     cache.setQueue(queue(10));
     const incoming = queue(20);
-    const adopted = cache.replaceQueue(incoming, new AbortController().signal);
+    cache.setQueue(incoming);
     incoming.tracks.length = 0;
     incoming.index = -1;
     incoming.position = 0;
     expect(cache.queue).toEqual(queue(20));
-    expect(await adopted).toBe(true);
     expect(cache.queueDirty).toBe(true);
     expect(disk.files.size).toBe(0);
     await cache.flush();
     expect(vi.getTimerCount()).toBe(0);
-    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").value).toEqual(queue(20));
+    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null")).toEqual(queue(20));
     const writes = disk.state.writes;
     await cache.flush();
     expect(disk.state.writes).toBe(writes);
-  });
-
-  it("does not undo adoption when its caller aborts during a later checkpoint", async () => {
-    const disk = installDisk();
-    const cache = new Cache(account);
-    cache.setQueue(queue(10));
-    await cache.flush();
-    const controller = new AbortController();
-    disk.state.afterClose = (path) => {
-      if (path.endsWith("/queue.json")) controller.abort();
-    };
-    expect(await cache.replaceQueue(queue(20), controller.signal)).toBe(true);
-    await cache.flush();
-    expect(controller.signal.aborted).toBe(true);
-    expect(cache.queue).toEqual(queue(20));
-    expect(cache.error).toBeUndefined();
-    expect(cache.queueDirty).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null").value).toEqual(queue(20));
   });
 
   it("coalesces overlapping flushes without rewriting library.json", async () => {
@@ -205,18 +182,12 @@ describe("queue cache", () => {
     expect(cache.queueRevision).toBe(second);
     expect(cache.queueDirty).toBe(true);
     expect(cache.queue.position).toBe(20);
-    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null")).toEqual({
-      value: queue(10),
-      updatedAt: 1_000,
-    });
+    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null")).toEqual(queue(10));
     expect(vi.getTimerCount()).toBe(2);
     await cache.flush();
     expect(cache.queueRevision).toBe(second);
     expect(cache.queueDirty).toBe(false);
-    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null")).toEqual({
-      value: queue(20),
-      updatedAt: 1_001,
-    });
+    expect(JSON.parse(disk.files.get(queuePath(disk)) ?? "null")).toEqual(queue(20));
   });
 
   it.each(["before", "during"])("preserves local edits made %s loading", async (when) => {
@@ -286,19 +257,6 @@ describe("queue cache", () => {
     expect(cache.error).toBeUndefined();
   });
 
-  it("keeps checkpoint timestamps monotonic after loading and clock rollback", async () => {
-    const disk = installDisk();
-    const initial = new Cache(account);
-    initial.setQueue(queue());
-    await initial.flush();
-    const cache = new Cache(account);
-    await cache.load();
-    vi.setSystemTime(500);
-    cache.setQueue(queue(20));
-    await cache.flush();
-    expect(JSON.parse(disk.files.get(queuePath(disk))!).updatedAt).toBe(1_001);
-  });
-
   it.each(["library", "queue", "both"])(
     "restores independent domains when %s is corrupt",
     async (corrupt) => {
@@ -332,7 +290,7 @@ describe("queue cache", () => {
     },
   );
 
-  it.each(["unexpected field", "invalid selection", "invalid timestamp", "flat record"])(
+  it.each(["unexpected field", "invalid selection", "wrapped record"])(
     "rejects a persisted %s and preserves the file until an explicit edit",
     async (kind) => {
       const disk = installDisk();
@@ -342,11 +300,8 @@ describe("queue cache", () => {
       const path = queuePath(disk);
       const value = JSON.parse(disk.files.get(path) ?? "null");
       if (kind === "unexpected field") value.unexpected = true;
-      if (kind === "invalid selection") value.value.index = 99;
-      if (kind === "invalid timestamp") value.updatedAt = -1;
-      const corrupt = JSON.stringify(
-        kind === "flat record" ? { ...value.value, updatedAt: value.updatedAt } : value,
-      );
+      if (kind === "invalid selection") value.index = 99;
+      const corrupt = JSON.stringify(kind === "wrapped record" ? { value } : value);
       disk.files.set(path, corrupt);
       const restored = new Cache(account);
       await expect(restored.load()).rejects.toBeInstanceOf(AggregateError);
@@ -355,7 +310,7 @@ describe("queue cache", () => {
       restored.setQueue(queue(20));
       await restored.flush();
       expect(restored.error).toBeUndefined();
-      expect(JSON.parse(disk.files.get(path) ?? "null").value.index).toBe(2);
+      expect(JSON.parse(disk.files.get(path) ?? "null").index).toBe(2);
     },
   );
 

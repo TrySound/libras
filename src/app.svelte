@@ -97,7 +97,6 @@
         ? String(player.error)
         : "",
   );
-  const offlineScanning = $derived(offlineMode && trackEngine.downloadsLoading);
   let loading = $derived(!session.localReady);
 
   onMount(() => installLongPress());
@@ -456,8 +455,8 @@
         <small class="type-small text-muted">
           {#if !session.auth}
             Connect to a server to browse online.
-          {:else if offlineScanning}
-            Reading downloads catalog…
+          {:else if loading}
+            Restoring local library…
           {:else}
             Show only music downloaded to this device.
           {/if}
@@ -469,7 +468,7 @@
           type="checkbox"
           aria-label="Offline library"
           checked={session.offlineMode}
-          disabled={!session.auth || session.busy || offlineScanning}
+          disabled={!session.auth || session.busy}
           onchange={(event) => void session.setOfflineMode(event.currentTarget.checked)}
         />
       </label>
@@ -488,8 +487,8 @@
         {trackEngine.error instanceof Error ? trackEngine.error.message : String(trackEngine.error)}
       </p>
     {/if}
-    {#if trackEngine.downloadsLoading}
-      <p class="type-body text-muted" role="status">Reading downloaded files…</p>
+    {#if loading}
+      <p class="type-body text-muted" role="status">Restoring local library…</p>
     {/if}
     {#if downloads.length}
       <div class="wings">
@@ -540,7 +539,7 @@
           </div>
         {/each}
       </div>
-    {:else if !trackEngine.downloadsLoading}
+    {:else if !loading}
       <p class="type-body text-muted">No downloaded files yet.</p>
     {/if}
   </section>
@@ -578,12 +577,13 @@
         </div>
       </div>
 
-      {#if offlineScanning}
+      {#if loading}
         <div class="empty-state">
           <div class="scan-spinner">{@render icon("loading")}</div>
-          <p class="type-body">Checking downloaded music…</p>
+          <p class="type-body">Restoring local library…</p>
         </div>
-      {:else if visibleArtists.length > 0}
+      {/if}
+      {#if visibleArtists.length > 0}
         <div class="tiles-grid">
           {#each visibleArtists as artist, index}
             {@const menuId = `artist-menu-${index}`}
@@ -615,7 +615,7 @@
             </a>
           {/each}
         </div>
-      {:else}
+      {:else if !loading}
         <div class="empty-state">
           <span>{@render icon("music")}</span>
           <p class="type-body">
@@ -627,7 +627,7 @@
       {@render connectLibrary()}
     {/if}
   </section>
-  {#if libraryAvailable && !offlineScanning}
+  {#if libraryAvailable}
     {#each visibleArtists as artist, index}
       {@const menuId = `artist-menu-${index}`}
       <dialog
@@ -729,77 +729,78 @@
         </button>
       </div>
 
-      {#if offlineScanning}
+      {#if loading}
         <div class="empty-state">
           <div class="scan-spinner">{@render icon("loading")}</div>
-          <p class="type-body">Checking downloaded music…</p>
+          <p class="type-body">Restoring local library…</p>
         </div>
-      {:else}
-        <div class="wings">
-          {#each visibleAlbums as album, index}
-            {@const albumMenuId = `album-menu-${index}`}
-            {@const visibleTracks = offlineMode
-              ? (cache.albumTracks.get(album.id) ?? []).filter(
-                  (track) => trackEngine.getStatus(track.id) === "downloaded",
-                )
-              : (cache.albumTracks.get(album.id) ?? [])}
-            {@const cover = coverEngine.ensureAlbumCover(album.id)}
-            <article class="wings-item row-button">
-              <a
-                class="linkarea"
-                {@attach nearViewport((visible) => {
-                  if (visible) cover.load();
-                })}
-                href={`#${albumPath(artist, album)}`}
-                aria-label={`Open ${album.title}`}
-                data-longpressfor={albumMenuId}
-                data-longpress="show-modal"
-                title={`${album.title} — hold for actions`}
-              ></a>
-              <span class="track-leading">
-                <span
-                  class="cover album-cover"
-                  style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
-                >
-                  {#if cover.source}
-                    <img src={cover.source} alt="" />
-                  {:else}
-                    <span>{@render icon("music")}</span>
-                  {/if}
-                </span>
+      {/if}
+      <div class="wings">
+        {#each visibleAlbums as album, index}
+          {@const albumMenuId = `album-menu-${index}`}
+          {@const visibleTracks = offlineMode
+            ? (cache.albumTracks.get(album.id) ?? []).filter(
+                (track) => trackEngine.getStatus(track.id) === "downloaded",
+              )
+            : (cache.albumTracks.get(album.id) ?? [])}
+          {@const cover = coverEngine.ensureAlbumCover(album.id)}
+          <article class="wings-item row-button">
+            <a
+              class="linkarea"
+              {@attach nearViewport((visible) => {
+                if (visible) cover.load();
+              })}
+              href={`#${albumPath(artist, album)}`}
+              aria-label={`Open ${album.title}`}
+              data-longpressfor={albumMenuId}
+              data-longpress="show-modal"
+              title={`${album.title} — hold for actions`}
+            ></a>
+            <span class="track-leading">
+              <span
+                class="cover album-cover"
+                style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
+              >
+                {#if cover.source}
+                  <img src={cover.source} alt="" />
+                {:else}
+                  <span>{@render icon("music")}</span>
+                {/if}
               </span>
-              <span class="stack-xs">
-                <strong
-                  class="type-title"
-                  style:view-transition-name={CSS.escape(`album-name-${album.id}`)}
-                  >{album.title}</strong
-                >
-                <small class="type-small text-muted">
-                  {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
-                </small>
-              </span>
-              <span class="track-actions">
-                <button
-                  class="icon-button"
-                  data-size="sm"
-                  data-variant="ghost"
-                  commandfor={albumMenuId}
-                  command="show-modal"
-                  title={`Open menu for ${album.title}`}
-                >
-                  {@render icon("menu")}
-                </button>
-              </span>
-            </article>
-          {:else}
+            </span>
+            <span class="stack-xs">
+              <strong
+                class="type-title"
+                style:view-transition-name={CSS.escape(`album-name-${album.id}`)}
+                >{album.title}</strong
+              >
+              <small class="type-small text-muted">
+                {album.year ?? "Unknown year"} · {visibleTracks.length} tracks
+              </small>
+            </span>
+            <span class="track-actions">
+              <button
+                class="icon-button"
+                data-size="sm"
+                data-variant="ghost"
+                commandfor={albumMenuId}
+                command="show-modal"
+                title={`Open menu for ${album.title}`}
+              >
+                {@render icon("menu")}
+              </button>
+            </span>
+          </article>
+        {:else}
+          {#if !loading}
             <div class="empty-state">
               <p class="type-body">
                 {offlineMode ? "No downloaded albums." : "No albums found."}
               </p>
             </div>
-          {/each}
-        </div>
-      {/if}
+          {/if}
+        {/each}
+      </div>
     {:else if !loading}
       <div class="empty-state">
         <span>{@render icon("music")}</span>
@@ -851,50 +852,48 @@
         </div>
       </div>
     </dialog>
-    {#if !offlineScanning}
-      {#each visibleAlbums as album, index}
-        {@const albumMenuId = `album-menu-${index}`}
-        <dialog
-          id={albumMenuId}
-          class="action-menu"
-          aria-labelledby={`${albumMenuId}-title`}
-          closedby="closerequest"
-          use:swipeToDismiss
-          onclick={(event) => event.currentTarget.close()}
-        >
-          <div class="stack-sm">
-            <header id={`${albumMenuId}-title`} class="type-title">
-              {album.title}
-            </header>
-            <div class="wings">
-              <button class="wings-item row-button" onclick={() => playAlbum(album)}>
-                {@render icon("play")}
-                <span>Play</span>
-              </button>
-              <button
-                class="wings-item row-button"
-                onclick={() => playNext(cache.albumTracks.get(album.id) ?? [])}
-              >
-                {@render icon("next")}
-                <span>Play next</span>
-              </button>
-              <button
-                class="wings-item row-button"
-                onclick={() => playLast(cache.albumTracks.get(album.id) ?? [])}
-              >
-                {@render icon("plus")}
-                <span>Play last</span>
-              </button>
-              <button class="wings-item row-button" onclick={() => downloadAlbum(album)}>
-                {@render icon("download")}
-                <span>Download</span>
-              </button>
-              <button class="wings-item row-button"><span></span>Cancel</button>
-            </div>
+    {#each visibleAlbums as album, index}
+      {@const albumMenuId = `album-menu-${index}`}
+      <dialog
+        id={albumMenuId}
+        class="action-menu"
+        aria-labelledby={`${albumMenuId}-title`}
+        closedby="closerequest"
+        use:swipeToDismiss
+        onclick={(event) => event.currentTarget.close()}
+      >
+        <div class="stack-sm">
+          <header id={`${albumMenuId}-title`} class="type-title">
+            {album.title}
+          </header>
+          <div class="wings">
+            <button class="wings-item row-button" onclick={() => playAlbum(album)}>
+              {@render icon("play")}
+              <span>Play</span>
+            </button>
+            <button
+              class="wings-item row-button"
+              onclick={() => playNext(cache.albumTracks.get(album.id) ?? [])}
+            >
+              {@render icon("next")}
+              <span>Play next</span>
+            </button>
+            <button
+              class="wings-item row-button"
+              onclick={() => playLast(cache.albumTracks.get(album.id) ?? [])}
+            >
+              {@render icon("plus")}
+              <span>Play last</span>
+            </button>
+            <button class="wings-item row-button" onclick={() => downloadAlbum(album)}>
+              {@render icon("download")}
+              <span>Download</span>
+            </button>
+            <button class="wings-item row-button"><span></span>Cancel</button>
           </div>
-        </dialog>
-      {/each}
-    {/if}
+        </div>
+      </dialog>
+    {/each}
   {/if}
 {/snippet}
 
@@ -963,73 +962,74 @@
         </button>
       </div>
 
-      {#if offlineScanning}
+      {#if loading}
         <div class="empty-state">
           <div class="scan-spinner">{@render icon("loading")}</div>
-          <p class="type-body">Checking downloaded music…</p>
+          <p class="type-body">Restoring local library…</p>
         </div>
-      {:else}
-        <div class="wings">
-          {#each visibleTracks as track, index}
-            {@const trackMenuId = `album-track-menu-${index}`}
-            {@const downloadStatus = trackEngine.getStatus(track.id)}
-            <div class="wings-item row-button">
+      {/if}
+      <div class="wings">
+        {#each visibleTracks as track, index}
+          {@const trackMenuId = `album-track-menu-${index}`}
+          {@const downloadStatus = trackEngine.getStatus(track.id)}
+          <div class="wings-item row-button">
+            <button
+              class="linkarea"
+              aria-label={`Play ${track.title}`}
+              onclick={() => playTrack(track)}
+              data-longpressfor={trackMenuId}
+              data-longpress="show-modal"
+              title={`${track.title} — hold for actions`}
+            ></button>
+            <span class="track-leading">
+              {#if currentTrack?.id === track.id && playbackLoading}
+                <span role="img" aria-label="Loading playback">
+                  {@render icon("loading")}
+                </span>
+              {:else if currentTrack?.id === track.id && player?.playing}
+                <span role="img" aria-label="Playing">
+                  {@render icon("sound-bars")}
+                </span>
+              {:else if currentTrack?.id === track.id}
+                <span role="img" aria-label="Current track, not playing">
+                  {@render icon("pause")}
+                </span>
+              {:else if downloadStatus === "downloading"}
+                <span role="img" aria-label="Downloading">
+                  {@render icon("loading")}
+                </span>
+              {:else if downloadStatus === "queued"}
+                <span role="img" aria-label="Queued for download">
+                  {@render icon("clock")}
+                </span>
+              {:else}
+                {track.number ?? index + 1}
+              {/if}
+            </span>
+            <span>{track.title}</span>
+            <span class="track-actions">
               <button
-                class="linkarea"
-                aria-label={`Play ${track.title}`}
-                onclick={() => playTrack(track)}
-                data-longpressfor={trackMenuId}
-                data-longpress="show-modal"
-                title={`${track.title} — hold for actions`}
-              ></button>
-              <span class="track-leading">
-                {#if currentTrack?.id === track.id && playbackLoading}
-                  <span role="img" aria-label="Loading playback">
-                    {@render icon("loading")}
-                  </span>
-                {:else if currentTrack?.id === track.id && player?.playing}
-                  <span role="img" aria-label="Playing">
-                    {@render icon("sound-bars")}
-                  </span>
-                {:else if currentTrack?.id === track.id}
-                  <span role="img" aria-label="Current track, not playing">
-                    {@render icon("pause")}
-                  </span>
-                {:else if downloadStatus === "downloading"}
-                  <span role="img" aria-label="Downloading">
-                    {@render icon("loading")}
-                  </span>
-                {:else if downloadStatus === "queued"}
-                  <span role="img" aria-label="Queued for download">
-                    {@render icon("clock")}
-                  </span>
-                {:else}
-                  {track.number ?? index + 1}
-                {/if}
-              </span>
-              <span>{track.title}</span>
-              <span class="track-actions">
-                <button
-                  class="icon-button"
-                  data-size="sm"
-                  data-variant="ghost"
-                  commandfor={trackMenuId}
-                  command="show-modal"
-                  title={`Open menu for ${track.title}`}
-                >
-                  {@render icon("menu")}
-                </button>
-              </span>
-            </div>
-          {:else}
+                class="icon-button"
+                data-size="sm"
+                data-variant="ghost"
+                commandfor={trackMenuId}
+                command="show-modal"
+                title={`Open menu for ${track.title}`}
+              >
+                {@render icon("menu")}
+              </button>
+            </span>
+          </div>
+        {:else}
+          {#if !loading}
             <div class="empty-state">
               <p class="type-body">
                 {offlineMode ? "No downloaded tracks." : "No tracks found."}
               </p>
             </div>
-          {/each}
-        </div>
-      {/if}
+          {/if}
+        {/each}
+      </div>
     {:else if !loading}
       <div class="empty-state">
         <span>{@render icon("music")}</span>
@@ -1087,60 +1087,58 @@
         </div>
       </div>
     </dialog>
-    {#if !offlineScanning}
-      {#each visibleTracks as track, index}
-        {@const trackMenuId = `album-track-menu-${index}`}
-        {@const downloadStatus = trackEngine.getStatus(track.id)}
-        <dialog
-          id={trackMenuId}
-          class="action-menu"
-          aria-labelledby={`${trackMenuId}-title`}
-          closedby="closerequest"
-          use:swipeToDismiss
-          onclick={(event) => event.currentTarget.close()}
-        >
-          <div class="stack-sm">
-            <header id={`${trackMenuId}-title`} class="type-title">
-              {track.title}
-            </header>
-            <div class="wings">
-              <button class="wings-item row-button" onclick={() => playTrack(track)}>
-                {@render icon("play")}
-                <span>Play</span>
-              </button>
-              <button class="wings-item row-button" onclick={() => playNext([track])}>
-                {@render icon("next")}
-                <span>Play next</span>
-              </button>
-              <button class="wings-item row-button" onclick={() => playLast([track])}>
-                {@render icon("plus")}
-                <span>Play last</span>
-              </button>
-              <button
-                class="wings-item row-button"
-                disabled={downloadStatus !== "idle"}
-                onclick={() => downloadTrack(track)}
-              >
-                {#if downloadStatus === "downloaded"}
-                  {@render icon("check")}
-                  <span>Downloaded</span>
-                {:else if downloadStatus === "queued"}
-                  {@render icon("clock")}
-                  <span>Queued</span>
-                {:else if downloadStatus === "downloading"}
-                  {@render icon("loading")}
-                  <span>Downloading…</span>
-                {:else}
-                  {@render icon("download")}
-                  <span>Download</span>
-                {/if}
-              </button>
-              <button class="wings-item row-button"><span></span>Cancel</button>
-            </div>
+    {#each visibleTracks as track, index}
+      {@const trackMenuId = `album-track-menu-${index}`}
+      {@const downloadStatus = trackEngine.getStatus(track.id)}
+      <dialog
+        id={trackMenuId}
+        class="action-menu"
+        aria-labelledby={`${trackMenuId}-title`}
+        closedby="closerequest"
+        use:swipeToDismiss
+        onclick={(event) => event.currentTarget.close()}
+      >
+        <div class="stack-sm">
+          <header id={`${trackMenuId}-title`} class="type-title">
+            {track.title}
+          </header>
+          <div class="wings">
+            <button class="wings-item row-button" onclick={() => playTrack(track)}>
+              {@render icon("play")}
+              <span>Play</span>
+            </button>
+            <button class="wings-item row-button" onclick={() => playNext([track])}>
+              {@render icon("next")}
+              <span>Play next</span>
+            </button>
+            <button class="wings-item row-button" onclick={() => playLast([track])}>
+              {@render icon("plus")}
+              <span>Play last</span>
+            </button>
+            <button
+              class="wings-item row-button"
+              disabled={downloadStatus !== "idle"}
+              onclick={() => downloadTrack(track)}
+            >
+              {#if downloadStatus === "downloaded"}
+                {@render icon("check")}
+                <span>Downloaded</span>
+              {:else if downloadStatus === "queued"}
+                {@render icon("clock")}
+                <span>Queued</span>
+              {:else if downloadStatus === "downloading"}
+                {@render icon("loading")}
+                <span>Downloading…</span>
+              {:else}
+                {@render icon("download")}
+                <span>Download</span>
+              {/if}
+            </button>
+            <button class="wings-item row-button"><span></span>Cancel</button>
           </div>
-        </dialog>
-      {/each}
-    {/if}
+        </div>
+      </dialog>
+    {/each}
   {/if}
 {/snippet}
 

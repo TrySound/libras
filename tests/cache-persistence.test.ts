@@ -135,7 +135,7 @@ describe("general checkpoints", () => {
     await Promise.all([saving, next]);
     expect(cache.queueDirty).toBe(false);
     expect(disk.state.writes).toBe(2);
-    expect(JSON.parse([...disk.files.values()][0]).value.position).toBe(101);
+    expect(JSON.parse([...disk.files.values()][0]).position).toBe(101);
   });
 
   it("flushes independent domains even when one fails, and queue durability stays independent", async () => {

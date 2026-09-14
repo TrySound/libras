@@ -307,7 +307,7 @@ describe("playback engine", () => {
       const account = { host: "https://music.example.com", username: "listener" };
       const local = { tracks: ["a", "b"], index: 0, position: 0 };
       await selection.cache!.flush();
-      const save = vi.spyOn(selection.cache!, "replaceQueue");
+      const save = vi.spyOn(selection.cache!, "setQueue");
       const connection = {
         account,
         signal: new AbortController().signal,
@@ -319,6 +319,7 @@ describe("playback engine", () => {
       if (paused) player.pause();
       const source = audio.src;
       const loads = audio.load.mock.calls.length;
+      save.mockClear();
       await queue.refresh();
       expect(selection.cache!.queue.tracks).toEqual(local.tracks);
       expect(player.track?.id).toBe("a");

@@ -41,7 +41,6 @@ const queueSchema = v.pipe(
   v.check((queue) => validSelection(queue), "Invalid queue selection."),
 );
 export type CachedQueue = v.InferOutput<typeof queueSchema>;
-const queueRecordSchema = v.strictObject({ value: queueSchema, updatedAt: timestamp });
 
 const imagesSchema = v.array(imageSchema);
 export interface CachedImage extends ImageMetadata {
@@ -153,11 +152,6 @@ class Disk {
       }
     });
   }
-}
-
-interface CheckpointRecord<T> {
-  readonly value: T;
-  readonly updatedAt: number;
 }
 
 interface CheckpointOptions<T> {
@@ -281,7 +275,6 @@ interface CatalogOptions<R> {
 class BinaryCatalog<R extends BinaryRecord> {
   readonly store: CheckpointStore<SvelteMap<string, R>>;
   #error = $state.raw<unknown>();
-  #loads = $state(0);
   #serial = serial();
   // Only filenames, not old catalogs or binary data, survive until a checkpoint.
   #obsolete = new Map<string, number>();
@@ -317,9 +310,6 @@ class BinaryCatalog<R extends BinaryRecord> {
   get records(): ReadonlyMap<string, R> {
     return this.store.value;
   }
-  get loading() {
-    return this.#loads > 0;
-  }
 
   /** One error boundary per public Cache operation, not per internal I/O step. */
   async operation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -335,14 +325,9 @@ class BinaryCatalog<R extends BinaryRecord> {
     }
   }
 
-  /** Hydration is observable and does not open binary files. */
+  /** Hydration does not open binary files. */
   async load(signal?: AbortSignal) {
-    this.#loads++;
-    try {
-      await this.operation(() => this.store.load(signal), signal);
-    } finally {
-      this.#loads--;
-    }
+    await this.operation(() => this.store.load(signal), signal);
   }
 
   #replace(key: string, next?: R) {
@@ -443,9 +428,6 @@ function parseLibrary(value: unknown): Immutable<LibrarySnapshot> {
     unique<{ id: string }>(records, (item) => item.id);
   return record;
 }
-function parseQueue(value: unknown): Immutable<v.InferOutput<typeof queueRecordSchema>> {
-  return v.parse(queueRecordSchema, value);
-}
 function parseImages(value: unknown): Immutable<v.InferOutput<typeof imagesSchema>> {
   const catalog = v.parse(imagesSchema, value);
   unique(catalog, (image) => image.id);
@@ -523,7 +505,7 @@ export class Cache {
   readonly account: Readonly<Account> | undefined;
   readonly #library: CheckpointStore<ReturnType<typeof prepareLibrary>>;
   readonly #disk: Disk | undefined;
-  readonly #queue: CheckpointStore<CheckpointRecord<Immutable<CachedQueue>>>;
+  readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
   readonly #images: BinaryCatalog<Immutable<ImageRecord>>;
   readonly #downloads: BinaryCatalog<Immutable<CachedDownload>>;
 
@@ -545,10 +527,10 @@ export class Cache {
         tracks: [...value.tracks.values()],
       }),
     });
-    this.#queue = new CheckpointStore(this.#disk, {
+    this.#queue = new CheckpointStore<Immutable<CachedQueue>>(this.#disk, {
       document: "queue",
-      initial: { value: { tracks: [], index: -1, position: 0 }, updatedAt: 0 },
-      parse: parseQueue,
+      initial: { tracks: [], index: -1, position: 0 },
+      parse: (value) => v.parse(queueSchema, value),
       serialize: (value) => value,
     });
     this.#images = new BinaryCatalog(this.#disk, {
@@ -612,7 +594,7 @@ export class Cache {
   }
 
   get queue() {
-    return this.#queue.value.value;
+    return this.#queue.value;
   }
   get queueRevision() {
     return this.#queue.revision;
@@ -626,10 +608,7 @@ export class Cache {
     this.#requireAccount();
     const tracks = this.queue.tracks;
     return this.#queue.set(
-      {
-        value: { ...queue, tracks: queue.tracks === tracks ? tracks : [...queue.tracks] },
-        updatedAt: Math.max(Date.now(), this.#queue.value.updatedAt + 1),
-      },
+      { ...queue, tracks: queue.tracks === tracks ? tracks : [...queue.tracks] },
       options.checkpoint ?? false,
     );
   }
@@ -668,14 +647,6 @@ export class Cache {
       this.#images.store.dirty ||
       this.#downloads.store.dirty
     );
-  }
-
-  /** Incoming data follows the same memory-first path as local edits. */
-  async replaceQueue(queue: Immutable<CachedQueue>, signal: AbortSignal): Promise<boolean> {
-    this.#requireAccount();
-    if (signal.aborted) return false;
-    this.setQueue(queue);
-    return true;
   }
 
   /** Load bytes on demand. Missing/incomplete files invalidate only their matching record. */
@@ -742,9 +713,6 @@ export class Cache {
   get downloads() {
     return this.#downloads.records;
   }
-  get downloadsLoading() {
-    return this.#downloads.loading;
-  }
 
   /** Open a file lazily without copying audio into RAM or adopting unlisted bytes. */
   readDownload(
@@ -781,8 +749,6 @@ export class Cache {
         const key = downloadKey(candidate.track.id, candidate.format);
         const save = async () => {
           signal.throwIfAborted();
-          // Hydrate once before checking the in-memory catalog.
-          await this.#downloads.store.load(signal);
           const cached = await this.#downloads.read(key, signal);
           if (cached) return cached.file;
           const expected = this.downloads.get(key)?.fileName;
