@@ -1107,6 +1107,7 @@ a {
 
 .player-queue {
   min-width: 0;
+  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
 }
 
 .empty-state {

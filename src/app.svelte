@@ -373,8 +373,8 @@
     >
   </header>
 
-  <section class="view player-view">
-    <div class="player-main">
+  <section class="player-view">
+    <div class="view player-main">
       <div
         class="artwork"
         {@attach currentTrack
@@ -480,7 +480,7 @@
     </div>
 
     <div class="player-queue">
-      <div class="section-heading">
+      <div class="view section-heading">
         <div>
           <span class="type-eyebrow text-muted">Up next</span>
           <h2 class="type-heading">
@@ -536,9 +536,9 @@
           {/each}
         </div>
       {:else if cache.queue.tracks.length > 0}
-        <p class="type-body text-muted">No available tracks.</p>
+        <p class="view type-body text-muted">No available tracks.</p>
       {:else}
-        <p class="type-body text-muted">The queue is empty.</p>
+        <p class="view type-body text-muted">The queue is empty.</p>
       {/if}
     </div>
   </section>
