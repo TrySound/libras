@@ -6,7 +6,6 @@
   import type { PlaybackController } from "./playback-controller.svelte";
   import type { RouteParams } from "./router.svelte";
   import type { Session } from "./session.svelte";
-  import { swipeToDismiss } from "./swipe-to-dismiss";
 
   interface Props {
     params: RouteParams;
@@ -195,7 +194,7 @@
     class="action-menu"
     aria-labelledby="album-page-menu-title"
     closedby="closerequest"
-    use:swipeToDismiss
+    data-swipedown="close"
     onclick={(event) => event.currentTarget.close()}
   >
     <div class="stack-sm">
@@ -246,7 +245,7 @@
       class="action-menu"
       aria-labelledby={`${trackMenuId}-title`}
       closedby="closerequest"
-      use:swipeToDismiss
+      data-swipedown="close"
       onclick={(event) => event.currentTarget.close()}
     >
       <div class="stack-sm">

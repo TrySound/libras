@@ -19,7 +19,7 @@
   import { Network } from "./network.svelte";
   import Router, { navigate, type RouteParams } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
-  import { swipeToDismiss } from "./swipe-to-dismiss";
+  import { installSwipeToDismiss } from "./swipe-to-dismiss";
 
   type Album = Immutable<AlbumRecord>;
   type Artist = Immutable<ArtistRecord>;
@@ -104,6 +104,7 @@
   const hasErrors = $derived(alerts.some((alert) => alert.message));
 
   onMount(() => installLongPress());
+  onMount(() => installSwipeToDismiss());
   onMount(() => playback.attach(player!));
 
   onDestroy(() => {
@@ -360,7 +361,7 @@
   </div>
 {/if}
 
-<dialog id="player-dialog" class="player-dialog" closedby="any" use:swipeToDismiss>
+<dialog id="player-dialog" class="player-dialog" closedby="any" data-swipedown="close">
   <header class="topbar wings">
     <button
       class="icon-button"

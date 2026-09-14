@@ -1,24 +1,30 @@
-export function swipeToDismiss(dialog: HTMLDialogElement) {
+export function installSwipeToDismiss(root: Document = document) {
+  let dialog: HTMLDialogElement | undefined;
   let touchId: number | undefined;
   let startX = 0;
   let startY = 0;
   let dragging = false;
   let threshold = 96;
+  let suppressed: HTMLDialogElement | undefined;
   let suppressClickUntil = 0;
 
   const reset = () => {
     touchId = undefined;
     dragging = false;
-    dialog.removeAttribute("data-dragging");
-    dialog.style.removeProperty("--swipe-offset");
+    dialog?.removeAttribute("data-dragging");
+    dialog?.style.removeProperty("--swipe-offset");
+    dialog = undefined;
   };
 
   const start = (event: TouchEvent) => {
-    if (event.touches.length !== 1) {
-      reset();
-      return;
-    }
-    if (!dialog.open || !(event.target instanceof Element) || !dialog.contains(event.target))
+    reset();
+    if (event.touches.length !== 1 || !(event.target instanceof Element)) return;
+    const target = event.target.closest("dialog");
+    if (
+      !(target instanceof HTMLDialogElement) ||
+      !target.open ||
+      target.dataset.swipedown !== "close"
+    )
       return;
     // Inputs keep their native gestures, including the playback seek slider.
     if (event.target.closest("input, textarea, select, [contenteditable]")) return;
@@ -26,10 +32,11 @@ export function swipeToDismiss(dialog: HTMLDialogElement) {
     // Do not steal a gesture from content that can still scroll upward.
     for (let node: Element | null = event.target; node; node = node.parentElement) {
       if (node.scrollTop > 0) return;
-      if (node === dialog) break;
+      if (node === target) break;
     }
 
     const touch = event.touches[0];
+    dialog = target;
     touchId = touch.identifier;
     startX = touch.clientX;
     startY = touch.clientY;
@@ -37,7 +44,11 @@ export function swipeToDismiss(dialog: HTMLDialogElement) {
   };
 
   const move = (event: TouchEvent) => {
-    if (touchId === undefined) return;
+    if (touchId === undefined || !dialog) return;
+    if (!dialog.isConnected || !dialog.open || event.touches.length !== 1) {
+      reset();
+      return;
+    }
     const touch = Array.from(event.touches).find((touch) => touch.identifier === touchId);
     if (!touch) return;
     const dy = touch.clientY - startY;
@@ -56,6 +67,7 @@ export function swipeToDismiss(dialog: HTMLDialogElement) {
     }
     event.preventDefault();
     dragging = true;
+    suppressed = dialog;
     suppressClickUntil = Date.now() + 750;
     dialog.setAttribute("data-dragging", "");
     dialog.style.setProperty("--swipe-offset", `${Math.max(0, dy)}px`);
@@ -63,42 +75,50 @@ export function swipeToDismiss(dialog: HTMLDialogElement) {
 
   const end = (event: TouchEvent) => {
     const touch = Array.from(event.changedTouches).find((touch) => touch.identifier === touchId);
-    if (!touch) return;
-    const dismiss = dragging && touch.clientY - startY >= threshold;
+    if (!touch || !dialog) return;
+    const target = dialog;
+    const dismiss =
+      target.isConnected && target.open && dragging && touch.clientY - startY >= threshold;
     if (dragging) {
       if (event.cancelable) event.preventDefault();
       suppressClickUntil = Date.now() + 750;
     }
     reset();
-    if (dismiss) dialog.close();
+    if (dismiss) target.close();
   };
 
   const cancel = () => reset();
+  const close = (event: Event) => {
+    if (event.target === dialog) reset();
+  };
   const click = (event: MouseEvent) => {
     // Prevent a drag starting on a button/link from also activating that control.
-    if (event.detail !== 0 && Date.now() < suppressClickUntil) {
+    if (Date.now() >= suppressClickUntil) suppressed = undefined;
+    if (event.detail !== 0 && event.target instanceof Node && suppressed?.contains(event.target)) {
       event.preventDefault();
       event.stopImmediatePropagation();
+      suppressed = undefined;
     }
-    suppressClickUntil = 0;
   };
 
-  dialog.addEventListener("touchstart", start, { passive: true });
-  dialog.addEventListener("touchmove", move, { passive: false });
-  dialog.addEventListener("touchend", end, { passive: false });
-  dialog.addEventListener("touchcancel", cancel);
-  dialog.addEventListener("click", click, true);
-  dialog.addEventListener("close", reset);
+  root.addEventListener("touchstart", start, { passive: true });
+  root.addEventListener("touchmove", move, { passive: false });
+  root.addEventListener("touchend", end, { passive: false });
+  root.addEventListener("touchcancel", cancel);
+  root.addEventListener("click", click, true);
+  // Dialog close events do not bubble.
+  root.addEventListener("close", close, true);
+  root.addEventListener("visibilitychange", cancel);
 
-  return {
-    destroy() {
-      dialog.removeEventListener("touchstart", start);
-      dialog.removeEventListener("touchmove", move);
-      dialog.removeEventListener("touchend", end);
-      dialog.removeEventListener("touchcancel", cancel);
-      dialog.removeEventListener("click", click, true);
-      dialog.removeEventListener("close", reset);
-      reset();
-    },
+  return () => {
+    root.removeEventListener("touchstart", start);
+    root.removeEventListener("touchmove", move);
+    root.removeEventListener("touchend", end);
+    root.removeEventListener("touchcancel", cancel);
+    root.removeEventListener("click", click, true);
+    root.removeEventListener("close", close, true);
+    root.removeEventListener("visibilitychange", cancel);
+    reset();
+    suppressed = undefined;
   };
 }

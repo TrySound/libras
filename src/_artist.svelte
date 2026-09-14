@@ -7,7 +7,6 @@
   import type { RouteParams } from "./router.svelte";
   import type { Session } from "./session.svelte";
   import { nearViewport } from "./viewport";
-  import { swipeToDismiss } from "./swipe-to-dismiss";
 
   interface Props {
     params: RouteParams;
@@ -198,7 +197,7 @@
     class="action-menu"
     aria-labelledby="artist-page-menu-title"
     closedby="closerequest"
-    use:swipeToDismiss
+    data-swipedown="close"
     onclick={(event) => event.currentTarget.close()}
   >
     <div class="stack-sm">
@@ -245,7 +244,7 @@
       class="action-menu"
       aria-labelledby={`${albumMenuId}-title`}
       closedby="closerequest"
-      use:swipeToDismiss
+      data-swipedown="close"
       onclick={(event) => event.currentTarget.close()}
     >
       <div class="stack-sm">

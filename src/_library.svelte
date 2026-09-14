@@ -6,7 +6,6 @@
   import type { PlaybackController } from "./playback-controller.svelte";
   import type { Session } from "./session.svelte";
   import { viewportContent } from "./viewport";
-  import { swipeToDismiss } from "./swipe-to-dismiss";
 
   interface Props {
     cache: Cache;
@@ -129,7 +128,7 @@
       class="action-menu"
       aria-labelledby={`${menuId}-title`}
       closedby="closerequest"
-      use:swipeToDismiss
+      data-swipedown="close"
       onclick={(event) => event.currentTarget.close()}
     >
       <div class="stack-sm">
