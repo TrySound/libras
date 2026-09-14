@@ -60,6 +60,32 @@ afterEach(() => {
 });
 
 describe("TrackEngine using Cache", () => {
+  it.each(["no account", "offline"])("exposes download setup failures: %s", async (scenario) => {
+    install();
+    const { engine, selection } = setup();
+    if (scenario === "no account") selection.cache = undefined;
+
+    const pending = engine.cache(track);
+    await expect(pending).rejects.toBeInstanceOf(Error);
+    await expect(pending).rejects.toBe(engine.error);
+    expect(engine.downloadJobs).toEqual([]);
+
+    engine.activate();
+    expect(engine.error).toBeUndefined();
+  });
+
+  it("does not report cancelled download setup as an error", async () => {
+    install();
+    const { engine } = setup();
+    const controller = new AbortController();
+    controller.abort();
+    engine.setConnection({ ...connection(), signal: controller.signal });
+
+    await expect(engine.cache(track)).rejects.toMatchObject({ name: "AbortError" });
+    expect(engine.error).toBeUndefined();
+    expect(engine.downloadJobs).toEqual([]);
+  });
+
   it("reads normalized Cache records and owns offline playback URLs", async () => {
     const disk = install();
     await seed();

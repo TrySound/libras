@@ -1,0 +1,311 @@
+<script lang="ts">
+  import type { Cache, Immutable } from "./cache.svelte";
+  import { immediateCover, type CoverEngine } from "./cover.svelte";
+  import type { TrackEngine } from "./track.svelte";
+  import type { Track } from "./schema";
+  import type { PlaybackController } from "./playback-controller.svelte";
+  import type { RouteParams } from "./router.svelte";
+  import type { Session } from "./session.svelte";
+  import { swipeToDismiss } from "./swipe-to-dismiss";
+
+  interface Props {
+    params: RouteParams;
+    cache: Cache;
+    coverEngine: CoverEngine;
+    trackEngine: TrackEngine;
+    session: Session;
+    playbackState: "loading" | "playing" | "paused";
+    playback: PlaybackController;
+  }
+
+  let { params, cache, coverEngine, trackEngine, session, playbackState, playback }: Props =
+    $props();
+
+  const offlineMode = $derived(session.offlineMode);
+  const loading = $derived(!session.localReady);
+  const libraryAvailable = $derived(cache.savedAt !== undefined);
+  const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
+  const artist = $derived(params.artistId ? cache.artists.get(params.artistId) : undefined);
+  const album = $derived(params.albumId ? cache.albums.get(params.albumId) : undefined);
+  const visibleTracks = $derived(
+    album
+      ? offlineMode
+        ? (cache.albumTracks.get(album.id) ?? []).filter(
+            (track) => trackEngine.getStatus(track.id) === "downloaded",
+          )
+        : (cache.albumTracks.get(album.id) ?? [])
+      : [],
+  );
+  const visibleTrackIds = $derived(visibleTracks.map((track) => track.id));
+
+  function playTrack(track: Immutable<Track>) {
+    void playback.replaceQueueAndPlay(visibleTrackIds, visibleTrackIds.indexOf(track.id));
+  }
+
+  async function downloadTrack(track: Immutable<Track>) {
+    try {
+      await trackEngine.cache({
+        id: track.id,
+        title: track.title,
+        artist: track.artistName ?? cache.artists.get(track.artistId)?.name,
+        album: cache.albums.get(track.albumId)?.title,
+        contentType: track.mimeType,
+      });
+    } catch {
+      // TrackEngine exposes download failures through its error state.
+    }
+  }
+</script>
+
+<section class="view collection-view">
+  {#if libraryAvailable && artist && album}
+    {@const artwork = coverEngine.ensureAlbumCover(album.id)}
+    <div
+      class="artwork"
+      style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
+      aria-hidden="true"
+      {@attach immediateCover(artwork)}
+    >
+      {#if artwork.source}
+        <img src={artwork.source} alt="" />
+      {:else}
+        <svg aria-hidden="true" width="20" height="20"><use href="#icon-music"></use></svg>
+      {/if}
+    </div>
+    <div class="section-heading collection-heading">
+      <div>
+        <a
+          class="text-link type-eyebrow text-muted"
+          href={`#/library/artist/${encodeURIComponent(artist.id)}`}
+        >
+          {artist.name}
+        </a>
+        <h2 class="type-heading" style:view-transition-name={CSS.escape(`album-name-${album.id}`)}>
+          {album.title}
+        </h2>
+        <p class="library-meta type-small">
+          {album.year ?? "Unknown year"} · {visibleTracks.length}
+          track{visibleTracks.length === 1 ? "" : "s"}
+        </p>
+        {#if album.genres.length > 0}
+          <div class="genre-list">
+            {#each album.genres as genre}
+              <span class="type-caption">
+                {genre}
+              </span>
+            {/each}
+          </div>
+        {/if}
+      </div>
+      <button
+        class="icon-button"
+        data-size="md"
+        data-variant="neutral"
+        commandfor="album-page-menu"
+        command="show-modal"
+        title={`Open menu for ${album.title}`}
+      >
+        <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
+      </button>
+    </div>
+
+    {#if loading}
+      <div class="empty-state">
+        <div class="scan-spinner">
+          <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg>
+        </div>
+        <p class="type-body">Restoring local library…</p>
+      </div>
+    {/if}
+    <div class="wings">
+      {#each visibleTracks as track, index}
+        {@const trackMenuId = `album-track-menu-${index}`}
+        {@const downloadStatus = trackEngine.getStatus(track.id)}
+        <div class="wings-item row-button">
+          <button
+            class="linkarea"
+            aria-label={`Play ${track.title}`}
+            onclick={() => playTrack(track)}
+            data-longpressfor={trackMenuId}
+            data-longpress="show-modal"
+            title={`${track.title} — hold for actions`}
+          ></button>
+          <span class="track-leading">
+            {#if currentTrack?.id === track.id && playbackState === "loading"}
+              <span role="img" aria-label="Loading playback">
+                <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg
+                >
+              </span>
+            {:else if currentTrack?.id === track.id && playbackState === "playing"}
+              <span role="img" aria-label="Playing">
+                <svg aria-hidden="true" width="20" height="20"
+                  ><use href="#icon-sound-bars"></use></svg
+                >
+              </span>
+            {:else if currentTrack?.id === track.id}
+              <span role="img" aria-label="Current track, not playing">
+                <svg aria-hidden="true" width="20" height="20"><use href="#icon-pause"></use></svg>
+              </span>
+            {:else if downloadStatus === "downloading"}
+              <span role="img" aria-label="Downloading">
+                <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg
+                >
+              </span>
+            {:else if downloadStatus === "queued"}
+              <span role="img" aria-label="Queued for download">
+                <svg aria-hidden="true" width="20" height="20"><use href="#icon-clock"></use></svg>
+              </span>
+            {:else}
+              {track.number ?? index + 1}
+            {/if}
+          </span>
+          <span>{track.title}</span>
+          <span class="track-actions">
+            <button
+              class="icon-button"
+              data-size="sm"
+              data-variant="ghost"
+              commandfor={trackMenuId}
+              command="show-modal"
+              title={`Open menu for ${track.title}`}
+            >
+              <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
+            </button>
+          </span>
+        </div>
+      {:else}
+        {#if !loading}
+          <div class="empty-state">
+            <p class="type-body">
+              {offlineMode ? "No downloaded tracks." : "No tracks found."}
+            </p>
+          </div>
+        {/if}
+      {/each}
+    </div>
+  {:else if !loading}
+    <div class="empty-state">
+      <span
+        ><svg aria-hidden="true" width="20" height="20"><use href="#icon-music"></use></svg></span
+      >
+      <p class="type-body">
+        {libraryAvailable ? "Album not found." : "Connect your library."}
+      </p>
+      <a
+        class="button"
+        data-size="md"
+        data-variant="neutral"
+        href={libraryAvailable ? "#/library" : "#/settings"}
+      >
+        {libraryAvailable ? "Open library" : "Open settings"}
+      </a>
+    </div>
+  {/if}
+</section>
+
+{#if libraryAvailable && artist && album}
+  <dialog
+    id="album-page-menu"
+    class="action-menu"
+    aria-labelledby="album-page-menu-title"
+    closedby="closerequest"
+    use:swipeToDismiss
+    onclick={(event) => event.currentTarget.close()}
+  >
+    <div class="stack-sm">
+      <header id="album-page-menu-title" class="type-title">
+        {album.title}
+      </header>
+      <div class="wings">
+        <button
+          class="wings-item row-button"
+          onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
+        >
+          <svg aria-hidden="true" width="20" height="20"><use href="#icon-play"></use></svg>
+          <span>Play</span>
+        </button>
+        <button
+          class="wings-item row-button"
+          onclick={() => void playback.enqueue(visibleTrackIds, "next")}
+        >
+          <svg aria-hidden="true" width="20" height="20"><use href="#icon-next"></use></svg>
+          <span>Play next</span>
+        </button>
+        <button
+          class="wings-item row-button"
+          onclick={() => void playback.enqueue(visibleTrackIds, "last")}
+        >
+          <svg aria-hidden="true" width="20" height="20"><use href="#icon-plus"></use></svg>
+          <span>Play last</span>
+        </button>
+        <button
+          class="wings-item row-button"
+          onclick={() =>
+            void Promise.all((cache.albumTracks.get(album.id) ?? []).map(downloadTrack))}
+        >
+          <svg aria-hidden="true" width="20" height="20"><use href="#icon-download"></use></svg>
+          <span>Download</span>
+        </button>
+        <button class="wings-item row-button"><span></span>Cancel</button>
+      </div>
+    </div>
+  </dialog>
+  {#each visibleTracks as track, index}
+    {@const trackMenuId = `album-track-menu-${index}`}
+    {@const downloadStatus = trackEngine.getStatus(track.id)}
+    <dialog
+      id={trackMenuId}
+      class="action-menu"
+      aria-labelledby={`${trackMenuId}-title`}
+      closedby="closerequest"
+      use:swipeToDismiss
+      onclick={(event) => event.currentTarget.close()}
+    >
+      <div class="stack-sm">
+        <header id={`${trackMenuId}-title`} class="type-title">
+          {track.title}
+        </header>
+        <div class="wings">
+          <button class="wings-item row-button" onclick={() => playTrack(track)}>
+            <svg aria-hidden="true" width="20" height="20"><use href="#icon-play"></use></svg>
+            <span>Play</span>
+          </button>
+          <button
+            class="wings-item row-button"
+            onclick={() => void playback.enqueue([track.id], "next")}
+          >
+            <svg aria-hidden="true" width="20" height="20"><use href="#icon-next"></use></svg>
+            <span>Play next</span>
+          </button>
+          <button
+            class="wings-item row-button"
+            onclick={() => void playback.enqueue([track.id], "last")}
+          >
+            <svg aria-hidden="true" width="20" height="20"><use href="#icon-plus"></use></svg>
+            <span>Play last</span>
+          </button>
+          <button
+            class="wings-item row-button"
+            disabled={downloadStatus !== "idle"}
+            onclick={() => downloadTrack(track)}
+          >
+            {#if downloadStatus === "downloaded"}
+              <svg aria-hidden="true" width="20" height="20"><use href="#icon-check"></use></svg>
+              <span>Downloaded</span>
+            {:else if downloadStatus === "queued"}
+              <svg aria-hidden="true" width="20" height="20"><use href="#icon-clock"></use></svg>
+              <span>Queued</span>
+            {:else if downloadStatus === "downloading"}
+              <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg>
+              <span>Downloading…</span>
+            {:else}
+              <svg aria-hidden="true" width="20" height="20"><use href="#icon-download"></use></svg>
+              <span>Download</span>
+            {/if}
+          </button>
+          <button class="wings-item row-button"><span></span>Cancel</button>
+        </div>
+      </div>
+    </dialog>
+  {/each}
+{/if}

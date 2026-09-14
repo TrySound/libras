@@ -179,28 +179,33 @@ export class TrackEngine {
   cache(track: EngineTrack, options: TrackSourceOptions = {}) {
     if (this.#destroyed)
       return Promise.reject(new DOMException("Downloads stopped.", "AbortError"));
-    const descriptor = this.#describe(track, options);
-    const connection = this.#connectionFor(descriptor);
-    const existing = this.#jobs.get(descriptor.key);
-    if (existing) return existing.promise;
-    const cache = this.#selection.cache!;
-    const { promise, resolve, reject } = Promise.withResolvers<File>();
-    const controller = new AbortController();
-    this.#jobs.set(descriptor.key, {
-      descriptor,
-      connection,
-      cache,
-      signal: AbortSignal.any([controller.signal, connection.signal]),
-      track: this.#track(track),
-      status: "queued",
-      controller,
-      promise,
-      resolve,
-      reject,
-    });
-    this.#error = undefined;
-    this.#drain();
-    return promise;
+    try {
+      const descriptor = this.#describe(track, options);
+      const connection = this.#connectionFor(descriptor);
+      const existing = this.#jobs.get(descriptor.key);
+      if (existing) return existing.promise;
+      const cache = this.#selection.cache!;
+      const { promise, resolve, reject } = Promise.withResolvers<File>();
+      const controller = new AbortController();
+      this.#jobs.set(descriptor.key, {
+        descriptor,
+        connection,
+        cache,
+        signal: AbortSignal.any([controller.signal, connection.signal]),
+        track: this.#track(track),
+        status: "queued",
+        controller,
+        promise,
+        resolve,
+        reject,
+      });
+      this.#error = undefined;
+      this.#drain();
+      return promise;
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) this.#error = error;
+      return Promise.reject(error);
+    }
   }
 
   async #cached(cache: Cache, track: EngineTrack, descriptor: Descriptor, signal: AbortSignal) {

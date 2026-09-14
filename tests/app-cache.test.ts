@@ -235,6 +235,35 @@ it.each([
   },
 );
 
+it("shows only album genres on the album route", async () => {
+  installDisk();
+  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  await cache.replaceLibrary({
+    ...library("Artist", 1),
+    albums: [{ id: "album", artistId: "artist", title: "Album", genres: ["Jazz"] }],
+    tracks: [
+      {
+        id: "track",
+        albumId: "album",
+        artistId: "artist",
+        title: "Track",
+        genres: ["Track-only genre"],
+      },
+    ],
+  });
+  mocks.cache = cache;
+  installNavigation("/library/artist/artist/album/album", mocks.navigate);
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  expect(target.querySelector(".genre-list")?.textContent?.trim()).toBe("Jazz");
+  expect(target.querySelector(".collection-heading a")?.getAttribute("href")).toBe(
+    "#/library/artist/artist",
+  );
+});
+
 it("renders the selected cache, reacts to replacements, and stops observing a previous account", async () => {
   installDisk();
   const first = new Cache({ host: "https://music.example", username: "first" });
