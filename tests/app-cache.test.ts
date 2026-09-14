@@ -188,7 +188,10 @@ it.each([
   expect([...links].map((link) => link.getAttribute("href"))).toEqual(["#/library", "#/settings"]);
   expect(target.querySelector("#player-dialog .topbar-brand")).toBeNull();
   expect(target.querySelector(".player-queue")!.closest(".view")).toBeNull();
-  expect(target.querySelector(".player-main")!.classList.contains("view")).toBe(true);
+  expect(target.querySelector(".player-main")!.classList.contains("view")).toBe(false);
+  expect(target.querySelector(".player-main > .artwork")!.closest(".view")).toBeNull();
+  expect(target.querySelector(".player-main > .player-content.view .controls")).not.toBeNull();
+  expect(target.querySelector(".player-content .playback-slider")).not.toBeNull();
   expect(target.querySelector(".player-queue > .section-heading")!.classList.contains("view")).toBe(
     true,
   );
