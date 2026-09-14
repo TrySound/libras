@@ -183,7 +183,7 @@ it.each([
   cleanups.push(() => unmount(component));
   flushSync();
   const topbar = target.querySelector(".app-shell > .topbar")!;
-  expect(target.querySelectorAll(".app-shell .topbar")).toHaveLength(1);
+  expect(target.querySelectorAll(".app-shell > .topbar")).toHaveLength(1);
   const links = topbar.querySelectorAll("a");
   expect([...links].map((link) => link.getAttribute("href"))).toEqual(["#/library", "#/settings"]);
   expect(target.querySelector("#player-dialog .topbar-brand")).toBeNull();
@@ -233,7 +233,25 @@ it.each([
     flushSync();
     const dialog = target.querySelector(`#${menu}`);
     expect(dialog).not.toBeNull();
-    expect(dialog?.querySelector("button")?.disabled).toBe(false);
+    expect(dialog?.querySelector(".wings-item")?.hasAttribute("disabled")).toBe(false);
+    for (const menu of target.querySelectorAll<HTMLDialogElement>(".action-menu")) {
+      const wings = menu.querySelector(":scope > .wings")!;
+      expect(wings.querySelector(":scope > .topbar.wings-item")).not.toBeNull();
+      expect(wings.querySelectorAll(":scope > button.wings-item")).toHaveLength(4);
+      const close = wings.querySelector<HTMLButtonElement>(".topbar button")!;
+      expect(close.hasAttribute("commandfor")).toBe(false);
+      expect(close.hasAttribute("command")).toBe(false);
+      expect(close.getAttribute("title")).toBe("Close menu");
+      expect(close.getAttribute("data-variant")).toBe("ghost");
+      expect(close.querySelector("use")?.getAttribute("href")).toBe("#icon-chevron-down");
+      expect(menu.querySelector(".topbar .type-title")?.id).toBe(
+        menu.getAttribute("aria-labelledby"),
+      );
+      expect(menu.textContent).not.toContain("Cancel");
+      menu.showModal();
+      close.click();
+      expect(menu.open).toBe(false);
+    }
   },
 );
 

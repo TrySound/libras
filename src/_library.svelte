@@ -137,48 +137,50 @@
   data-swipedown="close"
   onclick={(event) => event.currentTarget.close()}
 >
-  <div class="stack-sm">
-    <header id="artist-menu-title" class="type-title">
-      {menuArtist?.name}
+  <div class="wings">
+    <header class="topbar wings-item">
+      <button class="icon-button" data-size="sm" data-variant="ghost" title="Close menu">
+        <svg class="self-center" aria-hidden="true" width="20" height="20"
+          ><use href="#icon-chevron-down"></use></svg
+        >
+      </button>
+      <span id="artist-menu-title" class="type-title">{menuArtist?.name}</span>
     </header>
-    <div class="wings">
-      <button
-        class="wings-item row-button"
-        onclick={() => void playback.replaceQueueAndPlay(availableTrackIds)}
-      >
-        <svg aria-hidden="true" width="20" height="20">
-          <use href="#icon-play"></use>
-        </svg>
-        <span>Play</span>
-      </button>
-      <button
-        class="wings-item row-button"
-        onclick={() => void playback.enqueue(availableTrackIds, "next")}
-      >
-        <svg aria-hidden="true" width="20" height="20">
-          <use href="#icon-next"></use>
-        </svg>
-        <span>Play next</span>
-      </button>
-      <button
-        class="wings-item row-button"
-        onclick={() => void playback.enqueue(availableTrackIds, "last")}
-      >
-        <svg aria-hidden="true" width="20" height="20">
-          <use href="#icon-plus"></use>
-        </svg>
-        <span>Play last</span>
-      </button>
-      <button
-        class="wings-item row-button"
-        onclick={() => tracks.forEach((track) => void trackEngine.download(track.id))}
-      >
-        <svg aria-hidden="true" width="20" height="20">
-          <use href="#icon-download"></use>
-        </svg>
-        <span>Download</span>
-      </button>
-      <button class="wings-item row-button"><span></span>Cancel</button>
-    </div>
+    <button
+      class="wings-item row-button"
+      onclick={() => void playback.replaceQueueAndPlay(availableTrackIds)}
+    >
+      <svg class="self-center" aria-hidden="true" width="20" height="20">
+        <use href="#icon-play"></use>
+      </svg>
+      <span>Play</span>
+    </button>
+    <button
+      class="wings-item row-button"
+      onclick={() => void playback.enqueue(availableTrackIds, "next")}
+    >
+      <svg class="self-center" aria-hidden="true" width="20" height="20">
+        <use href="#icon-next"></use>
+      </svg>
+      <span>Play next</span>
+    </button>
+    <button
+      class="wings-item row-button"
+      onclick={() => void playback.enqueue(availableTrackIds, "last")}
+    >
+      <svg class="self-center" aria-hidden="true" width="20" height="20">
+        <use href="#icon-plus"></use>
+      </svg>
+      <span>Play last</span>
+    </button>
+    <button
+      class="wings-item row-button"
+      onclick={() => tracks.forEach((track) => void trackEngine.download(track.id))}
+    >
+      <svg class="self-center" aria-hidden="true" width="20" height="20">
+        <use href="#icon-download"></use>
+      </svg>
+      <span>Download</span>
+    </button>
   </div>
 </dialog>

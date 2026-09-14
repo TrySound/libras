@@ -197,44 +197,54 @@
     data-swipedown="close"
     onclick={(event) => event.currentTarget.close()}
   >
-    <div class="stack-sm">
-      <header id="album-page-menu-title" class="type-title">
-        {album.title}
+    <div class="wings">
+      <header class="topbar wings-item">
+        <button class="icon-button" data-size="sm" data-variant="ghost" title="Close menu">
+          <svg class="self-center" aria-hidden="true" width="20" height="20"
+            ><use href="#icon-chevron-down"></use></svg
+          >
+        </button>
+        <span id="album-page-menu-title" class="type-title">{album.title}</span>
       </header>
-      <div class="wings">
-        <button
-          class="wings-item row-button"
-          onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
+      <button
+        class="wings-item row-button"
+        onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
+      >
+        <svg class="self-center" aria-hidden="true" width="20" height="20"
+          ><use href="#icon-play"></use></svg
         >
-          <svg aria-hidden="true" width="20" height="20"><use href="#icon-play"></use></svg>
-          <span>Play</span>
-        </button>
-        <button
-          class="wings-item row-button"
-          onclick={() => void playback.enqueue(visibleTrackIds, "next")}
+        <span>Play</span>
+      </button>
+      <button
+        class="wings-item row-button"
+        onclick={() => void playback.enqueue(visibleTrackIds, "next")}
+      >
+        <svg class="self-center" aria-hidden="true" width="20" height="20"
+          ><use href="#icon-next"></use></svg
         >
-          <svg aria-hidden="true" width="20" height="20"><use href="#icon-next"></use></svg>
-          <span>Play next</span>
-        </button>
-        <button
-          class="wings-item row-button"
-          onclick={() => void playback.enqueue(visibleTrackIds, "last")}
+        <span>Play next</span>
+      </button>
+      <button
+        class="wings-item row-button"
+        onclick={() => void playback.enqueue(visibleTrackIds, "last")}
+      >
+        <svg class="self-center" aria-hidden="true" width="20" height="20"
+          ><use href="#icon-plus"></use></svg
         >
-          <svg aria-hidden="true" width="20" height="20"><use href="#icon-plus"></use></svg>
-          <span>Play last</span>
-        </button>
-        <button
-          class="wings-item row-button"
-          onclick={() =>
-            (cache.albumTracks.get(album.id) ?? []).forEach(
-              (track) => void trackEngine.download(track.id),
-            )}
+        <span>Play last</span>
+      </button>
+      <button
+        class="wings-item row-button"
+        onclick={() =>
+          (cache.albumTracks.get(album.id) ?? []).forEach(
+            (track) => void trackEngine.download(track.id),
+          )}
+      >
+        <svg class="self-center" aria-hidden="true" width="20" height="20"
+          ><use href="#icon-download"></use></svg
         >
-          <svg aria-hidden="true" width="20" height="20"><use href="#icon-download"></use></svg>
-          <span>Download</span>
-        </button>
-        <button class="wings-item row-button"><span></span>Cancel</button>
-      </div>
+        <span>Download</span>
+      </button>
     </div>
   </dialog>
   {#each visibleTracks as track, index}
@@ -248,50 +258,66 @@
       data-swipedown="close"
       onclick={(event) => event.currentTarget.close()}
     >
-      <div class="stack-sm">
-        <header id={`${trackMenuId}-title`} class="type-title">
-          {track.title}
+      <div class="wings">
+        <header class="topbar wings-item">
+          <button class="icon-button" data-size="sm" data-variant="ghost" title="Close menu">
+            <svg class="self-center" aria-hidden="true" width="20" height="20"
+              ><use href="#icon-chevron-down"></use></svg
+            >
+          </button>
+          <span id={`${trackMenuId}-title`} class="type-title">{track.title}</span>
         </header>
-        <div class="wings">
-          <button class="wings-item row-button" onclick={() => playTrack(track)}>
-            <svg aria-hidden="true" width="20" height="20"><use href="#icon-play"></use></svg>
-            <span>Play</span>
-          </button>
-          <button
-            class="wings-item row-button"
-            onclick={() => void playback.enqueue([track.id], "next")}
+        <button class="wings-item row-button" onclick={() => playTrack(track)}>
+          <svg class="self-center" aria-hidden="true" width="20" height="20"
+            ><use href="#icon-play"></use></svg
           >
-            <svg aria-hidden="true" width="20" height="20"><use href="#icon-next"></use></svg>
-            <span>Play next</span>
-          </button>
-          <button
-            class="wings-item row-button"
-            onclick={() => void playback.enqueue([track.id], "last")}
+          <span>Play</span>
+        </button>
+        <button
+          class="wings-item row-button"
+          onclick={() => void playback.enqueue([track.id], "next")}
+        >
+          <svg class="self-center" aria-hidden="true" width="20" height="20"
+            ><use href="#icon-next"></use></svg
           >
-            <svg aria-hidden="true" width="20" height="20"><use href="#icon-plus"></use></svg>
-            <span>Play last</span>
-          </button>
-          <button
-            class="wings-item row-button"
-            disabled={downloadStatus !== "idle"}
-            onclick={() => void trackEngine.download(track.id)}
+          <span>Play next</span>
+        </button>
+        <button
+          class="wings-item row-button"
+          onclick={() => void playback.enqueue([track.id], "last")}
+        >
+          <svg class="self-center" aria-hidden="true" width="20" height="20"
+            ><use href="#icon-plus"></use></svg
           >
-            {#if downloadStatus === "downloaded"}
-              <svg aria-hidden="true" width="20" height="20"><use href="#icon-check"></use></svg>
-              <span>Downloaded</span>
-            {:else if downloadStatus === "queued"}
-              <svg aria-hidden="true" width="20" height="20"><use href="#icon-clock"></use></svg>
-              <span>Queued</span>
-            {:else if downloadStatus === "downloading"}
-              <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg>
-              <span>Downloading…</span>
-            {:else}
-              <svg aria-hidden="true" width="20" height="20"><use href="#icon-download"></use></svg>
-              <span>Download</span>
-            {/if}
-          </button>
-          <button class="wings-item row-button"><span></span>Cancel</button>
-        </div>
+          <span>Play last</span>
+        </button>
+        <button
+          class="wings-item row-button"
+          disabled={downloadStatus !== "idle"}
+          onclick={() => void trackEngine.download(track.id)}
+        >
+          {#if downloadStatus === "downloaded"}
+            <svg class="self-center" aria-hidden="true" width="20" height="20"
+              ><use href="#icon-check"></use></svg
+            >
+            <span>Downloaded</span>
+          {:else if downloadStatus === "queued"}
+            <svg class="self-center" aria-hidden="true" width="20" height="20"
+              ><use href="#icon-clock"></use></svg
+            >
+            <span>Queued</span>
+          {:else if downloadStatus === "downloading"}
+            <svg class="self-center" aria-hidden="true" width="20" height="20"
+              ><use href="#icon-loading"></use></svg
+            >
+            <span>Downloading…</span>
+          {:else}
+            <svg class="self-center" aria-hidden="true" width="20" height="20"
+              ><use href="#icon-download"></use></svg
+            >
+            <span>Download</span>
+          {/if}
+        </button>
       </div>
     </dialog>
   {/each}
