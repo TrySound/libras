@@ -323,7 +323,7 @@ it("renders download records and jobs without duplicates and switches account pr
     options.network.prepare({ ...first.account!, token: "token", salt: "salt" }),
   );
   tracks.setConnection(connection.audio);
-  const pending = tracks.cache(track, { forceTranscode: true });
+  const pending = tracks.download(track.id, { forceTranscode: true });
   flushSync();
   expect(target.querySelectorAll('[aria-label="Downloading"]')).toHaveLength(1);
   expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(0);
@@ -365,6 +365,7 @@ it("renders download records and jobs without duplicates and switches account pr
 
 it.each([
   { route: "/library", ids: ["one", "two", "three"] },
+  { route: "/library/artist/:artistId", ids: ["one", "two", "three"] },
   { route: "/library/artist/:artistId/album/:albumId", ids: ["one", "two"] },
 ])("downloads the selected collection on $route", async ({ route, ids }) => {
   installDisk();
@@ -386,7 +387,7 @@ it.each([
     })),
   });
   const download = vi
-    .spyOn(TrackEngine.prototype, "cache")
+    .spyOn(TrackEngine.prototype, "download")
     .mockResolvedValue(new File([], "audio"));
   mocks.cache = cache;
   window.history.replaceState(
@@ -405,14 +406,7 @@ it.each([
   expect(button).toBeDefined();
   button!.click();
   await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(ids.length));
-  expect(download.mock.calls.map(([track]) => track.id)).toEqual(ids);
-  expect(download).toHaveBeenCalledWith({
-    id: "one",
-    title: "one",
-    artist: "Artist",
-    album: "Album",
-    contentType: "audio/mpeg",
-  });
+  expect(download.mock.calls.map(([trackId]) => trackId)).toEqual(ids);
 });
 
 it.each([

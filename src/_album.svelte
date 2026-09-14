@@ -41,20 +41,6 @@
   function playTrack(track: Immutable<Track>) {
     void playback.replaceQueueAndPlay(visibleTrackIds, visibleTrackIds.indexOf(track.id));
   }
-
-  async function downloadTrack(track: Immutable<Track>) {
-    try {
-      await trackEngine.cache({
-        id: track.id,
-        title: track.title,
-        artist: track.artistName ?? cache.artists.get(track.artistId)?.name,
-        album: cache.albums.get(track.albumId)?.title,
-        contentType: track.mimeType,
-      });
-    } catch {
-      // TrackEngine exposes download failures through its error state.
-    }
-  }
 </script>
 
 <section class="view collection-view">
@@ -241,7 +227,9 @@
         <button
           class="wings-item row-button"
           onclick={() =>
-            void Promise.all((cache.albumTracks.get(album.id) ?? []).map(downloadTrack))}
+            (cache.albumTracks.get(album.id) ?? []).forEach(
+              (track) => void trackEngine.download(track.id),
+            )}
         >
           <svg aria-hidden="true" width="20" height="20"><use href="#icon-download"></use></svg>
           <span>Download</span>
@@ -287,7 +275,7 @@
           <button
             class="wings-item row-button"
             disabled={downloadStatus !== "idle"}
-            onclick={() => downloadTrack(track)}
+            onclick={() => void trackEngine.download(track.id)}
           >
             {#if downloadStatus === "downloaded"}
               <svg aria-hidden="true" width="20" height="20"><use href="#icon-check"></use></svg>

@@ -51,20 +51,6 @@
       .filter((track) => !offlineMode || trackEngine.getStatus(track.id) === "downloaded")
       .map((track) => track.id);
   }
-
-  async function downloadTrack(track: Immutable<Track>) {
-    try {
-      await trackEngine.cache({
-        id: track.id,
-        title: track.title,
-        artist: track.artistName ?? cache.artists.get(track.artistId)?.name,
-        album: cache.albums.get(track.albumId)?.title,
-        contentType: track.mimeType,
-      });
-    } catch {
-      // TrackEngine exposes download failures through its error state.
-    }
-  }
 </script>
 
 <section class="view collection-view">
@@ -241,7 +227,7 @@
         </button>
         <button
           class="wings-item row-button"
-          onclick={() => void Promise.all(tracks.map(downloadTrack))}
+          onclick={() => tracks.forEach((track) => void trackEngine.download(track.id))}
         >
           <svg aria-hidden="true" width="20" height="20"><use href="#icon-download"></use></svg>
           <span>Download</span>
@@ -288,7 +274,7 @@
           </button>
           <button
             class="wings-item row-button"
-            onclick={() => void Promise.all(albumTracks.map(downloadTrack))}
+            onclick={() => albumTracks.forEach((track) => void trackEngine.download(track.id))}
           >
             <svg aria-hidden="true" width="20" height="20"><use href="#icon-download"></use></svg>
             <span>Download</span>

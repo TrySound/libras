@@ -60,12 +60,71 @@ afterEach(() => {
 });
 
 describe("TrackEngine using Cache", () => {
+  it.each([undefined, "Track artist"])(
+    "resolves download metadata from the selected cache (artist override: %s)",
+    async (artistName) => {
+      install("probably");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("audio")),
+      );
+      const { cache, engine } = setup({ online: true });
+      await cache.replaceLibrary({
+        artists: [{ id: "artist", name: "Library artist", genres: [] }],
+        albums: [{ id: "album", artistId: "artist", title: "Library album", genres: [] }],
+        tracks: [
+          {
+            id: track.id,
+            title: "Library track",
+            artistId: "artist",
+            artistName,
+            albumId: "album",
+            mimeType: "audio/flac",
+            genres: [],
+          },
+        ],
+        lastModified: 1,
+        savedAt: 1,
+      });
+
+      const pending = engine.download(track.id);
+      expect(engine.downloadJobs[0]).toMatchObject({
+        format: "raw",
+        track: {
+          id: track.id,
+          title: "Library track",
+          artist: artistName ?? "Library artist",
+          album: "Library album",
+          contentType: "audio/flac",
+        },
+      });
+      await pending;
+      expect(cache.downloads.get(downloadKey(track.id, "raw"))?.track.title).toBe("Library track");
+    },
+  );
+
+  it.each(["setup", "transfer"])(
+    "handles fire-and-forget %s failures internally",
+    async (phase) => {
+      install();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("failed", { status: 500 })),
+      );
+      const { engine } = setup({ online: phase === "transfer" });
+      void engine.download(track.id);
+      await vi.waitFor(() => expect(engine.error).toBeInstanceOf(Error));
+      await turn();
+      expect(engine.downloadJobs).toEqual([]);
+    },
+  );
+
   it.each(["no account", "offline"])("exposes download setup failures: %s", async (scenario) => {
     install();
     const { engine, selection } = setup();
     if (scenario === "no account") selection.cache = undefined;
 
-    const pending = engine.cache(track);
+    const pending = engine.download(track.id);
     await expect(pending).rejects.toBeInstanceOf(Error);
     await expect(pending).rejects.toBe(engine.error);
     expect(engine.downloadJobs).toEqual([]);
@@ -81,7 +140,7 @@ describe("TrackEngine using Cache", () => {
     controller.abort();
     engine.setConnection({ ...connection(), signal: controller.signal });
 
-    await expect(engine.cache(track)).rejects.toMatchObject({ name: "AbortError" });
+    await expect(engine.download(track.id)).rejects.toMatchObject({ name: "AbortError" });
     expect(engine.error).toBeUndefined();
     expect(engine.downloadJobs).toEqual([]);
   });
@@ -206,7 +265,7 @@ describe("TrackEngine using Cache", () => {
       vi.fn(() => response.promise),
     );
     const { engine, selection, cache } = setup({ online: true });
-    const pending = engine.cache(track);
+    const pending = engine.download(track.id);
     expect(engine.getStatus(track.id)).toBe("downloading");
     expect(selection.cache!.downloads.size).toBe(0);
     response.resolve(new Response("audio"));
@@ -230,11 +289,11 @@ describe("TrackEngine using Cache", () => {
       .mockImplementation(async () => new Response("audio"));
     vi.stubGlobal("fetch", fetcher);
     const { engine, cache } = setup({ online: true, concurrency: 1 });
-    const active = engine.cache({ id: "active" });
-    const queued = engine.cache({ id: "queued" });
-    const last = engine.cache({ id: "last" });
-    expect(engine.cache({ id: "active" })).toBe(active);
-    expect(engine.cache({ id: "last" })).toBe(last);
+    const active = engine.download("active");
+    const queued = engine.download("queued");
+    const last = engine.download("last");
+    expect(engine.download("active")).toBe(active);
+    expect(engine.download("last")).toBe(last);
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
     expect(engine.downloadJobs.map((job) => [job.track.id, job.status])).toEqual([
       ["active", "downloading"],
@@ -271,16 +330,13 @@ describe("TrackEngine using Cache", () => {
           }
         };
       const { engine, cache } = setup({ online: true, concurrency: 1 });
-      const results = await Promise.allSettled([
-        engine.cache({ id: "bad" }),
-        engine.cache({ id: "good" }),
-      ]);
+      const results = await Promise.allSettled([engine.download("bad"), engine.download("good")]);
       expect(results.map((result) => result.status)).toEqual(["rejected", "fulfilled"]);
       expect(engine.error).toBeDefined();
       expect(engine.getStatus("bad")).toBe("idle");
       expect(engine.getStatus("good")).toBe("downloaded");
       expect(disk.blobs.size).toBe(1);
-      await engine.cache({ id: "bad" });
+      await engine.download("bad");
       expect(engine.error).toBeUndefined();
       expect(cache.downloads.size).toBe(2);
     },
@@ -292,7 +348,7 @@ describe("TrackEngine using Cache", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const { engine } = setup({ cache, online: true });
-    expect(await (await engine.cache(track)).text()).toBe("cached");
+    expect(await (await engine.download(track.id)).text()).toBe("cached");
     expect(fetcher).not.toHaveBeenCalled();
     const source = await engine.getSource({ id: "remote" });
     expect(source.cached).toBe(false);
@@ -314,7 +370,7 @@ describe("TrackEngine using Cache", () => {
       "fetch",
       vi.fn(async () => new Response("replacement")),
     );
-    await engine.cache(track);
+    await engine.download(track.id);
     expect(engine.getStatus(track.id)).toBe("downloaded");
   });
 
@@ -391,7 +447,7 @@ describe("TrackEngine using Cache", () => {
       "fetch",
       vi.fn(() => response.promise),
     );
-    const pending = engine.cache(track, { forceTranscode: true });
+    const pending = engine.download(track.id, { forceTranscode: true });
     expect(engine.getStatus(track.id)).toBe("downloading");
     response.resolve(new Response("mp3"));
     await pending;
@@ -411,10 +467,7 @@ describe("TrackEngine using Cache", () => {
       );
       vi.stubGlobal("fetch", fetcher);
       const { engine, cache } = setup({ online: true, concurrency: 1 });
-      const results = Promise.allSettled([
-        engine.cache({ id: "active" }),
-        engine.cache({ id: "queued" }),
-      ]);
+      const results = Promise.allSettled([engine.download("active"), engine.download("queued")]);
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
       if (action === "detach") engine.setConnection(undefined);
       else if (action === "destroy") engine.destroy();
@@ -446,10 +499,7 @@ describe("TrackEngine using Cache", () => {
     const client = network.accept(network.prepare(auth));
     const { engine, cache } = setup({ concurrency: 1 });
     engine.setConnection(client.audio);
-    const results = Promise.allSettled([
-      engine.cache({ id: "active" }),
-      engine.cache({ id: "queued" }),
-    ]);
+    const results = Promise.allSettled([engine.download("active"), engine.download("queued")]);
     await wrote.promise;
     network.setMode("offline");
     expect((await results).map((result) => result.status)).toEqual(["rejected", "rejected"]);
@@ -470,14 +520,14 @@ describe("TrackEngine using Cache", () => {
       const fetcher = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(next.promise);
       vi.stubGlobal("fetch", fetcher);
       const { engine, selection, cache } = setup({ online: true });
-      const old = engine.cache(track);
+      const old = engine.download(track.id);
       const rejected = expect(old).rejects.toMatchObject({ name: "AbortError" });
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
       selection.cache = new Cache({ ...account, username });
       engine.activate();
       engine.setConnection(connection({ ...auth, username }));
       await rejected;
-      const retry = engine.cache(track);
+      const retry = engine.download(track.id);
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
       const cancel = vi.fn();
       const late = new Response(new ReadableStream({ cancel }));
@@ -551,7 +601,7 @@ describe("TrackEngine using Cache", () => {
       disk.state[stage] = (path) => {
         if (path.endsWith(".audio")) engine.setConnection(undefined);
       };
-      await expect(engine.cache(track)).rejects.toMatchObject({ name: "AbortError" });
+      await expect(engine.download(track.id)).rejects.toMatchObject({ name: "AbortError" });
       await expect(save.mock.results[0].value).rejects.toMatchObject({ name: "AbortError" });
       expect(cache.downloads.size).toBe(0);
       expect(engine.error).toBeUndefined();
@@ -568,9 +618,9 @@ describe("TrackEngine using Cache", () => {
     const first = setup({ online: true });
     const second = setup({ online: true, cache: first.cache });
     await Promise.all([
-      first.engine.cache(track),
-      second.engine.cache(track),
-      second.engine.cache({ id: "other" }),
+      first.engine.download(track.id),
+      second.engine.download(track.id),
+      second.engine.download("other"),
     ]);
     expect(disk.blobs.size).toBe(2);
     await first.cache.flush();

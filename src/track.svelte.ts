@@ -176,36 +176,54 @@ export class TrackEngine {
       throw error;
     }
   }
-  cache(track: EngineTrack, options: TrackSourceOptions = {}) {
-    if (this.#destroyed)
-      return Promise.reject(new DOMException("Downloads stopped.", "AbortError"));
+  /** Safe to fire and forget: failures are exposed through error, while awaiting
+   * the returned promise still observes rejection. Duplicate jobs share a promise. */
+  download(trackId: string, options: TrackSourceOptions = {}) {
+    let promise: Promise<File>;
     try {
-      const descriptor = this.#describe(track, options);
-      const connection = this.#connectionFor(descriptor);
-      const existing = this.#jobs.get(descriptor.key);
-      if (existing) return existing.promise;
-      const cache = this.#selection.cache!;
-      const { promise, resolve, reject } = Promise.withResolvers<File>();
-      const controller = new AbortController();
-      this.#jobs.set(descriptor.key, {
-        descriptor,
-        connection,
-        cache,
-        signal: AbortSignal.any([controller.signal, connection.signal]),
-        track: this.#track(track),
-        status: "queued",
-        controller,
-        promise,
-        resolve,
-        reject,
-      });
-      this.#error = undefined;
-      this.#drain();
-      return promise;
+      if (this.#destroyed) throw new DOMException("Downloads stopped.", "AbortError");
+      promise = this.#queueDownload(trackId, options);
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")) this.#error = error;
-      return Promise.reject(error);
+      promise = Promise.reject(error);
     }
+    // Handle UI fire-and-forget calls without changing the returned promise.
+    void promise.catch(() => {});
+    return promise;
+  }
+
+  #queueDownload(trackId: string, options: TrackSourceOptions) {
+    const selected = this.#selection.cache;
+    const record = selected?.tracks.get(trackId);
+    const track: EngineTrack = {
+      id: trackId,
+      title: record?.title,
+      artist: record?.artistName ?? (record && selected?.artists.get(record.artistId)?.name),
+      album: record && selected?.albums.get(record.albumId)?.title,
+      contentType: record?.mimeType,
+    };
+    const descriptor = this.#describe(track, options);
+    const connection = this.#connectionFor(descriptor);
+    const existing = this.#jobs.get(descriptor.key);
+    if (existing) return existing.promise;
+    const cache = this.#selection.cache!;
+    const { promise, resolve, reject } = Promise.withResolvers<File>();
+    const controller = new AbortController();
+    this.#jobs.set(descriptor.key, {
+      descriptor,
+      connection,
+      cache,
+      signal: AbortSignal.any([controller.signal, connection.signal]),
+      track: this.#track(track),
+      status: "queued",
+      controller,
+      promise,
+      resolve,
+      reject,
+    });
+    this.#error = undefined;
+    this.#drain();
+    return promise;
   }
 
   async #cached(cache: Cache, track: EngineTrack, descriptor: Descriptor, signal: AbortSignal) {
