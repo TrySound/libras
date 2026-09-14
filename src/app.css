@@ -424,8 +424,8 @@
 
 .tiles-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(10rem, 100%), 1fr));
-  gap: var(--space-sm);
+  grid-template-columns: repeat(auto-fill, minmax(min(9rem, 100%), 1fr));
+  gap: var(--space-md);
 }
 
 body {
@@ -896,7 +896,7 @@ a {
   min-width: 0;
   overflow: hidden;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--space-sm);
   background: var(--color-surface);
   color: inherit;
   text-align: left;
@@ -906,6 +906,7 @@ a {
   display: grid;
   width: 100%;
   padding: 0;
+  box-shadow: var(--popover-shadow);
 
   &:focus-visible {
     outline: var(--focus-outline);
@@ -915,17 +916,20 @@ a {
   @media (hover: hover) {
     &:hover:not(:active) {
       filter: brightness(1.1);
+      box-shadow: 0 0 5px rgb(0 0 0 / 50%);
     }
   }
 
   @media (prefers-reduced-motion: no-preference) {
     transition:
       scale 160ms ease-out,
-      filter 160ms ease-out;
+      filter 160ms ease-out,
+      box-shadow 160ms ease-out;
   }
 
   &:active {
     filter: brightness(0.85);
+    box-shadow: 0 0 5px rgb(0 0 0 / 50%);
 
     @media (prefers-reduced-motion: no-preference) {
       scale: 0.98;
