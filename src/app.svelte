@@ -7,16 +7,12 @@
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
   import ArtistRoute from "./_artist.svelte";
+  import LibraryRoute from "./_library.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine, immediateCover } from "./cover.svelte";
-  import { viewportContent } from "./viewport";
   import { MetadataEngine } from "./metadata.svelte";
-  import type {
-    Album as AlbumRecord,
-    Artist as ArtistRecord,
-    Track as TrackRecord,
-  } from "./schema";
+  import type { Album as AlbumRecord, Artist as ArtistRecord } from "./schema";
   import { Cache, type Immutable } from "./cache.svelte";
   import { QueueEngine } from "./queue.svelte";
   import { Session } from "./session.svelte";
@@ -27,7 +23,6 @@
 
   type Album = Immutable<AlbumRecord>;
   type Artist = Immutable<ArtistRecord>;
-  type Track = Immutable<TrackRecord>;
 
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
@@ -45,7 +40,6 @@
   const hasPreviousTrack = $derived(cache.queue.index > 0);
   const metadataEngine = new MetadataEngine(selection);
   const queueEngine = new QueueEngine(selection);
-  let artists = $derived([...cache.artists.values()]);
   let queue = $derived(
     cache.queue.tracks.flatMap((id, index) => {
       const track = cache.tracks.get(id);
@@ -76,7 +70,6 @@
     playback,
     preferences: localStorage,
   });
-  const libraryAvailable = $derived(cache.savedAt !== undefined);
   const offlineMode = $derived(session.offlineMode);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);
@@ -133,57 +126,6 @@
 
   function albumPath(artist: Artist, album: Album) {
     return `${artistPath(artist)}/album/${encodeURIComponent(album.id)}`;
-  }
-
-  function artistTracks(artist: Artist): readonly Track[] {
-    return (cache.artistAlbums.get(artist.id) ?? []).flatMap(
-      (album) => cache.albumTracks.get(album.id) ?? [],
-    );
-  }
-
-  function availableTracks(items: readonly Track[]) {
-    return offlineMode
-      ? items.filter((track) => trackEngine.getStatus(track.id) === "downloaded")
-      : items;
-  }
-
-  function availableTrackIds(tracks: readonly Track[]) {
-    return availableTracks(tracks).map((track) => track.id);
-  }
-
-  function playArtist(artist: Artist) {
-    void playback.replaceQueueAndPlay(availableTrackIds(artistTracks(artist)));
-  }
-
-  function playNext(tracks: readonly Track[]) {
-    void playback.enqueue(availableTrackIds(tracks), "next");
-  }
-
-  function playLast(tracks: readonly Track[]) {
-    void playback.enqueue(availableTrackIds(tracks), "last");
-  }
-
-  async function downloadTrack(track: Track) {
-    try {
-      const album = cache.albums.get(track.albumId);
-      await trackEngine.cache({
-        id: track.id,
-        title: track.title,
-        artist: track.artistName ?? cache.artists.get(track.artistId)?.name,
-        album: album?.title,
-        contentType: track.mimeType,
-      });
-    } catch {
-      // TrackEngine exposes download failures through its error state.
-    }
-  }
-
-  function downloadCollection(tracks: readonly Track[]) {
-    return Promise.all(tracks.map(downloadTrack));
-  }
-
-  function downloadArtist(artist: Artist) {
-    return downloadCollection(artistTracks(artist));
   }
 
   function playbackPercent() {
@@ -251,111 +193,7 @@
 {/snippet}
 
 {#snippet libraryRoute()}
-  {@const visibleArtists = offlineMode
-    ? artists.filter((artist) =>
-        artistTracks(artist).some((track) => trackEngine.getStatus(track.id) === "downloaded"),
-      )
-    : artists}
-
-  <section class="view library-view">
-    {#if libraryAvailable}
-      <div class="section-heading">
-        <div>
-          <span class="type-eyebrow text-muted">
-            {offlineMode ? "Downloaded music" : "Your music"}
-          </span>
-          <h2 class="type-heading">{visibleArtists.length} artists</h2>
-        </div>
-      </div>
-
-      {#if loading}
-        <div class="empty-state">
-          <div class="scan-spinner">{@render icon("loading")}</div>
-          <p class="type-body">Restoring local library…</p>
-        </div>
-      {/if}
-      {#if visibleArtists.length > 0}
-        <div class="tiles-grid">
-          {#each visibleArtists as artist, index}
-            {@const menuId = `artist-menu-${index}`}
-            {@const cover = coverEngine.ensureArtistCover(artist.id)}
-            <a
-              class="tile"
-              {@attach viewportContent(cover.load)}
-              aria-label={artist.name}
-              href={`#${artistPath(artist)}`}
-              data-longpressfor={menuId}
-              data-longpress="show-modal"
-              title={`${artist.name} — hold for actions`}
-            >
-              <span
-                class="tile-image"
-                style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
-              >
-                {#if cover.source}
-                  <img src={cover.source} alt="" />
-                {:else}
-                  <span>{@render icon("music")}</span>
-                {/if}
-                <strong
-                  class="tile-name type-small"
-                  style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
-                  >{artist.name}</strong
-                >
-              </span>
-            </a>
-          {/each}
-        </div>
-      {:else if !loading}
-        <div class="empty-state">
-          <span>{@render icon("music")}</span>
-          <p class="type-body">
-            {offlineMode ? "No downloaded artists." : "No artists found."}
-          </p>
-        </div>
-      {/if}
-    {:else if !loading}
-      {@render connectLibrary()}
-    {/if}
-  </section>
-  {#if libraryAvailable}
-    {#each visibleArtists as artist, index}
-      {@const menuId = `artist-menu-${index}`}
-      <dialog
-        id={menuId}
-        class="action-menu"
-        aria-labelledby={`${menuId}-title`}
-        closedby="closerequest"
-        use:swipeToDismiss
-        onclick={(event) => event.currentTarget.close()}
-      >
-        <div class="stack-sm">
-          <header id={`${menuId}-title`} class="type-title">
-            {artist.name}
-          </header>
-          <div class="wings">
-            <button class="wings-item row-button" onclick={() => playArtist(artist)}>
-              {@render icon("play")}
-              <span>Play</span>
-            </button>
-            <button class="wings-item row-button" onclick={() => playNext(artistTracks(artist))}>
-              {@render icon("next")}
-              <span>Play next</span>
-            </button>
-            <button class="wings-item row-button" onclick={() => playLast(artistTracks(artist))}>
-              {@render icon("plus")}
-              <span>Play last</span>
-            </button>
-            <button class="wings-item row-button" onclick={() => downloadArtist(artist)}>
-              {@render icon("download")}
-              <span>Download</span>
-            </button>
-            <button class="wings-item row-button"><span></span>Cancel</button>
-          </div>
-        </div>
-      </dialog>
-    {/each}
-  {/if}
+  <LibraryRoute {cache} {coverEngine} {trackEngine} {session} {playback} />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
@@ -372,15 +210,6 @@
     {playback}
     playbackState={playbackLoading ? "loading" : player?.playing ? "playing" : "paused"}
   />
-{/snippet}
-
-{#snippet connectLibrary()}
-  <div class="empty-state">
-    <span>{@render icon("music")}</span>
-    <h2 class="type-heading">Connect your library</h2>
-    <p class="type-body">Add your music server to start listening.</p>
-    <a class="button" data-size="md" data-variant="neutral" href="#/settings">Open settings</a>
-  </div>
 {/snippet}
 
 <main class="app-shell">
