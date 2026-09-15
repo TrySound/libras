@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Cache } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
@@ -24,7 +25,7 @@ describe("unscoped empty Cache", () => {
       cache.downloads,
     ];
     expect(collections.every((collection) => collection.size === 0)).toBe(true);
-    expect(cache.account).toBeUndefined();
+    expect(cache.key).toBeUndefined();
     expect(cache.savedAt).toBeUndefined();
     expect(cache.lastModified).toBeUndefined();
     expect(cache.queue).toEqual({ tracks: [], index: -1, position: 0 });
@@ -43,16 +44,16 @@ describe("unscoped empty Cache", () => {
     const disk = installDisk();
     const cache = new Cache();
     const timer = vi.spyOn(globalThis, "setTimeout");
-    expect(() => cache.setQueue(queue)).toThrow("No account selected");
-    await expect(cache.replaceLibrary(library)).rejects.toThrow("No account selected");
+    expect(() => cache.setQueue(queue)).toThrow("No cache storage configured");
+    await expect(cache.replaceLibrary(library)).rejects.toThrow("No cache storage configured");
     await expect(
       cache.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" }),
-    ).rejects.toThrow("No account selected");
+    ).rejects.toThrow("No cache storage configured");
     const cancel = vi.fn();
     const response = new Response(new ReadableStream({ cancel }));
     await expect(
       cache.saveDownload(track, "mp3", "audio/mpeg", response, new AbortController().signal),
-    ).rejects.toThrow("No account selected");
+    ).rejects.toThrow("No cache storage configured");
     expect(cancel).toHaveBeenCalledOnce();
     expect(timer).not.toHaveBeenCalled();
     expect(cache.queueRevision).toBe(0);
@@ -82,13 +83,17 @@ describe("unscoped empty Cache", () => {
   it("stays empty when a separate account cache is populated", async () => {
     installDisk();
     const empty = new Cache();
-    const selected = new Cache({ host: "https://music.example", username: "listener" });
+    const selected = new Cache(
+      getAccountKey({ host: "https://music.example", username: "listener" }),
+    );
     await selected.replaceLibrary(library);
     selected.setQueue(queue);
     await selected.flush();
-    expect(selected.account).toEqual({ host: "https://music.example", username: "listener" });
+    expect(selected.key).toBe(
+      getAccountKey({ host: "https://music.example", username: "listener" }),
+    );
     expect(selected.savedAt).toBe(1);
-    expect(empty.account).toBeUndefined();
+    expect(empty.key).toBeUndefined();
     expect(empty.savedAt).toBeUndefined();
     expect(empty.queue.tracks).toEqual([]);
   });

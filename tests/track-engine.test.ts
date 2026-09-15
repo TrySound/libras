@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Network } from "../src/network.svelte";
 import { TrackEngine } from "../src/track.svelte";
@@ -30,18 +31,18 @@ function connection(credentials = auth) {
 }
 function setup(options: { cache?: Cache; online?: boolean; concurrency?: number } = {}) {
   const selection = new TestSelection();
-  const cache = options.cache ?? new Cache(account);
+  const cache = options.cache ?? new Cache(getAccountKey(account));
   selection.cache = cache;
   const engine = new TrackEngine({
     selection,
     concurrency: options.concurrency,
-    connection: options.online ? connection({ ...auth, ...cache.account }) : undefined,
+    connection: options.online ? connection() : undefined,
   });
   engines.push(engine);
   engine.activate();
   return { selection, cache, engine };
 }
-async function seed(cache = new Cache(account), format: "raw" | "mp3" = "mp3") {
+async function seed(cache = new Cache(getAccountKey(account)), format: "raw" | "mp3" = "mp3") {
   await cache.saveDownload(
     track,
     format,
@@ -148,7 +149,7 @@ describe("TrackEngine using Cache", () => {
   it("reads normalized Cache records and owns offline playback URLs", async () => {
     const disk = install();
     await seed();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.load();
     const { engine, selection } = setup({ cache });
     expect(cache.tracks.size).toBe(0);
@@ -523,7 +524,7 @@ describe("TrackEngine using Cache", () => {
       const old = engine.download(track.id);
       const rejected = expect(old).rejects.toMatchObject({ name: "AbortError" });
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
-      selection.cache = new Cache({ ...account, username });
+      selection.cache = new Cache(getAccountKey({ ...account, username }));
       engine.activate();
       engine.setConnection(connection({ ...auth, username }));
       await rejected;
@@ -563,7 +564,7 @@ describe("TrackEngine using Cache", () => {
       const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
       await reading.promise;
       if (action === "switch") {
-        selection.cache = new Cache(account);
+        selection.cache = new Cache(getAccountKey(account));
         engine.activate();
       }
       if (action === "abort") controller.abort();
@@ -580,7 +581,7 @@ describe("TrackEngine using Cache", () => {
     install();
     const { engine, selection } = setup({ cache: await seed(), online: true });
     await engine.getSource(track);
-    selection.cache = new Cache({ ...account, username: "other" });
+    selection.cache = new Cache(getAccountKey({ ...account, username: "other" }));
     engine.activate();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:track-1");
     expect(engine.getStatus(track.id)).toBe("idle");
@@ -624,7 +625,7 @@ describe("TrackEngine using Cache", () => {
     ]);
     expect(disk.blobs.size).toBe(2);
     await first.cache.flush();
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(restored.downloads.size).toBe(2);
   });

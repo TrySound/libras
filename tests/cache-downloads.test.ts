@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
 import { Cache, downloadKey } from "../src/cache.svelte";
@@ -37,7 +38,7 @@ afterEach(() => {
 describe("download cache foundation", () => {
   it("restores independent descriptions without library metadata or eager binary reads", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     expect(disk.getDirectory).not.toHaveBeenCalled();
     const file = await save(cache);
     expect(await file.text()).toBe("audio");
@@ -55,7 +56,7 @@ describe("download cache foundation", () => {
     disk.state.beforeRead = async (name) => {
       reads.push(name);
     };
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(restored.artists.size).toBe(0);
     expect(restored.downloads).toEqual(cache.downloads);
@@ -68,7 +69,7 @@ describe("download cache foundation", () => {
 
   it("streams chunks and publishes reactively after binary close", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const source = stream();
     const seen: number[] = [];
     const stop = observeCache(() => seen.push(cache.downloads.size));
@@ -102,7 +103,7 @@ describe("download cache foundation", () => {
     "cleans uncommitted files on %s failure and allows retry",
     async (stage) => {
       const disk = installDisk();
-      const cache = new Cache(account);
+      const cache = new Cache(getAccountKey(account));
       disk.state.beforeClose = async (name) => {
         if (stage === "binary" && name.endsWith(".audio")) throw new Error("Storage full");
       };
@@ -127,7 +128,7 @@ describe("download cache foundation", () => {
   it("cancels an active stream and deletes its partial file", async () => {
     const disk = installDisk();
     const source = stream();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const abort = new AbortController();
     const wrote = deferred();
     disk.state.beforeWrite = (name) => {
@@ -147,7 +148,7 @@ describe("download cache foundation", () => {
 
   it("reuses a concurrent winner and cancels the unused response", async () => {
     const disk = installDisk();
-    const first = new Cache(account);
+    const first = new Cache(getAccountKey(account));
     const second = first;
     const gate = deferred();
     const closing = deferred();
@@ -172,13 +173,13 @@ describe("download cache foundation", () => {
 
   it("cancels a lock waiter and releases its unused response before the winner finishes", async () => {
     installDisk();
-    const first = new Cache(account);
+    const first = new Cache(getAccountKey(account));
     const source = stream();
     const pending = first.saveDownload(track, "mp3", "audio/mpeg", source.response, signal());
     await vi.waitFor(() => expect(source.response.bodyUsed).toBe(true));
     const unused = stream();
     const abort = new AbortController();
-    const second = new Cache(account).saveDownload(
+    const second = new Cache(getAccountKey(account)).saveDownload(
       track,
       "mp3",
       "audio/mpeg",
@@ -202,7 +203,7 @@ describe("download cache foundation", () => {
 
   it("streams different downloads concurrently and merges their catalog entries", async () => {
     installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const one = stream();
     const two = stream();
     const pending = [
@@ -225,7 +226,7 @@ describe("download cache foundation", () => {
   it("preserves an already committed winner without Web Locks", async () => {
     const disk = installDisk();
     Object.defineProperty(navigator, "locks", { value: undefined, configurable: true });
-    const first = new Cache(account);
+    const first = new Cache(getAccountKey(account));
     const second = first;
     const one = stream();
     const two = stream();
@@ -248,7 +249,7 @@ describe("download cache foundation", () => {
     "repairs %s files on access without discarding other downloads",
     async (kind) => {
       const disk = installDisk();
-      const cache = new Cache(account);
+      const cache = new Cache(getAccountKey(account));
       await save(cache);
       await cache.saveDownload(track, "raw", "audio/flac", new Response("original"), signal());
       const fileName = cache.downloads.get(key)!.fileName;
@@ -268,7 +269,7 @@ describe("download cache foundation", () => {
 
   it("does not invalidate records after permission errors or cancelled reads", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await save(cache);
     await cache.flush();
     const original = cache.downloads;
@@ -292,9 +293,9 @@ describe("download cache foundation", () => {
 
   it("isolates accounts and never adopts unlisted files", async () => {
     const disk = installDisk();
-    const first = new Cache(account);
+    const first = new Cache(getAccountKey(account));
     await save(first, "first");
-    const second = new Cache({ ...account, username: "other" });
+    const second = new Cache(getAccountKey({ ...account, username: "other" }));
     await second.load();
     expect(second.downloads.size).toBe(0);
     expect(await second.readDownload(track.id, "mp3")).toBeNull();
@@ -302,7 +303,7 @@ describe("download cache foundation", () => {
     expect(await (await first.readDownload(track.id, "mp3"))!.text()).toBe("first");
     expect(await (await second.readDownload(track.id, "mp3"))!.text()).toBe("other");
     disk.files.delete(path(disk));
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(await restored.readDownload(track.id, "mp3")).toBeNull();
     expect(disk.blobs.size).toBe(2);
@@ -312,7 +313,7 @@ describe("download cache foundation", () => {
     "rejects %s catalogs independently and preserves them on attempted saves",
     async (kind) => {
       const disk = installDisk();
-      const original = new Cache(account);
+      const original = new Cache(getAccountKey(account));
       await save(original);
       original.setQueue({ tracks: [track.id], index: 0, position: 0 });
       await original.flush();
@@ -323,7 +324,7 @@ describe("download cache foundation", () => {
       if (kind === "unsafe filename") data[0].fileName = "../outside.audio";
       const value = kind === "broken" ? "broken JSON" : JSON.stringify(data);
       disk.files.set(path(disk), value);
-      const cache = new Cache(account);
+      const cache = new Cache(getAccountKey(account));
       await expect(cache.load()).rejects.toBeInstanceOf(AggregateError);
       expect(cache.error).toBeDefined();
       expect(cache.queue.tracks).toEqual([track.id]);
@@ -339,11 +340,11 @@ describe("download cache foundation", () => {
 
   it("restores downloads even when the library is corrupt", async () => {
     const disk = installDisk();
-    const seed = new Cache(account);
+    const seed = new Cache(getAccountKey(account));
     await save(seed);
     await seed.flush();
     disk.files.set(path(disk).replace("downloads.json", "library.json"), "broken JSON");
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await expect(cache.load()).rejects.toMatchObject({ errors: [expect.any(Error)] });
     expect(cache.downloads.size).toBe(1);
     expect(await (await cache.readDownload(track.id, "mp3"))!.text()).toBe("audio");
@@ -353,10 +354,10 @@ describe("download cache foundation", () => {
     "orders hydration with writes and guards cancellation (cancel: %s)",
     async (cancel) => {
       const disk = installDisk();
-      const seed = new Cache(account);
+      const seed = new Cache(getAccountKey(account));
       await save(seed);
       await seed.flush();
-      const cache = new Cache(account);
+      const cache = new Cache(getAccountKey(account));
       const reading = deferred();
       const gate = deferred();
       disk.state.beforeRead = async (name) => {
@@ -394,7 +395,7 @@ describe("download cache foundation", () => {
 
   it("copies descriptions before streaming", async () => {
     installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const input = { ...track };
     const source = stream();
     const pending = cache.saveDownload(input, "mp3", "audio/mpeg", source.response, signal());

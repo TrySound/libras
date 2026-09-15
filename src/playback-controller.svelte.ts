@@ -8,22 +8,19 @@ import type { TrackEngine } from "./track.svelte";
 
 const emptyQueue = { tracks: [] as readonly string[], index: -1, position: 0 };
 interface PlaybackControllerOptions {
-  queue: Pick<
-    QueueEngine,
-    "replace" | "enqueue" | "select" | "seek" | "progress" | "playback" | "flush" | "subscribe"
-  >;
+  queue: QueueEngine;
   selection: CacheSelection;
-  tracks: Pick<TrackEngine, "getSource">;
-  covers: Pick<CoverEngine, "ensureTrackCover">;
+  tracks: TrackEngine;
+  covers: CoverEngine;
   isAvailable?: (id: string) => boolean;
 }
 
 /** Coordinates the selected queue with Player. No audio ownership or save timing. */
 export class PlaybackController {
-  #queue: PlaybackControllerOptions["queue"];
-  #selection: PlaybackControllerOptions["selection"];
-  #covers: PlaybackControllerOptions["covers"];
-  #tracks: PlaybackControllerOptions["tracks"];
+  #queue: QueueEngine;
+  #selection: CacheSelection;
+  #covers: CoverEngine;
+  #tracks: TrackEngine;
   #player?: ReturnType<typeof Player>;
   #isAvailable: (id: string) => boolean;
   #cleanup?: () => void;

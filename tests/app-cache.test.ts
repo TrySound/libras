@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
@@ -109,7 +110,9 @@ it("uses the empty fallback before account selection and when selection is clear
   expect(mocks.navigate).toHaveBeenCalledWith("/settings", "replace");
   expect(disk.getDirectory).not.toHaveBeenCalled();
 
-  const selected = new Cache({ host: "https://music.example", username: "listener" });
+  const selected = new Cache(
+    getAccountKey({ host: "https://music.example", username: "listener" }),
+  );
   await selected.replaceLibrary(library("Selected artist", 1));
   mocks.options!.selection.cache = selected;
   mocks.options!.covers.activate();
@@ -149,7 +152,7 @@ it("automatically loads another batch each time the new sentinel is nearby", asy
       }
     },
   );
-  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   const snapshot: LibrarySnapshot = {
     ...library("Artist", 1),
     artists: Array.from({ length: 100 }, (_, index) => ({
@@ -228,7 +231,7 @@ it("automatically loads another batch each time the new sentinel is nearby", asy
   await visit("/library", "replacement", 2, "replace");
   assertCount(100); // Same-route navigation does not remount the page.
 
-  const other = new Cache({ host: "https://other.example", username: "listener" });
+  const other = new Cache(getAccountKey({ host: "https://other.example", username: "listener" }));
   await other.replaceLibrary({ ...snapshot, savedAt: 2 });
   mocks.options!.selection.cache = other;
   flushSync();
@@ -264,7 +267,7 @@ it("preserves artist pagination when offline eligibility changes", async () => {
       }
     },
   );
-  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
     ...library("Artist", 1),
     artists: [...downloaded].map((id) => ({ id, name: `Artist ${id}`, genres: [] })),
@@ -313,7 +316,7 @@ it("preserves artist pagination when offline eligibility changes", async () => {
 it("renders the cache stress fixture with unique tiles and one shared menu", async () => {
   installDisk();
   vi.stubEnv("VITE_STRESS_ARTISTS", "1");
-  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary(library("Artist", 1));
   mocks.cache = cache;
   const target = document.createElement("main");
@@ -349,7 +352,7 @@ it("restores the large player slider when queue hydration finishes before metada
       setter.call(this, value);
     },
   );
-  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   cache.setQueue({ tracks: ["track"], index: 0, position: 45.5 });
   await cache.flush();
   mocks.cache = cache;
@@ -428,7 +431,7 @@ it.each([
   "keeps available content and menus usable during restoration on $route",
   async ({ route, selector, menu }) => {
     installDisk();
-    const cache = new Cache({ host: "https://music.example", username: "listener" });
+    const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
     await cache.replaceLibrary({
       ...library("Artist", 1),
       albums: [{ id: "album", artistId: "artist", title: "Album", genres: [] }],
@@ -485,7 +488,7 @@ it.each([
 
 it("reuses one library menu for the long-pressed artist", async () => {
   installDisk();
-  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
     artists: ["one", "two"].map((id) => ({ id, name: `Artist ${id}`, genres: [] })),
     albums: ["one", "two"].map((id) => ({ id, artistId: id, title: id, genres: [] })),
@@ -526,7 +529,7 @@ it("reuses one library menu for the long-pressed artist", async () => {
 
 it("shows only album genres on the album route", async () => {
   installDisk();
-  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
     ...library("Artist", 1),
     albums: [{ id: "album", artistId: "artist", title: "Album", genres: ["Jazz"] }],
@@ -555,7 +558,7 @@ it("shows only album genres on the album route", async () => {
 
 it("renders the selected cache, reacts to replacements, and stops observing a previous account", async () => {
   installDisk();
-  const first = new Cache({ host: "https://music.example", username: "first" });
+  const first = new Cache(getAccountKey({ host: "https://music.example", username: "first" }));
   await first.replaceLibrary(library("First artist", 1));
   mocks.cache = first;
   const target = document.createElement("main");
@@ -571,7 +574,7 @@ it("renders the selected cache, reacts to replacements, and stops observing a pr
   flushSync();
   expect(names()).toEqual(["Updated artist"]);
 
-  const second = new Cache({ host: "https://music.example", username: "second" });
+  const second = new Cache(getAccountKey({ host: "https://music.example", username: "second" }));
   await second.replaceLibrary(library("Second artist", 3));
   mocks.options!.metadata.setConnection(undefined);
   mocks.options!.selection.cache = second;
@@ -588,7 +591,7 @@ it("renders the selected cache, reacts to replacements, and stops observing a pr
 it("renders download records and jobs without duplicates and switches account projections", async () => {
   installDisk();
   window.history.replaceState(null, "", "#/downloads");
-  const first = new Cache({ host: "https://music.example", username: "first" });
+  const first = new Cache(getAccountKey({ host: "https://music.example", username: "first" }));
   const track = { id: "track", title: "First download", artist: "Artist", album: "Album" };
   await first.saveDownload(
     track,
@@ -609,7 +612,12 @@ it("renders download records and jobs without duplicates and switches account pr
   const options = mocks.options!;
   const tracks = options.tracks as import("../src/track.svelte").TrackEngine;
   const connection = options.network.accept(
-    options.network.prepare({ ...first.account!, token: "token", salt: "salt" }),
+    options.network.prepare({
+      host: "https://music.example",
+      username: "first",
+      token: "token",
+      salt: "salt",
+    }),
   );
   tracks.setConnection(connection.audio);
   const pending = tracks.download(track.id, { forceTranscode: true });
@@ -620,7 +628,7 @@ it("renders download records and jobs without duplicates and switches account pr
   flushSync();
   expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
 
-  const second = new Cache({ ...first.account!, username: "second" });
+  const second = new Cache(getAccountKey({ host: "https://music.example", username: "second" }));
   await second.saveDownload(
     { ...track, title: "Second download" },
     "mp3",
@@ -658,7 +666,7 @@ it.each([
   { route: "/library/artist/:artistId/album/:albumId", ids: ["one", "two"] },
 ])("downloads the selected collection on $route", async ({ route, ids }) => {
   installDisk();
-  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
     ...library("Artist", 1),
     albums: [
@@ -732,7 +740,7 @@ it.each([
       }
     },
   );
-  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
     ...library("Artist", 1),
     albums: [{ id: "album", artistId: "artist", title: "Album", genres: [] }],
@@ -787,7 +795,7 @@ it("renders cached artwork only near the viewport and drops the previous account
   let sequence = 0;
   vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:artwork-${++sequence}`);
   const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-  const first = new Cache({ host: "https://music.example", username: "first" });
+  const first = new Cache(getAccountKey({ host: "https://music.example", username: "first" }));
   const data = library("Artist", 1);
   data.artists[0].artworkId = "cover";
   await first.replaceLibrary(data);
@@ -821,7 +829,7 @@ it("renders cached artwork only near the viewport and drops the previous account
   expect(tile.hasAttribute("data-viewport-hidden")).toBe(false);
   expect(URL.createObjectURL).toHaveBeenCalledOnce();
 
-  const second = new Cache({ ...first.account!, username: "second" });
+  const second = new Cache(getAccountKey({ host: "https://music.example", username: "second" }));
   await second.replaceLibrary(data);
   mocks.options!.selection.cache = second;
   mocks.options!.covers.activate();

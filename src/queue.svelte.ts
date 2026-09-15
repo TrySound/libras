@@ -1,3 +1,4 @@
+import { getAccountKey } from "./auth";
 import type { Cache, CachedQueue, CacheSelection, Immutable } from "./cache.svelte";
 import type { QueueConnection, RemoteQueue } from "./network.svelte";
 
@@ -115,10 +116,8 @@ export class QueueEngine {
   #connected(cache: Cache) {
     return (
       !!this.#connection &&
-      !!cache.account &&
       !this.#connection.signal.aborted &&
-      this.#connection.account.host === cache.account.host &&
-      this.#connection.account.username === cache.account.username
+      cache.key === getAccountKey(this.#connection.account)
     );
   }
 

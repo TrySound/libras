@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MetadataSnapshot } from "../src/metadata.svelte";
 import { Cache } from "../src/cache.svelte";
@@ -20,8 +22,8 @@ async function connected() {
   return fixture;
 }
 
-afterEach(() => {
-  for (const { session } of fixtures.splice(0)) session.destroy();
+afterEach(async () => {
+  for (const fixture of fixtures.splice(0)) await fixture.destroy();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -299,7 +301,7 @@ describe("session", () => {
     session.disconnect();
     expect(session.syncing).toBe(false);
     expect(session.localReady).toBe(true);
-    expect(client.signal.aborted).toBe(true);
+    expect(client!.signal.aborted).toBe(true);
     expect(auth.load()).toBeNull();
     expect(session.auth).toBeNull();
     expect(session.offlineMode).toBe(true);
@@ -330,10 +332,7 @@ describe("session", () => {
     );
     expect(session.start()).toBeNull();
     await vi.waitFor(() => expect(queue.activate).toHaveBeenCalledOnce());
-    expect(selection.cache!.account).toEqual({
-      host: credentials.host,
-      username: credentials.username,
-    });
+    expect(selection.cache!.key).toBe(getAccountKey(credentials));
     expect(selection.cache!.artists.get("artist")?.name).toBe(credentials.username);
     expect(selection.cache!.queue.position).toBe(17);
     expect(session.offlineMode).toBe(true);
@@ -371,7 +370,7 @@ describe("session", () => {
         expect(selection.cache?.artists).toBe(previous);
       })
       .mockImplementation(() => {
-        expect(selection.cache?.account).toEqual(next);
+        expect(selection.cache?.key).toBe(getAccountKey(next));
       });
     const connecting = session.connect({ ...next, password: "secret" });
     await vi.waitFor(() => expect(prepareConnection).toHaveBeenCalledOnce());
@@ -381,7 +380,7 @@ describe("session", () => {
     expect(await session.connect(input)).toBe(false);
     prepared.resolve(snapshot(next));
     expect(await connecting).toBe(true);
-    expect(selection.cache!.account).toEqual(next);
+    expect(selection.cache!.key).toBe(getAccountKey(next));
     expect(selection.cache!.artists.get("artist")?.name).toBe("other");
     expect(selection.cache!.queue.tracks).toEqual(["other"]);
     expect(covers.activate).toHaveBeenCalledTimes(3);
@@ -400,7 +399,7 @@ describe("session", () => {
       const { session, selection, auth, metadata, prepareConnection } = await connected();
       session.disconnect();
       const previous = selection.cache!.artists;
-      const previousAccount = selection.cache!.account;
+      const previousAccount = auth.loadAccount()!;
       prepareConnection.mockRejectedValueOnce(
         new NetworkTransportError(new TypeError("Network failed")),
       );
@@ -411,7 +410,7 @@ describe("session", () => {
         }),
       ).toBe(false);
       expect(selection.cache!.artists).toBe(previous);
-      expect(selection.cache!.account).toBe(previousAccount);
+      expect(selection.cache!.key).toBe(getAccountKey(previousAccount));
       expect(session.auth).toBeNull();
       expect(auth.load()).toBeNull();
       expect(auth.loadAccount()).toEqual(previousAccount);
@@ -447,7 +446,7 @@ describe("session", () => {
       const { session, auth, selection, storage, saveLibrary } = await connected();
       session.disconnect();
       const previous = selection.cache!.artists;
-      const account = selection.cache!.account;
+      const account = auth.loadAccount()!;
       if (stage === "credentials")
         vi.spyOn(auth, "save").mockImplementationOnce(() => {
           throw new TypeError("Storage full");
@@ -456,7 +455,7 @@ describe("session", () => {
       expect(await session.connect({ ...input, username: "other" })).toBe(false);
       expect(session.error).toBe("Storage full");
       expect(selection.cache!.artists).toBe(previous);
-      expect(selection.cache?.account).toEqual(account);
+      expect(selection.cache?.key).toBe(getAccountKey(account));
       expect(auth.load()).toBeNull();
       expect(auth.loadAccount()).toEqual(account);
       expect(storage.getItem("navidrome-offline-mode")).toBe("true");
@@ -492,7 +491,7 @@ describe("session", () => {
       expect(selection.cache).toBe(previous);
       expect(session.auth).toBeNull();
       expect(auth.load()).toBeNull();
-      expect(auth.loadAccount()).toEqual(previous.account);
+      expect(getAccountKey(auth.loadAccount()!)).toBe(previous.key);
       expect(session.offlineMode).toBe(true);
       expect(saveAuth).not.toHaveBeenCalled();
       expect(saveAccount).not.toHaveBeenCalled();
@@ -505,7 +504,7 @@ describe("session", () => {
       expect(selection.cache).toBe(previous);
       expect(saveAuth).not.toHaveBeenCalled();
       expect(auth.load()).toBeNull();
-      expect(auth.loadAccount()).toEqual(previous.account);
+      expect(getAccountKey(auth.loadAccount()!)).toBe(previous.key);
       expect(accept).not.toHaveBeenCalled();
     },
   );
@@ -545,7 +544,7 @@ describe("session", () => {
       expect(selection.cache).toBe(previous);
       expect(session.auth).toBeNull();
       expect(auth.load()).toBeNull();
-      expect(auth.loadAccount()).toEqual(previous!.account);
+      expect(getAccountKey(auth.loadAccount()!)).toBe(previous!.key);
       expect(storage.getItem("navidrome-offline-mode")).toBe("true");
       expect(network.accept).not.toHaveBeenCalled();
       expect(tracks.setConnection.mock.calls.every(([value]) => value === undefined)).toBe(true);
@@ -610,10 +609,7 @@ describe("session", () => {
     const loaded = deferred();
     loadCache.mockReturnValueOnce(loaded.promise);
     session.start();
-    expect(selection.cache?.account).toEqual({
-      host: credentials.host,
-      username: credentials.username,
-    });
+    expect(selection.cache?.key).toBe(getAccountKey(credentials));
     expect(loadCache.mock.contexts[0]).toBe(selection.cache);
     expect(covers.activate).toHaveBeenCalledOnce();
     expect(tracks.activate).toHaveBeenCalledOnce();
@@ -686,7 +682,7 @@ describe("session", () => {
       expect(playback.suspend).toHaveBeenCalledOnce();
       expect(selection.cache).toBe(saveLibrary.mock.contexts[0]);
       expect(selection.cache === previous).toBe(username === "listener");
-      expect(selection.cache?.account?.username).toBe(username);
+      expect(selection.cache?.key).toBe(getAccountKey({ ...credentials, username }));
       expect(selection.cache!.artists.get("artist")?.name).toBe(username);
     },
   );
@@ -696,7 +692,9 @@ describe("session", () => {
     loadCache.mockRestore();
     saveLibrary.mockRestore();
     installDisk();
-    const seed = new Cache({ host: credentials.host, username: credentials.username });
+    const seed = new Cache(
+      getAccountKey({ host: credentials.host, username: credentials.username }),
+    );
     seed.setQueue({ tracks: ["old"], index: 0, position: 10 });
     await seed.flush();
     session.start();
@@ -754,7 +752,7 @@ describe("session", () => {
     release.resolve();
     expect(await switching).toBe(true);
     expect(previous.dirty).toBe(false);
-    const restored = new Cache(previous.account);
+    const restored = new Cache(previous.key);
     await restored.load();
     expect(restored.queue.position).toBe(2);
   });
@@ -816,7 +814,7 @@ describe("session", () => {
     const { session, tracks, metadata, auth, queue, loadCache } = await connected();
     const client = tracks.setConnection.mock.calls.at(-1)![0];
     await session.setOfflineMode(true);
-    expect(client.signal.aborted).toBe(true);
+    expect(client!.signal.aborted).toBe(true);
     expect(auth.load()).not.toBeNull();
     expect(session.auth).not.toBeNull();
     await session.setOfflineMode(false);

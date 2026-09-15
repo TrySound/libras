@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
 import { observeCache } from "./cache-reactivity.test.svelte";
@@ -22,13 +23,12 @@ afterEach(() => {
 });
 
 describe("memory-first library", () => {
-  it("constructs an empty account-scoped view without I/O", () => {
+  it("constructs an empty key-scoped view without I/O", () => {
     const disk = installDisk();
     const input = { ...account };
-    const cache = new Cache(input);
+    const cache = new Cache(getAccountKey(input));
     input.username = "other";
-    expect(cache.account).toEqual(account);
-    expect(Object.isFrozen(cache.account)).toBe(true);
+    expect(cache.key).toBe(getAccountKey(account));
     expect(cache.savedAt).toBeUndefined();
     expect(cache.tracks.size).toBe(0);
     expect(disk.getDirectory).not.toHaveBeenCalled();
@@ -36,7 +36,7 @@ describe("memory-first library", () => {
 
   it("publishes owned, related reactive views together before persistence", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const seen: unknown[] = [];
     const stop = observeCache(() =>
       seen.push([cache.artists.size, cache.albums.size, cache.tracks.size, cache.savedAt]),
@@ -60,7 +60,7 @@ describe("memory-first library", () => {
       const [path, json] = [...disk.files][0];
       expect(path).toMatch(/^accounts\/[a-f0-9]{64}\/library\.json$/);
       expect(JSON.parse(json)).toEqual(library());
-      const restored = new Cache(account);
+      const restored = new Cache(getAccountKey(account));
       await restored.load();
       expect(restored.tracks).toEqual(cache.tracks);
       expect(restored.tracks.get("track")).toBe(restored.albumTracks.get("album")![0]);
@@ -72,7 +72,7 @@ describe("memory-first library", () => {
 
   it("derives sorted relationships without duplicating persisted records", async () => {
     installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const value = library();
     value.artists.unshift({ id: "z", name: "Z", genres: [] });
     value.albums.push({ ...value.albums[0], id: "older", year: 1990 });
@@ -86,7 +86,7 @@ describe("memory-first library", () => {
 
   it("keeps memory authoritative after loading, without rereading disk on writes", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.load();
     await cache.replaceLibrary(library());
     await cache.flush();
@@ -103,7 +103,7 @@ describe("memory-first library", () => {
 
   it("preserves new memory and old disk on checkpoint failure, then retries", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.replaceLibrary(library());
     await cache.flush();
     const files = [...disk.files];
@@ -126,7 +126,7 @@ describe("memory-first library", () => {
     "preserves %s until authoritative replacement is flushed",
     async (kind) => {
       const disk = installDisk();
-      const seed = new Cache(account);
+      const seed = new Cache(getAccountKey(account));
       await seed.replaceLibrary(library());
       await seed.flush();
       const path = [...disk.files.keys()][0];
@@ -137,7 +137,7 @@ describe("memory-first library", () => {
           ? "broken"
           : JSON.stringify(kind === "duplicate IDs" ? invalid : { ...library(), unexpected: true });
       disk.files.set(path, corrupt);
-      const cache = new Cache(account);
+      const cache = new Cache(getAccountKey(account));
       await expect(cache.load()).rejects.toThrow();
       expect(disk.files.get(path)).toBe(corrupt);
       await cache.replaceLibrary(library(200));
@@ -149,10 +149,10 @@ describe("memory-first library", () => {
 
   it("does not overwrite a replacement with late hydration", async () => {
     const disk = installDisk();
-    const seed = new Cache(account);
+    const seed = new Cache(getAccountKey(account));
     await seed.replaceLibrary(library());
     await seed.flush();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const reading = deferred();
     const release = deferred();
     disk.state.beforeRead = async () => {
@@ -170,7 +170,7 @@ describe("memory-first library", () => {
 
   it("rejects cancellation before publication; later cancellation does not undo adopted data", async () => {
     installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const controller = new AbortController();
     controller.abort();
     await expect(cache.replaceLibrary(library(), controller.signal)).rejects.toMatchObject({
@@ -186,7 +186,7 @@ describe("memory-first library", () => {
 
   it("rejects older in-memory snapshots before projecting them", async () => {
     installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.replaceLibrary(library(200));
     const previous = cache.artists;
     await cache.replaceLibrary(library(100));

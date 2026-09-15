@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Cache } from "../src/cache.svelte";
 import { flushSync } from "svelte";
@@ -40,7 +41,7 @@ afterEach(() => {
 describe("general checkpoints", () => {
   it("aggregates failures reactively and clears only recovered domains", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const libraryFailure = new Error("Library full");
     const imageFailure = new Error("Images full");
     const seen: (AggregateError | undefined)[] = [];
@@ -77,10 +78,38 @@ describe("general checkpoints", () => {
     }
   });
 
+  it.each(["", "workspace/with:delimiters", "音楽"])(
+    "persists opaque keys without interpreting account data: %j",
+    async (key) => {
+      installDisk();
+      const cache = new Cache(key);
+      expect(cache.key).toBe(key);
+      cache.setQueue(queue);
+      await cache.flush();
+      const restored = new Cache(key);
+      await restored.load();
+      expect(restored.queue).toEqual(queue);
+    },
+  );
+
+  it("reads and updates the existing account hash directory without migration", async () => {
+    const disk = installDisk();
+    const path =
+      "accounts/de88847aa783bc5e9af2363746a0fdb7d40951bc7b13c1a14f71840ee35896ad/queue.json";
+    disk.files.set(path, JSON.stringify(queue));
+    const cache = new Cache(getAccountKey(account));
+    await cache.load();
+    expect(cache.queue).toEqual(queue);
+    cache.setQueue({ ...queue, position: 42 });
+    await cache.flush();
+    expect([...disk.files.keys()]).toEqual([path]);
+    expect(JSON.parse(disk.files.get(path)!).position).toBe(42);
+  });
+
   it("hashes once without opening storage and clean flushes do no I/O", async () => {
     const disk = installDisk();
     const digest = vi.spyOn(crypto.subtle, "digest");
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     expect(digest).toHaveBeenCalledOnce();
     await cache.flush();
     expect(disk.getDirectory).not.toHaveBeenCalled();
@@ -92,7 +121,7 @@ describe("general checkpoints", () => {
 
   it("coalesces edits in every document without rereading or writing JSON per mutation", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.load();
     const read = vi.fn(async (_path: string) => {});
     disk.state.beforeRead = read;
@@ -108,7 +137,7 @@ describe("general checkpoints", () => {
     disk.getDirectory.mockClear();
     await cache.flush();
     expect(disk.getDirectory).not.toHaveBeenCalled();
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(restored.savedAt).toBe(10);
     expect(restored.queue.position).toBe(10);
@@ -118,7 +147,7 @@ describe("general checkpoints", () => {
 
   it("captures the latest state when a queued flush starts and acknowledges only its revision", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const closing = deferred();
     const release = deferred();
     disk.state.beforeClose = async () => {
@@ -140,7 +169,7 @@ describe("general checkpoints", () => {
 
   it("flushes independent domains even when one fails, and queue durability stays independent", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await edit(cache);
     disk.state.beforeClose = async (path) => {
       if (path.endsWith("/images.json")) throw new Error("Full");
@@ -169,7 +198,7 @@ describe("general checkpoints", () => {
     "retains %s placeholders on failed close and retries without rereading",
     async (name) => {
       const disk = installDisk();
-      const cache = new Cache(account);
+      const cache = new Cache(getAccountKey(account));
       await edit(cache);
       disk.state.beforeClose = async (path) => {
         if (path.endsWith(`/${name}.json`)) throw new Error("Close failed");
@@ -196,8 +225,8 @@ describe("general checkpoints", () => {
     { ...account, username: "other" },
   ])("isolates account documents and bytes: %j", async (other) => {
     const disk = installDisk();
-    const first = new Cache(account);
-    const second = new Cache(other);
+    const first = new Cache(getAccountKey(account));
+    const second = new Cache(getAccountKey(other));
     await edit(first, 1);
     await edit(second, 2);
     await Promise.all([first.flush(), second.flush()]);
@@ -210,7 +239,7 @@ describe("general checkpoints", () => {
       [account, 1],
       [other, 2],
     ] as const) {
-      const restored = new Cache(identity);
+      const restored = new Cache(getAccountKey(identity));
       await restored.load();
       expect(restored.savedAt).toBe(version);
       expect(restored.queue.position).toBe(version);
@@ -224,7 +253,7 @@ describe("general checkpoints", () => {
     const digest = vi
       .spyOn(crypto.subtle, "digest")
       .mockRejectedValueOnce(new Error("Hash unavailable"));
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await Promise.resolve();
     await expect(cache.load()).rejects.toMatchObject({
       errors: expect.arrayContaining([expect.objectContaining({ message: "Hash unavailable" })]),

@@ -1,5 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { AuthStore } from "../src/auth";
+import { AuthStore, getAccountKey } from "../src/auth";
+
+describe("getAccountKey", () => {
+  const account = { host: "https://music.example", username: "listener" };
+
+  it("preserves the identity format used by existing cache directories", () => {
+    expect(getAccountKey(account)).toBe('["https://music.example","listener"]');
+    expect(getAccountKey({ username: account.username, host: account.host })).toBe(
+      getAccountKey(account),
+    );
+  });
+
+  it("does not include credentials in account identity", () => {
+    const first = { ...account, token: "old", salt: "old" };
+    const second = { ...account, token: "new", salt: "new" };
+    expect(getAccountKey(first)).toBe(getAccountKey(second));
+    expect(getAccountKey(first)).toBe(getAccountKey(account));
+  });
+
+  it("distinguishes hosts, usernames, and delimiter-containing values", () => {
+    const identities = [
+      account,
+      { ...account, host: "https://other.example" },
+      { ...account, username: "other" },
+      { host: "https://music.example/a", username: "b/c" },
+      { host: "https://music.example/a/b", username: "c" },
+      { ...account, username: 'listener", "other' },
+    ];
+    expect(new Set(identities.map(getAccountKey)).size).toBe(identities.length);
+  });
+});
 
 class MemoryStorage implements Storage {
   #values = new Map<string, string>();

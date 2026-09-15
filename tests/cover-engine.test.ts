@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { flushSync } from "svelte";
 import { observeCover } from "./cover-reactivity.test.svelte";
@@ -57,7 +58,7 @@ function installOpfs() {
   vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   return disk;
 }
-async function engine(cache = new Cache(account)) {
+async function engine(cache = new Cache(getAccountKey(account))) {
   if (cache.savedAt === undefined) await cache.replaceLibrary(snapshot());
   await cache.flush();
   const selection = new TestSelection();
@@ -71,7 +72,7 @@ function catalog(disk: ReturnType<typeof installDisk>) {
   return JSON.parse([...disk.files].find(([path]) => path.endsWith("/images.json"))![1]);
 }
 async function seed(validators = {}) {
-  const cache = new Cache(account);
+  const cache = new Cache(getAccountKey(account));
   await cache.replaceLibrary(snapshot());
   await cache.saveImage("album-cover", image("image", validators));
   await cache.flush();
@@ -155,7 +156,7 @@ describe("cover engine using Cache", () => {
     const disk = installOpfs();
     await seed();
     const bytes = vi.spyOn(File.prototype, "arrayBuffer");
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     const { covers } = await engine(restored);
     expect(bytes).not.toHaveBeenCalled();
@@ -281,7 +282,7 @@ describe("cover engine using Cache", () => {
     expect(disk.blobs.size).toBe(2);
     for (const secret of ["blob:", "getCoverArt", auth.token, auth.salt])
       expect(JSON.stringify(saved)).not.toContain(secret);
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     const other = await engine(restored);
     const cover = other.covers.ensureTrackCover("two");
@@ -314,7 +315,7 @@ describe("cover engine using Cache", () => {
     first.covers.destroy();
     await first.cache.flush();
 
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     const second = await engine(restored);
     second.covers.setConnection(createConnection());
@@ -338,7 +339,7 @@ describe("cover engine using Cache", () => {
     expect(disk.blobs.size).toBe(1);
     await restored.flush();
     expect(disk.state.writes).toBe(writes + 1);
-    const thirdCache = new Cache(account);
+    const thirdCache = new Cache(getAccountKey(account));
     await thirdCache.load();
     const third = await engine(thirdCache);
     third.covers.setConnection(createConnection());
@@ -659,7 +660,7 @@ describe("cover engine using Cache", () => {
     await covers.refresh(true);
     await cache.flush();
     covers.destroy();
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(restored.images.get("album-cover")).toMatchObject({ fileName: original, freshUntil: 0 });
     const next = await engine(restored);
@@ -849,7 +850,7 @@ describe("cover engine using Cache", () => {
     cover.load();
     await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
     if (action === "switch") {
-      selection.cache = new Cache({ ...account, username: "other" });
+      selection.cache = new Cache(getAccountKey({ ...account, username: "other" }));
       covers.activate();
     } else covers.destroy();
     bytes.resolve(new TextEncoder().encode("image").buffer);
@@ -871,7 +872,7 @@ describe("cover engine using Cache", () => {
       const old = covers.ensureAlbumCover("album");
       expect(old.source).toBeUndefined();
       old.load();
-      const next = new Cache({ ...account, username });
+      const next = new Cache(getAccountKey({ ...account, username }));
       await next.replaceLibrary(snapshot());
       selection.cache = next;
       covers.activate();

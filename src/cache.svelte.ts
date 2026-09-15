@@ -6,7 +6,6 @@ import {
   trackSchema,
   imageSchema,
   downloadTrackSchema,
-  type Account,
   type ImageRecord,
   type ImageMetadata,
 } from "./schema";
@@ -214,7 +213,7 @@ class CheckpointStore<T> {
   }
 
   set(value: T, checkpoint = false) {
-    if (!this.disk) throw new Error("No account selected.");
+    if (!this.disk) throw new Error("No cache storage configured.");
     this.#value = value;
     const revision = ++this.#revision;
     this.#schedule(checkpoint);
@@ -404,7 +403,7 @@ class BinaryCatalog<R extends BinaryRecord> {
     signal?.throwIfAborted();
     await this.store.load(signal);
     const directory = await this.disk?.files();
-    if (!directory) throw new Error("No account selected.");
+    if (!directory) throw new Error("No cache storage configured.");
     let writable: FileSystemWritableFileStream | undefined;
     let committed = false;
     try {
@@ -515,7 +514,7 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
 }
 
 /**
- * Account-scoped local data owner, or an empty unscoped UI fallback.
+ * Key-scoped local data owner, or an empty unscoped UI fallback.
  * Construction performs no I/O.
  * Consumers never mutate collections or records. Library maps are snapshots;
  * binary catalogs are read-only live reactive views with immutable records.
@@ -523,19 +522,18 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
  * OPFS is read once per document, not reconciled with other cache instances.
  */
 export class Cache {
-  readonly account: Readonly<Account> | undefined;
+  readonly key: string | undefined;
   readonly #library: CheckpointStore<ReturnType<typeof prepareLibrary>>;
   readonly #disk: Disk | undefined;
   readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
   readonly #images: BinaryCatalog<Immutable<ImageRecord>>;
   readonly #downloads: BinaryCatalog<Immutable<CachedDownload>>;
 
-  /** Omitting the account creates an empty, non-persisting UI fallback. */
-  constructor(account?: Account) {
-    this.account = account === undefined ? undefined : Object.freeze({ ...account });
-    this.#disk = this.account
-      ? new Disk(hash(JSON.stringify([this.account.host, this.account.username])))
-      : undefined;
+  /** Omitting the key creates an empty, non-persisting UI fallback.
+   * Keys are opaque identities; hashing and storage addressing stay internal. */
+  constructor(key?: string) {
+    this.key = key;
+    this.#disk = key === undefined ? undefined : new Disk(hash(key));
     this.#library = new CheckpointStore(this.#disk, {
       document: "library",
       initial: prepareLibrary(null),
@@ -566,9 +564,9 @@ export class Cache {
     });
   }
 
-  #requireAccount() {
-    if (!this.account) throw new Error("No account selected.");
-    return this.account;
+  #requireDisk() {
+    if (!this.#disk) throw new Error("No cache storage configured.");
+    return this.#disk;
   }
 
   get artists() {
@@ -600,7 +598,7 @@ export class Cache {
   /** Restore independent local domains, reporting failures after all finish. */
   async load(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
-    if (!this.account) return;
+    if (!this.#disk) return;
     const results = await Promise.allSettled([
       this.#library.load(signal),
       this.#queue.load(signal),
@@ -626,7 +624,7 @@ export class Cache {
 
   /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
   setQueue(queue: Immutable<CachedQueue>, options: { checkpoint?: boolean } = {}): number {
-    this.#requireAccount();
+    this.#requireDisk();
     const tracks = this.queue.tracks;
     return this.#queue.set(
       { ...queue, tracks: queue.tracks === tracks ? tracks : [...queue.tracks] },
@@ -687,7 +685,7 @@ export class Cache {
    */
   saveImage(id: string, image: CachedImage, signal?: AbortSignal) {
     return this.#images.operation(async () => {
-      this.#requireAccount();
+      this.#requireDisk();
       await this.#images.store.load(signal);
       signal?.throwIfAborted();
       const record: Immutable<ImageRecord> = {
@@ -768,8 +766,7 @@ export class Cache {
   ): Promise<File> {
     try {
       return await this.#downloads.operation(async () => {
-        const disk = this.#disk;
-        if (!disk) throw new Error("No account selected.");
+        const disk = this.#requireDisk();
         const candidate = {
           track: structuredClone(track) as CachedDownload["track"],
           format,
@@ -810,7 +807,7 @@ export class Cache {
 
   async replaceLibrary(snapshot: Immutable<LibrarySnapshot>, signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
-    this.#requireAccount();
+    this.#requireDisk();
     const current = this.#library.value;
     if (
       (current.lastModified != null &&

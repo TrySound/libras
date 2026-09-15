@@ -10,6 +10,11 @@ export const authSchema = v.object({
 
 export type Auth = v.InferOutput<typeof authSchema>;
 
+/** Stable account identity. Cache hashes this opaque key for its storage directory. */
+export function getAccountKey(account: Account): string {
+  return JSON.stringify([account.host, account.username]);
+}
+
 export class AuthStore {
   #key: string;
   #storage: Storage;

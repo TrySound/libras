@@ -40,7 +40,7 @@ pnpm build
 
 Keep these boundaries in mind:
 
-- Read Cache collections directly; change them through explicit methods. Keep credentials, network clients, and browser resources outside Cache.
+- Read Cache collections directly; change them through explicit methods. Session owns account details; Cache accepts an opaque `key` from `getAccountKey(account)` and hashes it internally for storage. Engines compare that key with the connection's account key. An undefined key creates an empty, non-persisting fallback; a defined key does not imply storage loaded successfully. Keep credentials, network clients, and browser resources outside Cache.
 - Memory updates immediately; disk checkpoints happen asynchronously. Failed writes retain local state and report errors. Do not treat visible state as proof of persistence.
 - Startup and manual refresh pull server state. Reconnecting does not automatically refresh or upload an offline queue. Refresh must not replace a playing or paused queue.
 - Disconnect retains local data for offline use. Session reconnects prepare and checkpoint the candidate, retire a different account's resource work and drain its writes, then synchronously commit credentials, selection, and engine connections. Same-account reconnects reuse the live cache to preserve edits. Startup selects local data before hydration but activates the queue only after loading finishes. Network owns the shared connection abort signal; late results must not leak into the new account.
