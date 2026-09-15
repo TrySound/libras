@@ -157,6 +157,84 @@ describe("OpenSubsonic client", () => {
     expect(url.searchParams.get("c")).toBe("libras");
   });
 
+  it("retains structured credits and genres while stripping legacy metadata fields", async () => {
+    const artists = [
+      { id: "lead", name: "Lead" },
+      { id: "guest", name: "Guest" },
+    ];
+    const albumArtists = [{ id: "owner", name: "Owner" }];
+    const client = new OpenSubsonicClient(auth, {
+      fetch: async () =>
+        response({
+          searchResult3: {
+            artist: [
+              {
+                id: "lead",
+                name: "Lead",
+                genre: "Legacy",
+                genres: [{ name: "Not an ArtistID3 field" }],
+              },
+            ],
+            album: [
+              {
+                id: "album",
+                name: "Album",
+                artists: albumArtists,
+                displayArtist: "Owner",
+                genres: [],
+                genre: "Legacy",
+                artist: "Legacy",
+                artistId: "legacy",
+              },
+            ],
+            song: [
+              {
+                id: "song",
+                title: "Song",
+                albumId: "album",
+                artists,
+                albumArtists,
+                displayArtist: "Lead feat. Guest",
+                displayAlbumArtist: "Owner",
+                genres: [{ name: "Jazz" }],
+                genre: "Legacy",
+                artist: "Legacy",
+                artistId: "legacy",
+                album: "Unused title",
+              },
+            ],
+          },
+        }),
+    });
+    await expect(client.search3(page)).resolves.toEqual({
+      artists: [{ id: "lead", name: "Lead" }],
+      albums: [
+        { id: "album", name: "Album", artists: albumArtists, displayArtist: "Owner", genres: [] },
+      ],
+      tracks: [
+        {
+          id: "song",
+          title: "Song",
+          albumId: "album",
+          artists,
+          albumArtists,
+          displayArtist: "Lead feat. Guest",
+          displayAlbumArtist: "Owner",
+          genres: [{ name: "Jazz" }],
+        },
+      ],
+    });
+  });
+
+  it.each([
+    { artist: [{ name: "Missing ID" }] },
+    { album: [{ id: "album", name: "Album", artists: [{ name: "Missing ID" }] }] },
+    { song: [{ id: "song", title: "Song", genres: ["Rock"] }] },
+  ])("rejects malformed structured metadata: %j", async (searchResult3) => {
+    const client = new OpenSubsonicClient(auth, { fetch: async () => response({ searchResult3 }) });
+    await expect(client.search3(page)).rejects.toThrow("invalid OpenSubsonic response");
+  });
+
   it("aborts pending requests and refuses late responses or further requests", async () => {
     let resolve!: (response: Response) => void;
     const fetcher = vi.fn(

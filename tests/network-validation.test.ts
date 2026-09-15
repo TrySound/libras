@@ -3,7 +3,18 @@ import { Network, NetworkTransportError } from "../src/network.svelte";
 import { deferred } from "./session-test-helpers";
 
 const auth = { host: "https://music.example", username: "listener", token: "token", salt: "salt" };
-const success = () => new Response(JSON.stringify({ "subsonic-response": { status: "ok" } }));
+const success = () =>
+  new Response(
+    JSON.stringify({
+      "subsonic-response": {
+        status: "ok",
+        version: "1.16.1",
+        type: "navidrome",
+        serverVersion: "0.61.0",
+        openSubsonic: true,
+      },
+    }),
+  );
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -61,7 +72,7 @@ describe("explicit credential validation", () => {
             ? "Wrong username or password"
             : failure === "http"
               ? "HTTP 401"
-              : "invalid Subsonic response",
+              : "invalid OpenSubsonic response",
         );
       expect(network.mode).toBe("offline");
       network.setMode("offline");
