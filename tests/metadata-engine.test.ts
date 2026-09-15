@@ -119,7 +119,9 @@ function serveLibrary(data: { artists?: unknown[]; albums?: unknown[]; tracks?: 
           artist: slice("artist", data.artists ?? [{ id: "artist", name: "Artist" }]),
           album: slice(
             "album",
-            data.albums ?? [{ id: "album", name: "Album", artistId: "artist" }],
+            data.albums ?? [
+              { id: "album", name: "Album", artists: [{ id: "artist", name: "Artist" }] },
+            ],
           ),
           song: slice(
             "song",
@@ -127,7 +129,7 @@ function serveLibrary(data: { artists?: unknown[]; albums?: unknown[]; tracks?: 
               {
                 id: "song",
                 title: "Song",
-                artistId: "artist",
+                artists: [{ id: "artist", name: "Artist" }],
                 albumId: "album",
                 track: 1,
                 contentType: "audio/flac",
@@ -496,16 +498,24 @@ describe("metadata engine", () => {
       "fetch",
       serveLibrary({
         artists: [
-          { id: "artist", name: "Artist", genre: " Rock | jazz ", genres: [{ name: "rock" }] },
+          { id: "artist", name: "Artist" },
           { id: "guest", name: "Guest" },
           { id: "unused", name: "Unused contributor" },
         ],
-        albums: [{ id: "album", name: "Album", artistId: "artist", coverArt: "cover", year: 2024 }],
+        albums: [
+          {
+            id: "album",
+            name: "Album",
+            artists: [{ id: "artist", name: "Artist" }],
+            coverArt: "cover",
+            year: 2024,
+          },
+        ],
         tracks: [
           {
             id: "second",
             title: "Second",
-            artistId: "guest",
+            artists: [{ id: "guest", name: "Guest" }],
             albumId: "album",
             track: 2,
             discNumber: 1,
@@ -539,7 +549,7 @@ describe("metadata engine", () => {
     expect(engineSelection.cache!.tracks.get("first")?.artistId).toBe("artist");
     expect(
       engineSelection.cache!.artists.get("artist")?.genres.map((genre) => genre.toLowerCase()),
-    ).toEqual(["jazz", "rock"]);
+    ).toEqual([]);
     expect(
       (engineSelection.cache!.artistAlbums.get("artist") ?? []).map((album) => album.id),
     ).toEqual(["album"]);
@@ -560,6 +570,80 @@ describe("metadata engine", () => {
     engine.destroy();
   });
 
+  it("uses structured genres and artist credits without consulting legacy fields", async () => {
+    vi.stubGlobal(
+      "fetch",
+      serveLibrary({
+        artists: [{ id: "owner", name: "Owner" }],
+        albums: [
+          {
+            id: "album",
+            name: "Album",
+            artists: [{ id: "owner", name: "Owner" }],
+            artistId: "legacy",
+            artist: "Legacy",
+            genre: "Ignored",
+            genres: [{ name: " Rock " }, { name: "rock" }, { name: "Jazz|Fusion" }, { name: " " }],
+          },
+        ],
+        tracks: [
+          {
+            id: "song",
+            title: "Song",
+            albumId: "album",
+            artists: [
+              { id: "lead", name: "Lead" },
+              { id: "guest", name: "Guest" },
+            ],
+            displayArtist: "Lead feat. Guest",
+            artistId: "legacy",
+            artist: "Legacy",
+            genre: "Ignored",
+            genres: [{ name: "Soul" }],
+          },
+        ],
+      }),
+    );
+    const connection = createConnection(auth);
+    const library = await connection.readLibrary(new AbortController().signal);
+    expect(library.albums[0]).toMatchObject({ artistId: "owner", genres: ["Jazz|Fusion", "rock"] });
+    expect(library.tracks[0]).toMatchObject({
+      artistId: "lead",
+      artistName: "Lead feat. Guest",
+      genres: ["Soul"],
+    });
+    expect(library.artists.map((artist) => artist.id)).toEqual(["owner"]);
+    connection.abort();
+  });
+
+  it("does not recover genres or artists from legacy-only metadata", async () => {
+    vi.stubGlobal(
+      "fetch",
+      serveLibrary({
+        artists: [],
+        albums: [
+          { id: "album", name: "Album", artistId: "legacy", artist: "Legacy", genre: "Rock" },
+        ],
+        tracks: [
+          {
+            id: "song",
+            title: "Song",
+            albumId: "album",
+            artistId: "legacy",
+            artist: "Legacy",
+            genre: "Rock",
+          },
+        ],
+      }),
+    );
+    const connection = createConnection(auth);
+    const library = await connection.readLibrary(new AbortController().signal);
+    expect(library.artists[0].name).toBe("Unknown artist");
+    expect(library.albums[0].genres).toEqual([]);
+    expect(library.tracks[0]).toMatchObject({ artistName: "Unknown artist", genres: [] });
+    connection.abort();
+  });
+
   it("keeps artists who own later albums and removes unreferenced search artists", async () => {
     vi.stubGlobal(
       "fetch",
@@ -569,10 +653,17 @@ describe("metadata engine", () => {
           { id: "guest", name: "Guest" },
         ],
         albums: [
-          { id: "first", name: "First", artistId: "owner", artist: "Owner" },
-          { id: "second", name: "Second", artistId: "guest", artist: "Guest" },
+          { id: "first", name: "First", artists: [{ id: "owner", name: "Owner" }] },
+          { id: "second", name: "Second", artists: [{ id: "guest", name: "Guest" }] },
         ],
-        tracks: [{ id: "song", title: "Song", albumId: "first", artistId: "guest" }],
+        tracks: [
+          {
+            id: "song",
+            title: "Song",
+            albumId: "first",
+            artists: [{ id: "guest", name: "Guest" }],
+          },
+        ],
       }),
     );
     const connection = createConnection(auth);
@@ -634,14 +725,14 @@ describe("metadata engine", () => {
     engine.destroy();
   });
 
-  it("creates stable IDs for artists missing server IDs", async () => {
+  it("creates stable IDs when only display artists are supplied", async () => {
     installMetadataStorage();
     vi.stubGlobal(
       "fetch",
       serveLibrary({
-        artists: [{ name: "Artist" }],
-        albums: [{ id: "album", name: "Album", artist: "Artist" }],
-        tracks: [{ id: "song", title: "Song", albumId: "album", artist: "Guest" }],
+        artists: [],
+        albums: [{ id: "album", name: "Album", displayArtist: "Artist" }],
+        tracks: [{ id: "song", title: "Song", albumId: "album", displayArtist: "Guest" }],
       }),
     );
     const engineSelection = new TestSelection();

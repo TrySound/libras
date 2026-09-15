@@ -53,7 +53,11 @@ For implementation details, consult the owning module and its tests rather than 
 
 `src/opensubsonic-client.ts` owns the protocol schemas and exports only OpenSubsonic-named types; there is no parallel legacy client or type alias layer. The wire protocol still uses `/rest`, the `subsonic-response` envelope, and the Subsonic API version parameter (`1.16.1`).
 
-The first migration step adds explicit `ping()` server identification and `getOpenSubsonicExtensions()` discovery. Unknown extension names and advertised versions are preserved. These methods do not run automatically yet: connection behavior, saved credentials, metadata storage, queue synchronization, and streaming remain unchanged. Subsequent steps can wire discovery into connection preparation and enable features by advertised capability, starting with index-based queues and transcoded seeking. Multi-artist metadata and API-key authentication are separate model changes.
+The client provides explicit `ping()` server identification and `getOpenSubsonicExtensions()` discovery. Unknown extension names and advertised versions are preserved. These methods do not run automatically yet; connection behavior, saved credentials, queue synchronization, and streaming remain unchanged.
+
+Metadata schemas consume structured `genres`, `artists`, `albumArtists`, and display artist fields rather than legacy `genre`, `artist`, or `artistId`. ArtistID3 records require IDs and do not expose genres. Genre names are trimmed and deduplicated, not split on delimiters. Optional missing fields remain valid, but legacy-only metadata is intentionally not recovered: genres become empty and absent artist credits use display names or an unknown-artist placeholder.
+
+The persisted browsing model still has one artist ID per album/track. Normalization selects the first credited artist for identity, retaining a track's full display credit (or joining credited names). Additional artist relationships are not persisted yet. Existing cached libraries remain readable; a refresh uses the new normalization. Full multi-artist storage/browsing, discovery during connection preparation, index-based queues, transcoding capability gating, and API-key authentication are subsequent steps.
 
 ## Testing browser behavior
 
