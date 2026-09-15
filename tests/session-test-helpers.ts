@@ -1,13 +1,12 @@
 import { vi } from "vitest";
 import { AuthStore, getAccountKey } from "../src/auth";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
-import { Network } from "../src/network.svelte";
-import { MetadataEngine, type MetadataSnapshot } from "../src/metadata.svelte";
+import { Network, type MetadataConnection, type NetworkConnection } from "../src/network.svelte";
 import { CoverEngine } from "../src/cover.svelte";
 import { QueueEngine } from "../src/queue.svelte";
 import { TrackEngine } from "../src/track.svelte";
 import { PlaybackController } from "../src/playback-controller.svelte";
-import { Cache } from "../src/cache.svelte";
+import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import type { Account } from "../src/schema";
 import { Session } from "../src/session.svelte";
 
@@ -28,9 +27,8 @@ export function deferred<T = void>() {
   return { promise, resolve, reject };
 }
 
-export function snapshot(account: Account): MetadataSnapshot {
+export function snapshot(account: Account): LibrarySnapshot {
   return {
-    account: { host: account.host, username: account.username },
     savedAt: 100,
     lastModified: 10,
     artists: [{ id: "artist", name: account.username, genres: [] }],
@@ -68,12 +66,13 @@ export function createSession(saved = false, storage = createStorage()) {
       signal?.throwIfAborted();
       const account = [
         auth.loadAccount() ?? credentials,
-        ...metadata.prepareConnection.mock.calls.map(([connection]) => connection.account),
+        ...prepare.mock.calls.map(([credentials]) => credentials),
       ].find((account) => getAccountKey(account) === this.key)!;
       vi.spyOn(this, "artists", "get").mockReturnValue(
         new Map(snapshot(account).artists.map((artist) => [artist.id, artist])),
       );
       vi.spyOn(this, "savedAt", "get").mockReturnValue(100);
+      vi.spyOn(this, "lastModified", "get").mockReturnValue(100);
       vi.spyOn(this, "queue", "get").mockReturnValue({
         tracks: [account.username],
         index: 0,
@@ -90,7 +89,6 @@ export function createSession(saved = false, storage = createStorage()) {
       );
       vi.spyOn(this, "savedAt", "get").mockReturnValue(value.savedAt);
     });
-  const metadataEngine = new MetadataEngine(selection);
   const coverEngine = new CoverEngine(selection);
   const queueEngine = new QueueEngine(selection);
   const trackEngine = new TrackEngine({ selection });
@@ -101,17 +99,12 @@ export function createSession(saved = false, storage = createStorage()) {
     covers: coverEngine,
   });
   const metadata = {
-    progress: vi.spyOn(metadataEngine, "progress", "get").mockReturnValue(undefined),
-    prepareConnection: vi
-      .spyOn(metadataEngine, "prepareConnection")
-      .mockImplementation(async (connection) => snapshot(connection.account)),
-    getModifiedAt: vi.fn(async () => 100),
-    readLibrary: vi.fn(async () => ({ artists: [], albums: [], tracks: [] })),
-    setConnection: vi.spyOn(metadataEngine, "setConnection").mockImplementation(() => {}),
-    refresh: vi.spyOn(metadataEngine, "refresh").mockImplementation(async (force = true) => {
-      await metadata.getModifiedAt();
-      if (force) await metadata.readLibrary();
-    }),
+    getModifiedAt: vi.fn<MetadataConnection["getModifiedAt"]>(async () => 100),
+    readLibrary: vi.fn<MetadataConnection["readLibrary"]>(async () => ({
+      artists: [],
+      albums: [],
+      tracks: [],
+    })),
   };
   const covers = {
     activate: vi.spyOn(coverEngine, "activate").mockImplementation(() => {}),
@@ -133,9 +126,23 @@ export function createSession(saved = false, storage = createStorage()) {
     suspendNetwork: vi.spyOn(playbackController, "suspendNetwork").mockImplementation(() => {}),
   };
   const network = new Network();
+  const candidate = {
+    getModifiedAt: vi.fn<MetadataConnection["getModifiedAt"]>(async () => 10),
+    readLibrary: vi.fn<MetadataConnection["readLibrary"]>(async () =>
+      snapshot(prepare.mock.calls.at(-1)![0]),
+    ),
+  };
+  const candidates = new WeakMap<NetworkConnection, NetworkConnection>();
+  const prepareConnection = network.prepare.bind(network);
+  const prepare = vi.spyOn(network, "prepare").mockImplementation((credentials) => {
+    const original = prepareConnection(credentials);
+    const connection = { ...original, metadata: { ...original.metadata, ...candidate } };
+    candidates.set(connection, original);
+    return connection;
+  });
   const accept = network.accept.bind(network);
   vi.spyOn(network, "accept").mockImplementation((candidate) => {
-    const active = accept(candidate);
+    const active = accept(candidates.get(candidate) ?? candidate);
     return {
       ...active,
       metadata: {
@@ -146,12 +153,10 @@ export function createSession(saved = false, storage = createStorage()) {
       },
     };
   });
-  const prepareConnection = metadata.prepareConnection;
   const session = new Session({
     selection,
     network,
     auth,
-    metadata: metadataEngine,
     covers: coverEngine,
     queue: queueEngine,
     tracks: trackEngine,
@@ -164,7 +169,6 @@ export function createSession(saved = false, storage = createStorage()) {
       playbackController.destroy();
       covers.activate.mockRestore();
       coverEngine.destroy();
-      metadataEngine.destroy();
       trackEngine.destroy();
       await queueEngine.destroy();
     },
@@ -178,7 +182,7 @@ export function createSession(saved = false, storage = createStorage()) {
     tracks,
     playback,
     storage,
-    prepareConnection,
+    candidate,
     loadCache,
     saveLibrary,
   };

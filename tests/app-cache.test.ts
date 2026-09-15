@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
     | undefined,
 }));
 
-// Exercise the real app, metadata engine and cache; session workflows have their own tests.
+// Exercise the real app and cache; session workflows have their own tests.
 vi.mock("../src/session.svelte", () => ({
   Session: class {
     get offlineMode() {
@@ -576,7 +576,6 @@ it("renders the selected cache, reacts to replacements, and stops observing a pr
 
   const second = new Cache(getAccountKey({ host: "https://music.example", username: "second" }));
   await second.replaceLibrary(library("Second artist", 3));
-  mocks.options!.metadata.setConnection(undefined);
   mocks.options!.selection.cache = second;
   mocks.options!.covers.activate();
   flushSync();

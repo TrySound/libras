@@ -12,7 +12,6 @@
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine, immediateCover } from "./cover.svelte";
-  import { MetadataEngine } from "./metadata.svelte";
   import type { Album as AlbumRecord, Artist as ArtistRecord } from "./schema";
   import { Cache, type Immutable } from "./cache.svelte";
   import { QueueEngine } from "./queue.svelte";
@@ -48,7 +47,6 @@
     cache.queue.index >= 0 && cache.queue.index < cache.queue.tracks.length - 1,
   );
   const hasPreviousTrack = $derived(cache.queue.index > 0);
-  const metadataEngine = new MetadataEngine(selection);
   const queueEngine = new QueueEngine(selection);
   let queue = $derived(
     cache.queue.tracks.flatMap((id, index) => {
@@ -73,7 +71,6 @@
     selection,
     network,
     auth: new AuthStore(),
-    metadata: metadataEngine,
     queue: queueEngine,
     covers: coverEngine,
     tracks: trackEngine,
@@ -121,7 +118,6 @@
     session.destroy();
     playback.destroy();
     coverEngine.destroy();
-    metadataEngine.destroy();
     queueEngine.destroy();
     trackEngine.destroy();
   });
