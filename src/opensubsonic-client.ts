@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import { md5 } from "js-md5";
 
-export interface SubsonicAuth {
+export interface OpenSubsonicAuth {
   host: string;
   username: string;
   token: string;
@@ -9,11 +9,11 @@ export interface SubsonicAuth {
 }
 
 /** Prepare token authentication without retaining the password or making a request. */
-export function createSubsonicAuth(input: {
+export function createOpenSubsonicAuth(input: {
   host: string;
   username: string;
   password: string;
-}): SubsonicAuth {
+}): OpenSubsonicAuth {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
   const salt = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   return {
@@ -60,10 +60,29 @@ const trackSchema = v.object({
   track: v.optional(v.number()),
 });
 
+const extensionSchema = v.object({
+  name: v.string(),
+  versions: v.array(v.pipe(v.number(), v.integer(), v.minValue(1))),
+});
+
+const serverInfoSchema = v.object({
+  version: v.string(),
+  type: v.string(),
+  serverVersion: v.string(),
+  openSubsonic: v.literal(true),
+});
+
 const responseSchema = v.object({
   "subsonic-response": v.object({
-    status: v.string(),
-    error: v.optional(v.object({ message: v.optional(v.string()) })),
+    status: v.picklist(["ok", "failed"]),
+    // Optional here so failed/minimal responses can still report their actual error.
+    // ping() validates the complete OpenSubsonic server identity.
+    version: v.optional(v.string()),
+    type: v.optional(v.string()),
+    serverVersion: v.optional(v.string()),
+    openSubsonic: v.optional(v.boolean()),
+    error: v.optional(v.object({ code: v.optional(v.number()), message: v.optional(v.string()) })),
+    openSubsonicExtensions: v.optional(v.array(extensionSchema)),
     indexes: v.optional(v.object({ lastModified: v.optional(v.union([v.number(), v.string()])) })),
     searchResult3: v.optional(
       v.object({
@@ -82,37 +101,39 @@ const responseSchema = v.object({
   }),
 });
 
-type SubsonicResponse = v.InferOutput<typeof responseSchema>["subsonic-response"];
-export type SubsonicArtist = v.InferOutput<typeof artistSchema>;
-export type SubsonicAlbum = v.InferOutput<typeof albumSchema>;
-export type SubsonicTrack = v.InferOutput<typeof trackSchema>;
+type OpenSubsonicResponse = v.InferOutput<typeof responseSchema>["subsonic-response"];
+export type OpenSubsonicArtist = v.InferOutput<typeof artistSchema>;
+export type OpenSubsonicAlbum = v.InferOutput<typeof albumSchema>;
+export type OpenSubsonicTrack = v.InferOutput<typeof trackSchema>;
+export type OpenSubsonicServerInfo = v.InferOutput<typeof serverInfoSchema>;
+export type OpenSubsonicExtension = v.InferOutput<typeof extensionSchema>;
 
-export interface SubsonicPlayQueue {
+export interface OpenSubsonicPlayQueue {
   current?: string;
   position: number;
   tracks: readonly string[];
 }
 
-export interface SubsonicStreamOptions {
+export interface OpenSubsonicStreamOptions {
   estimateContentLength?: boolean;
   timeOffset?: number;
   format?: "raw" | "mp3";
 }
 
-export interface SubsonicClientOptions {
+export interface OpenSubsonicClientOptions {
   apiVersion?: string;
   clientName?: string;
   fetch?: typeof fetch;
 }
 
-export class SubsonicClient {
+export class OpenSubsonicClient {
   #apiVersion: string;
-  #auth: SubsonicAuth;
+  #auth: OpenSubsonicAuth;
   #clientName: string;
   #fetch: typeof fetch;
   #controller = new AbortController();
 
-  constructor(auth: SubsonicAuth, options: SubsonicClientOptions = {}) {
+  constructor(auth: OpenSubsonicAuth, options: OpenSubsonicClientOptions = {}) {
     this.#auth = auth;
     this.#apiVersion = options.apiVersion ?? "1.16.1";
     this.#clientName = options.clientName ?? "libras";
@@ -155,15 +176,15 @@ export class SubsonicClient {
     return `${this.#auth.host}/rest/${path}.view?${query}`;
   }
 
-  async #parse(response: Response, signal = this.signal): Promise<SubsonicResponse> {
+  async #parse(response: Response, signal = this.signal): Promise<OpenSubsonicResponse> {
     signal.throwIfAborted();
     if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
     const parsed = v.safeParse(responseSchema, await response.json());
     signal.throwIfAborted();
-    if (!parsed.success) throw new Error("The server returned an invalid Subsonic response.");
+    if (!parsed.success) throw new Error("The server returned an invalid OpenSubsonic response.");
     const result = parsed.output["subsonic-response"];
     if (result.status !== "ok") {
-      throw new Error(result.error?.message || "The Subsonic server rejected the request.");
+      throw new Error(result.error?.message || "The OpenSubsonic server rejected the request.");
     }
     return result;
   }
@@ -177,6 +198,23 @@ export class SubsonicClient {
     signal.throwIfAborted();
     const query = this.#query(params);
     return this.#parse(await this.#fetch(this.#url(path, query), { signal }), signal);
+  }
+
+  /** Explicit discovery; construction does not introduce extra network requests. */
+  async ping(): Promise<OpenSubsonicServerInfo> {
+    const result = await this.#get("ping");
+    const parsed = v.safeParse(serverInfoSchema, result);
+    if (!parsed.success)
+      throw new Error("The server did not return a valid OpenSubsonic identity.");
+    return parsed.output;
+  }
+
+  async getOpenSubsonicExtensions(): Promise<OpenSubsonicExtension[]> {
+    const result = await this.#get("getOpenSubsonicExtensions");
+    if (!result.openSubsonicExtensions) {
+      throw new Error("The server returned an invalid OpenSubsonic extensions response.");
+    }
+    return result.openSubsonicExtensions;
   }
 
   async getIndexes(ifModifiedSince?: number) {
@@ -198,7 +236,8 @@ export class SubsonicClient {
     signal?: AbortSignal,
   ) {
     const result = await this.#get("search3", { query: "", ...options }, signal);
-    if (!result.searchResult3) throw new Error("The server returned an invalid Subsonic response.");
+    if (!result.searchResult3)
+      throw new Error("The server returned an invalid OpenSubsonic response.");
     return {
       artists: result.searchResult3.artist ?? [],
       albums: result.searchResult3.album ?? [],
@@ -211,7 +250,7 @@ export class SubsonicClient {
     return this.#url("getCoverArt", query);
   }
 
-  getStreamUrl(id: string, options: SubsonicStreamOptions = {}) {
+  getStreamUrl(id: string, options: OpenSubsonicStreamOptions = {}) {
     const query = this.#query({
       id,
       format: options.format,
@@ -221,7 +260,7 @@ export class SubsonicClient {
     return this.#url("stream", query);
   }
 
-  async getPlayQueue(): Promise<SubsonicPlayQueue> {
+  async getPlayQueue(): Promise<OpenSubsonicPlayQueue> {
     const result = await this.#get("getPlayQueue");
     return {
       current: result.playQueue?.current,
@@ -230,7 +269,7 @@ export class SubsonicClient {
     };
   }
 
-  async savePlayQueue(state: SubsonicPlayQueue) {
+  async savePlayQueue(state: OpenSubsonicPlayQueue) {
     const query = this.#query();
     for (const id of state.tracks) query.append("id", id);
     if (state.current) {

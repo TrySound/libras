@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SubsonicClient, createSubsonicAuth } from "../src/subsonic-client";
+import { OpenSubsonicClient, createOpenSubsonicAuth } from "../src/opensubsonic-client";
 import { md5 } from "js-md5";
 
 const auth = {
@@ -19,7 +19,18 @@ const page = {
 };
 
 function response(data: Record<string, unknown> = {}) {
-  return new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...data } }));
+  return new Response(
+    JSON.stringify({
+      "subsonic-response": {
+        status: "ok",
+        version: "1.16.1",
+        type: "TestServer",
+        serverVersion: "1.0.0",
+        openSubsonic: true,
+        ...data,
+      },
+    }),
+  );
 }
 
 afterEach(() => {
@@ -27,11 +38,93 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("subsonic client", () => {
+describe("OpenSubsonic client", () => {
+  it("discovers OpenSubsonic server identity without changing the wire protocol", async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL) => response());
+    const client = new OpenSubsonicClient(auth, { fetch: fetcher });
+    expect(fetcher).not.toHaveBeenCalled();
+    await expect(client.ping()).resolves.toEqual({
+      version: "1.16.1",
+      type: "TestServer",
+      serverVersion: "1.0.0",
+      openSubsonic: true,
+    });
+    const url = new URL(String(fetcher.mock.calls[0]?.[0]));
+    expect(url.pathname).toBe("/rest/ping.view");
+    expect(url.searchParams.get("v")).toBe("1.16.1");
+    expect(url.searchParams.get("t")).toBe(auth.token);
+  });
+
+  it.each([
+    { openSubsonic: false },
+    { openSubsonic: undefined },
+    { type: undefined },
+    { serverVersion: undefined },
+  ])("rejects incomplete or non-OpenSubsonic identity: %j", async (data) => {
+    const client = new OpenSubsonicClient(auth, { fetch: async () => response(data) });
+    await expect(client.ping()).rejects.toThrow("valid OpenSubsonic identity");
+  });
+
+  it.each([
+    { extensions: [] },
+    {
+      extensions: [
+        { name: "indexBasedQueue", versions: [1] },
+        { name: "futureExtension", versions: [1, 2] },
+      ],
+    },
+  ])("retains advertised extension names and versions: %j", async ({ extensions }) => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL) =>
+      response({ openSubsonicExtensions: extensions }),
+    );
+    const client = new OpenSubsonicClient(auth, { fetch: fetcher });
+    await expect(client.getOpenSubsonicExtensions()).resolves.toEqual(extensions);
+    expect(new URL(String(fetcher.mock.calls[0][0])).pathname).toBe(
+      "/rest/getOpenSubsonicExtensions.view",
+    );
+  });
+
+  it.each([
+    { extensions: undefined },
+    { extensions: {} },
+    { extensions: [{ name: "formPost", versions: "1" }] },
+    { extensions: [{ name: "formPost", versions: [0] }] },
+  ])("rejects malformed extension discovery: %j", async ({ extensions }) => {
+    const client = new OpenSubsonicClient(auth, {
+      fetch: async () => response({ openSubsonicExtensions: extensions }),
+    });
+    await expect(client.getOpenSubsonicExtensions()).rejects.toThrow("invalid OpenSubsonic");
+  });
+
+  it("preserves server errors rather than treating failed discovery as no extensions", async () => {
+    const client = new OpenSubsonicClient(auth, {
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            "subsonic-response": {
+              status: "failed",
+              error: { code: 40, message: "Wrong credentials" },
+            },
+          }),
+        ),
+    });
+    await expect(client.ping()).rejects.toThrow("Wrong credentials");
+    await expect(client.getOpenSubsonicExtensions()).rejects.toThrow("Wrong credentials");
+  });
+
+  it("rejects discovery after cancellation", async () => {
+    const fetcher = vi.fn();
+    const client = new OpenSubsonicClient(auth, { fetch: fetcher });
+    client.abort();
+    await expect(client.ping()).rejects.toMatchObject({ name: "AbortError" });
+    await expect(client.getOpenSubsonicExtensions()).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("creates salted token credentials without retaining or altering the password", () => {
     const input = { host: auth.host, username: auth.username, password: " secret 音 " };
-    const first = createSubsonicAuth(input);
-    const second = createSubsonicAuth(input);
+    const first = createOpenSubsonicAuth(input);
+    const second = createOpenSubsonicAuth(input);
     expect(first).toEqual({
       host: input.host,
       username: input.username,
@@ -48,7 +141,7 @@ describe("subsonic client", () => {
       response({ searchResult3: { artist: [{ id: "artist-1", name: "Artist" }] } }),
     );
     vi.stubGlobal("fetch", fetcher);
-    const client = new SubsonicClient(auth);
+    const client = new OpenSubsonicClient(auth);
 
     await expect(client.search3(page)).resolves.toEqual({
       artists: [{ id: "artist-1", name: "Artist" }],
@@ -73,7 +166,7 @@ describe("subsonic client", () => {
         }),
     );
     vi.stubGlobal("fetch", fetcher);
-    const client = new SubsonicClient(auth);
+    const client = new OpenSubsonicClient(auth);
     const pending = client.search3(page);
     client.abort();
     expect(fetcher.mock.calls[0][1].signal?.aborted).toBe(true);
@@ -91,13 +184,13 @@ describe("subsonic client", () => {
       "fetch",
       vi.fn(async () => response({ searchResult3: { artist: "invalid" } })),
     );
-    const client = new SubsonicClient(auth);
+    const client = new OpenSubsonicClient(auth);
 
-    await expect(client.search3(page)).rejects.toThrow("invalid Subsonic response");
+    await expect(client.search3(page)).rejects.toThrow("invalid OpenSubsonic response");
   });
 
   it("builds authenticated media URLs", () => {
-    const client = new SubsonicClient(auth);
+    const client = new OpenSubsonicClient(auth);
 
     const cover = new URL(client.getCoverArtUrl("cover-1", 500));
     const stream = new URL(
@@ -130,7 +223,7 @@ describe("subsonic client", () => {
       )
       .mockResolvedValueOnce(response());
     vi.stubGlobal("fetch", fetcher);
-    const client = new SubsonicClient(auth);
+    const client = new OpenSubsonicClient(auth);
 
     await expect(client.getPlayQueue()).resolves.toEqual({
       current: "track-1",
