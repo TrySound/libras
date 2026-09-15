@@ -136,18 +136,18 @@ describe("app settings", () => {
   it.each([false, true])(
     "shows album/track counters only while connecting or refreshing (saved: %s)",
     async (saved) => {
-      const { target, metadata, session } = await setup(saved);
-      metadata.progress.mockReturnValue({ albums: 500, tracks: 1000 });
+      const { target, metadata, candidate, session } = await setup(saved);
       const pending = deferred();
-      if (saved) metadata.refresh.mockImplementationOnce(() => pending.promise);
-      else
-        metadata.prepareConnection.mockImplementationOnce(async (connection) => {
-          await pending.promise;
-          return snapshot(connection.account);
-        });
+      const reader = saved ? metadata : candidate;
+      reader.readLibrary.mockImplementationOnce(async (_signal, onProgress) => {
+        onProgress?.({ albums: 500, tracks: 1000 });
+        await pending.promise;
+        return snapshot(credentials);
+      });
       const loading = saved
         ? session.refresh()
         : session.connect({ ...credentials, password: "password" });
+      await vi.waitFor(() => expect(reader.readLibrary).toHaveBeenCalledOnce());
       flushSync();
       const counter = `${(500).toLocaleString()} albums · ${(1000).toLocaleString()} tracks`;
       expect(
@@ -198,12 +198,11 @@ describe("app settings", () => {
   });
 
   it("keeps Connect usable while forced offline, reports failures, and unlocks online mode on success", async () => {
-    const { target, metadata, fill, button, offline, session, navigate, prepareConnection } =
-      await setup();
+    const { target, fill, button, offline, session, navigate, candidate } = await setup();
     expect(offline().checked).toBe(true);
     expect(offline().disabled).toBe(true);
     expect(button("Connect").disabled).toBe(false);
-    prepareConnection.mockRejectedValueOnce(new Error("Unauthorized"));
+    candidate.readLibrary.mockRejectedValueOnce(new Error("Unauthorized"));
     fill();
     await vi.waitFor(() =>
       expect(target.querySelector('[role="alert"]')?.textContent).toBe("Unauthorized"),

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MetadataSnapshot } from "../src/metadata.svelte";
+import type { LibrarySnapshot } from "../src/cache.svelte";
 import { Cache } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { NetworkTransportError } from "../src/network.svelte";
@@ -39,7 +39,7 @@ describe("session", () => {
     await vi.waitFor(() => expect(session.localReady).toBe(true));
     expect(session.error).toContain("Could not restore cache: Corrupt library");
     expect(queue.activate).toHaveBeenCalledOnce();
-    expect(metadata.refresh).not.toHaveBeenCalled();
+    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
   });
 
   it.each(["library", "queue", "images", "downloads"] as const)(
@@ -69,7 +69,7 @@ describe("session", () => {
     const { session, metadata, queue, loadCache } = setup(true);
     loadCache.mockRejectedValueOnce(new Error("Corrupt library"));
     const refreshed = deferred();
-    metadata.refresh.mockReturnValueOnce(refreshed.promise);
+    metadata.getModifiedAt.mockReturnValueOnce(refreshed.promise.then(() => 100));
     session.start();
     await vi.waitFor(() => expect(session.syncing).toBe(true));
     expect(session.error).toContain("Corrupt library");
@@ -84,7 +84,7 @@ describe("session", () => {
     const { session, metadata, queue, covers } = await connected();
     queue.refresh.mockClear();
     covers.refresh.mockClear();
-    metadata.refresh.mockRejectedValueOnce(new Error("Library unavailable"));
+    metadata.getModifiedAt.mockRejectedValueOnce(new Error("Library unavailable"));
     await session.refresh();
     expect(queue.refresh).toHaveBeenCalledOnce();
     expect(covers.refresh).not.toHaveBeenCalled();
@@ -111,12 +111,12 @@ describe("session", () => {
   it("does no refresh offline and orders metadata before covers and queue", async () => {
     const offline = setup();
     await offline.session.refresh();
-    expect(offline.metadata.refresh).not.toHaveBeenCalled();
+    expect(offline.metadata.getModifiedAt).not.toHaveBeenCalled();
     const { session, metadata, covers, queue } = await connected();
     covers.refresh.mockClear();
     queue.refresh.mockClear();
     const pending = deferred();
-    metadata.refresh.mockReturnValueOnce(pending.promise);
+    metadata.getModifiedAt.mockReturnValueOnce(pending.promise.then(() => 100));
     const refresh = session.refresh();
     expect(session.syncing).toBe(true);
     expect(covers.refresh).not.toHaveBeenCalled();
@@ -133,21 +133,21 @@ describe("session", () => {
 
   it("coalesces overlapping refreshes and permits a later refresh", async () => {
     const { session, metadata } = await connected();
-    metadata.refresh.mockClear();
+    metadata.getModifiedAt.mockClear();
     const pending = deferred();
-    metadata.refresh.mockReturnValueOnce(pending.promise);
+    metadata.getModifiedAt.mockReturnValueOnce(pending.promise.then(() => 100));
     const first = session.refresh();
     const second = session.refresh();
-    expect(metadata.refresh).toHaveBeenCalledOnce();
+    expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
     pending.resolve();
     await Promise.all([first, second]);
     await session.refresh();
-    expect(metadata.refresh).toHaveBeenCalledTimes(2);
+    expect(metadata.getModifiedAt).toHaveBeenCalledTimes(2);
   });
 
   it("clears refresh errors after a successful manual retry", async () => {
     const { session, metadata } = await connected();
-    metadata.refresh.mockRejectedValueOnce(new Error("Failed"));
+    metadata.getModifiedAt.mockRejectedValueOnce(new Error("Failed"));
     await session.refresh();
     expect(session.refreshError).toContain("Failed");
     await session.refresh();
@@ -156,7 +156,7 @@ describe("session", () => {
 
   it("handles synchronous refresh failures without leaving a stuck request", async () => {
     const { session, metadata } = await connected();
-    metadata.refresh.mockImplementationOnce(() => {
+    metadata.getModifiedAt.mockImplementationOnce(() => {
       throw new Error("Failed");
     });
     await session.refresh();
@@ -171,7 +171,7 @@ describe("session", () => {
     covers.refresh.mockClear();
     queue.refresh.mockClear();
     const pending = deferred();
-    metadata.refresh.mockReturnValueOnce(pending.promise);
+    metadata.getModifiedAt.mockReturnValueOnce(pending.promise.then(() => 100));
     const refresh = session.refresh();
     session.disconnect();
     pending.resolve();
@@ -185,12 +185,12 @@ describe("session", () => {
     const { session, metadata, covers } = await connected();
     covers.refresh.mockClear();
     const old = deferred();
-    metadata.refresh.mockReturnValueOnce(old.promise);
+    metadata.getModifiedAt.mockReturnValueOnce(old.promise.then(() => 100));
     const first = session.refresh();
     await session.setOfflineMode(true);
     await session.setOfflineMode(false);
     const current = deferred();
-    metadata.refresh.mockReturnValueOnce(current.promise);
+    metadata.getModifiedAt.mockReturnValueOnce(current.promise.then(() => 100));
     const second = session.refresh();
     old.reject(new Error("Old connection failed"));
     await first;
@@ -245,8 +245,7 @@ describe("session", () => {
   });
 
   it("migrates saved credentials to a non-secret account and refreshes without reconnecting", async () => {
-    const { session, storage, metadata, tracks, queue, prepareConnection, loadCache } =
-      await connected();
+    const { session, storage, metadata, tracks, queue, candidate, loadCache } = await connected();
     expect(JSON.parse(storage.getItem("navidrome-account")!)).toEqual({
       host: credentials.host,
       username: credentials.username,
@@ -270,7 +269,7 @@ describe("session", () => {
     expect(tracks.setConnection.mock.calls.at(-1)![0]).toBe(client);
     expect(queue.refresh).toHaveBeenCalledTimes(2);
     expect(await session.connect(input)).toBe(false);
-    expect(prepareConnection).not.toHaveBeenCalled();
+    expect(candidate.readLibrary).not.toHaveBeenCalled();
   });
 
   it("disconnects immediately, aborts the client, and preserves every offline data field", async () => {
@@ -326,10 +325,7 @@ describe("session", () => {
   it("restores the last account and queue after disconnect without making network requests", async () => {
     const first = await connected();
     first.session.disconnect();
-    const { session, selection, metadata, queue, storage, prepareConnection } = setup(
-      false,
-      first.storage,
-    );
+    const { session, selection, metadata, queue, storage, candidate } = setup(false, first.storage);
     expect(session.start()).toBeNull();
     await vi.waitFor(() => expect(queue.activate).toHaveBeenCalledOnce());
     expect(selection.cache!.key).toBe(getAccountKey(credentials));
@@ -340,7 +336,7 @@ describe("session", () => {
     expect(session.offlineMode).toBe(true);
     expect(storage.getItem("navidrome-offline-mode")).toBe("true");
     expect(metadata.getModifiedAt).not.toHaveBeenCalled();
-    expect(prepareConnection).not.toHaveBeenCalled();
+    expect(candidate.readLibrary).not.toHaveBeenCalled();
     expect(queue.refresh).not.toHaveBeenCalled();
   });
 
@@ -358,12 +354,12 @@ describe("session", () => {
   );
 
   it("allows explicit connection while forced offline and only switches accounts after validation", async () => {
-    const { session, selection, auth, metadata, queue, covers, tracks, prepareConnection } =
+    const { session, selection, auth, metadata, queue, covers, tracks, candidate } =
       await connected();
     session.disconnect();
     const previous = selection.cache!.artists;
-    const prepared = deferred<MetadataSnapshot>();
-    prepareConnection.mockReturnValueOnce(prepared.promise);
+    const prepared = deferred<LibrarySnapshot>();
+    candidate.readLibrary.mockReturnValueOnce(prepared.promise);
     const next = { host: "https://other.example", username: "other" };
     tracks.activate
       .mockImplementationOnce(() => {
@@ -373,7 +369,7 @@ describe("session", () => {
         expect(selection.cache?.key).toBe(getAccountKey(next));
       });
     const connecting = session.connect({ ...next, password: "secret" });
-    await vi.waitFor(() => expect(prepareConnection).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(candidate.readLibrary).toHaveBeenCalledOnce());
     expect(session.offlineMode).toBe(true);
     expect(session.auth).toBeNull();
     expect(selection.cache!.artists).toBe(previous);
@@ -396,11 +392,11 @@ describe("session", () => {
   it.each(["same", "different"])(
     "keeps the offline workspace after failed reconnect to a %s account",
     async (account) => {
-      const { session, selection, auth, metadata, prepareConnection } = await connected();
+      const { session, selection, auth, metadata, candidate } = await connected();
       session.disconnect();
       const previous = selection.cache!.artists;
       const previousAccount = auth.loadAccount()!;
-      prepareConnection.mockRejectedValueOnce(
+      candidate.readLibrary.mockRejectedValueOnce(
         new NetworkTransportError(new TypeError("Network failed")),
       );
       expect(
@@ -422,17 +418,17 @@ describe("session", () => {
   it.each(["disconnect", "destroy"] as const)(
     "ignores a candidate that resolves after %s",
     async (action) => {
-      const { session, auth, selection, tracks, prepareConnection, saveLibrary } = setup();
+      const { session, auth, selection, tracks, candidate, saveLibrary } = setup();
       session.start();
-      const prepared = deferred<MetadataSnapshot>();
-      prepareConnection.mockReturnValueOnce(prepared.promise);
+      const prepared = deferred<LibrarySnapshot>();
+      candidate.readLibrary.mockReturnValueOnce(prepared.promise);
       const connecting = session.connect(input);
-      await vi.waitFor(() => expect(prepareConnection).toHaveBeenCalledOnce());
-      const client = prepareConnection.mock.calls[0][0];
+      await vi.waitFor(() => expect(candidate.readLibrary).toHaveBeenCalledOnce());
+      const signal = candidate.readLibrary.mock.calls[0][0];
       session[action]();
       prepared.resolve(snapshot(credentials));
       expect(await connecting).toBe(false);
-      expect(client.signal.aborted).toBe(true);
+      expect(signal.aborted).toBe(true);
       expect(auth.load()).toBeNull();
       expect(selection.cache).toBeUndefined();
       expect(saveLibrary).not.toHaveBeenCalled();
@@ -552,11 +548,11 @@ describe("session", () => {
   );
 
   it("does not report invalid connection input as a transport or CORS failure", async () => {
-    const { session, metadata, prepareConnection } = setup();
+    const { session, metadata, candidate } = setup();
     expect(await session.connect({ ...input, host: "https://" })).toBe(false);
     expect(session.error).toMatch(/URL/i);
     expect(session.error).not.toContain("CORS");
-    expect(prepareConnection).not.toHaveBeenCalled();
+    expect(candidate.readLibrary).not.toHaveBeenCalled();
   });
 
   it.each(["disconnect", "destroy"] as const)(
@@ -623,15 +619,12 @@ describe("session", () => {
       true,
     );
     expect(session.localReady).toBe(false);
-    expect(
-      metadata.setConnection.mock.calls.every(([connection]) => connection === undefined),
-    ).toBe(true);
     expect(metadata.getModifiedAt).not.toHaveBeenCalled();
     expect(queue.activate).not.toHaveBeenCalled();
     loaded.resolve();
     await vi.waitFor(() => expect(session.status).toBe("connected"));
     expect(session.localReady).toBe(true);
-    expect(metadata.setConnection.mock.calls.at(-1)![0]).toBeDefined();
+    expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
   });
 
   it("aborts cache loading on destruction without late readiness or errors", async () => {
