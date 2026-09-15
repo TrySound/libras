@@ -4,7 +4,7 @@
 
 <h1 align="center">Libras</h1>
 
-Libras is a browser-based music player that connects to your own music server. Browse your library, play music, and download tracks to take with you.
+Libras is a browser-based minimalistic music player that connects to your own music server. Browse your library, play music, and download tracks to take with you.
 
 > Named after “3 Libras” by A Perfect Circle.
 
