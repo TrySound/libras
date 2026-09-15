@@ -120,7 +120,7 @@
   import type { TrackEngine } from "./track.svelte";
   import type { Session } from "./session.svelte";
   import type { PlaybackController } from "./playback-controller.svelte";
-  import { viewportContent } from "./viewport";
+  import { onVisible } from "./viewport";
 
   let {
     cache,
@@ -250,7 +250,7 @@
                   : group === "Albums"
                     ? coverEngine.ensureAlbumCover(record.id)
                     : coverEngine.ensureTrackCover(record.id)}
-              <div class="wings-item row-button" {@attach viewportContent(cover.load)}>
+              <div class="wings-item row-button" {@attach onVisible(cover.load)}>
                 {#if record.href}
                   <a
                     class="linkarea"

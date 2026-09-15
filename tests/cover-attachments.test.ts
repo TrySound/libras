@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { immediateCover, lazyCover } from "../src/cover.svelte";
+import { immediateCover } from "../src/cover.svelte";
 import { onVisible } from "../src/viewport";
 
 const cleanups: (() => void)[] = [];
@@ -47,8 +47,8 @@ it("shares observation, loads on entry and re-entry, and cleans up each target",
   const second = { load: vi.fn() };
   const one = {} as Element;
   const two = {} as Element;
-  const cleanupOne = lazyCover(first)(one)!;
-  const cleanupTwo = lazyCover(second)(two)!;
+  const cleanupOne = onVisible(first.load)(one)!;
+  const cleanupTwo = onVisible(second.load)(two)!;
   cleanups.push(cleanupOne, cleanupTwo);
   expect(observer.construct).toHaveBeenCalledOnce();
   expect(observer.observe.mock.calls).toEqual([[one], [two]]);
@@ -77,7 +77,7 @@ it("shares observation, loads on entry and re-entry, and cleans up each target",
   expect(observer.unobserve).toHaveBeenCalledTimes(2);
   expect(observer.disconnect).toHaveBeenCalledOnce();
 
-  cleanups.push(lazyCover(first)({} as Element)!);
+  cleanups.push(onVisible(first.load)({} as Element)!);
   expect(observer.construct).toHaveBeenCalledTimes(2);
 });
 
@@ -99,7 +99,7 @@ it("only notifies on entry and re-entry, without passing visibility state", () =
 it("loads immediately when IntersectionObserver is unavailable", () => {
   vi.stubGlobal("IntersectionObserver", undefined);
   const cover = { load: vi.fn() };
-  lazyCover(cover)({} as Element);
+  onVisible(cover.load)({} as Element);
   expect(cover.load).toHaveBeenCalledOnce();
 });
 
