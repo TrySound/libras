@@ -193,8 +193,10 @@
   <Downloads {cache} {trackEngine} {loading} />
 {/snippet}
 
-{#snippet libraryRoute()}
-  <LibraryRoute {cache} {coverEngine} {trackEngine} {session} {playback} />
+{#snippet libraryRoute(params: RouteParams)}
+  {#key params}
+    <LibraryRoute {cache} {coverEngine} {trackEngine} {session} {playback} />
+  {/key}
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}

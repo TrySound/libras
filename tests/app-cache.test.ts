@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
+import { SvelteSet } from "svelte/reactivity";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
 import { installNavigation } from "./router-test-helpers";
@@ -10,6 +11,7 @@ import { CoverEngine } from "../src/cover.svelte";
 
 const mocks = vi.hoisted(() => ({
   localReady: true,
+  isOffline: (): boolean => false,
   cache: undefined as import("../src/cache.svelte").Cache | undefined,
   navigate: vi.fn(),
   options: undefined as
@@ -20,7 +22,9 @@ const mocks = vi.hoisted(() => ({
 // Exercise the real app, metadata engine and cache; session workflows have their own tests.
 vi.mock("../src/session.svelte", () => ({
   Session: class {
-    offlineMode = false;
+    get offlineMode() {
+      return mocks.isOffline();
+    }
     localReady = mocks.localReady;
     constructor(options: NonNullable<typeof mocks.options>) {
       mocks.options = options;
@@ -39,6 +43,7 @@ vi.mock("virtual:pwa-register", () => ({ registerSW: () => async () => {} }));
 
 beforeEach(() => {
   mocks.localReady = true;
+  mocks.isOffline = () => false;
   installNavigation("/library", mocks.navigate);
 });
 
@@ -120,6 +125,196 @@ it("uses the empty fallback before account selection and when selection is clear
   flushSync();
   expect(target.querySelector(".tile-name")).toBeNull();
   expect(target.textContent).toContain("Connect your library");
+});
+
+it("automatically loads another batch each time the new sentinel is nearby", async () => {
+  installDisk();
+  let callback: IntersectionObserverCallback;
+  const observed = new Set<Element>();
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(cb: IntersectionObserverCallback) {
+        callback = cb;
+      }
+      observe(node: Element) {
+        observed.add(node);
+      }
+      unobserve(node: Element) {
+        observed.delete(node);
+      }
+      disconnect() {
+        observed.clear();
+      }
+    },
+  );
+  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  const snapshot: LibrarySnapshot = {
+    ...library("Artist", 1),
+    artists: Array.from({ length: 100 }, (_, index) => ({
+      id: index === 0 ? "artist" : `artist-${index}`,
+      name: `Artist ${index}`,
+      genres: [],
+    })),
+  };
+  await cache.replaceLibrary(snapshot);
+  mocks.cache = cache;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const assertCount = (count: number) => {
+    expect(target.querySelectorAll(".tiles-grid > .tile")).toHaveLength(count);
+    expect(target.querySelectorAll("#artist-menu")).toHaveLength(1);
+  };
+  assertCount(48);
+  expect(target.textContent).toContain("100 artists");
+  expect(target.textContent).not.toContain("Load more");
+  const sentinel = () =>
+    [...observed].find((node) => node.matches('.library-view [aria-hidden="true"]'));
+  for (const count of [96, 100]) {
+    const node = sentinel()!;
+    expect(node).toBeDefined();
+    callback!(
+      [{ target: node, isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+    flushSync();
+    assertCount(count);
+    expect(observed.has(node)).toBe(false);
+  }
+  expect(sentinel()).toBeUndefined();
+
+  let currentEntry = { key: "home", index: 0 };
+  async function visit(path: string, key: string, index: number, navigationType = "push") {
+    Object.assign(window.navigation, { currentEntry });
+    let finished: Promise<void> | undefined;
+    const event = Object.assign(new Event("navigate"), {
+      canIntercept: true,
+      navigationType,
+      destination: { url: new URL(`#${path}`, window.location.href).href, key, index },
+      intercept({ handler }: { handler: () => Promise<void> }) {
+        finished = handler();
+      },
+    });
+    window.navigation.dispatchEvent(event);
+    await finished;
+    flushSync();
+    currentEntry = { key, index };
+  }
+  await visit("/library/artist/artist", "artist", 1);
+  await visit("/library", "home", 0, "traverse");
+  assertCount(48); // Back navigation also starts fresh.
+  await visit("/library/artist/artist", "artist", 1, "traverse");
+  await visit("/library", "new-home", 2);
+  assertCount(48); // A normal Home link starts fresh.
+  callback!(
+    [{ target: sentinel()!, isIntersecting: true } as IntersectionObserverEntry],
+    {} as IntersectionObserver,
+  );
+  flushSync();
+  assertCount(96);
+  await cache.replaceLibrary({ ...snapshot, savedAt: 2 });
+  flushSync();
+  assertCount(48); // Refresh resets pagination without a navigation event.
+  callback!(
+    [{ target: sentinel()!, isIntersecting: true } as IntersectionObserverEntry],
+    {} as IntersectionObserver,
+  );
+  flushSync();
+  assertCount(96);
+  await visit("/library", "replacement", 2, "replace");
+  assertCount(48);
+
+  const other = new Cache({ host: "https://other.example", username: "listener" });
+  await other.replaceLibrary({ ...snapshot, savedAt: 2 });
+  callback!(
+    [{ target: sentinel()!, isIntersecting: true } as IntersectionObserverEntry],
+    {} as IntersectionObserver,
+  );
+  flushSync();
+  assertCount(96);
+  mocks.options!.selection.cache = other;
+  flushSync();
+  assertCount(48); // Account changes reset without navigation too.
+  await visit("/library", "home", 0, "traverse");
+  assertCount(48);
+});
+
+it("resets artist pagination when offline eligibility changes", async () => {
+  installDisk();
+  const flags = new SvelteSet<string>();
+  mocks.isOffline = () => flags.has("offline");
+  const downloaded = new SvelteSet(Array.from({ length: 100 }, (_, i) => String(i)));
+  vi.spyOn(TrackEngine.prototype, "getStatus").mockImplementation((id) =>
+    downloaded.has(id) ? "downloaded" : "idle",
+  );
+  let callback: IntersectionObserverCallback;
+  const observed = new Set<Element>();
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(cb: IntersectionObserverCallback) {
+        callback = cb;
+      }
+      observe(node: Element) {
+        observed.add(node);
+      }
+      unobserve(node: Element) {
+        observed.delete(node);
+      }
+      disconnect() {
+        observed.clear();
+      }
+    },
+  );
+  const cache = new Cache({ host: "https://music.example", username: "listener" });
+  await cache.replaceLibrary({
+    ...library("Artist", 1),
+    artists: [...downloaded].map((id) => ({ id, name: `Artist ${id}`, genres: [] })),
+    albums: [...downloaded].map((id) => ({ id, title: `Album ${id}`, artistId: id, genres: [] })),
+    tracks: [...downloaded].map((id) => ({
+      id,
+      title: `Track ${id}`,
+      artistId: id,
+      albumId: id,
+      genres: [],
+    })),
+  });
+  mocks.cache = cache;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const count = () => target.querySelectorAll("a.tile").length;
+  const load = () => {
+    const node = [...observed].find((node) => node.matches('.library-view [aria-hidden="true"]'))!;
+    callback!(
+      [{ target: node, isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+    flushSync();
+  };
+  load();
+  expect(count()).toBe(96);
+  flags.add("offline");
+  flushSync();
+  expect(count()).toBe(48);
+  load();
+  expect(count()).toBe(96);
+  downloaded.delete("99");
+  flushSync();
+  expect(count()).toBe(48);
+  expect(target.textContent).toContain("99 artists");
+  downloaded.clear();
+  flushSync();
+  expect(count()).toBe(0);
+  expect(target.textContent).toContain("No downloaded artists.");
+  flags.clear();
+  flushSync();
+  expect(count()).toBe(48);
 });
 
 it("restores the large player slider when queue hydration finishes before metadata", async () => {
