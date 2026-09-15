@@ -3,7 +3,7 @@
   import { immediateCover, type CoverEngine } from "./cover.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
-  import type { PlaybackController } from "./playback-controller.svelte";
+  import type { Playback } from "./playback.svelte";
   import type { RouteParams } from "./router.svelte";
   import type { Session } from "./session.svelte";
   import { onVisible } from "./viewport";
@@ -14,7 +14,7 @@
     coverEngine: CoverEngine;
     trackEngine: TrackEngine;
     session: Session;
-    playback: PlaybackController;
+    playback: Playback;
   }
 
   let { params, cache, coverEngine, trackEngine, session, playback }: Props = $props();
