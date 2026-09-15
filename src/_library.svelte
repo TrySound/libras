@@ -5,7 +5,7 @@
   import type { Artist } from "./schema";
   import type { PlaybackController } from "./playback-controller.svelte";
   import type { Session } from "./session.svelte";
-  import { viewportContent } from "./viewport";
+  import { onVisible, viewportContent } from "./viewport";
 
   interface Props {
     cache: Cache;
@@ -45,6 +45,12 @@
         )
       : artists,
   );
+  const artistPageSize = 48;
+  let artistLimit = $state(artistPageSize);
+  const artistPage = $derived(visibleArtists.slice(0, artistLimit));
+  function loadMoreArtists() {
+    artistLimit = Math.min(artistLimit + artistPageSize, visibleArtists.length);
+  }
 </script>
 
 <section class="view library-view">
@@ -78,7 +84,7 @@
     {/if}
     {#if visibleArtists.length > 0}
       <div class="tiles-grid">
-        {#each visibleArtists as artist}
+        {#each artistPage as artist}
           {@const cover = coverEngine.ensureArtistCover(artist.id)}
           <a
             class="tile"
@@ -113,6 +119,12 @@
           </a>
         {/each}
       </div>
+      {#if artistPage.length < visibleArtists.length}
+        {#key artistLimit}
+          <!-- Reobserve each batch so a nearby sentinel keeps filling the viewport. -->
+          <div aria-hidden="true" style="height: 1px" {@attach onVisible(loadMoreArtists)}></div>
+        {/key}
+      {/if}
     {:else if !loading}
       <div class="empty-state">
         <span>

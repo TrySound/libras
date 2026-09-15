@@ -1,6 +1,6 @@
 import { tick, untrack } from "svelte";
 import type { Attachment } from "svelte/attachments";
-import { nearViewport } from "./viewport";
+import { onVisible } from "./viewport";
 import type { Cache, CacheSelection, Immutable } from "./cache.svelte";
 import { artworkNoStore, type ArtworkConnection } from "./network.svelte";
 import type { ImageMetadata, ImageRecord } from "./schema";
@@ -36,9 +36,7 @@ export function immediateCover(cover: Pick<Cover, "load">): Attachment {
 
 /** Defer cached-file reads, decoding and network acquisition until near the viewport. */
 export function lazyCover(cover: Pick<Cover, "load">): Attachment {
-  return nearViewport((visible) => {
-    if (visible) cover.load();
-  });
+  return onVisible(cover.load);
 }
 
 interface CoverEntry {

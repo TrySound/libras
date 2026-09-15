@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { immediateCover, lazyCover } from "../src/cover.svelte";
-import { nearViewport } from "../src/viewport";
+import { onVisible } from "../src/viewport";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => {
@@ -81,17 +81,19 @@ it("shares observation, loads on entry and re-entry, and cleans up each target",
   expect(observer.construct).toHaveBeenCalledTimes(2);
 });
 
-it("reports both visibility transitions without repeating unchanged states", () => {
+it("only notifies on entry and re-entry, without passing visibility state", () => {
   const observer = mockObserver();
   const notify = vi.fn();
   const node = {} as Element;
-  cleanups.push(nearViewport(notify)(node)!);
+  cleanups.push(onVisible(notify)(node)!);
   observer.emit(node, false);
   observer.emit(node, false);
   observer.emit(node, true);
   observer.emit(node, true);
   observer.emit(node, false);
-  expect(notify.mock.calls).toEqual([[false], [true], [false]]);
+  expect(notify.mock.calls).toEqual([[]]);
+  observer.emit(node, true);
+  expect(notify.mock.calls).toEqual([[], []]);
 });
 
 it("loads immediately when IntersectionObserver is unavailable", () => {

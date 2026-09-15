@@ -27,7 +27,7 @@ export function viewportContent(onVisible: () => void): Attachment {
     node.addEventListener("focusin", update);
     node.addEventListener("focusout", onFocusOut);
     update();
-    const stop = nearViewport((value) => {
+    const stop = observeViewport((value) => {
       nearby = value;
       update();
     })(node);
@@ -41,8 +41,15 @@ export function viewportContent(onVisible: () => void): Attachment {
   };
 }
 
+/** Run on entry and re-entry into the shared preload boundary. */
+export function onVisible(callback: () => void): Attachment {
+  return observeViewport((visible) => {
+    if (visible) callback();
+  });
+}
+
 /** Share one preload boundary for rendering and resource acquisition. */
-export function nearViewport(notify: (visible: boolean) => void): Attachment {
+function observeViewport(notify: (visible: boolean) => void): Attachment {
   return (node) => {
     if (typeof IntersectionObserver === "undefined") {
       notify(true);

@@ -6,7 +6,7 @@
   import type { PlaybackController } from "./playback-controller.svelte";
   import type { RouteParams } from "./router.svelte";
   import type { Session } from "./session.svelte";
-  import { nearViewport } from "./viewport";
+  import { onVisible } from "./viewport";
 
   interface Props {
     params: RouteParams;
@@ -116,9 +116,7 @@
         <article class="wings-item row-button">
           <a
             class="linkarea"
-            {@attach nearViewport((visible) => {
-              if (visible) cover.load();
-            })}
+            {@attach onVisible(cover.load)}
             href={`#/library/artist/${encodeURIComponent(artist.id)}/album/${encodeURIComponent(album.id)}`}
             aria-label={`Open ${album.title}`}
             data-longpressfor={albumMenuId}
