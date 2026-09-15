@@ -56,6 +56,16 @@
         </span>
         <h2 class="type-heading">{visibleArtists.length} artists</h2>
       </div>
+      <a
+        class="icon-button"
+        data-size="md"
+        data-variant="ghost"
+        href="#/search"
+        aria-label="Search"
+        title="Search"
+      >
+        <svg aria-hidden="true" width="20" height="20"><use href="#icon-search"></use></svg>
+      </a>
     </div>
 
     {#if loading}

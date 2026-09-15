@@ -125,21 +125,19 @@
             data-longpress="show-modal"
             title={`${album.title} — hold for actions`}
           ></a>
-          <span class="track-leading">
-            <span
-              class="cover album-cover"
-              style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
-            >
-              {#if cover.source}
-                <img src={cover.source} alt="" />
-              {:else}
-                <span
-                  ><svg aria-hidden="true" width="20" height="20"
-                    ><use href="#icon-music"></use></svg
-                  ></span
-                >
-              {/if}
-            </span>
+          <span
+            class="cover"
+            data-size="md"
+            style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
+          >
+            {#if cover.source}
+              <img src={cover.source} alt="" />
+            {:else}
+              <span
+                ><svg aria-hidden="true" width="20" height="20"><use href="#icon-music"></use></svg
+                ></span
+              >
+            {/if}
           </span>
           <span class="stack-xs">
             <strong
@@ -151,18 +149,16 @@
               {album.year ?? "Unknown year"} · {visibleTrackIds.length} tracks
             </small>
           </span>
-          <span class="track-actions">
-            <button
-              class="icon-button"
-              data-size="sm"
-              data-variant="ghost"
-              commandfor={albumMenuId}
-              command="show-modal"
-              title={`Open menu for ${album.title}`}
-            >
-              <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
-            </button>
-          </span>
+          <button
+            class="icon-button"
+            data-size="sm"
+            data-variant="ghost"
+            commandfor={albumMenuId}
+            command="show-modal"
+            title={`Open menu for ${album.title}`}
+          >
+            <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
+          </button>
         </article>
       {:else}
         {#if !loading}

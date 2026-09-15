@@ -150,18 +150,16 @@
             {/if}
           </span>
           <span>{track.title}</span>
-          <span class="track-actions">
-            <button
-              class="icon-button"
-              data-size="sm"
-              data-variant="ghost"
-              commandfor={trackMenuId}
-              command="show-modal"
-              title={`Open menu for ${track.title}`}
-            >
-              <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
-            </button>
-          </span>
+          <button
+            class="icon-button"
+            data-size="sm"
+            data-variant="ghost"
+            commandfor={trackMenuId}
+            command="show-modal"
+            title={`Open menu for ${track.title}`}
+          >
+            <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
+          </button>
         </div>
       {:else}
         {#if !loading}

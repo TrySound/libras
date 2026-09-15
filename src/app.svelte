@@ -8,6 +8,7 @@
   import AlbumRoute from "./_album.svelte";
   import ArtistRoute from "./_artist.svelte";
   import LibraryRoute from "./_library.svelte";
+  import SearchRoute, { createSearchState } from "./_search.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine, immediateCover } from "./cover.svelte";
@@ -30,6 +31,15 @@
   const selection = $state<{ cache: Cache | undefined }>({ cache: undefined });
   const emptyCache = new Cache();
   const cache = $derived(selection.cache ?? emptyCache);
+  function newSearchState() {
+    const state = $state(createSearchState());
+    return state;
+  }
+  // Owned above the route so Back retains state; cache switches discard it.
+  const searchState = $derived.by(() => {
+    void cache;
+    return newSearchState();
+  });
   const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const playerArtist = $derived(currentTrack && cache.artists.get(currentTrack.artistId));
   const playerAlbum = $derived(currentTrack && cache.albums.get(currentTrack.albumId));
@@ -197,6 +207,10 @@
   <LibraryRoute {cache} {coverEngine} {trackEngine} {session} {playback} />
 {/snippet}
 
+{#snippet searchRoute()}
+  <SearchRoute {cache} {coverEngine} {trackEngine} {session} {playback} state={searchState} />
+{/snippet}
+
 {#snippet artistRoute(params: RouteParams)}
   <ArtistRoute {params} {cache} {coverEngine} {trackEngine} {session} {playback} />
 {/snippet}
@@ -305,6 +319,7 @@
   <Router
     routes={[
       { pattern: "/library", render: libraryRoute },
+      { pattern: "/search", render: searchRoute },
       {
         pattern: "/library/artist/:artistId/album/:albumId",
         render: albumRoute,
@@ -325,7 +340,7 @@
       command="show-modal"
       aria-label="Open player"
     ></button>
-    <span class="mini-art" {@attach immediateCover(cover)}>
+    <span class="cover" data-size="sm" {@attach immediateCover(cover)}>
       {#if cover.source}
         <img src={cover.source} alt="" />
       {:else}
