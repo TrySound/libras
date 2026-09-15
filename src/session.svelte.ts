@@ -19,13 +19,13 @@ const offlineModeStorageKey = "navidrome-offline-mode";
 interface SessionOptions {
   selection: { cache: Cache | undefined };
   network: Network;
-  auth: Pick<AuthStore, "load" | "save" | "clear" | "loadAccount" | "saveAccount">;
-  metadata: Pick<MetadataEngine, "prepareConnection" | "setConnection" | "refresh" | "progress">;
-  covers: Pick<CoverEngine, "activate" | "refresh" | "setConnection">;
-  queue: Pick<QueueEngine, "activate" | "refresh" | "flush" | "setConnection" | "error">;
-  tracks: Pick<TrackEngine, "activate" | "setConnection">;
-  playback: Pick<PlaybackController, "suspend" | "suspendNetwork">;
-  preferences: Pick<Storage, "getItem" | "setItem">;
+  auth: AuthStore;
+  metadata: MetadataEngine;
+  covers: CoverEngine;
+  queue: QueueEngine;
+  tracks: TrackEngine;
+  playback: PlaybackController;
+  preferences: Storage;
 }
 
 function connectionError(error: unknown): string {

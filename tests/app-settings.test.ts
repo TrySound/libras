@@ -52,7 +52,7 @@ async function setup(saved = false) {
   mocks.navigate.mockClear();
   cleanups.push(async () => {
     await unmount(component);
-    fixture.session.destroy();
+    await fixture.destroy();
   });
   const button = (label: string) =>
     [...target.querySelectorAll("button")].find(
@@ -137,7 +137,7 @@ describe("app settings", () => {
     "shows album/track counters only while connecting or refreshing (saved: %s)",
     async (saved) => {
       const { target, metadata, session } = await setup(saved);
-      metadata.progress = { albums: 500, tracks: 1000 };
+      metadata.progress.mockReturnValue({ albums: 500, tracks: 1000 });
       const pending = deferred();
       if (saved) metadata.refresh.mockImplementationOnce(() => pending.promise);
       else

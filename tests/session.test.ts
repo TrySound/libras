@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MetadataSnapshot } from "../src/metadata.svelte";
@@ -21,8 +22,8 @@ async function connected() {
   return fixture;
 }
 
-afterEach(() => {
-  for (const { session } of fixtures.splice(0)) session.destroy();
+afterEach(async () => {
+  for (const fixture of fixtures.splice(0)) await fixture.destroy();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -300,7 +301,7 @@ describe("session", () => {
     session.disconnect();
     expect(session.syncing).toBe(false);
     expect(session.localReady).toBe(true);
-    expect(client.signal.aborted).toBe(true);
+    expect(client!.signal.aborted).toBe(true);
     expect(auth.load()).toBeNull();
     expect(session.auth).toBeNull();
     expect(session.offlineMode).toBe(true);
@@ -813,7 +814,7 @@ describe("session", () => {
     const { session, tracks, metadata, auth, queue, loadCache } = await connected();
     const client = tracks.setConnection.mock.calls.at(-1)![0];
     await session.setOfflineMode(true);
-    expect(client.signal.aborted).toBe(true);
+    expect(client!.signal.aborted).toBe(true);
     expect(auth.load()).not.toBeNull();
     expect(session.auth).not.toBeNull();
     await session.setOfflineMode(false);

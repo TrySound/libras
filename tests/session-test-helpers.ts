@@ -1,8 +1,12 @@
 import { vi } from "vitest";
 import { AuthStore, getAccountKey } from "../src/auth";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
-import { Network, type LibraryProgress, type MetadataConnection } from "../src/network.svelte";
-import type { MetadataSnapshot } from "../src/metadata.svelte";
+import { Network } from "../src/network.svelte";
+import { MetadataEngine, type MetadataSnapshot } from "../src/metadata.svelte";
+import { CoverEngine } from "../src/cover.svelte";
+import { QueueEngine } from "../src/queue.svelte";
+import { TrackEngine } from "../src/track.svelte";
+import { PlaybackController } from "../src/playback-controller.svelte";
 import { Cache } from "../src/cache.svelte";
 import type { Account } from "../src/schema";
 import { Session } from "../src/session.svelte";
@@ -86,33 +90,48 @@ export function createSession(saved = false, storage = createStorage()) {
       );
       vi.spyOn(this, "savedAt", "get").mockReturnValue(value.savedAt);
     });
+  const metadataEngine = new MetadataEngine(selection);
+  const coverEngine = new CoverEngine(selection);
+  const queueEngine = new QueueEngine(selection);
+  const trackEngine = new TrackEngine({ selection });
+  const playbackController = new PlaybackController({
+    selection,
+    queue: queueEngine,
+    tracks: trackEngine,
+    covers: coverEngine,
+  });
   const metadata = {
-    progress: undefined as LibraryProgress | undefined,
-    prepareConnection: vi.fn(async (connection: MetadataConnection) =>
-      snapshot(connection.account),
-    ),
+    progress: vi.spyOn(metadataEngine, "progress", "get").mockReturnValue(undefined),
+    prepareConnection: vi
+      .spyOn(metadataEngine, "prepareConnection")
+      .mockImplementation(async (connection) => snapshot(connection.account)),
     getModifiedAt: vi.fn(async () => 100),
     readLibrary: vi.fn(async () => ({ artists: [], albums: [], tracks: [] })),
-    setConnection: vi.fn(),
-    refresh: vi.fn(async (force = true) => {
+    setConnection: vi.spyOn(metadataEngine, "setConnection").mockImplementation(() => {}),
+    refresh: vi.spyOn(metadataEngine, "refresh").mockImplementation(async (force = true) => {
       await metadata.getModifiedAt();
       if (force) await metadata.readLibrary();
     }),
   };
   const covers = {
-    activate: vi.fn(),
-    refresh: vi.fn(async () => {}),
-    setConnection: vi.fn(),
+    activate: vi.spyOn(coverEngine, "activate").mockImplementation(() => {}),
+    refresh: vi.spyOn(coverEngine, "refresh").mockResolvedValue(undefined),
+    setConnection: vi.spyOn(coverEngine, "setConnection").mockImplementation(() => {}),
   };
   const queue = {
-    error: undefined,
-    setConnection: vi.fn(),
-    activate: vi.fn(),
-    refresh: vi.fn(async () => {}),
-    flush: vi.fn(async () => {}),
+    setConnection: vi.spyOn(queueEngine, "setConnection").mockImplementation(() => {}),
+    activate: vi.spyOn(queueEngine, "activate").mockImplementation(() => {}),
+    refresh: vi.spyOn(queueEngine, "refresh").mockResolvedValue(undefined),
+    flush: vi.spyOn(queueEngine, "flush").mockResolvedValue(undefined),
   };
-  const tracks = { activate: vi.fn(), setConnection: vi.fn() };
-  const playback = { suspend: vi.fn(), suspendNetwork: vi.fn() };
+  const tracks = {
+    activate: vi.spyOn(trackEngine, "activate").mockImplementation(() => {}),
+    setConnection: vi.spyOn(trackEngine, "setConnection").mockImplementation(() => {}),
+  };
+  const playback = {
+    suspend: vi.spyOn(playbackController, "suspend").mockImplementation(() => {}),
+    suspendNetwork: vi.spyOn(playbackController, "suspendNetwork").mockImplementation(() => {}),
+  };
   const network = new Network();
   const accept = network.accept.bind(network);
   vi.spyOn(network, "accept").mockImplementation((candidate) => {
@@ -132,14 +151,23 @@ export function createSession(saved = false, storage = createStorage()) {
     selection,
     network,
     auth,
-    metadata,
-    covers,
-    queue,
-    tracks,
-    playback,
+    metadata: metadataEngine,
+    covers: coverEngine,
+    queue: queueEngine,
+    tracks: trackEngine,
+    playback: playbackController,
     preferences: storage,
   });
   return {
+    async destroy() {
+      session.destroy();
+      playbackController.destroy();
+      covers.activate.mockRestore();
+      coverEngine.destroy();
+      metadataEngine.destroy();
+      trackEngine.destroy();
+      await queueEngine.destroy();
+    },
     session,
     network,
     selection,

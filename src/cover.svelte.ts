@@ -30,7 +30,7 @@ interface Cover {
   readonly load: () => void;
 }
 /** Load prominent artwork as soon as its container mounts. */
-export function immediateCover(cover: Pick<Cover, "load">): Attachment {
+export function immediateCover(cover: { load(): void }): Attachment {
   return () => cover.load();
 }
 
@@ -181,7 +181,7 @@ export class CoverEngine {
     return load;
   }
 
-  #artworkId(entry: Pick<CoverEntry, "entity" | "id">) {
+  #artworkId(entry: CoverEntry) {
     const cache = this.#selection.cache;
     return cache && resolveArtworkId(cache, entry.entity, entry.id);
   }
