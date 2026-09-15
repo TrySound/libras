@@ -46,11 +46,7 @@
       : artists,
   );
   const artistPageSize = 48;
-  // Overridden by pagination; any change to the eligible library resets the limit.
-  let artistLimit = $derived.by(() => {
-    void visibleArtists;
-    return artistPageSize;
-  });
+  let artistLimit = $state(artistPageSize);
   const artistPage = $derived(visibleArtists.slice(0, artistLimit));
   function loadMoreArtists() {
     artistLimit = Math.min(artistLimit + artistPageSize, visibleArtists.length);
