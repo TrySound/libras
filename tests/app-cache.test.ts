@@ -217,32 +217,26 @@ it("automatically loads another batch each time the new sentinel is nearby", asy
   assertCount(96);
   await cache.replaceLibrary({ ...snapshot, savedAt: 2 });
   flushSync();
-  assertCount(48); // Refresh resets pagination without a navigation event.
+  assertCount(96); // Refresh preserves pagination while the page stays mounted.
   callback!(
     [{ target: sentinel()!, isIntersecting: true } as IntersectionObserverEntry],
     {} as IntersectionObserver,
   );
   flushSync();
-  assertCount(96);
+  assertCount(100);
   await visit("/library", "replacement", 2, "replace");
-  assertCount(48);
+  assertCount(100); // Same-route navigation does not remount the page.
 
   const other = new Cache({ host: "https://other.example", username: "listener" });
   await other.replaceLibrary({ ...snapshot, savedAt: 2 });
-  callback!(
-    [{ target: sentinel()!, isIntersecting: true } as IntersectionObserverEntry],
-    {} as IntersectionObserver,
-  );
-  flushSync();
-  assertCount(96);
   mocks.options!.selection.cache = other;
   flushSync();
-  assertCount(48); // Account changes reset without navigation too.
+  assertCount(100); // Changing the cache does not reset local pagination state.
   await visit("/library", "home", 0, "traverse");
-  assertCount(48);
+  assertCount(100);
 });
 
-it("resets artist pagination when offline eligibility changes", async () => {
+it("preserves artist pagination when offline eligibility changes", async () => {
   installDisk();
   const flags = new SvelteSet<string>();
   mocks.isOffline = () => flags.has("offline");
@@ -301,12 +295,10 @@ it("resets artist pagination when offline eligibility changes", async () => {
   expect(count()).toBe(96);
   flags.add("offline");
   flushSync();
-  expect(count()).toBe(48);
-  load();
   expect(count()).toBe(96);
   downloaded.delete("99");
   flushSync();
-  expect(count()).toBe(48);
+  expect(count()).toBe(96);
   expect(target.textContent).toContain("99 artists");
   downloaded.clear();
   flushSync();
@@ -314,7 +306,7 @@ it("resets artist pagination when offline eligibility changes", async () => {
   expect(target.textContent).toContain("No downloaded artists.");
   flags.clear();
   flushSync();
-  expect(count()).toBe(48);
+  expect(count()).toBe(96);
 });
 
 it("restores the large player slider when queue hydration finishes before metadata", async () => {
