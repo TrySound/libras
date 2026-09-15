@@ -78,9 +78,10 @@
   --color-artwork-foreground: rgb(from var(--palette-white) r g b / 85%);
   --color-image-scrim: rgb(from var(--palette-black) r g b / 92%);
   --color-backdrop: rgb(from var(--palette-black) r g b / 72%);
-  --color-shadow-dialog: rgb(from var(--palette-black) r g b / 55%);
-  --color-shadow-artwork: rgb(from var(--palette-black) r g b / 38%);
-  --color-shadow-raised: rgb(from var(--palette-black) r g b / 45%);
+  /* Physical depth, independent of surface material. */
+  --elevation-sm: 0 0 0.5rem rgb(from var(--palette-black) r g b / 50%);
+  --elevation-md: 0 0 1rem rgb(from var(--palette-black) r g b / 50%);
+  --elevation-lg: 0 0 2rem rgb(from var(--palette-black) r g b / 50%);
   --font-sans: system-ui, sans-serif;
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
@@ -117,17 +118,24 @@
   --focus-outline: 2px solid var(--color-accent-text);
   --focus-outline-offset: 2px;
 
-  --popover-bg: rgb(from var(--palette-gray-900) r g b / 75%);
-  --popover-blur: 14px;
-  --popover-border: 1px solid var(--palette-gray-600);
-  --popover-shadow: 0 0 15px rgb(0 0 0 / 50%);
+  /* Surface materials do not determine layout, radius, or stacking order. */
+  --surface-base-background: var(--color-background);
+  --surface-base-border: 1px solid var(--color-border);
+  --surface-floating-background: rgb(from var(--color-background) r g b / 75%);
+  --surface-floating-border: 1px solid var(--color-border-subtle);
+  --surface-floating-shadow: var(--elevation-lg);
+  --surface-floating-blur: 14px;
+  --surface-raised-background: var(--surface-floating-background);
+  --surface-raised-border: var(--surface-floating-border);
+  --surface-raised-shadow: var(--elevation-md);
+  --surface-raised-blur: var(--surface-floating-blur);
 
   font-family: var(--font-sans);
   font-size: var(--type-body-size);
   font-weight: var(--type-body-weight);
   line-height: var(--type-body-line);
   color: var(--color-text-primary);
-  background: var(--color-background);
+  background: var(--surface-base-background);
 }
 
 * {
@@ -482,10 +490,10 @@ input {
   position: sticky;
   z-index: 30;
   top: 0;
-  border-bottom: var(--popover-border);
-  background: var(--popover-bg);
-  backdrop-filter: blur(var(--popover-blur));
-  box-shadow: var(--popover-shadow);
+  border-bottom: var(--surface-raised-border);
+  background: var(--surface-raised-background);
+  backdrop-filter: blur(var(--surface-raised-blur));
+  box-shadow: var(--surface-raised-shadow);
 }
 
 .topbar-brand {
@@ -523,7 +531,7 @@ input:not([type="range"]):not([type="checkbox"]):focus {
 
 .connection-card {
   overflow: hidden;
-  border: 1px solid var(--color-border);
+  border: var(--surface-base-border);
   border-radius: var(--space-sm);
   background: var(--color-surface);
 }
@@ -589,7 +597,7 @@ input:not([type="range"]):not([type="checkbox"]):focus {
   padding: 1rem;
   align-items: center;
   gap: 1rem;
-  border: 1px solid var(--color-border);
+  border: var(--surface-base-border);
   border-radius: var(--space-sm);
   background: var(--color-surface);
 }
@@ -794,13 +802,15 @@ a {
   overflow-y: auto;
   border: 0;
   color: var(--color-text-primary);
-  background: var(--color-background);
+  background: var(--surface-base-background);
   @media (width >= 800px) {
     width: min(calc(100dvw - 2rem), 80rem);
     height: min(calc(100dvh - 2rem), 52rem);
-    border: 1px solid var(--color-border-strong);
+    border: var(--surface-floating-border);
     border-radius: var(--space-sm);
-    box-shadow: 0 1.5rem 4rem var(--color-shadow-dialog);
+    background: var(--surface-floating-background);
+    backdrop-filter: blur(var(--surface-floating-blur));
+    box-shadow: var(--surface-floating-shadow);
   }
 }
 
@@ -835,7 +845,7 @@ a {
 .collection-view > .artwork {
   max-width: 20rem;
   margin: 0 auto var(--space-lg);
-  box-shadow: 0 0.75rem 2rem var(--color-shadow-artwork);
+  box-shadow: var(--elevation-md);
 }
 
 .player-main > .artwork {
@@ -919,7 +929,7 @@ a {
   display: grid;
   width: 100%;
   padding: 0;
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--elevation-md);
 
   &:focus-visible {
     outline: var(--focus-outline);
@@ -929,7 +939,7 @@ a {
   @media (hover: hover) {
     &:hover:not(:active) {
       filter: brightness(1.1);
-      box-shadow: 0 0 5px rgb(0 0 0 / 50%);
+      box-shadow: var(--elevation-sm);
     }
   }
 
@@ -942,7 +952,7 @@ a {
 
   &:active {
     filter: brightness(0.85);
-    box-shadow: 0 0 5px rgb(0 0 0 / 50%);
+    box-shadow: var(--elevation-sm);
 
     @media (prefers-reduced-motion: no-preference) {
       scale: 0.98;
@@ -1021,10 +1031,12 @@ a {
   overflow-y: auto;
   box-sizing: border-box;
   border: 0;
+  border-top: var(--surface-floating-border);
   border-radius: 0;
   color: var(--color-text-primary);
-  background: var(--color-background);
-  box-shadow: var(--popover-shadow);
+  background: var(--surface-floating-background);
+  backdrop-filter: blur(var(--surface-floating-blur));
+  box-shadow: var(--surface-floating-shadow);
 
   &::backdrop {
     background: var(--color-backdrop);
@@ -1146,25 +1158,22 @@ a {
   right: var(--space-sm);
   bottom: max(var(--space-sm), env(safe-area-inset-bottom));
   left: var(--space-sm);
-  border: 1px solid var(--color-border-strong);
+  border: var(--surface-floating-border);
   border-radius: var(--space-sm);
   text-align: left;
-  background: var(--color-surface-raised);
-  box-shadow: 0 0.8rem 2rem var(--color-shadow-raised);
-
-  border: var(--popover-border);
-  background: rgb(from var(--color-surface-raised) r g b / 75%);
-  backdrop-filter: blur(var(--popover-blur));
-  box-shadow: var(--popover-shadow);
+  background: var(--surface-floating-background);
+  backdrop-filter: blur(var(--surface-floating-blur));
+  box-shadow: var(--surface-floating-shadow);
 
   @media (prefers-reduced-motion: no-preference) {
     transition: background-color 160ms ease-out;
   }
 
   &:has(.linkarea:active) {
-    background: rgb(
-      from color-mix(in srgb, var(--color-surface-raised) 90%, var(--color-text-primary) 10%) r g b
-        / 75%
+    background: color-mix(
+      in srgb,
+      var(--surface-floating-background) 90%,
+      var(--color-text-primary) 10%
     );
     @media (prefers-reduced-motion: no-preference) {
       transition-duration: 50ms;
@@ -1173,9 +1182,10 @@ a {
 
   @media (hover: hover) {
     &:has(.linkarea:hover) {
-      background: rgb(
-        from color-mix(in srgb, var(--color-surface-raised) 90%, var(--color-text-primary) 10%) r g
-          b / 75%
+      background: color-mix(
+        in srgb,
+        var(--surface-floating-background) 90%,
+        var(--color-text-primary) 10%
       );
       @media (prefers-reduced-motion: no-preference) {
         transition-duration: 50ms;
@@ -1229,11 +1239,11 @@ a {
   max-height: calc(100dvh - 6rem);
   overflow: auto;
   padding: var(--space-md);
-  border: var(--popover-border);
+  border: var(--surface-floating-border);
   border-radius: var(--space-sm);
-  background: var(--popover-bg);
-  backdrop-filter: blur(var(--popover-blur));
-  box-shadow: var(--popover-shadow);
+  background: var(--surface-floating-background);
+  backdrop-filter: blur(var(--surface-floating-blur));
+  box-shadow: var(--surface-floating-shadow);
 }
 
 .notification-popover:popover-open {
