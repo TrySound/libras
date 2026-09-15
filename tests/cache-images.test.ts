@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
@@ -65,14 +66,14 @@ afterEach(() => {
 describe("memory-first artwork", () => {
   it("invalidates all image metadata without rewriting bytes or losing validators", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.saveImage("one", { ...image(), freshUntil: Date.now() + 60_000 });
     await cache.saveImage("two", image("other"));
     const originals = [...cache.images.values()];
     const blobs = new Map(disk.blobs);
     await cache.invalidateImages();
     await cache.flush();
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect([...restored.images.values()]).toEqual(
       originals.map((record) => ({ ...record, freshUntil: 0 })),
@@ -82,7 +83,7 @@ describe("memory-first artwork", () => {
 
   it("persists entity metadata without derived artwork relationships", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.replaceLibrary(library());
     await cache.flush();
     const json = JSON.parse([...disk.files.values()][0]);
@@ -98,7 +99,7 @@ describe("memory-first artwork", () => {
 
   it("retains images and their catalog when the library changes", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.replaceLibrary(library());
     await cache.saveImage("album-art", image());
     await cache.flush();
@@ -116,7 +117,7 @@ describe("memory-first artwork", () => {
 
   it("publishes after binary close, without reopening image bytes or waiting for JSON", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const reads: string[] = [];
     disk.state.beforeRead = async (path) => {
       reads.push(path);
@@ -136,7 +137,7 @@ describe("memory-first artwork", () => {
 
   it("keeps old bytes until the removing checkpoint commits, including failure and retry", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.saveImage("cover", image("old"));
     await cache.flush();
     const old = cache.images.get("cover")!;
@@ -147,7 +148,7 @@ describe("memory-first artwork", () => {
     await expect(cache.flush()).rejects.toThrow();
     expect(disk.files.get(path(disk))).toBe(oldJSON);
     expect(disk.blobs.size).toBe(2);
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(await (await restored.readImage("cover"))!.blob.text()).toBe("old");
     disk.state.failClose = false;
@@ -158,7 +159,7 @@ describe("memory-first artwork", () => {
 
   it("does not delete bytes removed by an edit newer than the in-flight checkpoint", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.saveImage("cover", image("first"));
     await cache.flush();
     await cache.saveImage("cover", image("second"));
@@ -176,7 +177,7 @@ describe("memory-first artwork", () => {
     release.resolve();
     await saving;
     expect(disk.blobs.size).toBe(2);
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(await (await restored.readImage("cover"))!.blob.text()).toBe("second");
     await cache.flush();
@@ -185,7 +186,7 @@ describe("memory-first artwork", () => {
 
   it("updates or evicts only the observed version", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.saveImage("cover", image("old"));
     const old = cache.images.get("cover")!;
     await cache.saveImage("cover", image("new"));
@@ -205,7 +206,7 @@ describe("memory-first artwork", () => {
 
   it("lets the first completed same-cache replacement win and removes losing bytes", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.saveImage("cover", image("old"));
     await cache.flush();
     const closing = deferred();
@@ -230,7 +231,7 @@ describe("memory-first artwork", () => {
 
   it.each(["binary failure", "cancellation"])("cleans unowned bytes on %s", async (kind) => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.saveImage("cover", image("old"));
     await cache.flush();
     const controller = new AbortController();
@@ -248,7 +249,7 @@ describe("memory-first artwork", () => {
     "preserves invalid catalogs: %s",
     async (kind) => {
       const disk = installDisk();
-      const seed = new Cache(account);
+      const seed = new Cache(getAccountKey(account));
       await seed.saveImage("cover", image());
       await seed.flush();
       const records = JSON.parse(disk.files.get(path(disk))!);
@@ -257,7 +258,7 @@ describe("memory-first artwork", () => {
       if (kind === "unexpected field") records[0].unexpected = true;
       const invalid = JSON.stringify(records);
       disk.files.set(path(disk), invalid);
-      const cache = new Cache(account);
+      const cache = new Cache(getAccountKey(account));
       await expect(cache.load()).rejects.toBeInstanceOf(AggregateError);
       await expect(cache.saveImage("other", image())).rejects.toThrow();
       expect(disk.files.get(path(disk))).toBe(invalid);

@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Cache, downloadKey } from "../src/cache.svelte";
 import { flushSync } from "svelte";
@@ -40,7 +41,7 @@ afterEach(() => {
 describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (name) => {
   it("updates live views reactively without invalidating unrelated existing keys", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const store = domain(name, cache);
     await store.save("kept", "first");
     const records = store.records();
@@ -84,7 +85,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
   it("keeps an in-flight checkpoint separate from subsequent catalog mutations", async () => {
     vi.useFakeTimers();
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const store = domain(name, cache);
     await store.save("first", "first");
     const closing = deferred<void>();
@@ -112,7 +113,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
   it("does not traverse a 20,907-record catalog when adding records", async () => {
     vi.useFakeTimers();
     const disk = installDisk();
-    const seed = domain(name, new Cache(account));
+    const seed = domain(name, new Cache(getAccountKey(account)));
     await seed.save("seed", "bytes");
     await seed.flush();
     const path = [...disk.files.keys()].find((path) => path.endsWith(`/${name}.json`))!;
@@ -129,7 +130,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
         })),
       ),
     );
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.load();
     const store = domain(name, cache);
     const records = store.records();
@@ -147,7 +148,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
 
   it("orders byte acquisition behind hydration", async () => {
     const disk = installDisk();
-    const seed = domain(name, new Cache(account));
+    const seed = domain(name, new Cache(getAccountKey(account)));
     await seed.save("item", "bytes");
     await seed.flush();
     const reading = deferred<void>();
@@ -158,7 +159,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
         await release.promise;
       }
     };
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const restored = domain(name, cache);
     const loading = cache.load();
     await reading.promise;
@@ -177,7 +178,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
 
   it("repairs only a missing reference, retaining unrelated records and bytes", async () => {
     const disk = installDisk();
-    const store = domain(name, new Cache(account));
+    const store = domain(name, new Cache(getAccountKey(account)));
     await store.save("missing", "first");
     await store.save("kept", "second");
     const missing = store.records().get(store.key("missing"))!.fileName;
@@ -188,14 +189,14 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
     expect(await (await store.read("kept"))!.text()).toBe("second");
     expect(disk.blobs.size).toBe(1);
     await store.flush();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.load();
     expect([...domain(name, cache).records().keys()]).toEqual([store.key("kept")]);
   });
 
   it("does not tie checkpoints to a completed caller's cancellation signal", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const store = domain(name, cache);
     await store.save("kept", "old");
     const controller = new AbortController();
@@ -208,7 +209,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
     expect([...store.records().keys()]).toEqual([store.key("kept"), store.key("late")]);
     expect(cache.error).toBeUndefined();
     expect(disk.blobs.size).toBe(2);
-    const restored = new Cache(account);
+    const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(await (await domain(name, restored).read("late"))!.text()).toBe("new");
   });
@@ -217,7 +218,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
 it("replaces image records reactively without mutating an in-flight checkpoint", async () => {
   vi.useFakeTimers();
   const disk = installDisk();
-  const cache = new Cache(account);
+  const cache = new Cache(getAccountKey(account));
   await cache.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" });
   const records = cache.images;
   const original = records.get("cover")!;
@@ -258,7 +259,7 @@ it("replaces image records reactively without mutating an in-flight checkpoint",
 
 it("keeps image operations independent of an active audio transfer", async () => {
   const disk = installDisk();
-  const cache = new Cache(account);
+  const cache = new Cache(getAccountKey(account));
   const writing = deferred<void>();
   disk.state.beforeWrite = (path) => {
     if (path.endsWith(".audio")) writing.resolve();

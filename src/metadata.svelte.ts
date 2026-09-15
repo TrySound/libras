@@ -1,3 +1,4 @@
+import { getAccountKey } from "./auth";
 import type { LibraryProgress, MetadataConnection } from "./network.svelte";
 import type { CacheSelection, LibrarySnapshot } from "./cache.svelte";
 import type { Account } from "./schema";
@@ -56,11 +57,7 @@ export class MetadataEngine {
     const connection = this.#connection;
     if (!connection || connection.signal.aborted || this.#destroyed) return;
     const cache = this.#selection.cache;
-    if (
-      !cache?.account ||
-      cache.account.host !== connection.account.host ||
-      cache.account.username !== connection.account.username
-    )
+    if (!cache || cache.key !== getAccountKey(connection.account))
       throw new Error("Select the account cache before refreshing metadata.");
     const generation = this.#invalidate();
     const controller = new AbortController();

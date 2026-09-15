@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueueEngine } from "../src/queue.svelte";
 import { Cache, type CachedQueue } from "../src/cache.svelte";
@@ -39,7 +40,7 @@ async function json(identity = account) {
   return JSON.parse(disk.files.get(await path(identity))!);
 }
 async function setup(identity = account) {
-  const cache = new Cache(identity);
+  const cache = new Cache(getAccountKey(identity));
   caches.push(cache);
   const selection = new TestSelection();
   selection.cache = cache;
@@ -507,7 +508,7 @@ describe("queue engine using the selected cache", () => {
     await vi.waitFor(() => expect(connection.read).toHaveBeenCalledOnce());
     const other = { ...account, username: "other" };
     await seed({ tracks: ["other"], index: 0, position: 4 }, other);
-    const next = new Cache(other);
+    const next = new Cache(getAccountKey(other));
     caches.push(next);
     await next.load();
     queue.setConnection(undefined);
@@ -521,7 +522,7 @@ describe("queue engine using the selected cache", () => {
 
   it("preserves edits made during cache loading and activates without reloading", async () => {
     await seed();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     caches.push(cache);
     const selection = new TestSelection();
     selection.cache = cache;

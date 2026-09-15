@@ -1,6 +1,7 @@
 import type { AudioConnection } from "./network.svelte";
 import { downloadKey, type Cache, type CacheSelection, type DownloadFormat } from "./cache.svelte";
-import type { Account, DownloadTrack } from "./schema";
+import type { DownloadTrack } from "./schema";
+import { getAccountKey } from "./auth";
 
 interface EngineTrack {
   id: string;
@@ -26,7 +27,7 @@ interface TrackEngineOptions {
   connection?: AudioConnection;
   concurrency?: number;
 }
-type Descriptor = Readonly<Account> & { key: string; format: DownloadFormat; contentType: string };
+type Descriptor = { cacheKey: string; key: string; format: DownloadFormat; contentType: string };
 type DownloadJobInfo = Descriptor & { track: DownloadTrack; status: "queued" | "downloading" };
 interface DownloadJob {
   descriptor: Descriptor;
@@ -92,7 +93,7 @@ export class TrackEngine {
   }
   #describe(track: EngineTrack, options: TrackSourceOptions = {}): Descriptor {
     const cache = this.#selection.cache;
-    if (!cache?.account) throw new Error("No music account selected.");
+    if (cache?.key === undefined) throw new Error("No music account selected.");
     const format =
       !options.forceTranscode &&
       track.contentType &&
@@ -101,18 +102,14 @@ export class TrackEngine {
         : "mp3";
     return {
       key: downloadKey(track.id, format),
-      ...cache.account,
+      cacheKey: cache.key,
       format,
       contentType: format === "raw" && track.contentType ? track.contentType : "audio/mpeg",
     };
   }
   #connectionFor(descriptor: Descriptor) {
     const connection = this.#connection;
-    if (
-      !connection ||
-      connection.account.host !== descriptor.host ||
-      connection.account.username !== descriptor.username
-    )
+    if (!connection || getAccountKey(connection.account) !== descriptor.cacheKey)
       throw new Error("This track is not downloaded. Connect to its music server to stream it.");
     connection.signal.throwIfAborted();
     return connection;

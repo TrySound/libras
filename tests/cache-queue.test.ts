@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
 import { Cache, type CachedQueue, type LibrarySnapshot } from "../src/cache.svelte";
@@ -36,7 +37,7 @@ function queuePath(disk: ReturnType<typeof installDisk>) {
 describe("queue cache", () => {
   it("starts empty and a clean flush performs no I/O", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     expect(cache.queue).toEqual({ tracks: [], index: -1, position: 0 });
     expect(cache.queueDirty).toBe(false);
     expect(cache.error).toBeUndefined();
@@ -46,7 +47,7 @@ describe("queue cache", () => {
 
   it("publishes a copied reactive queue before persistence and restores duplicate occurrences without metadata", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const seen: unknown[] = [];
     const stop = observeCache(() => {
       seen.push({ queue: cache.queue, dirty: cache.queueDirty });
@@ -72,7 +73,7 @@ describe("queue cache", () => {
       const path = queuePath(disk);
       expect(path).toMatch(/^accounts\/[a-f0-9]{64}\/queue\.json$/);
       expect(JSON.parse(disk.files.get(path) ?? "null")).toEqual(queue());
-      const restored = new Cache(account);
+      const restored = new Cache(getAccountKey(account));
       await restored.load();
       expect(restored.queue).toEqual(queue());
       expect(restored.queueDirty).toBe(false);
@@ -85,7 +86,7 @@ describe("queue cache", () => {
 
   it("debounces edits for 300ms and leaves no redundant checkpoint timer", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.load();
     cache.setQueue(queue(10));
     await vi.advanceTimersByTimeAsync(100);
@@ -101,7 +102,7 @@ describe("queue cache", () => {
 
   it("checkpoints continuous position updates at least every five seconds", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.load();
     cache.setQueue(queue(0));
     for (let i = 1; i < 50; i++) {
@@ -116,7 +117,7 @@ describe("queue cache", () => {
 
   it("keeps the original five-second deadline for checkpoint-only edits", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.load();
     cache.setQueue(queue(0), { checkpoint: true });
     await vi.advanceTimersByTimeAsync(4_999);
@@ -132,7 +133,7 @@ describe("queue cache", () => {
 
   it("copies incoming queue state before adoption and clears superseded checkpoints", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     cache.setQueue(queue(10));
     const incoming = queue(20);
     cache.setQueue(incoming);
@@ -152,7 +153,7 @@ describe("queue cache", () => {
 
   it("coalesces overlapping flushes without rewriting library.json", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.replaceLibrary(library);
     await cache.flush();
     const original = [...disk.files][0]!;
@@ -166,7 +167,7 @@ describe("queue cache", () => {
 
   it("acknowledges only the revision committed when a new edit arrives during a write", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const closing = deferred();
     const release = deferred();
     disk.state.beforeClose = async () => {
@@ -192,10 +193,10 @@ describe("queue cache", () => {
 
   it.each(["before", "during"])("preserves local edits made %s loading", async (when) => {
     const disk = installDisk();
-    const initial = new Cache(account);
+    const initial = new Cache(getAccountKey(account));
     initial.setQueue(queue(10));
     await initial.flush();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const reading = deferred();
     const release = deferred();
     disk.state.beforeRead = async (path) => {
@@ -218,7 +219,7 @@ describe("queue cache", () => {
 
   it("preserves optimistic edits and the previous disk record on failure, then retries explicitly", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     cache.setQueue(queue(10));
     await cache.flush();
     const path = queuePath(disk);
@@ -241,7 +242,7 @@ describe("queue cache", () => {
 
   it("reports background failures without an unhandled rejection or automatic retry loop", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     await cache.load();
     const close = vi.fn(async () => {});
     disk.state.beforeClose = close;
@@ -261,7 +262,7 @@ describe("queue cache", () => {
     "restores independent domains when %s is corrupt",
     async (corrupt) => {
       const disk = installDisk();
-      const initial = new Cache(account);
+      const initial = new Cache(getAccountKey(account));
       await initial.replaceLibrary(library);
       initial.setQueue(queue());
       await initial.flush();
@@ -270,7 +271,7 @@ describe("queue cache", () => {
       if (corrupt !== "queue") disk.files.set(libraryFile, "bad library");
       if (corrupt !== "library") disk.files.set(queueFile, "bad queue");
       const original = [...disk.files];
-      const cache = new Cache(account);
+      const cache = new Cache(getAccountKey(account));
       const error = await cache.load().catch((error: unknown) => error);
       expect(error).toBeInstanceOf(AggregateError);
       if (!(error instanceof AggregateError)) throw new Error("Expected a load error");
@@ -294,7 +295,7 @@ describe("queue cache", () => {
     "rejects a persisted %s and preserves the file until an explicit edit",
     async (kind) => {
       const disk = installDisk();
-      const cache = new Cache(account);
+      const cache = new Cache(getAccountKey(account));
       cache.setQueue(queue());
       await cache.flush();
       const path = queuePath(disk);
@@ -303,7 +304,7 @@ describe("queue cache", () => {
       if (kind === "invalid selection") value.index = 99;
       const corrupt = JSON.stringify(kind === "wrapped record" ? { value } : value);
       disk.files.set(path, corrupt);
-      const restored = new Cache(account);
+      const restored = new Cache(getAccountKey(account));
       await expect(restored.load()).rejects.toBeInstanceOf(AggregateError);
       expect(restored.queue.index).toBe(-1);
       expect(disk.files.get(path)).toBe(corrupt);
@@ -316,10 +317,10 @@ describe("queue cache", () => {
 
   it("cancels loading without publishing a stale queue or recording a storage error", async () => {
     const disk = installDisk();
-    const initial = new Cache(account);
+    const initial = new Cache(getAccountKey(account));
     initial.setQueue(queue());
     await initial.flush();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const reading = deferred();
     const release = deferred();
     disk.state.beforeRead = async () => {
@@ -340,7 +341,7 @@ describe("queue cache", () => {
 
   it("does not block queue checkpoints behind library writes", async () => {
     const disk = installDisk();
-    const cache = new Cache(account);
+    const cache = new Cache(getAccountKey(account));
     const closing = deferred();
     const release = deferred();
     disk.state.beforeClose = async (path) => {
@@ -362,8 +363,8 @@ describe("queue cache", () => {
 
   it("isolates account queues with overlapping track IDs", async () => {
     const disk = installDisk();
-    const first = new Cache(account);
-    const second = new Cache({ ...account, username: "other" });
+    const first = new Cache(getAccountKey(account));
+    const second = new Cache(getAccountKey({ ...account, username: "other" }));
     first.setQueue(queue(10));
     second.setQueue(queue(20));
     await Promise.all([first.flush(), second.flush()]);

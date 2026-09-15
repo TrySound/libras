@@ -1,4 +1,5 @@
 import { tick, untrack } from "svelte";
+import { getAccountKey } from "./auth";
 import type { Attachment } from "svelte/attachments";
 import type { Cache, CacheSelection, Immutable } from "./cache.svelte";
 import { artworkNoStore, type ArtworkConnection } from "./network.svelte";
@@ -232,9 +233,7 @@ export class CoverEngine {
     const cache = this.#selection.cache;
     return connection &&
       !connection.signal.aborted &&
-      cache?.account &&
-      cache.account.host === connection.account.host &&
-      cache.account.username === connection.account.username
+      cache?.key === getAccountKey(connection.account)
       ? connection
       : undefined;
   }

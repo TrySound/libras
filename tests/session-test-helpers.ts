@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { AuthStore } from "../src/auth";
+import { AuthStore, getAccountKey } from "../src/auth";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { Network, type LibraryProgress, type MetadataConnection } from "../src/network.svelte";
 import type { MetadataSnapshot } from "../src/metadata.svelte";
@@ -62,12 +62,16 @@ export function createSession(saved = false, storage = createStorage()) {
     .mockReset()
     .mockImplementation(async function (this: Cache, signal) {
       signal?.throwIfAborted();
+      const account = [
+        auth.loadAccount() ?? credentials,
+        ...metadata.prepareConnection.mock.calls.map(([connection]) => connection.account),
+      ].find((account) => getAccountKey(account) === this.key)!;
       vi.spyOn(this, "artists", "get").mockReturnValue(
-        new Map(snapshot(this.account!).artists.map((artist) => [artist.id, artist])),
+        new Map(snapshot(account).artists.map((artist) => [artist.id, artist])),
       );
       vi.spyOn(this, "savedAt", "get").mockReturnValue(100);
       vi.spyOn(this, "queue", "get").mockReturnValue({
-        tracks: [this.account!.username],
+        tracks: [account.username],
         index: 0,
         position: 17,
       });

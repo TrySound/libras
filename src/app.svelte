@@ -128,7 +128,7 @@
 
   onMount(() => {
     const savedAuth = session.start();
-    if (!savedAuth && !cache.account) navigate("/settings", "replace");
+    if (!savedAuth && cache.key === undefined) navigate("/settings", "replace");
   });
 
   function artistPath(artist: Artist) {

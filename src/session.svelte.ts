@@ -1,4 +1,4 @@
-import type { Auth, AuthStore } from "./auth";
+import { getAccountKey, type Auth, type AuthStore } from "./auth";
 import type { CoverEngine } from "./cover.svelte";
 import type { MetadataEngine } from "./metadata.svelte";
 import {
@@ -43,6 +43,7 @@ export class Session {
   localReady = $state(false);
 
   #options: SessionOptions;
+  #account?: Readonly<Account>;
   #syncing = $state(false);
   #refreshError = $state.raw<unknown>();
   #refreshPending?: Promise<void>;
@@ -113,8 +114,9 @@ export class Session {
   }
 
   /** Select local data before activating resources; queue activation waits for hydration. */
-  #select(cache: Cache) {
+  #select(cache: Cache, account: Account) {
     this.localReady = false;
+    this.#account = { host: account.host, username: account.username };
     this.#options.selection.cache = cache;
     this.#options.covers.activate();
     this.#options.tracks.activate();
@@ -161,8 +163,8 @@ export class Session {
 
   async #restore(account: Account) {
     const { covers, queue, selection } = this.#options;
-    const cache = new Cache(account);
-    this.#select(cache);
+    const cache = new Cache(getAccountKey(account));
+    this.#select(cache, account);
     this.#loadController?.abort();
     const controller = new AbortController();
     this.#loadController = controller;
@@ -189,10 +191,8 @@ export class Session {
     const prepared = await this.#options.metadata.prepareConnection(connection.metadata);
     connection.signal.throwIfAborted();
     const previous = this.#options.selection.cache;
-    const sameAccount =
-      previous?.account?.host === prepared.account.host &&
-      previous.account.username === prepared.account.username;
-    const cache = sameAccount ? previous : new Cache(prepared.account);
+    const key = getAccountKey(prepared.account);
+    const cache = previous?.key === key ? previous : new Cache(key);
     // Fresh metadata repairs library read failures; other documents remain independent.
     await cache.load(connection.signal).catch((error) => {
       if (!(error instanceof AggregateError)) throw error;
@@ -228,12 +228,12 @@ export class Session {
     connection.signal.throwIfAborted();
     const { auth, preferences, network, playback, selection, queue } = this.#options;
     auth.save(credentials);
-    auth.saveAccount(cache.account!);
+    auth.saveAccount(connection.account);
     preferences.setItem(offlineModeStorageKey, "false");
     const active = network.accept(connection);
     if (!selection.cache || selection.cache === cache) playback.suspend();
     this.#setConnection(undefined);
-    this.#select(cache);
+    this.#select(cache, connection.account);
     queue.activate();
     this.auth = credentials;
     this.#setConnection(active);
@@ -277,8 +277,7 @@ export class Session {
     try {
       this.#options.auth.clear();
       this.#options.preferences.setItem(offlineModeStorageKey, "true");
-      const account = this.#options.selection.cache?.account;
-      if (account) this.#options.auth.saveAccount(account);
+      if (this.#account) this.#options.auth.saveAccount(this.#account);
       return true;
     } catch (error) {
       this.#fail(error, generation);

@@ -1,3 +1,4 @@
+import { getAccountKey } from "../src/auth";
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlaybackController } from "../src/playback-controller.svelte";
@@ -69,7 +70,9 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
   );
   installDisk();
   const selection = new TestSelection();
-  selection.cache = new Cache({ host: "https://music.example.com", username: "listener" });
+  selection.cache = new Cache(
+    getAccountKey({ host: "https://music.example.com", username: "listener" }),
+  );
   const library = playbackLibrary(selection.cache);
   library.tracks = new Map(["a", "b", "c"].map((id) => [id, song(id)]));
   library.artists = new Map([["artist", { id: "artist", name: "Artist", genres: [] }]]);
@@ -228,7 +231,7 @@ describe("playback engine", () => {
     const pending = player.play();
     await Promise.resolve();
     player.suspend();
-    const next = new Cache({ ...old.account!, username: "other" });
+    const next = new Cache(getAccountKey({ host: "https://music.example.com", username: "other" }));
     const library = playbackLibrary(next);
     library.tracks = new Map([["a", { ...song("a"), title: "Other account" }]]);
     next.setQueue({ tracks: ["a"], index: 0, position: 37 });
@@ -525,7 +528,7 @@ describe("playback engine", () => {
     queue.update({ tracks: ["a"], index: 0, position: 45.5 });
     await queue.flush();
     await cache.flush();
-    const restored = new Cache(cache.account!);
+    const restored = new Cache(cache.key);
     await restored.load();
     selection.cache = restored;
     queue.activate();
@@ -533,7 +536,12 @@ describe("playback engine", () => {
     const engine = new TrackEngine({
       selection,
       connection: network.accept(
-        network.prepare({ ...cache.account!, token: "token", salt: "salt" }),
+        network.prepare({
+          host: "https://music.example.com",
+          username: "listener",
+          token: "token",
+          salt: "salt",
+        }),
       ).audio,
     });
     cleanups.push(() => {
