@@ -1,4 +1,4 @@
-import { SubsonicClient, createSubsonicAuth } from "./subsonic-client";
+import { OpenSubsonicClient, createOpenSubsonicAuth } from "./opensubsonic-client";
 import { authSchema, type Auth } from "./auth";
 import * as v from "valibot";
 import type { Album, Artist, Track, Account, ImageMetadata } from "./schema";
@@ -23,11 +23,11 @@ interface NetworkIdentity {
   readonly signal: AbortSignal;
 }
 
-type RemoteArtist = Omit<Artist, "id"> & { id?: string };
 type RemoteAlbum = Omit<Album, "artistId"> & { artistId?: string; artistName?: string };
 type RemoteTrack = Omit<Track, "artistId" | "albumId"> & {
   artistId?: string;
   artistName?: string;
+  displayArtist?: string;
   albumId?: string;
 };
 
@@ -115,9 +115,9 @@ type RemoteArtwork = ImageMetadata & { notModified: false; blob: Blob; type: str
 
 export type ArtworkConnection = ReturnType<typeof artworkAccess>;
 
-function genres(item: { genre?: string; genres?: { name: string }[] }) {
-  const names = [item.genre ?? "", ...(item.genres ?? []).map((genre) => genre.name)]
-    .flatMap((name) => name.split("|"))
+function genres(item: { genres?: { name: string }[] }) {
+  const names = (item.genres ?? [])
+    .map((genre) => genre.name)
     .map((name) => name.trim())
     .filter(Boolean);
   return [...new Map(names.map((name) => [name.toLocaleLowerCase(), name])).values()].sort((a, b) =>
@@ -126,7 +126,7 @@ function genres(item: { genre?: string; genres?: { name: string }[] }) {
 }
 
 function normalizeLibrary(
-  sourceArtists: readonly RemoteArtist[],
+  sourceArtists: readonly Artist[],
   sourceAlbums: readonly RemoteAlbum[],
   tracksByAlbum: ReadonlyMap<string, readonly RemoteTrack[]>,
 ): Library {
@@ -135,7 +135,7 @@ function normalizeLibrary(
   const syntheticId = (name: string) => `local:artist:${encodeURIComponent(name)}`;
   for (const source of sourceArtists) {
     const artist: Artist = {
-      id: source.id || syntheticId(source.name),
+      id: source.id,
       name: source.name,
       artworkId: source.artworkId,
       genres: source.genres,
@@ -174,7 +174,7 @@ function normalizeLibrary(
         title: sourceTrack.title,
         albumId: source.id,
         artistId: trackArtist.id,
-        artistName: sourceTrack.artistName || trackArtist.name,
+        artistName: sourceTrack.displayArtist || sourceTrack.artistName || trackArtist.name,
         artworkId: sourceTrack.artworkId,
         number: sourceTrack.number,
         disc: sourceTrack.disc,
@@ -205,7 +205,7 @@ async function networkFetch(input: RequestInfo | URL, init?: RequestInit) {
   }
 }
 
-function metadataAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+function metadataAccess(account: Readonly<Account>, client: OpenSubsonicClient, request: Request) {
   return Object.freeze({
     account,
     signal: client.signal,
@@ -222,7 +222,7 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
         signal.throwIfAborted();
         return result;
       };
-      const artists = new Map<string, RemoteArtist>();
+      const artists = new Map<string, Artist>();
       const albums = new Map<string, RemoteAlbum>();
       const tracks = new Map<string, RemoteTrack>();
       const offsets = { artists: 0, albums: 0, tracks: 0 };
@@ -266,18 +266,20 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
               id: artist.id,
               name: artist.name,
               artworkId: artist.coverArt || undefined,
-              genres: genres(artist),
+              // ArtistID3 has no genre field; genres belong to albums and tracks.
+              genres: [],
             })),
             artists,
-            (artist) => artist.id || `local:artist:${encodeURIComponent(artist.name)}`,
+            (artist) => artist.id,
           );
           collect(
             "albums",
             page.albums.map((album) => ({
               id: album.id,
               title: album.name,
-              artistId: album.artistId,
-              artistName: album.artist,
+              // The local browsing model still has one album owner.
+              artistId: album.artists?.[0]?.id,
+              artistName: album.artists?.[0]?.name || album.displayArtist,
               artworkId: album.coverArt || undefined,
               year: album.year && album.year > 0 ? album.year : undefined,
               genres: genres(album),
@@ -291,8 +293,10 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
               id: track.id,
               title: track.title,
               albumId: track.albumId,
-              artistId: track.artistId,
-              artistName: track.artist,
+              artistId: track.artists?.[0]?.id,
+              artistName: track.artists?.[0]?.name || track.displayArtist,
+              displayArtist:
+                track.displayArtist || track.artists?.map((artist) => artist.name).join(", "),
               artworkId: track.coverArt || undefined,
               number: track.track && track.track > 0 ? track.track : undefined,
               disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,
@@ -322,7 +326,7 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
   });
 }
 
-function queueAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+function queueAccess(account: Readonly<Account>, client: OpenSubsonicClient, request: Request) {
   return Object.freeze({
     account,
     signal: client.signal,
@@ -345,7 +349,7 @@ function queueAccess(account: Readonly<Account>, client: SubsonicClient, request
   });
 }
 
-function artworkAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+function artworkAccess(account: Readonly<Account>, client: OpenSubsonicClient, request: Request) {
   const signal = client.signal;
   return Object.freeze({
     account,
@@ -396,7 +400,7 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicClient, reque
   });
 }
 
-function audioAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+function audioAccess(account: Readonly<Account>, client: OpenSubsonicClient, request: Request) {
   const url = (id: string, options: { format: AudioFormat; position?: number }) => {
     client.signal.throwIfAborted();
     return client.getStreamUrl(id, {
@@ -428,12 +432,12 @@ function audioAccess(account: Readonly<Account>, client: SubsonicClient, request
   });
 }
 
-type CandidateConnection = { handle: NetworkConnection; client: SubsonicClient };
+type CandidateConnection = { handle: NetworkConnection; client: OpenSubsonicClient };
 
 /** Application server access, connection ownership, and cancellation policy. */
 export class Network {
   #mode = $state<"online" | "offline">("offline");
-  #active?: SubsonicClient;
+  #active?: OpenSubsonicClient;
   #candidate?: CandidateConnection;
 
   get mode() {
@@ -455,7 +459,7 @@ export class Network {
     const withProtocol = /^https?:\/\//i.test(host) ? host : `https://${host}`;
     return v.parse(
       authSchema,
-      createSubsonicAuth({
+      createOpenSubsonicAuth({
         host: new URL(withProtocol).toString().replace(/\/$/, ""),
         username: input.username,
         password: input.password,
@@ -465,7 +469,7 @@ export class Network {
 
   /** Explicit login validation is allowed while normal access remains offline. */
   prepare(auth: Auth): NetworkConnection {
-    const client = new SubsonicClient(auth, { fetch: networkFetch });
+    const client = new OpenSubsonicClient(auth, { fetch: networkFetch });
     this.#candidate?.client.abort();
     const account = Object.freeze({ host: client.host, username: client.username });
     const request: Request = (run) => this.#request(client, run);
@@ -495,7 +499,7 @@ export class Network {
     return active;
   }
 
-  async #request<T>(client: SubsonicClient, run: () => Promise<T>) {
+  async #request<T>(client: OpenSubsonicClient, run: () => Promise<T>) {
     client.signal.throwIfAborted();
     const result = await run();
     client.signal.throwIfAborted();

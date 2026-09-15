@@ -488,7 +488,7 @@ describe("Network connection lifecycle", () => {
           kind === "repeated"
             ? "no progress"
             : kind === "missing result"
-              ? "invalid Subsonic response"
+              ? "invalid OpenSubsonic response"
               : "without a matching album",
         );
         expect(calls).toBe(kind === "missing result" ? 1 : 2);
