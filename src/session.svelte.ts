@@ -8,8 +8,7 @@ import {
   type NetworkConnection,
   type PasswordAuth,
 } from "./network.svelte";
-import type { PlaybackController } from "./playback-controller.svelte";
-import type { QueueEngine } from "./queue.svelte";
+import type { Playback } from "./playback.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Cache } from "./cache.svelte";
@@ -21,9 +20,8 @@ interface SessionOptions {
   network: Network;
   auth: AuthStore;
   covers: CoverEngine;
-  queue: QueueEngine;
   tracks: TrackEngine;
-  playback: PlaybackController;
+  playback: Playback;
   preferences: Storage;
 }
 
@@ -68,7 +66,9 @@ export class Session {
 
   get refreshError() {
     const error =
-      this.#refreshError ?? this.#options.queue.error ?? this.#options.selection.cache?.error;
+      this.#refreshError ??
+      this.#options.playback.queueError ??
+      this.#options.selection.cache?.error;
     return error ? `Synchronization failed: ${connectionError(error)}` : "";
   }
 
@@ -104,14 +104,14 @@ export class Session {
     this.#options.network.setMode("offline");
     this.#setConnection(undefined);
     this.#options.playback.suspendNetwork();
-    void this.#options.queue.flush();
+    void this.#options.playback.flushQueue();
   }
 
   /** Publish connection changes in one place; Network owns their shared abort signal. */
   #setConnection(connection: ActiveNetworkConnection | undefined) {
     this.#connection = connection;
-    const { queue, covers, tracks } = this.#options;
-    queue.setConnection(connection?.queue);
+    const { playback, covers, tracks } = this.#options;
+    playback.setConnection(connection?.queue);
     covers.setConnection(connection?.artwork);
     tracks.setConnection(connection?.audio);
   }
@@ -175,7 +175,7 @@ export class Session {
   }
 
   async #restore(account: Account) {
-    const { covers, queue, selection } = this.#options;
+    const { covers, playback, selection } = this.#options;
     const cache = new Cache(getAccountKey(account));
     this.#select(cache, account);
     this.#loadController?.abort();
@@ -192,7 +192,7 @@ export class Session {
       });
       if (!canPublish()) return;
       // Notify playback only after the cache's independent load attempts finish.
-      queue.activate();
+      playback.activate();
       if (!canPublish()) return;
       await covers.refresh();
       if (canPublish()) this.localReady = true;
@@ -236,14 +236,14 @@ export class Session {
    * Storage is not transactional; connect's failure path clears partial credentials. */
   #commitWorkspace(cache: Cache, credentials: Auth, connection: NetworkConnection) {
     connection.signal.throwIfAborted();
-    const { auth, preferences, network, queue } = this.#options;
+    const { auth, preferences, network, playback } = this.#options;
     auth.save(credentials);
     auth.saveAccount(connection.account);
     preferences.setItem(offlineModeStorageKey, "false");
     const active = network.accept(connection);
     this.#setConnection(undefined);
     this.#select(cache, connection.account);
-    queue.activate();
+    playback.activate();
     this.auth = credentials;
     this.#setConnection(active);
     this.localReady = true;
@@ -344,7 +344,7 @@ export class Session {
   #refresh(force: boolean): Promise<void> {
     if (this.#refreshPending) return this.#refreshPending;
     const operationId = this.#operationId;
-    const { covers, queue } = this.#options;
+    const { covers, playback } = this.#options;
     this.#syncing = true;
     this.#refreshError = undefined;
     return (this.#refreshPending = (async () => {
@@ -358,7 +358,7 @@ export class Session {
       }
       if (!this.#isCurrentOperation(operationId)) return;
       try {
-        await queue.refresh();
+        await playback.refreshQueue();
       } catch (error) {
         if (this.#isCurrentOperation(operationId)) this.#refreshError ??= error;
       }

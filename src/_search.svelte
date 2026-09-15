@@ -119,7 +119,7 @@
   import type { CoverEngine } from "./cover.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Session } from "./session.svelte";
-  import type { PlaybackController } from "./playback-controller.svelte";
+  import type { Playback } from "./playback.svelte";
   import { onVisible } from "./viewport";
 
   let {
@@ -134,7 +134,7 @@
     coverEngine: CoverEngine;
     trackEngine: TrackEngine;
     session: Session;
-    playback: PlaybackController;
+    playback: Playback;
     state: SearchState;
   } = $props();
 
