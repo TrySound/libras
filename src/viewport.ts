@@ -8,11 +8,6 @@ interface Registration {
 const registrations = new Map<Element, Registration>();
 let observer: IntersectionObserver | undefined;
 
-/** Acquire resources near the viewport; CSS owns offscreen rendering. */
-export function viewportContent(callback: () => void): Attachment {
-  return onVisible(callback);
-}
-
 /** Run on entry and re-entry into the shared preload boundary. */
 export function onVisible(callback: () => void): Attachment {
   return nearViewport((visible) => {
@@ -21,7 +16,7 @@ export function onVisible(callback: () => void): Attachment {
 }
 
 /** Share one preload boundary for resource acquisition. */
-export function nearViewport(notify: (visible: boolean) => void): Attachment {
+function nearViewport(notify: (visible: boolean) => void): Attachment {
   return (node) => {
     if (typeof IntersectionObserver === "undefined") {
       notify(true);
