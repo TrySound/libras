@@ -354,17 +354,21 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicClient, reque
       signal.throwIfAborted();
       return client.getCoverArtUrl(id, size);
     },
-    read: (id: string, options: ImageMetadata & { size: number }) =>
+    read: (id: string, options: ImageMetadata & { size: number; signal?: AbortSignal }) =>
       request(async () => {
+        const requestSignal = options.signal ? AbortSignal.any([signal, options.signal]) : signal;
+        requestSignal.throwIfAborted();
         const headers = new Headers();
         if (options.etag) headers.set("If-None-Match", options.etag);
         if (options.lastModified) headers.set("If-Modified-Since", options.lastModified);
         const requestedAt = Date.now();
         const response = await networkFetch(client.getCoverArtUrl(id, options.size), {
           headers,
-          signal,
+          signal: requestSignal,
+          // CoverEngine owns freshness; consult the server whenever it requests bytes.
+          cache: "no-cache",
         });
-        signal.throwIfAborted();
+        requestSignal.throwIfAborted();
         const notModified = response.status === 304 && !!(options.etag || options.lastModified);
         const policy = artworkCachePolicy(
           response.headers,

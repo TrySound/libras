@@ -52,60 +52,62 @@
   }
 </script>
 
-<section class="view collection-view">
+<section>
   {#if libraryAvailable && artist}
     {@const artwork = coverEngine.ensureArtistCover(artist.id)}
-    <div
-      class="artwork"
-      style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
-      aria-hidden="true"
-      {@attach immediateCover(artwork)}
-    >
-      {#if artwork.source}
-        <img src={artwork.source} alt="" />
-      {:else}
-        <svg aria-hidden="true" width="64" height="64"><use href="#icon-music"></use></svg>
-      {/if}
-    </div>
-    <div class="section-heading collection-heading">
-      <div>
-        <h2
-          class="type-heading"
-          style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
-        >
-          {artist.name}
-        </h2>
-        <p class="library-meta type-small">
-          {visibleAlbums.length} album{visibleAlbums.length === 1 ? "" : "s"}
-        </p>
-        {#if genres.length > 0}
-          <div class="genre-list">
-            {#each genres as genre}
-              <span class="type-caption">{genre}</span>
-            {/each}
-          </div>
+    <div class="view collection-view">
+      <div
+        class="artwork"
+        style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
+        aria-hidden="true"
+        {@attach immediateCover(artwork)}
+      >
+        {#if artwork.source}
+          <img src={artwork.source} alt="" />
+        {:else}
+          <svg aria-hidden="true" width="64" height="64"><use href="#icon-music"></use></svg>
         {/if}
       </div>
-      <button
-        class="icon-button"
-        data-size="md"
-        data-variant="neutral"
-        commandfor="artist-page-menu"
-        command="show-modal"
-        title={`Open menu for ${artist.name}`}
-      >
-        <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
-      </button>
-    </div>
-
-    {#if loading}
-      <div class="empty-state">
-        <div class="scan-spinner">
-          <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg>
+      <div class="section-heading collection-heading">
+        <div>
+          <h2
+            class="type-heading"
+            style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
+          >
+            {artist.name}
+          </h2>
+          <p class="library-meta type-small">
+            {visibleAlbums.length} album{visibleAlbums.length === 1 ? "" : "s"}
+          </p>
+          {#if genres.length > 0}
+            <div class="genre-list">
+              {#each genres as genre}
+                <span class="type-caption">{genre}</span>
+              {/each}
+            </div>
+          {/if}
         </div>
-        <p class="type-body">Restoring local library…</p>
+        <button
+          class="icon-button"
+          data-size="md"
+          data-variant="neutral"
+          commandfor="artist-page-menu"
+          command="show-modal"
+          title={`Open menu for ${artist.name}`}
+        >
+          <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
+        </button>
       </div>
-    {/if}
+
+      {#if loading}
+        <div class="empty-state">
+          <div class="scan-spinner">
+            <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg>
+          </div>
+          <p class="type-body">Restoring local library…</p>
+        </div>
+      {/if}
+    </div>
     <div class="wings">
       {#each visibleAlbums as album, index}
         {@const albumMenuId = `album-menu-${index}`}
@@ -123,21 +125,19 @@
             data-longpress="show-modal"
             title={`${album.title} — hold for actions`}
           ></a>
-          <span class="track-leading">
-            <span
-              class="cover album-cover"
-              style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
-            >
-              {#if cover.source}
-                <img src={cover.source} alt="" />
-              {:else}
-                <span
-                  ><svg aria-hidden="true" width="20" height="20"
-                    ><use href="#icon-music"></use></svg
-                  ></span
-                >
-              {/if}
-            </span>
+          <span
+            class="cover"
+            data-size="md"
+            style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
+          >
+            {#if cover.source}
+              <img src={cover.source} alt="" />
+            {:else}
+              <span
+                ><svg aria-hidden="true" width="20" height="20"><use href="#icon-music"></use></svg
+                ></span
+              >
+            {/if}
           </span>
           <span class="stack-xs">
             <strong
@@ -149,18 +149,16 @@
               {album.year ?? "Unknown year"} · {visibleTrackIds.length} tracks
             </small>
           </span>
-          <span class="track-actions">
-            <button
-              class="icon-button"
-              data-size="sm"
-              data-variant="ghost"
-              commandfor={albumMenuId}
-              command="show-modal"
-              title={`Open menu for ${album.title}`}
-            >
-              <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
-            </button>
-          </span>
+          <button
+            class="icon-button"
+            data-size="sm"
+            data-variant="ghost"
+            commandfor={albumMenuId}
+            command="show-modal"
+            title={`Open menu for ${album.title}`}
+          >
+            <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
+          </button>
         </article>
       {:else}
         {#if !loading}

@@ -379,6 +379,19 @@ class BinaryCatalog<R extends BinaryRecord> {
     });
   }
 
+  /** Update catalog metadata in one publication without changing file ownership. */
+  updateMetadata(metadata: Partial<R>, signal?: AbortSignal) {
+    return this.#serial(async () => {
+      signal?.throwIfAborted();
+      await this.store.load(signal);
+      signal?.throwIfAborted();
+      const records = this.store.value;
+      if (!records.size) return;
+      for (const [key, record] of records) records.set(key, { ...record, ...metadata });
+      this.store.set(records);
+    });
+  }
+
   /** Stream independently; serialize only in-memory catalog publication.
    * Preparing the result may open the file, but blob-backed callers need not. */
   async write<T>(
@@ -691,6 +704,14 @@ export class Cache {
         signal,
       );
     }, signal);
+  }
+
+  /** Mark all artwork stale while retaining its bytes and validators for offline use. */
+  invalidateImages(signal?: AbortSignal) {
+    return this.#images.operation(
+      () => this.#images.updateMetadata({ freshUntil: 0 }, signal),
+      signal,
+    );
   }
 
   /** A 304 changes freshness/validators, not the file or its URL. */

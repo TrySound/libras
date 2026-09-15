@@ -90,8 +90,17 @@ export class CoverEngine {
   }
 
   /** Re-resolve references and check freshness for demanded covers. */
-  async refresh() {
+  async refresh(force = false) {
     if (this.#destroyed) return;
+    if (force) {
+      this.#cancelDownloads();
+      const cache = this.#selection.cache;
+      const signal = this.#scope.signal;
+      for (const image of this.#objectUrls.values())
+        image.metadata = { ...image.metadata, freshUntil: 0 };
+      await cache?.invalidateImages(signal);
+      if (signal.aborted || cache !== this.#selection.cache || this.#destroyed) return;
+    }
     await Promise.all(
       [...this.#covers.values()].map((entry) => this.#resolve(entry, entry.demanded)),
     );
@@ -244,9 +253,11 @@ export class CoverEngine {
     const cached = cache.images.get(id);
     const installed = this.#currentImage(id);
     const policy = installed?.metadata ?? cached;
-    if (policy?.freshUntil !== undefined && policy.freshUntil > Date.now()) return;
+    const force = policy?.freshUntil === 0 || cached?.freshUntil === 0;
+    if (!force && policy?.freshUntil !== undefined && policy.freshUntil > Date.now()) return;
     // Legacy records without freshness or validators keep their cache-first behavior.
-    if (policy && policy.freshUntil === undefined && !policy.etag && !policy.lastModified) return;
+    if (!force && policy && policy.freshUntil === undefined && !policy.etag && !policy.lastModified)
+      return;
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, connection.signal, this.#scope.signal]);
     const valid = () =>
@@ -256,7 +267,7 @@ export class CoverEngine {
       this.#networkConnection() === connection;
     this.#downloads.set(id, controller);
     void (async () => {
-      const result = await connection.read(id, { ...policy, size: 500 });
+      const result = await connection.read(id, { ...policy, size: 500, signal });
       if (!valid() || cache.images.get(id)?.fileName !== cached?.fileName) return;
       const metadata: ImageMetadata = {
         cacheControl: result.cacheControl,

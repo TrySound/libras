@@ -187,6 +187,14 @@ it.each([
   const links = topbar.querySelectorAll("a");
   expect([...links].map((link) => link.getAttribute("href"))).toEqual(["#/library", "#/settings"]);
   expect(target.querySelector("#player-dialog .topbar-brand")).toBeNull();
+  expect(target.querySelector(".player-queue")!.closest(".view")).toBeNull();
+  expect(target.querySelector(".player-main")!.classList.contains("view")).toBe(false);
+  expect(target.querySelector(".player-main > .artwork")!.closest(".view")).toBeNull();
+  expect(target.querySelector(".player-main > .player-content.view .controls")).not.toBeNull();
+  expect(target.querySelector(".player-content .playback-slider")).not.toBeNull();
+  expect(target.querySelector(".player-queue > .section-heading")!.classList.contains("view")).toBe(
+    true,
+  );
   const controls = target.querySelectorAll(".topbar a, .topbar button");
   expect(controls.length).toBeGreaterThan(0);
   for (const control of controls) expect(control.getAttribute("data-variant")).toBe("ghost");
@@ -229,6 +237,10 @@ it.each([
     flushSync();
     expect(target.textContent).toContain("Restoring local library…");
     expect(target.querySelector(selector)).not.toBeNull();
+    if (route !== "/library") {
+      expect(target.querySelector(selector)!.closest(".view")).toBeNull();
+      expect(target.querySelector(".collection-heading")?.closest(".view")).not.toBeNull();
+    }
     target.querySelector<HTMLElement>(selector)!.focus();
     flushSync();
     const dialog = target.querySelector(`#${menu}`);

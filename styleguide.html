@@ -76,17 +76,6 @@
         max-width: 32rem;
       }
 
-      .guide-cover {
-        width: 3rem;
-        height: 3rem;
-        border-radius: 0.4rem;
-        background: linear-gradient(
-          145deg,
-          var(--color-gradient-primary),
-          var(--color-gradient-secondary)
-        );
-      }
-
       .stack-example {
         padding: var(--space-md);
         border-radius: 0.6rem;
@@ -361,14 +350,14 @@
         <div class="wings track-demo">
           <article class="wings-item row-button">
             <a class="linkarea" href="#tracks-heading" aria-label="Open album item"></a>
-            <span class="track-leading album-leading"><span class="guide-cover"></span></span>
+            <span class="cover" data-size="md"></span>
             <span class="track-content stack-xs">
               <strong class="type-title">Album item</strong>
               <small class="type-small text-muted"
                 >2025 · <a class="text-link" href="#typography-heading">12 tracks</a></small
               >
             </span>
-            <span class="track-actions">
+            <span class="row-sm">
               <button
                 class="icon-button"
                 data-size="sm"
@@ -396,7 +385,7 @@
             <span class="track-content">
               <span>A track with a longer title that truncates</span>
             </span>
-            <span class="track-actions">
+            <span class="row-sm">
               <button
                 class="icon-button"
                 data-size="sm"
@@ -419,16 +408,14 @@
             <button class="linkarea" aria-label="Play queue item"></button>
             <span class="track-leading">12</span>
             <span class="track-content"><span>Queue item</span></span>
-            <span class="track-actions">
-              <button
-                class="icon-button"
-                data-size="sm"
-                data-variant="ghost"
-                aria-label="Download queue item"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-            </span>
+            <button
+              class="icon-button"
+              data-size="sm"
+              data-variant="ghost"
+              aria-label="Download queue item"
+            >
+              <svg width="20" height="20"><use href="#guide-plus" /></svg>
+            </button>
           </article>
         </div>
       </section>

@@ -8,6 +8,7 @@
   import AlbumRoute from "./_album.svelte";
   import ArtistRoute from "./_artist.svelte";
   import LibraryRoute from "./_library.svelte";
+  import SearchRoute, { createSearchState } from "./_search.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { CoverEngine, immediateCover } from "./cover.svelte";
@@ -30,6 +31,15 @@
   const selection = $state<{ cache: Cache | undefined }>({ cache: undefined });
   const emptyCache = new Cache();
   const cache = $derived(selection.cache ?? emptyCache);
+  function newSearchState() {
+    const state = $state(createSearchState());
+    return state;
+  }
+  // Owned above the route so Back retains state; cache switches discard it.
+  const searchState = $derived.by(() => {
+    void cache;
+    return newSearchState();
+  });
   const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const playerArtist = $derived(currentTrack && cache.artists.get(currentTrack.artistId));
   const playerAlbum = $derived(currentTrack && cache.albums.get(currentTrack.albumId));
@@ -197,6 +207,10 @@
   <LibraryRoute {cache} {coverEngine} {trackEngine} {session} {playback} />
 {/snippet}
 
+{#snippet searchRoute()}
+  <SearchRoute {cache} {coverEngine} {trackEngine} {session} {playback} state={searchState} />
+{/snippet}
+
 {#snippet artistRoute(params: RouteParams)}
   <ArtistRoute {params} {cache} {coverEngine} {trackEngine} {session} {playback} />
 {/snippet}
@@ -305,6 +319,7 @@
   <Router
     routes={[
       { pattern: "/library", render: libraryRoute },
+      { pattern: "/search", render: searchRoute },
       {
         pattern: "/library/artist/:artistId/album/:albumId",
         render: albumRoute,
@@ -325,7 +340,7 @@
       command="show-modal"
       aria-label="Open player"
     ></button>
-    <span class="mini-art" {@attach immediateCover(cover)}>
+    <span class="cover" data-size="sm" {@attach immediateCover(cover)}>
       {#if cover.source}
         <img src={cover.source} alt="" />
       {:else}
@@ -373,10 +388,11 @@
     >
   </header>
 
-  <section class="view player-view">
+  <section class="player-view">
     <div class="player-main">
       <div
         class="artwork"
+        aria-hidden="true"
         {@attach currentTrack
           ? immediateCover(coverEngine.ensureTrackCover(currentTrack.id))
           : undefined}
@@ -393,94 +409,96 @@
         {/if}
       </div>
 
-      {#if currentTrack}
-        <p class="type-body">
-          <strong class="type-heading">{currentTrack.title}</strong>
-          <br />
-          {#if playerArtist}
-            <a
-              class="text-link"
-              href={`#${artistPath(playerArtist)}`}
-              onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-            >
-              {currentTrack.artistName ?? playerArtist.name}
-            </a>
-          {:else}
-            {currentTrack.artistName}
-          {/if}
-          —
-          {#if playerAlbum && playerAlbumArtist}
-            <a
-              class="text-link"
-              href={`#${albumPath(playerAlbumArtist, playerAlbum)}`}
-              onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-            >
-              {playerAlbum.title}
-            </a>
-          {:else}
-            {playerAlbum?.title}
-          {/if}
-        </p>
-      {/if}
+      <div class="view player-content">
+        {#if currentTrack}
+          <p class="type-body">
+            <strong class="type-heading">{currentTrack.title}</strong>
+            <br />
+            {#if playerArtist}
+              <a
+                class="text-link"
+                href={`#${artistPath(playerArtist)}`}
+                onclick={(event) => event.currentTarget.closest("dialog")?.close()}
+              >
+                {currentTrack.artistName ?? playerArtist.name}
+              </a>
+            {:else}
+              {currentTrack.artistName}
+            {/if}
+            —
+            {#if playerAlbum && playerAlbumArtist}
+              <a
+                class="text-link"
+                href={`#${albumPath(playerAlbumArtist, playerAlbum)}`}
+                onclick={(event) => event.currentTarget.closest("dialog")?.close()}
+              >
+                {playerAlbum.title}
+              </a>
+            {:else}
+              {playerAlbum?.title}
+            {/if}
+          </p>
+        {/if}
 
-      <div class="playback-progress">
-        <input
-          class="playback-slider"
-          type="range"
-          min="0"
-          max={Number.isFinite(playbackDuration) ? playbackDuration : 0}
-          step="0.1"
-          value={Math.min(cache.queue.position, playbackDuration)}
-          disabled={!playbackDuration ||
-            (offlineMode &&
-              currentTrack &&
-              trackEngine.getStatus(currentTrack.id) !== "downloaded")}
-          oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
-        />
-        <div class="playback-time type-caption">
-          <span>{formatTime(cache.queue.position)}</span>
-          <span>{formatTime(playbackDuration)}</span>
+        <div class="playback-progress">
+          <input
+            class="playback-slider"
+            type="range"
+            min="0"
+            max={Number.isFinite(playbackDuration) ? playbackDuration : 0}
+            step="0.1"
+            value={Math.min(cache.queue.position, playbackDuration)}
+            disabled={!playbackDuration ||
+              (offlineMode &&
+                currentTrack &&
+                trackEngine.getStatus(currentTrack.id) !== "downloaded")}
+            oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
+          />
+          <div class="playback-time type-caption">
+            <span>{formatTime(cache.queue.position)}</span>
+            <span>{formatTime(playbackDuration)}</span>
+          </div>
         </div>
-      </div>
 
-      <div class="controls">
-        <button
-          class="icon-button"
-          data-size="md"
-          data-variant="neutral"
-          onclick={() => playback.previous()}
-          disabled={!hasPreviousTrack && cache.queue.position <= 0}
-          title="Previous">{@render icon("previous")}</button
-        >
-        <button
-          class="icon-button"
-          data-size="lg"
-          data-variant="primary"
-          onclick={() => playback.toggle()}
-          disabled={queue.length === 0}
-          title={player?.playing ? "Pause" : "Play"}
-        >
-          {#if playbackLoading}
-            {@render icon("loading", 32)}
-          {:else if player?.playing}
-            {@render icon("pause", 32)}
-          {:else}
-            {@render icon("play", 32)}
-          {/if}
-        </button>
-        <button
-          class="icon-button"
-          data-size="md"
-          data-variant="neutral"
-          onclick={() => playback.next()}
-          disabled={!hasNextTrack}
-          title="Next">{@render icon("next")}</button
-        >
+        <div class="controls">
+          <button
+            class="icon-button"
+            data-size="md"
+            data-variant="neutral"
+            onclick={() => playback.previous()}
+            disabled={!hasPreviousTrack && cache.queue.position <= 0}
+            title="Previous">{@render icon("previous")}</button
+          >
+          <button
+            class="icon-button"
+            data-size="lg"
+            data-variant="primary"
+            onclick={() => playback.toggle()}
+            disabled={queue.length === 0}
+            title={player?.playing ? "Pause" : "Play"}
+          >
+            {#if playbackLoading}
+              {@render icon("loading", 32)}
+            {:else if player?.playing}
+              {@render icon("pause", 32)}
+            {:else}
+              {@render icon("play", 32)}
+            {/if}
+          </button>
+          <button
+            class="icon-button"
+            data-size="md"
+            data-variant="neutral"
+            onclick={() => playback.next()}
+            disabled={!hasNextTrack}
+            title="Next">{@render icon("next")}</button
+          >
+        </div>
       </div>
     </div>
 
     <div class="player-queue">
-      <div class="section-heading">
+      <div class="view section-heading">
         <div>
           <span class="type-eyebrow text-muted">Up next</span>
           <h2 class="type-heading">
@@ -536,9 +554,9 @@
           {/each}
         </div>
       {:else if cache.queue.tracks.length > 0}
-        <p class="type-body text-muted">No available tracks.</p>
+        <p class="view type-body text-muted">No available tracks.</p>
       {:else}
-        <p class="type-body text-muted">The queue is empty.</p>
+        <p class="view type-body text-muted">The queue is empty.</p>
       {/if}
     </div>
   </section>

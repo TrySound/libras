@@ -601,6 +601,139 @@ describe("cover engine using Cache", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:cover-1");
   });
 
+  it.each([{}, { freshUntil: Date.now() + 3_600_000, etag: '"old"' }])(
+    "manual refresh revalidates cached artwork lazily (%j)",
+    async (policy) => {
+      installOpfs();
+      const { covers } = await engine(await seed(policy));
+      const fetcher = vi.fn(
+        async () =>
+          new Response("updated", {
+            headers: { "Content-Type": "image/jpeg" },
+          }),
+      );
+      vi.stubGlobal("fetch", fetcher);
+      covers.setConnection(createConnection());
+      const cover = covers.ensureAlbumCover("album");
+      await covers.refresh(true);
+      expect(fetcher).not.toHaveBeenCalled();
+      cover.load();
+      await vi.waitFor(() => expect(cover.source).toBe("blob:cover-2"));
+      expect(fetcher).toHaveBeenCalledOnce();
+      expect(fetcher).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ cache: "no-cache" }),
+      );
+      await new Promise((done) => setTimeout(done, 0));
+      await covers.refresh(true);
+      await vi.waitFor(() => expect(cover.source).toBe("blob:cover-3"));
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("invalidates fresh memory-only artwork without a separate invalidation registry", async () => {
+    installOpfs();
+    const { covers, cache } = await engine();
+    vi.spyOn(cache, "saveImage").mockResolvedValue(undefined);
+    const fetcher = vi.fn(
+      async () =>
+        new Response("image", {
+          headers: { "Cache-Control": "max-age=3600" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    covers.setConnection(createConnection());
+    const cover = covers.ensureAlbumCover("album");
+    cover.load();
+    await vi.waitFor(() => expect(cover.source).toBe("blob:cover-1"));
+    expect(cache.images.size).toBe(0);
+    await covers.refresh(true);
+    await vi.waitFor(() => expect(cover.source).toBe("blob:cover-2"));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("retains deferred refresh across reload without deleting offline bytes", async () => {
+    installOpfs();
+    const { covers, cache } = await engine(await seed());
+    const original = cache.images.get("album-cover")!.fileName;
+    await covers.refresh(true);
+    await cache.flush();
+    covers.destroy();
+    const restored = new Cache(account);
+    await restored.load();
+    expect(restored.images.get("album-cover")).toMatchObject({ fileName: original, freshUntil: 0 });
+    const next = await engine(restored);
+    const cover = next.covers.ensureAlbumCover("album");
+    cover.load();
+    await vi.waitFor(() => expect(cover.source).toBeDefined());
+    const fetcher = vi.fn(async () => new Response("updated"));
+    vi.stubGlobal("fetch", fetcher);
+    next.covers.setConnection(createConnection());
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    expect(fetcher).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ cache: "no-cache" }),
+    );
+    await vi.waitFor(() => expect(cover.source).toBe("blob:cover-2"));
+  });
+
+  it("aborts the actual download when manual refresh supersedes it", async () => {
+    installOpfs();
+    const { covers } = await engine(await seed({ freshUntil: 1 }));
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url, options: RequestInit) => {
+        const signal = options.signal!;
+        signals.push(signal);
+        return new Promise<Response>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      }),
+    );
+    covers.setConnection(createConnection());
+    covers.ensureAlbumCover("album").load();
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    await covers.refresh(true);
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
+    covers.destroy();
+    expect(signals[1].aborted).toBe(true);
+  });
+
+  it("keeps old artwork on failure and retries with validators, accepting a 304", async () => {
+    installOpfs();
+    const { covers, cache } = await engine(
+      await seed({ etag: '"old"', freshUntil: Date.now() + 60_000 }),
+    );
+    const cover = covers.ensureAlbumCover("album");
+    cover.load();
+    await vi.waitFor(() => expect(cover.source).toBeDefined());
+    const original = cover.source;
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 500 }))
+      .mockResolvedValueOnce(
+        new Response(null, { status: 304, headers: { "Cache-Control": "max-age=3600" } }),
+      );
+    vi.stubGlobal("fetch", fetcher);
+    covers.setConnection(createConnection());
+    await covers.refresh(true);
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    await new Promise((done) => setTimeout(done, 0));
+    expect(cover.source).toBe(original);
+    expect(cache.images.get("album-cover")?.freshUntil).toBe(0);
+    await covers.refresh();
+    await vi.waitFor(() =>
+      expect(cache.images.get("album-cover")!.freshUntil).toBeGreaterThan(Date.now()),
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1][1].headers.get("If-None-Match")).toBe('"old"');
+    expect(cover.source).toBe(original);
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+  });
+
   it.each(["slow", "failed"])(
     "publishes memory artwork independently of %s storage",
     async (storage) => {

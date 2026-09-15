@@ -793,6 +793,7 @@ a {
 }
 
 .player-dialog {
+  container: player / size;
   --dialog-dismiss-offset: calc(50dvh + 50%);
   box-sizing: border-box;
   width: 100dvw;
@@ -826,11 +827,19 @@ a {
 }
 
 .player-main {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-rows: 55cqh auto;
   min-width: 0;
-  min-height: 0;
-  flex-direction: column;
-  justify-content: center;
+  isolation: isolate;
+}
+
+.player-content {
+  z-index: 1;
+  grid-area: 2 / 1;
+  align-self: start;
+  min-width: 0;
+  padding-top: 0;
 }
 
 .artwork {
@@ -858,10 +867,34 @@ a {
 }
 
 .player-main .artwork {
-  flex: 0 1 auto;
+  position: absolute;
+  inset: 0 0 auto;
+  width: 100%;
+  height: auto;
+  aspect-ratio: auto;
+  margin: 0;
+  box-shadow: none;
+  pointer-events: none;
+
+  img {
+    height: auto;
+  }
+
+  &::after {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgb(from var(--color-background) r g b / 0) 0%,
+      rgb(from var(--color-background) r g b / 15%) 30%,
+      rgb(from var(--color-background) r g b / 55%) 65%,
+      var(--color-background) 100%
+    );
+    content: "";
+  }
 }
 
-.player-main > p {
+.player-content > p {
   flex: none;
   margin-bottom: 1.4rem;
   text-align: center;
@@ -967,6 +1000,20 @@ a {
     var(--color-gradient-cover-start),
     var(--color-gradient-cover-end)
   );
+}
+
+.cover {
+  border-radius: var(--space-xs);
+
+  &[data-size="sm"] {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  &[data-size="md"] {
+    width: 3.8rem;
+    height: 3.8rem;
+  }
 }
 
 .cover img,
@@ -1094,19 +1141,9 @@ a {
   overflow-wrap: anywhere;
 }
 
-.track-actions {
-  display: flex;
-  align-items: center;
-}
-
-.album-cover {
-  width: 3.8rem;
-  height: 3.8rem;
-  border-radius: var(--space-xs);
-}
-
 .player-queue {
   min-width: 0;
+  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
 }
 
 .empty-state {
@@ -1190,27 +1227,6 @@ a {
     outline: var(--focus-outline);
     outline-offset: var(--focus-outline-offset);
   }
-}
-
-.mini-art {
-  display: grid;
-  width: 3rem;
-  height: 3rem;
-  overflow: hidden;
-  flex: none;
-  place-items: center;
-  border-radius: var(--space-xs);
-  background: linear-gradient(
-    145deg,
-    var(--color-gradient-primary),
-    var(--color-gradient-secondary)
-  );
-}
-
-.mini-art img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .mini-progress {

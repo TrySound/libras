@@ -1,21 +1,19 @@
 # Contributing to Libras
 
-Libras is a client-only Svelte + Vite app using the Subsonic API. See the [README](README.md) for features and getting started with the hosted app.
+Libras is a client-only Svelte + Vite app using the Subsonic API. See the [README](README.md) for features and hosted-app setup.
 
 ## Local development
 
-Use Node.js 22 and the pnpm version specified in `package.json`.
+Use Node.js 22 and the pnpm version in `package.json`.
 
 ```sh
 pnpm install
 pnpm dev
 ```
 
-The music server must allow browser requests from the app's origin (CORS), and HTTPS should be used outside local development.
+Your music server must allow the app's origin through CORS. Use HTTPS outside local development.
 
-## Checks
-
-Before submitting changes, run:
+Before submitting changes:
 
 ```sh
 pnpm check
@@ -23,7 +21,62 @@ pnpm test
 pnpm build
 ```
 
-Use `pnpm format` to format the project. The pre-commit hook formats staged HTML, CSS, Svelte, and TypeScript files.
+`pnpm format` formats the project; the pre-commit hook formats staged HTML, CSS, Svelte, and TypeScript files. Production code lives in `src/`, tests and test-only helpers in `tests/`.
+
+## Architecture at a glance
+
+`src/app.svelte` wires the engines together. Route components (`src/_*.svelte`) read reactive state and invoke domain commands.
+
+| Module | Owns |
+| --- | --- |
+| `Session` | Account selection, credentials, connections, startup, and refresh coordination |
+| `Network` | Subsonic requests, response normalization, authenticated URLs, and connection cancellation |
+| `Cache` | Account-scoped library, queue, images, downloads, and OPFS persistence |
+| `MetadataEngine` | Library fetching and refresh cancellation |
+| `QueueEngine` | Queue edits, server synchronization, and playback protection |
+| `PlaybackController` | Queue navigation and playback orchestration |
+| `Player` | Audio transport, seeking, keyboard shortcuts, and Media Session |
+| `CoverEngine` / `TrackEngine` | On-demand resources, download scheduling, and object URL lifetimes |
+
+Keep these boundaries in mind:
+
+- Read Cache collections directly; change them through explicit methods. Keep credentials, network clients, and browser resources outside Cache.
+- Memory updates immediately; disk checkpoints happen asynchronously. Failed writes retain local state and report errors. Do not treat visible state as proof of persistence.
+- Startup and manual refresh pull server state. Reconnecting does not automatically refresh or upload an offline queue. Refresh must not replace a playing or paused queue.
+- Disconnect retains local data for offline use. Account switches cancel old work and suspend playback; late results must not leak into the new account.
+- Preserve queue IDs and occurrence indexes, including duplicates and unavailable tracks. Filtering the UI must not rewrite the saved queue.
+- Release owned browser resources explicitly. The service worker caches the app shell, not API responses or music; offline audio downloads are explicit user actions.
+
+For implementation details, consult the owning module and its tests rather than adding a second state store or synchronization layer.
+
+## Testing browser behavior
+
+For playback or synchronization changes, check refresh, disconnect/reload, offline playback, failed reconnects, and switching accounts with overlapping track IDs. Test seeking, duplicate queue entries, and cancellation during in-flight work.
+
+Service workers are disabled during development. To test installation or offline behavior:
+
+```sh
+pnpm build
+pnpm preview --host 127.0.0.1 --port 4173 --strictPort
+```
+
+Open `http://localhost:4173` in Chrome and install the app. Visit online and download music before testing offline playback. For a remote development machine, forward the port from the phone:
+
+```sh
+ssh -N -L 4173:127.0.0.1:4173 user@your-server
+```
+
+The music server must be reachable from the phone. Changing the app's host or port changes its origin and stored data. Vite preview is for testing, not production hosting.
+
+To test updates, leave the installed app open, rebuild, and return to it. **Update now** should reload only after approval and preserve the route, including after a hard refresh. Inspect service workers in Chrome DevTools → Application. Clearing site data also deletes saved app data.
+
+## Deployment and assets
+
+- [CI](.github/workflows/ci.yml) runs checks, tests, and a production build for pull requests and pushes to `main`.
+- [GitHub Pages](.github/workflows/pages.yml) deploys `main` independently of CI. Set Settings → Pages → Source to **GitHub Actions**. Preview its base path with `BASE_PATH=/libras/ pnpm build`, then `pnpm preview` and open `/libras/`.
+- For another deployment, update the canonical and social-preview URLs in `index.html`.
+- Social artwork: edit `public/og.svg`, then regenerate `public/og.png` (1200×630) with resvg and DejaVu Sans.
+- App icons: keep `public/icon.svg`, the header logo, and raster icons in sync. Generate PNGs with resvg and the ICO with png-to-ico; preserve maskable safe areas. Attribution is in `public/icons/phosphor-license.txt`.
 
 ## UI conventions
 
@@ -31,143 +84,3 @@ Use `pnpm format` to format the project. The pre-commit hook formats staged HTML
 - Prefer native invoker commands for popovers and dialogs: use `commandfor="element-id"` with `command="toggle-popover"`, `"show-popover"`, `"hide-popover"`, `"show-modal"`, or `"close"`. Prefer these over `popovertarget`/`popovertargetaction` and JavaScript click handlers that only open or close an overlay. Reserve imperative APIs for behavior that cannot be expressed declaratively, such as swipe-to-dismiss.
 
 - Popover invokers establish an implicit anchor automatically. Do not add `anchor-name` or `position-anchor` just to associate a popover with its invoker; use that implicit anchor for positioning (for example, `top: anchor(bottom)`).
-
-## CI and GitHub Pages
-
-Tests and test-only helpers live in `tests/`, separate from production code in `src/`. Vitest discovers `tests/**/*.test.ts`; Svelte rune helpers use `.svelte.ts` and are imported by those tests. Type checks include both directories.
-
-The CI workflow (`.github/workflows/ci.yml`) runs type checks, tests, and a production build for pull requests and pushes to `main`. A separate Pages workflow (`.github/workflows/pages.yml`) builds and deploys `main` to https://trysound.github.io/libras/ using a Pages artifact, without a separate branch. Both workflows can also be run manually; Pages deployment runs independently of CI.
-
-In the repository's **Settings → Pages → Build and deployment**, select **GitHub Actions** as the source.
-
-To preview the Pages build locally:
-
-```sh
-BASE_PATH=/libras/ pnpm build
-pnpm preview
-```
-
-Open `/libras/` on the preview server. Normal local builds default to `/`. The music server must allow `https://trysound.github.io` through CORS and use HTTPS.
-
-## Social preview
-
-`index.html` includes Open Graph and Twitter large-image card metadata with absolute URLs for the hosted app at `https://trysound.github.io/libras/`. Sharing the app URL uses `public/og.png` (1200×630). Its editable source is `public/og.svg`; rasterize it with resvg using DejaVu Sans after editing. The image is a build-time asset, with no runtime image service or dependency. It is not part of the offline app-shell precache.
-
-For a different public deployment, update the canonical, `og:url`, and image URLs in `index.html`. After deployment, use a social platform's sharing debugger to request a fresh scrape; existing previews may remain cached.
-
-## Testing installation on Android
-
-The production app is installable as a standalone PWA. It includes regular and maskable icons and an offline app shell. Service workers are disabled in development to avoid interfering with hot reload.
-
-The favicon set follows [Evil Martians' minimal setup](https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs): `public/icon.svg` is the theme-aware Phosphor scales source, `public/favicon.ico` is the 32×32 fallback, and `public/apple-touch-icon.png` is the opaque 180×180 Apple icon. The manifest uses the 192×192, 512×512, and maskable 512×512 PNGs under `public/icons/`. PNGs use white scales on the app's crimson background; the Apple icon has a 140×140 SVG viewport centered on its canvas, and the maskable icon uses a 320×320 viewport to keep the complete symbol inside the central 409×409 safe circle. These raster assets are generated from the SVG with resvg (and png-to-ico for the ICO), not at runtime. All six icons are precached. Keep their geometry in sync with the inline header logo; attribution lives in `public/icons/phosphor-license.txt`.
-
-Build and serve it on the machine containing the project:
-
-```sh
-pnpm build
-pnpm preview --host 127.0.0.1 --port 4173 --strictPort
-```
-
-If the project runs on the phone itself (for example, in Termux), open `http://localhost:4173` in Chrome. If it runs on a remote SSH server, run this **on the phone** in an SSH client that supports local forwarding:
-
-```sh
-ssh -N -L 4173:127.0.0.1:4173 user@your-server
-```
-
-Keep the preview server and tunnel running, then open `http://localhost:4173` on the phone. Use Chrome's **Install app / Add to home screen** option and launch the installed app from the home screen. Localhost is a secure-context exception; a remote or LAN deployment needs HTTPS. Vite preview is for testing, not production hosting.
-
-The music server must be reachable **from the phone** and permit the frontend origin through CORS. Switching ports or hosts creates a different origin: saved authentication and downloaded music do not carry over automatically.
-
-## State and synchronization architecture
-
-`app.svelte` constructs the domain engines, `Network`, `Session`, and one reactive `{ cache }` selection. Session alone selects account caches; engines receive the read-only `CacheSelection` interface. UI reads collections, queue state, and freshness from a non-optional Cache: the selected account cache, or a component-local `new Cache()` fallback. That unscoped cache has no account, stable empty collections, and a default queue. Reads, loading, and clean flushes perform no storage I/O; mutations reject instead of silently discarding data. It never becomes the selected account cache and cannot be attached to a server. The selected cache's frozen `account` is the sole local account identity—there is no separate workspace account field. Credentials, network clients, authenticated URLs, object URLs, and workflow state stay outside the cache. Memory and Storage are removed; no runtime collection proxies or duplicate indexes remain.
-
-| Owner                         | Responsibility                                                                                                                                                               |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Session`                     | Cache selection, credentials, connection lifecycle, local hydration, and startup/manual refresh coordination                                                                 |
-| `MetadataEngine`              | Candidate fetching, server timestamp checks, refresh cancellation, and replacement of the selected cache's library                                                           |
-| `Cache`                       | Account-scoped library, queue, image, and download hydration, persistence, reactive collections, persisted-document validation, and derived relationships/artwork candidates |
-| `QueueEngine`                 | Queue membership edits, local commands, connection-scoped server reads/writes, upload ordering, and playback protection                                                      |
-| `PlaybackController`          | Queue-to-player decisions, replace-and-play/empty-queue autoplay/clear orchestration, navigation, and track descriptions/capability mapping                                  |
-| `Player` component            | Single-track audio resources, source loading, seeking, cancellation, transport state, keyboard shortcuts, and Media Session                                                  |
-| `CoverEngine` / `TrackEngine` | On-demand artwork/audio fetching, caching, scheduling, and resource ownership                                                                                                |
-| `Network`                     | Configured connection capabilities, protocol normalization, and transport cancellation                                                                                       |
-
-Cache collections are read-only to consumers. Library maps are immutable snapshots; image/download catalogs are live reactive views with immutable records. Library replacement publishes all related maps and freshness fields with one reactive assignment, then checkpoints asynchronously. Cache publishes one complete queue value before QueueEngine notifies explicit playback subscribers. PlaybackController and UI read that same value directly. Methods and callbacks coordinate engines. The Player component exposes reactive transport state; PlaybackController observes its loading/playing/paused transitions and reports lifecycle changes to QueueEngine, including commands originating from Media Session. QueueEngine owns protection and save timing; App reads Player state directly, with no controller transport-state proxies.
-
-### Data flow
-
-- **Startup:** select the saved account, restore local data, mark `Session.localReady`, then revalidate metadata and refresh the queue when online. Cached data remains usable while `Session.syncing` is true.
-- **Refresh:** startup and Settings → Refresh library are the only routine pull triggers. Manual refresh forces metadata fetching; startup skips an unchanged library. There are no periodic refreshes, focus triggers, or automatic retries. Returning online attaches fresh capabilities without pulling.
-- **First connection:** MetadataEngine fetches a candidate library without touching the current workspace. For a different account, Session loads a separate cache, replaces its library, flushes it, accepts the connection, and selects it after suspending playback. Before accepting the switch, Session suspends playback, cancels old resource work, and flushes the old cache until clean, including edits made during its writes. A failed checkpoint or rejected switch leaves the old cache selected and writable. Cache has no retirement/resume lifecycle. Same-account reconnects reuse the live cache, retaining queue edits and catalogs without a second writer. Connection acceptance still waits for a flush, but memory-first library replacement is not rolled back if that flush or acceptance fails. The queue is then fetched explicitly.
-- **Server snapshots:** MetadataEngine fetches a library and delegates replacement to Cache; it does not index or publish records. QueueEngine delegates incoming queue publication to `Cache.replaceQueue()` and notifies playback after adoption. Disk failures retain the newly published data and surface as checkpoint errors. Server timestamp checks and queue occurrence-index matching stay beside their domain workflows. Subsonic-specific normalization stays in Network.
-- **Queue commands:** App resolves collections and filters offline availability, then passes track IDs to PlaybackController. QueueEngine owns replacement and shared next/last insertion logic; PlaybackController owns starting playback for an empty queue, restarting after replacement, and unloading when clearing. Enqueuing into a nonempty queue preserves selection, position, and transport state. Local queue changes publish immediately and are persisted asynchronously. An explicit new online queue enables server writes for that session. Navigation and position updates preserve that permission; they cannot promote an offline queue into an upload after reconnecting. Successful uploads acknowledge only the sent revision; they do not save a second queue snapshot.
-- **Offline/disconnect:** stop sync, abort connections and detach resource access, flush local checkpoints, and retain the selected workspace. Cached playback can continue. Account switches suspend playback before replacing data.
-
-### Queue and lifecycle boundaries
-
-`cache.queue` is the single local playback queue: `{ tracks, index, position }`. An idle refresh adopts the fetched queue in memory and schedules its checkpoint. A refresh during playing or paused playback leaves the local queue unchanged and does not retain the server response for later adoption. Another explicit refresh is needed to fetch it again.
-
-Pending online writes are connection-scoped, not a durable outbox. Disconnect discards upload eligibility, not local data. No server replicas or upload markers are stored, and legacy queue records are not migrated. Local edits are optimistic, and position checkpoints can lag live playback. Consequently, displayed local state is not a guarantee that every value has already reached disk or the server.
-
-QueueEngine receives a configured queue connection and exposes ordinary `refresh()` and `flush()` commands. Cache owns local write ordering and revisions; QueueEngine uploads only a clean queue revision that remains unchanged across `Cache.flush()`, and successful uploads never trigger another disk write. Session calls `queue.activate()` after cache selection/loading to reset connection-scoped queue policy and notify playback; activation performs no hydration or persistence. MetadataEngine likewise exposes `setConnection()` and `refresh(force)` rather than preparation/commit/finish callbacks. It cancels obsolete traversals and preserves cached data on failure; refresh failures propagate to Session. Session owns cache-load cancellation and active-cache checks; disconnect keeps local loading alive, while destruction aborts it. Revision checks protect edits, connection generations protect network workflows, and file locks protect writes. They are not interchangeable. There is no cross-tab notification/synchronization layer.
-
-Errors are separate: Session reports connection failures and non-blocking refresh failures; QueueEngine owns queue network errors and proxies Cache's queue storage error, which Session also exposes to the UI. Metadata restoration failures reject to Session, which reports them without blocking local queue restoration or online recovery; a successful metadata refresh clears that warning. MetadataEngine does not maintain separate UI status/error state. Background failures retain existing data. Artwork/audio remain on-demand resource operations rather than general server-state synchronization.
-
-## Network boundary
-
-`Network` is the application-facing server boundary. It privately owns the Subsonic SDK clients and exposes metadata, queue, artwork, and audio operations bound to one connection lifetime. Public connection handles contain only frozen account identity and an abort signal, not credentials or SDK methods. Copied or foreign handles cannot be accepted or used to acquire access.
-
-Only metadata validation is available to a login candidate. Acceptance enables other operations and aborts the previous connection. Going offline aborts active and candidate connections; returning online creates a fresh connection. Session explicitly sequences persistence, engine attachment/detachment, and playback suspension—there is no lifecycle event bus. Browser-managed image/audio sources must be released explicitly; fetch cancellation alone cannot stop them.
-
-Network owns remote requests, response mapping, authenticated URLs, and connection cancellation. Metadata's `readLibrary(signal)` uses only empty-query `search3`, requesting up to 500 artists, albums, and songs together with independent offsets. Offsets advance by returned counts; empty pages finish each collection and disable its subsequent requests. Records are deduplicated by ID; non-progressing pages, missing search results, and tracks without matching albums fail the sync rather than publish incomplete data. There is no legacy endpoint fallback. Network reports deduplicated album/track counts per page; MetadataEngine exposes transient reactive progress, proxied by Session. Settings shows only these counters during connection or refresh, without totals or percentages. Cancellation and completion clear progress; stale callbacks cannot restore it. Superseded workflows abort their requests without closing the shared connection. Network also resolves artist matching, synthetic artist IDs, relationships, and track flattening. Normalized artists contain only album owners, not every contributor returned by search. Tracks retain their own `artistId` and `artistName` for display, downloads, and playback even when that artist is absent from the album-artist collection; older cached tracks fall back to artist lookup. MetadataEngine stages candidate fetches and delegates local data ownership to Cache; Session invokes refresh at startup or on manual request. Engines retain acquisition policy, download scheduling, and object URLs; Cache performs all local library, queue, artwork, and audio persistence. Audio responses stream directly to OPFS with both connection and job cancellation. Network's `createAuth()` normalizes the host and delegates salt/token generation to the SDK's `createSubsonicAuth()` helper, without enabling access or making requests. AuthStore only validates and persists credentials and last-account identity. Authentication storage keeps its existing token/salt format; its `Auth` type is inferred in `auth.ts`, separate from SDK types.
-
-`NetworkTransportError` identifies a rejected fetch before a response is returned, preserving the original cause. The SDK accepts an injected fetch implementation so Network applies the same classification to SDK, artwork, and audio requests. HTTP status, protocol, parsing/body-consumption, and storage errors retain their original identities; cancellation is never wrapped. Session provides connection troubleshooting text only for this transport error, without claiming to diagnose CORS.
-
-## Storage architecture and offline behavior
-
-`src/cache.svelte.ts` owns library, queue, artwork, and download runtime/persisted data. Memory is authoritative after hydration; OPFS contains periodic checkpoints. Session selects and loads caches, reusing the selected instance for same-account reconnects. Engines and UI read Cache directly. Consumers use explicit mutation methods and never modify exposed collections or records. Library maps are snapshots; image/download catalogs are read-only live reactive views. There is no cross-tab reconciliation, operation log, multi-document transaction, or new disk format.
-
-One private `CheckpointStore<T>` serves all four documents. It owns the reactive value, revision/saved revision, hydration, errors, checkpoint timers, and serialized writes. Configuration supplies a document name, initial value, parser, serializer, and optional post-checkpoint cleanup. Mutations publish immediately and schedule a 300 ms debounce with a five-second maximum wait. Flushes capture the latest state when the write starts, not on each edit; changes during the write stay dirty. Only one snapshot per document is in flight. Clean flushes do no I/O. Failed checkpoints preserve both current memory and the previous disk document, retain an error, and wait for another edit or explicit flush to retry.
-
-`Cache.flush()` checkpoints all dirty documents independently and waits for every attempt before reporting failure. Clean documents perform no I/O on flush. QueueEngine uses the same flush, then checks queue revision and dirty state before uploading; a flush failure defers uploads and prevents refresh from fetching over pending local edits. `dirty` reports pending durability; `libraryError`, `queueError`, `imagesError`, and `downloadsError` expose domain errors. Reads do not clear checkpoint failures. Library replacement compares freshness against memory, copies and projects the accepted input before publication, and retains only its maps and relationships. Snapshot arrays are reconstructed only at flush time.
-
-The queue retains its `{ value: { tracks, index, position }, updatedAt }` format at `accounts/<account-hash>/queue.json`. New track arrays are copied; scalar edits reuse the existing immutable array. Position-only changes use `{ checkpoint: true }` to defer to the five-second checkpoint. Incoming queues follow the same memory-first mutation path. Cancellation is checked before adoption; aborting a completed caller does not undo its data or cancel a later checkpoint. QueueEngine still rejects superseded remote responses before adoption. `queueDirty`, `queueRevision`, and `queueError` describe local durability, not upload eligibility. Timestamps remain monotonic but are not compared against other writers.
-
-`Cache.load()` restores the four documents independently, once per successful hydration. It waits for all attempts and reports failures through `CacheLoadError` without discarding successful domains or overwriting local edits. Failed/cancelled hydration can be retried. Binary reads and mutations wait for catalog hydration; a failed catalog load never becomes an empty writable catalog. Library and queue can be repaired by complete authoritative replacements. Once hydrated, ordinary reads and checkpoints never reread JSON.
-
-Images and downloads configure one private `BinaryCatalog` with a document name, persisted-array parser, and record key. It uses the shared checkpoint store for a `SvelteMap` and keeps binary operations separate. Single-record edits mutate that map in place and advance the checkpoint revision, without copying or traversing the catalog. Key reads and iteration remain reactive; map identity stays stable after hydration. Checkpoints synchronously capture an array of immutable record references before disk I/O yields, so later map edits cannot change the in-flight snapshot. Bytes stream directly to unique OPFS files using `pipeTo()`, outside the short record-operation queue. After byte close, the record publishes in memory and schedules a checkpoint. Concurrent local image replacements remain first-completed-wins; losing or aborted unowned bytes are removed. Downloads open a File to determine size; images reuse their blob without reopening it. Reads return matching bytes/records and lazily remove missing or incomplete references in memory. Catalog arrays are serialized only during checkpoints.
-
-CoverEngine reads the selected Cache directly. Cache derives `artistArtwork`, `albumArtwork`, and `trackArtwork` candidate maps from the library using the existing fallback order; no candidate references or library timestamps are persisted in its image catalog. Completed image records live in `accounts/<account-hash>/images.json`, and unique binary files live under the account's `files/` directory. `saveImage()` closes bytes before publishing their catalog entry and compares the observed file reference to avoid overwriting a competing local replacement. A losing save returns no blob; callers can read the winner through `readImage()`. Superseded files are tagged with the removing revision and deleted best-effort only after that revision is checkpointed. Newer removals cannot be cleaned by an older in-flight checkpoint. Cancellation after publication never deletes owned bytes. A crash before catalog checkpointing can leave unreferenced files; no orphan scan or adoption is introduced. Startup loads only records, with missing/incomplete bytes invalidated conditionally on access. Corrupt catalogs are preserved rather than silently replacing unrelated downloaded-image references.
-
-Session calls `covers.activate()` when selecting a cache to discard old handles, cancel pending image commits, and release object URLs; it does not load data. `covers.refresh()` re-resolves existing handles after local hydration or library replacement without writing catalogs or checking metadata timestamps. CoverEngine owns explicit acquisition, shared in-flight reads/downloads, HTTP revalidation, authenticated fallback URLs, and browser object URLs. Disconnect retains cached sources while invalidating network work. Cache-only playback handles never fetch images. Late reads or downloads cannot publish resources into a different cache, including same-account reconnects.
-
-TrackEngine reads and writes the selected Cache directly; it has no catalog, private completed-download index, or record-publication step. `accounts/<account-hash>/downloads.json` stores completed records with independent track descriptions, format, content type, unique filename, size, and completion time. Cache derives map keys using `downloadKey(trackId, format)`; account scope comes exclusively from the directory namespace. `readDownload()` lazily opens a File without copying audio into RAM and repairs missing/incomplete references in memory. No unlisted or old audio files are adopted. `saveDownload()` streams the response into a unique account-local `.audio` file, then publishes its record and schedules a checkpoint. Per-download Web Locks cover hydration, the local winner check, and transfer; Disk builds their names from the shared account namespace and download key without additional hashing. Different downloads stream concurrently, sharing only short catalog operations. A completed winner is reused and its unused response cancelled. Failed/unowned files are removed. Published files remain owned even if the caller later aborts. Existing Web Locks serialize file access where available, but there is no cross-tab catalog merging or conflict detection. The old shared `tracks/downloads.json`, hashed audio files, and orphan adoption paths are no longer used or migrated; download audio again to populate the account cache.
-
-Session calls `tracks.activate()` after selecting a cache to cancel old jobs/source requests and release outstanding source object URLs. Activation performs no I/O; Cache owns hydration, and TrackEngine proxies `downloadsLoading` and storage errors. Pending reads are ordered behind hydration. TrackEngine retains FIFO scheduling, bounded concurrency (three by default), duplicate-job promises, connection/job cancellation, codec selection, MP3 fallback, offset streaming, and object URL lifetimes. `getSource(track, { signal, ...options })` returns an independently owned handle with idempotent `release()`. Concurrent requests do not supersede one another; aborting one request does not affect another or revoke already-returned handles. Disconnect preserves cached source handles; switching caches invalidates all outstanding handles even for the same account. Activation/destruction releases all remaining object URLs. Download listings work without library metadata; status reads use reactive records without file access, and missing bytes are repaired on acquisition rather than scanned at startup.
-
-`src/storage.ts`, `src/memory.svelte.ts`, and their transitional adapters are removed. Cache owns local publication, file I/O, and write ordering; engines own browser resources and network policy. The Downloads UI combines Cache map entries with active jobs, adding row keys only at render time; completed records do not repeat account or key fields. Files are acquired lazily; no interchangeable backend abstraction is needed.
-
-- The service worker precaches only the production app shell, manifest, and install icons. The style guide is not available offline.
-- Subsonic API requests, artwork, and audio streams are not runtime-cached by the service worker. Cache persists metadata, queue, artwork, and downloads. Engines decide when to acquire remote data.
-- All cache implementation lives in `src/cache.svelte.ts`. Four independent checkpoint queues serialize hydration and JSON writes using one small `serial()` helper; binary record operations have their own short queues. Account-backed Cache construction starts hashing the namespace key and immediately creates the private `Disk` helper with that key promise. Disk awaits the shared key during I/O; construction opens no storage, and the empty UI cache does neither hashing nor disk construction. Hash failures are observed even for unused caches and reported by subsequent I/O, without automatic retry. Disk knows no account settings; it shares the namespace across JSON and binary operations, opens directories on demand, and provides locked JSON reads and atomic snapshot writes without rereading the previous JSON on write. All four persisted documents contain only domain data, with no account fields or account-match checks; ownership comes from the hashed directory. The previous account-bearing format is not migrated. The former `json-store.ts` wrapper is removed. Library parsing checks schema/uniqueness without building indexes; publication builds the relationships once and retains collections plus freshness, not the original snapshot arrays.
-- Nonempty corrupt documents are preserved on load; full library/queue replacements can repair them at checkpoint time. Catalog mutations require successful hydration. Read failures propagate, while checkpoints intentionally overwrite from memory without inspecting disk. Failed writes always leave shared JSON placeholders untouched, with or without Web Locks; zero-byte placeholders contain no record and are treated as absent on subsequent reads. Cleanup aborts the writable without reopening or deleting the JSON file. Binary files have unique names and retain their existing cleanup rules. Directory paths and JSON lock names are unchanged; per-download lock names use the account namespace and download key directly.
-- Authentication lives under `navidrome-auth` in localStorage. `navidrome-account` contains only the last selected host and username, allowing startup to restore OPFS data without credentials. Disconnect preserves this identity and persists `navidrome-offline-mode=true`; only a successful explicit connection unlocks online browsing. Existing saved authentication is migrated to a non-secret account record at startup.
-- The library is one OPFS snapshot at `accounts/<account-hash>/library.json`, with normalized artist, album, and track arrays. Cache reconstructs lookup maps and sorted relationships automatically. Account hashes use a JSON-encoded host/username tuple. The snapshot restores before network revalidation, stays visible during fetching, and is replaced in memory after complete preparation, before its checkpoint. No credentials or derived indexes are stored in it. The former `metadata/<account-hash>.json` format is not read or migrated; connect online to populate the new cache.
-- Artwork uses `accounts/<account-hash>/images.json` for completed image records, file sizes, MIME types, and HTTP validators. Candidate lists are derived from the library, so metadata replacement retains the same image collection without rewriting its catalog. Web Locks serialize catalog updates where available. Previous `images/` catalogs, image files, and sidecars are left untouched, not migrated; download artwork on demand while online to populate the new cache.
-- The queue persists to `accounts/<account-hash>/queue.json`: `{ value: { tracks, index, position }, updatedAt }`, containing local ordered IDs, occurrence index, position, and checkpoint timestamp. Old `queue/<account-hash>.json` records are not read or migrated. Restoration needs no credentials or autoplay, even when metadata is unavailable. Queue commands are debounced by 300 ms; playback position is checkpointed locally every five seconds, and pause/hide/flush saves the latest state. Failed checkpoints are not uploaded; disk timestamps are not reconciled with other writers. Abrupt browser termination may lose changes since the last completed write.
-- `app.svelte` mounts the engine-independent `src/player.svelte` component and passes its bound instance to `PlaybackController.attach()` in `src/playback-controller.svelte.ts`. All audio transport and Media Session logic is inline in the component. It accesses `navigator.mediaSession` directly, with no browser-wrapper module or Media Session prop. `PlayerTrack` is the engine-independent input type for `play()`. Its commands are `play({ metadata, position?, getSource })`, `resume()`, `pause()`, `seek(seconds)`, `setArtwork(source)`, and `unload()`; read-only state is `position`, `duration`, `playing`, `status`, and `error` (getter-only component exports). `playing` means the audio transport is not paused, not guaranteed audible progress; `status === "buffering"` distinguishes a stall. `pause()` preserves ended/error states so `resume()` can restart/retry. Async commands resolve when their attempt settles, including cancellation/supersession; transport failures are reported through `status`/`error`, not promise rejection. Resolution does not guarantee playback started. Commands before mounting or after teardown do nothing. There are no test-injection props; tests stub browser globals. Props are `hasPrevious`/`hasNext` and callbacks `onprevious`/`onnext`/`onposition`/`onended`. Each explicit `play(track)` starts fresh, including duplicate track occurrences; `resume()` without a loaded track does nothing. Text metadata is a snapshot supplied at play time. PlaybackController demands the active track's cover and forwards reactive source updates through `setArtwork()` without restarting audio; Player converts local artwork to self-contained bytes for Media Session and rejects stale conversions. Restored queue selection remains app state and does not populate Media Session or fetch audio before play. The large player's range value depends on both queue position and duration, so metadata arriving after queue hydration reapplies a value initially clamped by the browser's zero maximum. Seeking that idle selection only edits its resume point.
-- Player source requests receive `{ position, forceTranscode, signal }` and return `{ url, offset?, seekMode, release }`. `seekMode` expresses transport capability, not cache identity: `full` supports direct native seeking anywhere, `seekable` trusts the browser's advertised seekable ranges, and `buffered` trusts only buffered ranges. Restricted modes reload a source for other positions, using server offsets only for known non-MP3 audio; a rejected native seek on a full source reports an error. PlaybackController maps TrackEngine's cached/original/transcoded source information into these capabilities. Abort cancels an outstanding source request, not ownership of an already-returned source. Every result owns independent cleanup; Player releases obsolete results and replaced/unloaded sources once, containing cleanup exceptions so replacement/teardown can finish. TrackEngine owns per-result cleanup directly; the controller forwards the caller's signal and the returned release handle without maintaining request generations or a resource slot. The component never imports engines or Cache. PlaybackController owns navigation and queue-to-player decisions. Player owns the global Space shortcut and removes it on component teardown. Space pauses/resumes only a loaded track, ignoring editable controls, modifiers, composition, and handled events; repeats prevent scrolling without toggling again. With no loaded track it leaves the key untouched. It forwards progress and explicit seeks to QueueEngine and reports `active`/`paused`/`inactive` lifecycle changes. QueueEngine owns command debouncing, ten-second progress uploads, and pause/end flushes. Repeated lifecycle reports are idempotent; command and observer paths do not independently schedule duplicate saves. Queue protection begins on loading/playing, survives pause, and ends on completion or unload; there is no separate active-session component event.
-- Playback resolves queue IDs through metadata on demand. Missing metadata and Offline Library restrictions hide unavailable entries without deleting IDs or resetting the saved selection/position. Row actions and next/previous navigation use raw queue indexes, preserving duplicate occurrences without skipping unavailable tracks. Navigating to an unavailable entry selects it and unloads playback without fetching audio; play does not jump to a different entry. Only explicit queue edits change membership; incomplete metadata is never uploaded as a shortened queue. Downloads retain independent track descriptions.
-- The old IndexedDB metadata cache is no longer read or migrated. Connect online once to populate the new snapshot. Downloaded audio, artwork, and saved authentication are not removed.
-- **Settings → Downloads** lists active downloads, queued tracks, and completed files newest-first. Downloads run with up to three concurrent transfers. Playback does not wait for downloads when seeking or resuming.
-- Audio records live in `accounts/<account-hash>/downloads.json`, and binary files live in the account's `files/` directory. Records contain neither credentials nor active/queued jobs. Listings restore without library metadata or eager binary reads. Failed writes remove their unique uncommitted files; committed bytes survive cancellation during catalog close. Old `tracks/` data remains untouched but is no longer adopted.
-- Cached tracks and seeks within the current audio buffer use local seeking. Original-file streams also use native seeking within the browser's advertised `seekable` ranges, allowing HTTP byte-range requests without restarting transcoding. If setting the native seek position throws, playback reloads a source at the requested position. Transcoded streams do not trust unbuffered seekable ranges. For known non-MP3 audio, uncached resumes and other unbuffered seeks request an MP3 stream with Subsonic `timeOffset` rather than downloading the entire track first. The player translates that stream-relative time into full-track position and uses library metadata for full duration. MP3 and unknown-format sources never claim a server offset: Navidrome may skip transcoding and ignore `timeOffset` when the requested format already matches. Those sources use the full audio timeline and native `currentTime`, including restored fractional positions. Offset streams still depend on the server's transcoder honoring `timeOffset`; verify against Navidrome when testing. Playback never starts a separate background audio download; offline downloads are explicit user actions. Previously downloaded tracks remain available for local playback. Offset streams are never saved as complete downloads.
-- First visit online so installation and shell caching can complete. Download music in the app before testing Offline Library mode.
-- Test Settings refresh/disconnect, reload after disconnect, failed reconnect while forced offline, and reconnect to another account with overlapping track IDs. Saved credentials must be gone after disconnect; metadata, artwork, audio, and queue must remain usable offline. Check cancellation during both server requests and connection persistence. App settings DOM tests cover read-only actions, disabled refresh, forced-offline connection, credential input clearing, and late completions.
-- A new version adds a separate app-update button beside Settings. Its user-opened popover explains the update and offers **Update now**; closing the popover does not clear availability. Settings and the player are unchanged. The updater remains mounted across route changes, so navigating away does not clear availability. Nothing reloads automatically during playback; choosing Update now explicitly reloads the app and interrupts playback. Setup errors and retryable update failures are also shown in the update popover. Update approval observes both the waiting worker's activation and `controllerchange`: a hard-refreshed page can bypass service-worker control and receive only the former. Either event reloads the current page once per approved attempt without changing its URL or route. Activation before approval or after timeout only offers a reload; it never interrupts playback automatically.
-- Updates are checked when the app becomes visible and hourly while visible and online.
-
-## Testing app updates
-
-To test updates, leave the installed app open, change the app, run `pnpm build` again, then return to the app to trigger a check. Also hard-refresh while an update is waiting and use **Update now**; verify that it preserves the current route and reloads even when `navigator.serviceWorker.controller` is null. Chrome DevTools' Application panel can inspect the manifest, service worker, and caches. Clear site data or unregister the worker when testing a completely fresh installation (clearing site data also deletes saved app data).
