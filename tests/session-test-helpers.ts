@@ -3,9 +3,8 @@ import { AuthStore, getAccountKey } from "../src/auth";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { Network, type MetadataConnection, type NetworkConnection } from "../src/network.svelte";
 import { CoverEngine } from "../src/cover.svelte";
-import { QueueEngine } from "../src/queue.svelte";
 import { TrackEngine } from "../src/track.svelte";
-import { PlaybackController } from "../src/playback-controller.svelte";
+import { Playback } from "../src/playback.svelte";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import type { Account } from "../src/schema";
 import { Session } from "../src/session.svelte";
@@ -90,11 +89,9 @@ export function createSession(saved = false, storage = createStorage()) {
       vi.spyOn(this, "savedAt", "get").mockReturnValue(value.savedAt);
     });
   const coverEngine = new CoverEngine(selection);
-  const queueEngine = new QueueEngine(selection);
   const trackEngine = new TrackEngine({ selection });
-  const playbackController = new PlaybackController({
+  const player = new Playback({
     selection,
-    queue: queueEngine,
     tracks: trackEngine,
     covers: coverEngine,
   });
@@ -111,19 +108,17 @@ export function createSession(saved = false, storage = createStorage()) {
     refresh: vi.spyOn(coverEngine, "refresh").mockResolvedValue(undefined),
     setConnection: vi.spyOn(coverEngine, "setConnection").mockImplementation(() => {}),
   };
-  const queue = {
-    setConnection: vi.spyOn(queueEngine, "setConnection").mockImplementation(() => {}),
-    activate: vi.spyOn(queueEngine, "activate").mockImplementation(() => {}),
-    refresh: vi.spyOn(queueEngine, "refresh").mockResolvedValue(undefined),
-    flush: vi.spyOn(queueEngine, "flush").mockResolvedValue(undefined),
-  };
   const tracks = {
     activate: vi.spyOn(trackEngine, "activate").mockImplementation(() => {}),
     setConnection: vi.spyOn(trackEngine, "setConnection").mockImplementation(() => {}),
   };
   const playback = {
-    suspend: vi.spyOn(playbackController, "suspend").mockImplementation(() => {}),
-    suspendNetwork: vi.spyOn(playbackController, "suspendNetwork").mockImplementation(() => {}),
+    setConnection: vi.spyOn(player, "setConnection").mockImplementation(() => {}),
+    activate: vi.spyOn(player, "activate").mockImplementation(() => {}),
+    refreshQueue: vi.spyOn(player, "refreshQueue").mockResolvedValue(undefined),
+    flushQueue: vi.spyOn(player, "flushQueue").mockResolvedValue(undefined),
+    suspend: vi.spyOn(player, "suspend").mockImplementation(() => {}),
+    suspendNetwork: vi.spyOn(player, "suspendNetwork").mockImplementation(() => {}),
   };
   const network = new Network();
   const candidate = {
@@ -158,19 +153,17 @@ export function createSession(saved = false, storage = createStorage()) {
     network,
     auth,
     covers: coverEngine,
-    queue: queueEngine,
     tracks: trackEngine,
-    playback: playbackController,
+    playback: player,
     preferences: storage,
   });
   return {
     async destroy() {
       session.destroy();
-      playbackController.destroy();
+      await player.destroy();
       covers.activate.mockRestore();
       coverEngine.destroy();
       trackEngine.destroy();
-      await queueEngine.destroy();
     },
     session,
     network,
@@ -178,7 +171,6 @@ export function createSession(saved = false, storage = createStorage()) {
     auth,
     metadata,
     covers,
-    queue,
     tracks,
     playback,
     storage,

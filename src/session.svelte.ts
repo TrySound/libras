@@ -9,8 +9,7 @@ import {
   type NetworkConnection,
   type PasswordAuth,
 } from "./network.svelte";
-import type { PlaybackController } from "./playback-controller.svelte";
-import type { QueueEngine } from "./queue.svelte";
+import type { Playback } from "./playback.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Cache, type LibrarySnapshot } from "./cache.svelte";
@@ -22,9 +21,8 @@ interface SessionOptions {
   network: Network;
   auth: AuthStore;
   covers: CoverEngine;
-  queue: QueueEngine;
   tracks: TrackEngine;
-  playback: PlaybackController;
+  playback: Playback;
   preferences: Storage;
 }
 
@@ -69,7 +67,9 @@ export class Session {
 
   get refreshError() {
     const error =
-      this.#refreshError ?? this.#options.queue.error ?? this.#options.selection.cache?.error;
+      this.#refreshError ??
+      this.#options.playback.queueError ??
+      this.#options.selection.cache?.error;
     return error ? `Synchronization failed: ${connectionError(error)}` : "";
   }
 
@@ -105,14 +105,14 @@ export class Session {
     this.#options.network.setMode("offline");
     this.#setConnection(undefined);
     this.#options.playback.suspendNetwork();
-    void this.#options.queue.flush();
+    void this.#options.playback.flushQueue();
   }
 
   /** Publish connection changes in one place; Network owns their shared abort signal. */
   #setConnection(connection: ActiveNetworkConnection | undefined) {
     this.#connection = connection;
-    const { queue, covers, tracks } = this.#options;
-    queue.setConnection(connection?.queue);
+    const { playback, covers, tracks } = this.#options;
+    playback.setConnection(connection?.queue);
     covers.setConnection(connection?.artwork);
     tracks.setConnection(connection?.audio);
   }
@@ -166,7 +166,7 @@ export class Session {
   }
 
   async #restore(account: Account) {
-    const { covers, queue, selection } = this.#options;
+    const { covers, playback, selection } = this.#options;
     const cache = new Cache(getAccountKey(account));
     this.#select(cache, account);
     this.#loadController?.abort();
@@ -181,7 +181,7 @@ export class Session {
       });
       if (!current()) return;
       // Notify playback only after the cache's independent load attempts finish.
-      queue.activate();
+      playback.activate();
       if (current()) await covers.refresh();
       if (current()) this.localReady = true;
     } finally {
@@ -230,7 +230,7 @@ export class Session {
    * Storage is not transactional; connect's failure path clears partial credentials. */
   #commitWorkspace(cache: Cache, credentials: Auth, connection: NetworkConnection) {
     connection.signal.throwIfAborted();
-    const { auth, preferences, network, playback, selection, queue } = this.#options;
+    const { auth, preferences, network, playback, selection } = this.#options;
     auth.save(credentials);
     auth.saveAccount(connection.account);
     preferences.setItem(offlineModeStorageKey, "false");
@@ -238,7 +238,7 @@ export class Session {
     if (!selection.cache || selection.cache === cache) playback.suspend();
     this.#setConnection(undefined);
     this.#select(cache, connection.account);
-    queue.activate();
+    playback.activate();
     this.auth = credentials;
     this.#setConnection(active);
     this.localReady = true;
@@ -259,7 +259,7 @@ export class Session {
       this.#commitWorkspace(cache, credentials, connection);
       await this.#options.covers.refresh();
       if (!this.#valid(generation)) return false;
-      await this.#options.queue.refresh();
+      await this.#options.playback.refreshQueue();
       if (!this.#valid(generation)) return false;
       this.status = "connected";
       return true;
@@ -353,7 +353,7 @@ export class Session {
   #refresh(force: boolean): Promise<void> {
     if (this.#refreshPending) return this.#refreshPending;
     const generation = this.#generation;
-    const { covers, queue } = this.#options;
+    const { covers, playback } = this.#options;
     this.#syncing = true;
     this.#refreshError = undefined;
     return (this.#refreshPending = (async () => {
@@ -367,7 +367,7 @@ export class Session {
       }
       if (!this.#valid(generation)) return;
       try {
-        await queue.refresh();
+        await playback.refreshQueue();
       } catch (error) {
         if (this.#valid(generation)) this.#refreshError ??= error;
       }

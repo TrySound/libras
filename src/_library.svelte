@@ -3,7 +3,7 @@
   import type { CoverEngine } from "./cover.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Artist } from "./schema";
-  import type { PlaybackController } from "./playback-controller.svelte";
+  import type { Playback } from "./playback.svelte";
   import type { Session } from "./session.svelte";
   import { onVisible } from "./viewport";
 
@@ -12,7 +12,7 @@
     coverEngine: CoverEngine;
     trackEngine: TrackEngine;
     session: Session;
-    playback: PlaybackController;
+    playback: Playback;
   }
 
   let { cache, coverEngine, trackEngine, session, playback }: Props = $props();
