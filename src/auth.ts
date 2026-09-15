@@ -30,7 +30,7 @@ export class AuthStore {
     try {
       return v.parse(authSchema, JSON.parse(value));
     } catch {
-      throw new Error("The saved Subsonic authentication is invalid.");
+      throw new Error("The saved OpenSubsonic authentication is invalid.");
     }
   }
 

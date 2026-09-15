@@ -1,6 +1,6 @@
 # Contributing to Libras
 
-Libras is a client-only Svelte + Vite app using the Subsonic API. See the [README](README.md) for features and hosted-app setup.
+Libras is a client-only Svelte + Vite app targeting the OpenSubsonic API. See the [README](README.md) for features and hosted-app setup.
 
 ## Local development
 
@@ -27,16 +27,16 @@ pnpm build
 
 `src/app.svelte` wires the engines together. Route components (`src/_*.svelte`) read reactive state and invoke domain commands.
 
-| Module                        | Owns                                                                                       |
-| ----------------------------- | ------------------------------------------------------------------------------------------ |
-| `Session`                     | Account selection, credentials, connections, startup, and refresh coordination             |
-| `Network`                     | Subsonic requests, response normalization, authenticated URLs, and connection cancellation |
-| `Cache`                       | Account-scoped library, queue, images, downloads, and OPFS persistence                     |
-| `MetadataEngine`              | Library fetching and refresh cancellation                                                  |
-| `QueueEngine`                 | Queue edits, server synchronization, and playback protection                               |
-| `PlaybackController`          | Queue navigation and playback orchestration                                                |
-| `Player`                      | Audio transport, seeking, keyboard shortcuts, and Media Session                            |
-| `CoverEngine` / `TrackEngine` | On-demand resources, download scheduling, and object URL lifetimes                         |
+| Module                        | Owns                                                                                           |
+| ----------------------------- | ---------------------------------------------------------------------------------------------- |
+| `Session`                     | Account selection, credentials, connections, startup, and refresh coordination                 |
+| `Network`                     | OpenSubsonic requests, response normalization, authenticated URLs, and connection cancellation |
+| `Cache`                       | Account-scoped library, queue, images, downloads, and OPFS persistence                         |
+| `MetadataEngine`              | Library fetching and refresh cancellation                                                      |
+| `QueueEngine`                 | Queue edits, server synchronization, and playback protection                                   |
+| `PlaybackController`          | Queue navigation and playback orchestration                                                    |
+| `Player`                      | Audio transport, seeking, keyboard shortcuts, and Media Session                                |
+| `CoverEngine` / `TrackEngine` | On-demand resources, download scheduling, and object URL lifetimes                             |
 
 Keep these boundaries in mind:
 
@@ -48,6 +48,12 @@ Keep these boundaries in mind:
 - Release owned browser resources explicitly. The service worker caches the app shell, not API responses or music; offline audio downloads are explicit user actions.
 
 For implementation details, consult the owning module and its tests rather than adding a second state store or synchronization layer.
+
+### OpenSubsonic migration
+
+`src/opensubsonic-client.ts` owns the protocol schemas and exports only OpenSubsonic-named types; there is no parallel legacy client or type alias layer. The wire protocol still uses `/rest`, the `subsonic-response` envelope, and the Subsonic API version parameter (`1.16.1`).
+
+The first migration step adds explicit `ping()` server identification and `getOpenSubsonicExtensions()` discovery. Unknown extension names and advertised versions are preserved. These methods do not run automatically yet: connection behavior, saved credentials, metadata storage, queue synchronization, and streaming remain unchanged. Subsequent steps can wire discovery into connection preparation and enable features by advertised capability, starting with index-based queues and transcoded seeking. Multi-artist metadata and API-key authentication are separate model changes.
 
 ## Testing browser behavior
 
