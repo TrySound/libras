@@ -463,6 +463,95 @@ describe("session", () => {
     },
   );
 
+  it.each(["load", "library", "checkpoint", "retirement"] as const)(
+    "does not publish credentials while %s preparation is pending or fails",
+    async (stage) => {
+      const { session, selection, auth, storage, loadCache, saveLibrary, network } =
+        await connected();
+      session.disconnect();
+      const previous = selection.cache!;
+      const pending = deferred();
+      const saveAuth = vi.spyOn(auth, "save");
+      const saveAccount = vi.spyOn(auth, "saveAccount");
+      const accept = vi.mocked(network.accept);
+      accept.mockClear();
+      storage.setItem.mockClear();
+      if (stage === "load") loadCache.mockReturnValueOnce(pending.promise);
+      else if (stage === "library") saveLibrary.mockReturnValueOnce(pending.promise);
+      else if (stage === "checkpoint")
+        vi.spyOn(Cache.prototype, "flush").mockReturnValueOnce(pending.promise);
+      else vi.spyOn(previous, "flush").mockReturnValueOnce(pending.promise);
+
+      const connecting = session.connect({ ...input, username: "other" });
+      await vi.waitFor(() => {
+        if (stage === "load") expect(loadCache).toHaveBeenCalledTimes(2);
+        else if (stage === "library") expect(saveLibrary).toHaveBeenCalledOnce();
+        else if (stage === "checkpoint") expect(Cache.prototype.flush).toHaveBeenCalled();
+        else expect(previous.flush).toHaveBeenCalled();
+      });
+      expect(selection.cache).toBe(previous);
+      expect(session.auth).toBeNull();
+      expect(auth.load()).toBeNull();
+      expect(auth.loadAccount()).toEqual(previous.account);
+      expect(session.offlineMode).toBe(true);
+      expect(saveAuth).not.toHaveBeenCalled();
+      expect(saveAccount).not.toHaveBeenCalled();
+      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(accept).not.toHaveBeenCalled();
+
+      pending.reject(new Error("Preparation failed"));
+      expect(await connecting).toBe(false);
+      expect(session.error).toBe("Preparation failed");
+      expect(selection.cache).toBe(previous);
+      expect(saveAuth).not.toHaveBeenCalled();
+      expect(auth.load()).toBeNull();
+      expect(auth.loadAccount()).toEqual(previous.account);
+      expect(accept).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["credentials", "account", "preferences"] as const)(
+    "cleans up a partially persisted %s commit without switching the workspace",
+    async (stage) => {
+      const { session, selection, auth, storage, network, tracks } = await connected();
+      session.disconnect();
+      const previous = selection.cache;
+      vi.mocked(network.accept).mockClear();
+      tracks.setConnection.mockClear();
+      const fail = () => {
+        throw new Error("Commit failed");
+      };
+      if (stage === "credentials") {
+        const save = auth.save.bind(auth);
+        vi.spyOn(auth, "save").mockImplementationOnce((value) => {
+          save(value);
+          fail();
+        });
+      } else if (stage === "account") {
+        const save = auth.saveAccount.bind(auth);
+        vi.spyOn(auth, "saveAccount").mockImplementationOnce((value) => {
+          save(value);
+          fail();
+        });
+      } else {
+        const set = storage.setItem.getMockImplementation()!;
+        storage.setItem.mockImplementation((key, value) => {
+          set(key, value);
+          if (key === "navidrome-offline-mode" && value === "false") fail();
+        });
+      }
+      expect(await session.connect({ ...input, username: "other" })).toBe(false);
+      expect(session.error).toBe("Commit failed");
+      expect(selection.cache).toBe(previous);
+      expect(session.auth).toBeNull();
+      expect(auth.load()).toBeNull();
+      expect(auth.loadAccount()).toEqual(previous!.account);
+      expect(storage.getItem("navidrome-offline-mode")).toBe("true");
+      expect(network.accept).not.toHaveBeenCalled();
+      expect(tracks.setConnection.mock.calls.every(([value]) => value === undefined)).toBe(true);
+    },
+  );
+
   it("does not report invalid connection input as a transport or CORS failure", async () => {
     const { session, metadata, prepareConnection } = setup();
     expect(await session.connect({ ...input, host: "https://" })).toBe(false);
@@ -484,12 +573,12 @@ describe("session", () => {
       const signal = saveLibrary.mock.calls[0][1]!;
       expect(saveLibrary.mock.contexts[0]).toBe(previous);
       expect(selection.cache).toBe(previous);
-      expect(auth.load()).not.toBeNull();
+      expect(auth.load()).toBeNull();
       session[action]();
       expect(signal.aborted).toBe(true);
       saved.resolve();
       expect(await connecting).toBe(false);
-      if (action === "disconnect") expect(auth.load()).toBeNull();
+      expect(auth.load()).toBeNull();
       expect(selection.cache).toBe(previous);
     },
   );

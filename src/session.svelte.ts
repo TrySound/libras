@@ -5,6 +5,7 @@ import {
   NetworkTransportError,
   type ActiveNetworkConnection,
   type Network,
+  type NetworkConnection,
   type PasswordAuth,
 } from "./network.svelte";
 import type { PlaybackController } from "./playback-controller.svelte";
@@ -93,25 +94,30 @@ export class Session {
   }
 
   #detach() {
-    const { metadata, queue, covers, tracks, playback } = this.#options;
     this.#refreshPending = undefined;
     this.#syncing = false;
     this.#refreshError = undefined;
-    metadata.setConnection(undefined);
-    queue.setConnection(undefined);
     this.#options.network.setMode("offline");
-    covers.setConnection(undefined);
-    tracks.setConnection(undefined);
-    playback.suspendNetwork();
-    void queue.flush();
+    this.#setConnection(undefined);
+    this.#options.playback.suspendNetwork();
+    void this.#options.queue.flush();
   }
 
-  #attach(connection: ActiveNetworkConnection) {
+  /** Publish connection changes in one place; Network owns their shared abort signal. */
+  #setConnection(connection: ActiveNetworkConnection | undefined) {
     const { metadata, queue, covers, tracks } = this.#options;
-    metadata.setConnection(connection.metadata);
-    queue.setConnection(connection.queue);
-    covers.setConnection(connection.artwork);
-    tracks.setConnection(connection.audio);
+    metadata.setConnection(connection?.metadata);
+    queue.setConnection(connection?.queue);
+    covers.setConnection(connection?.artwork);
+    tracks.setConnection(connection?.audio);
+  }
+
+  /** Select local data before activating resources; queue activation waits for hydration. */
+  #select(cache: Cache) {
+    this.localReady = false;
+    this.#options.selection.cache = cache;
+    this.#options.covers.activate();
+    this.#options.tracks.activate();
   }
 
   start(): Auth | null {
@@ -154,12 +160,9 @@ export class Session {
   }
 
   async #restore(account: Account) {
-    const { covers, queue, tracks, selection } = this.#options;
-    this.localReady = false;
+    const { covers, queue, selection } = this.#options;
     const cache = new Cache(account);
-    selection.cache = cache;
-    covers.activate();
-    tracks.activate();
+    this.#select(cache);
     this.#loadController?.abort();
     const controller = new AbortController();
     this.#loadController = controller;
@@ -180,6 +183,63 @@ export class Session {
     }
   }
 
+  /** Prepare durable local data without publishing credentials or a new selection.
+   * Same-account reconnects deliberately reuse the live writer to retain queue edits. */
+  async #prepareWorkspace(connection: NetworkConnection) {
+    const prepared = await this.#options.metadata.prepareConnection(connection.metadata);
+    connection.signal.throwIfAborted();
+    const previous = this.#options.selection.cache;
+    const sameAccount =
+      previous?.account?.host === prepared.account.host &&
+      previous.account.username === prepared.account.username;
+    const cache = sameAccount ? previous : new Cache(prepared.account);
+    // Fresh metadata repairs library read failures; other documents remain independent.
+    await cache.load(connection.signal).catch((error) => {
+      if (!(error instanceof AggregateError)) throw error;
+    });
+    connection.signal.throwIfAborted();
+    const { account: _account, ...library } = prepared;
+    await cache.replaceLibrary(library, connection.signal);
+    connection.signal.throwIfAborted();
+    await cache.flush();
+    connection.signal.throwIfAborted();
+    return cache;
+  }
+
+  /** Quiesce old resources and drain edits before committing a different account.
+   * Keep the old cache selected and writable if persistence or acceptance fails. */
+  async #retireWorkspace(next: Cache, signal: AbortSignal) {
+    signal.throwIfAborted();
+    const { selection, playback, covers, tracks } = this.#options;
+    const previous = selection.cache;
+    if (!previous || previous === next) return;
+    playback.suspend();
+    covers.activate();
+    tracks.activate();
+    do {
+      await previous.flush();
+      signal.throwIfAborted();
+    } while (previous.dirty);
+  }
+
+  /** No awaits: credentials, selection and engine connections commit in one turn.
+   * Storage is not transactional; connect's failure path clears partial credentials. */
+  #commitWorkspace(cache: Cache, credentials: Auth, connection: NetworkConnection) {
+    connection.signal.throwIfAborted();
+    const { auth, preferences, network, playback, selection, queue } = this.#options;
+    auth.save(credentials);
+    auth.saveAccount(cache.account!);
+    preferences.setItem(offlineModeStorageKey, "false");
+    const active = network.accept(connection);
+    if (!selection.cache || selection.cache === cache) playback.suspend();
+    this.#setConnection(undefined);
+    this.#select(cache);
+    queue.activate();
+    this.auth = credentials;
+    this.#setConnection(active);
+    this.localReady = true;
+  }
+
   async connect(input: PasswordAuth): Promise<boolean> {
     if (this.auth || this.busy || this.#destroyed) return false;
     const generation = this.#begin();
@@ -189,55 +249,13 @@ export class Session {
       const connection = this.#options.network.prepare(credentials);
       await this.#restoration;
       if (!this.#valid(generation)) return false;
-      const { metadata, queue, covers, tracks, auth, preferences } = this.#options;
-      // Explicit connection may use the network while the offline switch is locked.
-      // Do not replace the selected workspace, or attach any other engines, on failure.
-      const prepared = await metadata.prepareConnection(connection.metadata);
+      const cache = await this.#prepareWorkspace(connection);
+      await this.#retireWorkspace(cache, connection.signal);
       if (!this.#valid(generation)) return false;
-      auth.save(credentials);
-      auth.saveAccount(prepared.account);
-      preferences.setItem(offlineModeStorageKey, "false");
-      // A live account has one writer. Reconnects retain its queue and catalogs.
-      const previous = this.#options.selection.cache;
-      const sameAccount =
-        previous?.account?.host === prepared.account.host &&
-        previous.account.username === prepared.account.username;
-      const cache = sameAccount ? previous : new Cache(prepared.account);
-      // Restore local records before selecting this candidate. A fresh library
-      // repairs library read failures; queue/image failures remain independent.
-      await cache.load(connection.signal).catch((error) => {
-        if (!(error instanceof AggregateError)) throw error;
-      });
+      this.#commitWorkspace(cache, credentials, connection);
+      await this.#options.covers.refresh();
       if (!this.#valid(generation)) return false;
-      const { account: _account, ...library } = prepared;
-      await cache.replaceLibrary(library, connection.signal);
-      await cache.flush();
-      if (!this.#valid(generation)) return false;
-      if (previous && !sameAccount) {
-        // Stop old resource work, then save any edits arriving during the flush.
-        this.#options.playback.suspend();
-        covers.activate();
-        tracks.activate();
-        do {
-          await previous.flush();
-          if (!this.#valid(generation)) return false;
-        } while (previous.dirty);
-      }
-      const activeConnection = this.#options.network.accept(connection);
-      if (!previous || sameAccount) this.#options.playback.suspend();
-      this.localReady = false;
-      // Cancel old work before selecting the fully hydrated candidate.
-      metadata.setConnection(undefined);
-      this.#options.selection.cache = cache;
-      covers.activate();
-      tracks.activate();
-      queue.activate();
-      this.auth = credentials;
-      this.#attach(activeConnection);
-      this.localReady = true;
-      await covers.refresh();
-      if (!this.#valid(generation)) return false;
-      await queue.refresh();
+      await this.#options.queue.refresh();
       if (!this.#valid(generation)) return false;
       this.status = "connected";
       return true;
@@ -270,7 +288,7 @@ export class Session {
 
   #resumeOnline(generation: number) {
     if (!this.auth || !this.#valid(generation)) return;
-    this.#attach(this.#options.network.open(this.auth));
+    this.#setConnection(this.#options.network.open(this.auth));
     this.status = "connected";
   }
 

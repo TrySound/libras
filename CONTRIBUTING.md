@@ -27,23 +27,23 @@ pnpm build
 
 `src/app.svelte` wires the engines together. Route components (`src/_*.svelte`) read reactive state and invoke domain commands.
 
-| Module | Owns |
-| --- | --- |
-| `Session` | Account selection, credentials, connections, startup, and refresh coordination |
-| `Network` | Subsonic requests, response normalization, authenticated URLs, and connection cancellation |
-| `Cache` | Account-scoped library, queue, images, downloads, and OPFS persistence |
-| `MetadataEngine` | Library fetching and refresh cancellation |
-| `QueueEngine` | Queue edits, server synchronization, and playback protection |
-| `PlaybackController` | Queue navigation and playback orchestration |
-| `Player` | Audio transport, seeking, keyboard shortcuts, and Media Session |
-| `CoverEngine` / `TrackEngine` | On-demand resources, download scheduling, and object URL lifetimes |
+| Module                        | Owns                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------ |
+| `Session`                     | Account selection, credentials, connections, startup, and refresh coordination             |
+| `Network`                     | Subsonic requests, response normalization, authenticated URLs, and connection cancellation |
+| `Cache`                       | Account-scoped library, queue, images, downloads, and OPFS persistence                     |
+| `MetadataEngine`              | Library fetching and refresh cancellation                                                  |
+| `QueueEngine`                 | Queue edits, server synchronization, and playback protection                               |
+| `PlaybackController`          | Queue navigation and playback orchestration                                                |
+| `Player`                      | Audio transport, seeking, keyboard shortcuts, and Media Session                            |
+| `CoverEngine` / `TrackEngine` | On-demand resources, download scheduling, and object URL lifetimes                         |
 
 Keep these boundaries in mind:
 
 - Read Cache collections directly; change them through explicit methods. Keep credentials, network clients, and browser resources outside Cache.
 - Memory updates immediately; disk checkpoints happen asynchronously. Failed writes retain local state and report errors. Do not treat visible state as proof of persistence.
 - Startup and manual refresh pull server state. Reconnecting does not automatically refresh or upload an offline queue. Refresh must not replace a playing or paused queue.
-- Disconnect retains local data for offline use. Account switches cancel old work and suspend playback; late results must not leak into the new account.
+- Disconnect retains local data for offline use. Session reconnects prepare and checkpoint the candidate, retire a different account's resource work and drain its writes, then synchronously commit credentials, selection, and engine connections. Same-account reconnects reuse the live cache to preserve edits. Startup selects local data before hydration but activates the queue only after loading finishes. Network owns the shared connection abort signal; late results must not leak into the new account.
 - Preserve queue IDs and occurrence indexes, including duplicates and unavailable tracks. Filtering the UI must not rewrite the saved queue.
 - Release owned browser resources explicitly. The service worker caches the app shell, not API responses or music; offline audio downloads are explicit user actions.
 
