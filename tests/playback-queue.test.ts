@@ -3,7 +3,7 @@ import { getAccountKey } from "../src/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Playback } from "../src/playback.svelte";
 import { TrackEngine } from "../src/track.svelte";
-import { CoverEngine } from "../src/cover.svelte";
+import { Covers } from "../src/covers.svelte";
 import Player from "../src/player.svelte";
 import { flushSync, mount, unmount } from "svelte";
 import { AudioStub } from "./audio-test-helpers";
@@ -33,7 +33,7 @@ function createPlayback(selection: TestSelection) {
     url: `blob:${track.id}`,
     release() {},
   }));
-  const covers = new CoverEngine(selection);
+  const covers = new Covers(selection);
   const playback = new Playback({ selection, tracks, covers });
   const audio = new AudioStub();
   vi.stubGlobal("Audio", function () {

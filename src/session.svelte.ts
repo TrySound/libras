@@ -1,5 +1,5 @@
 import { getAccountKey, type Auth, type AuthStore } from "./auth";
-import type { CoverEngine } from "./cover.svelte";
+import type { Covers } from "./covers.svelte";
 import {
   NetworkTransportError,
   type ActiveNetworkConnection,
@@ -19,7 +19,7 @@ interface SessionOptions {
   selection: { cache: Cache | undefined };
   network: Network;
   auth: AuthStore;
-  covers: CoverEngine;
+  covers: Covers;
   tracks: TrackEngine;
   playback: Playback;
   preferences: Storage;

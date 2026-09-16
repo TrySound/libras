@@ -120,22 +120,22 @@
 
 <script lang="ts">
   import type { Cache } from "./cache.svelte";
-  import type { CoverEngine } from "./cover.svelte";
+  import type { Covers } from "./covers.svelte";
+  import Artwork from "./artwork.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Session } from "./session.svelte";
   import type { Playback } from "./playback.svelte";
-  import { onVisible } from "./viewport";
 
   let {
     cache,
-    coverEngine,
+    covers,
     trackEngine,
     session,
     playback,
     state: searchState,
   }: {
     cache: Cache;
-    coverEngine: CoverEngine;
+    covers: Covers;
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
@@ -248,8 +248,7 @@
           </h2>
           <div class="wings">
             {#each records as record (record.id)}
-              {@const cover = coverEngine.ensureCover(record.artworkId)}
-              <div class="wings-item row-button" {@attach onVisible(cover.load)}>
+              <div class="wings-item row-button">
                 {#if record.href}
                   <a
                     class="linkarea"
@@ -269,10 +268,7 @@
                     onclick={() => play(record.id)}
                   ></button>
                 {/if}
-                <span class="cover" data-size="md" aria-hidden="true">
-                  {#if cover.source}<img src={cover.source} alt="" />
-                  {:else}<svg width="20" height="20"><use href="#icon-music"></use></svg>{/if}
-                </span>
+                <Artwork {covers} id={record.artworkId} />
                 <span class="stack-xs">
                   <strong class="type-title">{record.title}</strong>
                   <span class="type-small text-muted"

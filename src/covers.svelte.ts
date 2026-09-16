@@ -1,6 +1,5 @@
 import { tick, untrack } from "svelte";
 import { getAccountKey } from "./auth";
-import type { Attachment } from "svelte/attachments";
 import type { Cache, CacheSelection, Immutable } from "./cache.svelte";
 import { artworkNoStore, type ArtworkConnection } from "./network.svelte";
 import type { ImageMetadata, ImageRecord } from "./schema";
@@ -9,11 +8,6 @@ interface Cover {
   readonly source: string | undefined;
   readonly load: () => void;
 }
-/** Load prominent artwork as soon as its container mounts. */
-export function immediateCover(cover: { load(): void }): Attachment {
-  return () => cover.load();
-}
-
 const emptyCover: Cover = { source: undefined, load() {} };
 
 interface CoverEntry {
@@ -31,7 +25,7 @@ interface InstalledImage {
 }
 
 /** Resource acquisition and browser URLs; Cache owns references, records and bytes. */
-export class CoverEngine {
+export class Covers {
   #selection: CacheSelection;
   #connection?: ArtworkConnection;
   #scope = new AbortController();

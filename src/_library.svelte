@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Cache, Immutable } from "./cache.svelte";
-  import type { CoverEngine } from "./cover.svelte";
+  import type { Covers } from "./covers.svelte";
+  import Artwork from "./artwork.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Artist } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -9,13 +10,13 @@
 
   interface Props {
     cache: Cache;
-    coverEngine: CoverEngine;
+    covers: Covers;
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
   }
 
-  let { cache, coverEngine, trackEngine, session, playback }: Props = $props();
+  let { cache, covers, trackEngine, session, playback }: Props = $props();
 
   // The long-press invoker focuses its tile before opening the shared dialog.
   let menuArtistId = $state<string>();
@@ -85,10 +86,8 @@
     {#if visibleArtists.length > 0}
       <div class="tiles-grid">
         {#each artistPage as artist}
-          {@const cover = coverEngine.ensureCover(artist.artworkId)}
           <a
             class="tile"
-            {@attach onVisible(cover.load)}
             aria-label={artist.name}
             href={`#/library/artist/${encodeURIComponent(artist.id)}`}
             data-longpressfor="artist-menu"
@@ -96,26 +95,19 @@
             onfocus={() => (menuArtistId = artist.id)}
             title={`${artist.name} — hold for actions`}
           >
-            <span
-              class="tile-image"
-              style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
+            <Artwork
+              {covers}
+              id={artist.artworkId}
+              variant="tile"
+              viewTransitionName={`artist-cover-${artist.id}`}
             >
-              {#if cover.source}
-                <img src={cover.source} alt="" />
-              {:else}
-                <span>
-                  <svg aria-hidden="true" width="20" height="20">
-                    <use href="#icon-music"></use>
-                  </svg>
-                </span>
-              {/if}
               <strong
                 class="tile-name type-small"
                 style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
               >
                 {artist.name}
               </strong>
-            </span>
+            </Artwork>
           </a>
         {/each}
       </div>

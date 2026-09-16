@@ -8,7 +8,7 @@ import { installNavigation } from "./router-test-helpers";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { TrackEngine } from "../src/track.svelte";
-import { CoverEngine } from "../src/cover.svelte";
+import { Covers } from "../src/covers.svelte";
 
 const mocks = vi.hoisted(() => ({
   localReady: true,
@@ -717,7 +717,7 @@ it.each([
 ])("keeps row controls accessible on $route", async ({ route, selector, observesArtwork }) => {
   installDisk();
   const load = vi.fn();
-  vi.spyOn(CoverEngine.prototype, "ensureCover").mockImplementation((id) => ({
+  vi.spyOn(Covers.prototype, "ensureCover").mockImplementation((id) => ({
     source: undefined,
     load: id === "album-cover" ? load : () => {},
   }));
@@ -767,11 +767,11 @@ it.each([
   expect(observers.size).toBe(observesArtwork ? 1 : 0);
   if (observesArtwork) {
     expect(load).not.toHaveBeenCalled();
-    observers.get(control)!(false);
+    observers.get(row.querySelector(".cover")!)!(false);
     expect(load).not.toHaveBeenCalled();
-    observers.get(control)!(true);
+    observers.get(row.querySelector(".cover")!)!(true);
     expect(load).toHaveBeenCalledOnce();
-    observers.get(control)!(false);
+    observers.get(row.querySelector(".cover")!)!(false);
     expect(row.hasAttribute("data-viewport-hidden")).toBe(false);
   }
 });
@@ -784,7 +784,7 @@ it("renders cached artwork only near the viewport and drops the previous account
     class {
       constructor(private callback: IntersectionObserverCallback) {}
       observe(target: Element) {
-        expect(target.matches("a.tile")).toBe(true);
+        expect(target.matches(".tile-image")).toBe(true);
         intersections.push((visible) =>
           this.callback(
             [{ target, isIntersecting: visible } as IntersectionObserverEntry],

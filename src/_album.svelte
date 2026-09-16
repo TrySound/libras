@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Cache, Immutable } from "./cache.svelte";
-  import { immediateCover, type CoverEngine } from "./cover.svelte";
+  import type { Covers } from "./covers.svelte";
+  import Artwork from "./artwork.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -10,15 +11,14 @@
   interface Props {
     params: RouteParams;
     cache: Cache;
-    coverEngine: CoverEngine;
+    covers: Covers;
     trackEngine: TrackEngine;
     session: Session;
     playbackState: "loading" | "playing" | "paused";
     playback: Playback;
   }
 
-  let { params, cache, coverEngine, trackEngine, session, playbackState, playback }: Props =
-    $props();
+  let { params, cache, covers, trackEngine, session, playbackState, playback }: Props = $props();
 
   const offlineMode = $derived(session.offlineMode);
   const loading = $derived(!session.localReady);
@@ -44,20 +44,15 @@
 
 <section>
   {#if libraryAvailable && artist && album}
-    {@const artwork = coverEngine.ensureCover(album.artworkId)}
     <div class="view collection-view">
-      <div
-        class="artwork"
-        style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
-        aria-hidden="true"
-        {@attach immediateCover(artwork)}
-      >
-        {#if artwork.source}
-          <img src={artwork.source} alt="" />
-        {:else}
-          <svg aria-hidden="true" width="20" height="20"><use href="#icon-music"></use></svg>
-        {/if}
-      </div>
+      <Artwork
+        {covers}
+        id={album.artworkId}
+        variant="artwork"
+        loading="eager"
+        iconSize={20}
+        viewTransitionName={`album-cover-${album.id}`}
+      />
       <div class="section-heading collection-heading">
         <div>
           <a
