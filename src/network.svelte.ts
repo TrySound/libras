@@ -475,6 +475,15 @@ export class Network {
     return connection;
   }
 
+  /** Validate explicit login without fetching a library or enabling normal access. */
+  async validate(connection: NetworkConnection) {
+    connection.signal.throwIfAborted();
+    const candidate = this.#candidate;
+    if (!candidate || candidate.handle !== connection)
+      throw new DOMException("Connection superseded.", "AbortError");
+    await this.#request(candidate.client, () => candidate.client.ping());
+  }
+
   /** Accept only the live candidate; stale login work must never restore access. */
   accept(connection: NetworkConnection): ActiveNetworkConnection {
     connection.signal.throwIfAborted();

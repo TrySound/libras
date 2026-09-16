@@ -179,6 +179,10 @@ export class SubsonicClient {
     return this.#parse(await this.#fetch(this.#url(path, query), { signal }), signal);
   }
 
+  async ping() {
+    await this.#get("ping");
+  }
+
   async getIndexes(ifModifiedSince?: number) {
     const result = await this.#get("getIndexes", { ifModifiedSince });
     if (!result.indexes) return null;

@@ -134,33 +134,32 @@ describe("app settings", () => {
   });
 
   it.each([false, true])(
-    "shows album/track counters only while connecting or refreshing (saved: %s)",
+    "shows album/track counters during background refresh (saved: %s)",
     async (saved) => {
       const { target, metadata, session } = await setup(saved);
-      metadata.progress.mockReturnValue({ albums: 500, tracks: 1000 });
       const pending = deferred();
-      if (saved) metadata.refresh.mockImplementationOnce(() => pending.promise);
-      else
-        metadata.prepareConnection.mockImplementationOnce(async (connection) => {
-          await pending.promise;
-          return snapshot(connection.account);
-        });
+      metadata.getModifiedAt.mockResolvedValue(20);
+      metadata.readLibrary.mockImplementationOnce(async (_signal, onProgress) => {
+        onProgress?.({ albums: 500, tracks: 1000 });
+        await pending.promise;
+        return snapshot(credentials);
+      });
       const loading = saved
         ? session.refresh()
         : session.connect({ ...credentials, password: "password" });
+      await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
       flushSync();
       const counter = `${(500).toLocaleString()} albums · ${(1000).toLocaleString()} tracks`;
       expect(
         target.querySelector('[role="status"]')?.textContent?.replace(/\s+/g, " ").trim(),
       ).toBe(counter);
       expect(target.textContent).not.toContain("songs");
-      expect(target.querySelector(".connection-summary")?.textContent).toContain(
-        saved ? "Refreshing…" : "Connecting…",
-      );
+      expect(target.querySelector(".connection-summary")?.textContent).toContain("Refreshing…");
       expect(target.querySelector(".connection-dot")?.classList.contains("connecting")).toBe(true);
       expect(target.querySelector(".connection-dot")?.classList.contains("connected")).toBe(false);
       pending.resolve();
       await loading;
+      await session.refresh();
       flushSync();
       expect(target.textContent?.replace(/\s+/g, " ")).not.toContain(counter);
       expect(target.querySelector(".connection-summary")?.textContent).toContain("Connected");
@@ -198,12 +197,11 @@ describe("app settings", () => {
   });
 
   it("keeps Connect usable while forced offline, reports failures, and unlocks online mode on success", async () => {
-    const { target, metadata, fill, button, offline, session, navigate, prepareConnection } =
-      await setup();
+    const { target, fill, button, offline, session, navigate, validate } = await setup();
     expect(offline().checked).toBe(true);
     expect(offline().disabled).toBe(true);
     expect(button("Connect").disabled).toBe(false);
-    prepareConnection.mockRejectedValueOnce(new Error("Unauthorized"));
+    validate.mockRejectedValueOnce(new Error("Unauthorized"));
     fill();
     await vi.waitFor(() =>
       expect(target.querySelector('[role="alert"]')?.textContent).toBe("Unauthorized"),
