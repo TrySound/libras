@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveArtworkId } from "../src/cover.svelte";
+import { resolveArtworkId } from "../src/artwork";
 import type { Artist, Album, Track } from "../src/schema";
 
 function library() {

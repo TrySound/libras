@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolveArtworkId } from "./artwork";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { CoverEngine } from "./cover.svelte";
   import type { TrackEngine } from "./track.svelte";
@@ -85,7 +86,7 @@
     {#if visibleArtists.length > 0}
       <div class="tiles-grid">
         {#each artistPage as artist}
-          {@const cover = coverEngine.ensureArtistCover(artist.id)}
+          {@const cover = coverEngine.ensureCover(resolveArtworkId(cache, "artists", artist.id))}
           <a
             class="tile"
             {@attach onVisible(cover.load)}

@@ -1,4 +1,5 @@
 import { getAccountKey } from "./auth";
+import { resolveArtworkId } from "./artwork";
 import type { CoverEngine } from "./cover.svelte";
 import type { Cache, CachedQueue, CacheSelection, Immutable } from "./cache.svelte";
 import type { QueueConnection, RemoteQueue } from "./network.svelte";
@@ -161,17 +162,30 @@ export class Playback {
   }
 
   #playerTrack(): PlayerTrack | undefined {
+    const cache = this.#selection.cache;
     const track = this.track;
-    if (!track || !this.#canPlay(this.#localQueue.index)) return;
+    if (!cache || !track || !this.#canPlay(this.#localQueue.index)) return;
     const descriptor = {
       id: track.id,
       title: track.title,
-      artist: track.artistName ?? this.#selection.cache?.artists.get(track.artistId)?.name,
-      album: this.#selection.cache?.albums.get(track.albumId)?.title,
+      artist: track.artistName ?? cache.artists.get(track.artistId)?.name,
+      album: cache.albums.get(track.albumId)?.title,
       contentType: track.mimeType,
     };
-    const cover = this.#covers.ensureTrackCover(track.id);
-    cover.load();
+    const selection = this.#selection;
+    const covers = this.#covers;
+    let cover: ReturnType<CoverEngine["ensureCover"]> | undefined;
+    const artwork = () => {
+      if (selection.cache !== cache) return;
+      const current = covers.ensureCover(resolveArtworkId(cache, "tracks", track.id));
+      // A new reference needs acquisition; URL publication does not.
+      if (current !== cover) {
+        cover = current;
+        cover.load();
+      }
+      return cover.source;
+    };
+    artwork();
     return {
       metadata: {
         title: descriptor.title,
@@ -179,7 +193,7 @@ export class Playback {
         album: descriptor.album,
         duration: track.duration,
         get artwork() {
-          return cover.source;
+          return artwork();
         },
       },
       position: this.#localQueue.position,

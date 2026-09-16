@@ -75,13 +75,18 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     ["source", "data:image/jpeg;base64,aW1hZ2U="],
   ]);
   const coverEngine = new CoverEngine(selection);
+  const coverHandles = new Map<string | undefined, ReturnType<CoverEngine["ensureCover"]>>();
   const covers = {
-    ensureTrackCover: vi.spyOn(coverEngine, "ensureTrackCover").mockImplementation(() => ({
-      get source() {
-        return artwork.get("source");
-      },
-      load: vi.fn(),
-    })),
+    ensureCover: vi.spyOn(coverEngine, "ensureCover").mockImplementation((id) => {
+      if (!coverHandles.has(id))
+        coverHandles.set(id, {
+          get source() {
+            return id === undefined ? undefined : artwork.get("source");
+          },
+          load: vi.fn(),
+        });
+      return coverHandles.get(id)!;
+    }),
   };
   const handlers = new Map<MediaSessionAction, MediaSessionActionHandler | null>();
   const session = {
@@ -871,8 +876,8 @@ describe("playback", () => {
     await player.play();
     flushSync();
     expect(session.metadata).toMatchObject({ title: "a", artwork: [] });
-    expect(covers.ensureTrackCover).toHaveBeenLastCalledWith("a");
-    expect(covers.ensureTrackCover.mock.results.at(-1)!.value.load).toHaveBeenCalledOnce();
+    expect(covers.ensureCover).toHaveBeenLastCalledWith("a");
+    expect(covers.ensureCover.mock.results.at(-1)!.value.load).toHaveBeenCalledOnce();
     artwork("data:image/jpeg;base64,bGF0ZXI=");
     flushSync();
     expect(session.metadata).toMatchObject({
@@ -884,6 +889,61 @@ describe("playback", () => {
     artwork("data:image/jpeg;base64,bmV3");
     flushSync();
     expect(session.metadata).toBeNull();
+  });
+
+  it("reactively switches artwork IDs and fallbacks without changing text or restarting audio", async () => {
+    const { player, covers, tracks, session, updateTrack, library } = setup();
+    const sources = new SvelteMap([
+      ["a", "data:image/jpeg;base64,dHJhY2s="],
+      ["album-cover", "data:image/jpeg;base64,YWxidW0="],
+      ["artist-cover", "data:image/jpeg;base64,YXJ0aXN0="],
+    ]);
+    const handles = new Map<string | undefined, ReturnType<CoverEngine["ensureCover"]>>();
+    covers.ensureCover.mockImplementation((id) => {
+      if (!handles.has(id))
+        handles.set(id, {
+          get source() {
+            return id === undefined ? undefined : sources.get(id);
+          },
+          load: vi.fn(),
+        });
+      return handles.get(id)!;
+    });
+    library.albums = new Map(library.albums).set("album", {
+      ...library.albums.get("album")!,
+      artworkId: "album-cover",
+    });
+    library.artists = new Map(library.artists).set("artist", {
+      ...library.artists.get("artist")!,
+      artworkId: "artist-cover",
+    });
+    await player.play();
+    flushSync();
+    expect(session.metadata).toMatchObject({ title: "a", artwork: [{ src: sources.get("a") }] });
+    updateTrack("a", { title: "New title", artworkId: undefined });
+    flushSync();
+    expect(session.metadata).toMatchObject({
+      title: "a",
+      artwork: [{ src: sources.get("album-cover") }],
+    });
+    sources.set("a", "data:image/jpeg;base64,bGF0ZQ==");
+    flushSync();
+    expect(session.metadata).toMatchObject({ artwork: [{ src: sources.get("album-cover") }] });
+    library.albums = new Map(library.albums).set("album", {
+      ...library.albums.get("album")!,
+      artworkId: undefined,
+    });
+    flushSync();
+    expect(session.metadata).toMatchObject({ artwork: [{ src: sources.get("artist-cover") }] });
+    library.artists = new Map(library.artists).set("artist", {
+      ...library.artists.get("artist")!,
+      artworkId: undefined,
+    });
+    flushSync();
+    expect(session.metadata).toMatchObject({ title: "a", artwork: [] });
+    for (const id of ["a", "album-cover", "artist-cover"])
+      expect(handles.get(id)!.load).toHaveBeenCalledOnce();
+    expect(tracks.getSource).toHaveBeenCalledOnce();
   });
 
   it("advances at end but retains the final queue entry", async () => {

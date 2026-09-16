@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolveArtworkId } from "./artwork";
   import type { Cache, Immutable } from "./cache.svelte";
   import { immediateCover, type CoverEngine } from "./cover.svelte";
   import type { TrackEngine } from "./track.svelte";
@@ -54,7 +55,7 @@
 
 <section>
   {#if libraryAvailable && artist}
-    {@const artwork = coverEngine.ensureArtistCover(artist.id)}
+    {@const artwork = coverEngine.ensureCover(resolveArtworkId(cache, "artists", artist.id))}
     <div class="view collection-view">
       <div
         class="artwork"
@@ -112,7 +113,7 @@
       {#each visibleAlbums as album, index}
         {@const albumMenuId = `album-menu-${index}`}
         {@const visibleTrackIds = availableTrackIds(cache.albumTracks.get(album.id) ?? [])}
-        {@const cover = coverEngine.ensureAlbumCover(album.id)}
+        {@const cover = coverEngine.ensureCover(resolveArtworkId(cache, "albums", album.id))}
         <article class="wings-item row-button">
           <a
             class="linkarea"

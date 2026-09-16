@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolveArtworkId } from "./artwork";
   import { onDestroy, onMount } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
@@ -324,7 +325,7 @@
 </main>
 
 {#if currentTrack}
-  {@const cover = coverEngine.ensureTrackCover(currentTrack.id)}
+  {@const cover = coverEngine.ensureCover(resolveArtworkId(cache, "tracks", currentTrack.id))}
   <div class="mini-player wings">
     <button
       class="linkarea"
@@ -386,11 +387,15 @@
         class="artwork"
         aria-hidden="true"
         {@attach currentTrack
-          ? immediateCover(coverEngine.ensureTrackCover(currentTrack.id))
+          ? immediateCover(
+              coverEngine.ensureCover(resolveArtworkId(cache, "tracks", currentTrack.id)),
+            )
           : undefined}
       >
         {#if currentTrack}
-          {@const cover = coverEngine.ensureTrackCover(currentTrack.id)}
+          {@const cover = coverEngine.ensureCover(
+            resolveArtworkId(cache, "tracks", currentTrack.id),
+          )}
           {#if cover.source}
             <img src={cover.source} alt="" />
           {:else}

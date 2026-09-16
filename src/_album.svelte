@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolveArtworkId } from "./artwork";
   import type { Cache, Immutable } from "./cache.svelte";
   import { immediateCover, type CoverEngine } from "./cover.svelte";
   import type { TrackEngine } from "./track.svelte";
@@ -44,7 +45,7 @@
 
 <section>
   {#if libraryAvailable && artist && album}
-    {@const artwork = coverEngine.ensureAlbumCover(album.id)}
+    {@const artwork = coverEngine.ensureCover(resolveArtworkId(cache, "albums", album.id))}
     <div class="view collection-view">
       <div
         class="artwork"

@@ -115,6 +115,7 @@
 </script>
 
 <script lang="ts">
+  import { resolveArtworkId } from "./artwork";
   import type { Cache } from "./cache.svelte";
   import type { CoverEngine } from "./cover.svelte";
   import type { TrackEngine } from "./track.svelte";
@@ -244,12 +245,13 @@
           </h2>
           <div class="wings">
             {#each records as record (record.id)}
-              {@const cover =
-                group === "Artists"
-                  ? coverEngine.ensureArtistCover(record.id)
-                  : group === "Albums"
-                    ? coverEngine.ensureAlbumCover(record.id)
-                    : coverEngine.ensureTrackCover(record.id)}
+              {@const cover = coverEngine.ensureCover(
+                resolveArtworkId(
+                  cache,
+                  group === "Artists" ? "artists" : group === "Albums" ? "albums" : "tracks",
+                  record.id,
+                ),
+              )}
               <div class="wings-item row-button" {@attach onVisible(cover.load)}>
                 {#if record.href}
                   <a
