@@ -346,7 +346,7 @@ describe("playback queue synchronization", () => {
     expect(disk.state.writes).toBe(0);
   });
 
-  it.each(["local edit", "playback", "detach"])(
+  it.each(["local edit", "playback", "playback then stopped", "detach"])(
     "does not adopt a fetched queue after %s",
     async (action) => {
       await seed();
@@ -358,7 +358,8 @@ describe("playback queue synchronization", () => {
       const pending = playback.refreshQueue();
       await vi.waitFor(() => expect(connection.read).toHaveBeenCalledOnce());
       if (action === "local edit") await playback.playIndex(0);
-      if (action === "playback") await playback.play();
+      if (action === "playback" || action === "playback then stopped") await playback.play();
+      if (action === "playback then stopped") playback.suspend();
       if (action === "detach") playback.setConnection(undefined);
       response.resolve(remote());
       await pending;

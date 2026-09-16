@@ -7,6 +7,14 @@ import type Player from "./player.svelte";
 import type { PlayerTrack } from "./player.svelte";
 import type { TrackEngine } from "./track.svelte";
 
+type PlaybackActivity = "active" | "paused" | "inactive";
+
+function playerActivity(player: ReturnType<typeof Player>): PlaybackActivity {
+  if (player.status === "idle" || player.status === "ended") return "inactive";
+  const starting = player.status === "loading" || player.status === "seeking";
+  return player.playing || starting ? "active" : "paused";
+}
+
 const emptyQueue = { tracks: [] as readonly string[], index: -1, position: 0 };
 interface QueueState {
   index?: number;
@@ -53,19 +61,21 @@ export class Playback {
   #player?: ReturnType<typeof Player>;
   #isAvailable: (id: string) => boolean;
   #cleanup?: () => void;
-  #id?: string;
-  #cached = false;
+  #selectedTrackId?: string;
+  #sourceIsCached = false;
   #cover = $state.raw<ReturnType<CoverEngine["ensureTrackCover"]>>();
   #connection?: QueueConnection;
   #refreshPending?: Promise<void>;
   #refreshController?: AbortController;
-  #serverWrites: Promise<void> = Promise.resolve();
+  #uploadTail: Promise<void> = Promise.resolve();
   #queueError = $state.raw<unknown>();
-  #playbackState: "active" | "paused" | "inactive" = "inactive";
+  #activity: PlaybackActivity = "inactive";
   #lastProgressFlush = 0;
-  #serverWritable = false;
-  #dirty = false;
-  #epoch = 0;
+  // Reconnect/progress must not replace a remote queue with an offline one.
+  // Only server adoption or an explicit replacement grants upload permission.
+  #uploadAllowed = false;
+  #uploadPending = false;
+  #syncVersion = 0;
   #destroyed = false;
   #saveTimer?: ReturnType<typeof setTimeout>;
 
@@ -91,30 +101,29 @@ export class Playback {
   }
 
   /** Reconcile synchronously after publication, never through a queue subscription. */
-  #syncSelection() {
+  #syncSelection(restart = false) {
     const id = this.track?.id;
-    if (id !== this.#id) {
-      this.#id = id;
-      this.suspend();
-    }
+    if (!restart && id === this.#selectedTrackId) return;
+    this.#selectedTrackId = id;
+    this.suspend();
   }
   /** Session calls this after selecting/loading local data. */
   activate() {
     if (this.#destroyed) return;
-    this.#resetPolicy();
-    this.#playbackState = "inactive";
+    this.#resetSync();
+    this.#activity = "inactive";
     this.#lastProgressFlush = 0;
     this.#syncSelection();
   }
   setConnection(connection: QueueConnection | undefined) {
     if (this.#destroyed || connection === this.#connection) return;
     this.#connection = connection;
-    this.#resetPolicy();
+    this.#resetSync();
   }
   setPosition(position: number) {
     if (!this.#player || this.#destroyed) return;
     this.#setQueuePosition(position);
-    if (this.#playbackState !== "active") this.#saveQueue();
+    if (this.#activity !== "active") this.#scheduleQueueFlush();
     else if (Date.now() - this.#lastProgressFlush >= 10_000) {
       this.#lastProgressFlush = Date.now();
       void this.flushQueue();
@@ -122,7 +131,7 @@ export class Playback {
   }
   ended() {
     if (!this.#player || this.#destroyed) return;
-    this.#setPlaybackState("inactive");
+    this.#setActivity("inactive");
     void this.next();
   }
 
@@ -137,17 +146,8 @@ export class Playback {
         if (cover) untrack(() => player.setArtwork(source));
       });
       $effect(() => {
-        const status = player.status;
-        const playing = player.playing;
-        untrack(() => {
-          this.#setPlaybackState(
-            status === "idle" || status === "ended"
-              ? "inactive"
-              : playing || status === "loading" || status === "seeking"
-                ? "active"
-                : "paused",
-          );
-        });
+        const activity = playerActivity(player);
+        untrack(() => this.#setActivity(activity));
       });
     });
     const hidden = () => {
@@ -163,7 +163,7 @@ export class Playback {
       document.removeEventListener("visibilitychange", hidden);
       this.suspend();
       this.#player = undefined;
-      this.#id = undefined;
+      this.#selectedTrackId = undefined;
       this.#cleanup = undefined;
     };
     this.#cleanup = cleanup;
@@ -196,7 +196,7 @@ export class Playback {
         const source = await this.#tracks.getSource(descriptor, options);
         // Player owns/reclaims even late results. Only current results affect
         // the decision whether disconnect can keep audio running.
-        if (!options.signal.aborted) this.#cached = source.cached;
+        if (!options.signal.aborted) this.#sourceIsCached = source.cached;
         return {
           url: source.url,
           offset: source.offset,
@@ -214,12 +214,12 @@ export class Playback {
       return;
     }
     if (!this.#canPlay(this.#localQueue.index)) return;
-    this.#setPlaybackState("active");
+    this.#setActivity("active");
     if (player.status !== "idle") await player.resume();
     else {
       const track = this.#playerTrack();
       if (!track) return;
-      this.#id = this.track?.id;
+      this.#selectedTrackId = this.track?.id;
       await player.play(track);
     }
   }
@@ -227,9 +227,7 @@ export class Playback {
     const player = this.#player;
     if (!player) return;
     player.pause();
-    this.#setPlaybackState(
-      player.status === "idle" || player.status === "ended" ? "inactive" : "paused",
-    );
+    this.#setActivity(playerActivity(player));
   }
   async toggle() {
     const player = this.#player;
@@ -240,19 +238,16 @@ export class Playback {
   /** Replace the queue without starting audio. Explicit replacements permit uploads
    * on this connection; progress alone never promotes an offline queue. */
   setQueue(state: QueueState) {
-    const cache = this.#selection.cache;
-    if (!cache || this.#destroyed) return;
-    this.#serverWritable = this.#connected(cache);
-    this.#changeQueue(state);
-    this.#saveQueue();
+    this.#changeQueue(state, { replace: true });
   }
   async replaceQueueAndPlay(tracks: readonly string[], startIndex = 0) {
     if (!tracks.length) {
       this.clearQueue();
       return;
     }
-    this.setQueue({ tracks, position: 0 });
-    await this.playIndex(Math.max(0, Math.min(startIndex, tracks.length - 1)));
+    const index = Math.max(0, Math.min(startIndex, tracks.length - 1));
+    this.#changeQueue({ tracks, index, position: 0 }, { replace: true, restart: true });
+    if (Number.isInteger(index)) await this.play();
   }
   async enqueue(tracks: readonly string[], placement: "next" | "last") {
     if (!tracks.length) return;
@@ -267,8 +262,7 @@ export class Playback {
     }
   }
   clearQueue() {
-    this.suspend();
-    this.setQueue({ tracks: [], position: 0 });
+    this.#changeQueue({ tracks: [], position: 0 }, { replace: true, restart: true });
   }
   async playIndex(index: number) {
     if (
@@ -278,9 +272,7 @@ export class Playback {
       index >= this.#localQueue.tracks.length
     )
       return;
-    this.#changeQueue({ tracks: this.#localQueue.tracks, index, position: 0 });
-    this.#saveQueue();
-    this.suspend();
+    this.#changeQueue({ tracks: this.#localQueue.tracks, index, position: 0 }, { restart: true });
     await this.play();
   }
   async next() {
@@ -297,80 +289,98 @@ export class Playback {
     const duration = this.#player?.duration || this.track?.duration || 0;
     position = Math.max(0, duration > 0 ? Math.min(position, duration) : position);
     this.#setQueuePosition(position);
-    this.#saveQueue();
+    this.#scheduleQueueFlush();
     // Seeking a restored queue edits its resume point without loading audio.
     if (this.#player?.status !== "idle") await this.#player?.seek(position);
   }
   suspendNetwork() {
-    if (!this.#cached || this.#player?.status === "loading" || this.#player?.status === "seeking")
+    if (
+      !this.#sourceIsCached ||
+      this.#player?.status === "loading" ||
+      this.#player?.status === "seeking"
+    )
       this.suspend();
   }
   suspend() {
     this.#cover = undefined;
     this.#player?.unload();
-    this.#cached = false;
-    this.#setPlaybackState("inactive");
+    this.#sourceIsCached = false;
+    this.#setActivity("inactive");
   }
   stop() {
-    this.suspend();
-    this.#changeQueue({ tracks: this.#localQueue.tracks, index: -1, position: 0 });
-    this.#saveQueue();
+    this.#changeQueue(
+      { tracks: this.#localQueue.tracks, index: -1, position: 0 },
+      { restart: true },
+    );
   }
 
-  #changeQueue(state: QueueState, checkpoint = false) {
+  #changeQueue(state: QueueState, { replace = false, restart = false } = {}) {
     const cache = this.#selection.cache;
     if (!cache || this.#destroyed) return;
     const requestedIndex = state.index ?? -1;
-    const index =
+    const validIndex =
       Number.isInteger(requestedIndex) &&
       requestedIndex >= 0 &&
-      requestedIndex < state.tracks.length
-        ? requestedIndex
-        : -1;
+      requestedIndex < state.tracks.length;
+    const index = validIndex ? requestedIndex : -1;
     const position =
       index >= 0 && Number.isFinite(state.position) ? Math.max(0, state.position) : 0;
-    this.#refreshController?.abort();
-    cache.setQueue({ tracks: state.tracks, index, position }, { checkpoint });
-    this.#dirty = this.#serverWritable && this.#connected(cache);
-    this.#syncSelection();
+    if (replace) this.#uploadAllowed = this.#hasConnection(cache);
+    cache.setQueue({ tracks: state.tracks, index, position });
+    this.#queueEdited(cache);
+    this.#syncSelection(restart);
+    this.#scheduleQueueFlush();
   }
   #setQueuePosition(position: number) {
     const cache = this.#selection.cache;
     if (!cache || this.#destroyed || cache.queue.index < 0 || !Number.isFinite(position)) return;
     position = Math.max(0, position);
     if (position === cache.queue.position) return;
-    this.#changeQueue({ ...cache.queue, position }, true);
+    cache.setQueue({ ...cache.queue, position }, { checkpoint: true });
+    this.#queueEdited(cache);
+    // A clock update never changes selection, but metadata may have removed the
+    // selected track since playback began. Preserve its saved queue/resume point.
+    if (this.#selectedTrackId !== undefined && !cache.tracks.has(this.#selectedTrackId)) {
+      this.#selectedTrackId = undefined;
+      this.suspend();
+    }
+  }
+  #queueEdited(cache: Cache) {
+    this.#refreshController?.abort();
+    this.#uploadPending = this.#uploadAllowed && this.#hasConnection(cache);
   }
 
   // Connection-scoped synchronization policy. No independent queue state or lifecycle.
-  #resetPolicy() {
+  #resetSync() {
     this.#refreshController?.abort();
     this.#refreshController = undefined;
     this.#refreshPending = undefined;
-    this.#serverWrites = Promise.resolve();
+    this.#uploadTail = Promise.resolve();
     this.#queueError = undefined;
-    this.#epoch++;
-    this.#dirty = false;
-    this.#serverWritable = false;
+    this.#syncVersion++;
+    this.#uploadPending = false;
+    this.#uploadAllowed = false;
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
   }
-  #connected(cache: Cache) {
+  #hasConnection(cache: Cache) {
     return (
       !!this.#connection &&
       !this.#connection.signal.aborted &&
       cache.key === getAccountKey(this.#connection.account)
     );
   }
-  #setPlaybackState(state: "active" | "paused" | "inactive") {
-    if (this.#destroyed || state === this.#playbackState) return;
-    this.#playbackState = state;
+  /** Commands publish intent synchronously, before awaiting Player; observations
+   * reconcile actual status here. Both paths share idempotent save/read policy. */
+  #setActivity(state: PlaybackActivity) {
+    if (this.#destroyed || state === this.#activity) return;
+    this.#activity = state;
     if (state !== "inactive") this.#refreshController?.abort();
-    if (state === "active") this.#saveQueue();
+    if (state === "active") this.#scheduleQueueFlush();
     else void this.flushQueue();
   }
   // Debounce explicit commands separately from periodic playback progress flushes.
-  #saveQueue() {
+  #scheduleQueueFlush() {
     if (this.#destroyed) return;
     clearTimeout(this.#saveTimer);
     this.#saveTimer = setTimeout(() => {
@@ -383,89 +393,89 @@ export class Playback {
     this.#saveTimer = undefined;
     try {
       await this.#selection.cache?.flush();
-      await this.#writeServer();
+      await this.#uploadQueue();
     } catch {
       // Cache retains checkpoint errors and dirty data for retry.
     }
   }
-  #writeServer(): Promise<void> {
+  #uploadQueue(): Promise<void> {
     const connection = this.#connection;
     const cache = this.#selection.cache;
-    const epoch = this.#epoch;
-    const valid = () =>
+    if (!cache || !connection || !this.#hasConnection(cache) || this.#destroyed)
+      return Promise.resolve();
+    const version = this.#syncVersion;
+    const isCurrentConnection = () =>
       !this.#destroyed &&
-      epoch === this.#epoch &&
-      !!cache &&
+      version === this.#syncVersion &&
       cache === this.#selection.cache &&
-      this.#connected(cache);
-    const task = this.#serverWrites.then(async () => {
-      if (!cache || !connection || !valid()) return;
+      !connection.signal.aborted;
+    const task = this.#uploadTail.then(async () => {
+      if (!isCurrentConnection()) return;
       const revision = cache.queueRevision;
       await cache.flush();
-      if (!valid() || !this.#dirty || cache.queueDirty || revision !== cache.queueRevision) return;
+      if (!isCurrentConnection() || !this.#uploadPending) return;
+      const checkpointIsCurrent = !cache.queueDirty && revision === cache.queueRevision;
+      if (!checkpointIsCurrent) return;
       const state = cache.queue;
       this.#queueError = undefined;
       try {
         await connection.write(toRemoteQueue(state));
-        if (valid() && revision === cache.queueRevision) this.#dirty = false;
+        if (isCurrentConnection() && revision === cache.queueRevision) this.#uploadPending = false;
       } catch (error) {
-        if (valid()) this.#queueError = error;
+        if (isCurrentConnection()) this.#queueError = error;
       }
     });
     // A failed checkpoint rejects this attempt without poisoning later attempts.
-    this.#serverWrites = task.catch(() => {});
+    this.#uploadTail = task.catch(() => {});
     return task;
   }
   refreshQueue(): Promise<void> {
     const connection = this.#connection;
     const cache = this.#selection.cache;
-    if (!connection || !cache || !this.#connected(cache) || this.#destroyed)
+    if (!connection || !cache || !this.#hasConnection(cache) || this.#destroyed)
       return Promise.resolve();
     if (this.#refreshPending) return this.#refreshPending;
-    const epoch = this.#epoch;
+    const version = this.#syncVersion;
     const controller = new AbortController();
     this.#refreshController = controller;
     const signal = AbortSignal.any([connection.signal, controller.signal]);
-    const current = () =>
-      epoch === this.#epoch &&
+    const isCurrentConnection = () =>
+      version === this.#syncVersion &&
       !this.#destroyed &&
       cache === this.#selection.cache &&
       !connection.signal.aborted;
     return (this.#refreshPending = (async () => {
       try {
         try {
-          await this.#writeServer();
+          await this.#uploadQueue();
         } catch {
           // Cache reports checkpoint failures; do not retain a duplicate sync error.
           return;
         }
-        if (!current()) return;
+        if (!isCurrentConnection()) return;
         this.#queueError = undefined;
         const revision = cache.queueRevision;
         const remote = await connection.read();
-        if (
-          !current() ||
-          signal.aborted ||
-          revision !== cache.queueRevision ||
-          this.#playbackState !== "inactive"
-        )
-          return;
+        if (!isCurrentConnection() || signal.aborted) return;
+        const queueWasEdited = revision !== cache.queueRevision;
+        const playbackInUse = this.#activity !== "inactive";
+        if (queueWasEdited || playbackInUse) return;
         cache.setQueue(fromRemoteQueue(remote, cache.queue));
-        this.#dirty = false;
-        this.#serverWritable = true;
+        this.#uploadPending = false;
+        this.#uploadAllowed = true;
         this.#syncSelection();
       } catch (error) {
-        if (current() && !signal.aborted) this.#queueError = error;
+        if (isCurrentConnection() && !signal.aborted) this.#queueError = error;
       }
     })().finally(() => {
       if (this.#refreshController === controller) this.#refreshController = undefined;
-      if (epoch === this.#epoch) this.#refreshPending = undefined;
+      if (version === this.#syncVersion) this.#refreshPending = undefined;
     }));
   }
   destroy() {
     this.#destroyed = true;
     this.#cleanup?.();
-    this.#resetPolicy();
+    this.#resetSync();
     return (
       this.#selection.cache?.flush().then(
         () => {},

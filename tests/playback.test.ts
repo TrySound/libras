@@ -195,6 +195,73 @@ afterEach(async () => {
 });
 
 describe("playback", () => {
+  it.each(["replace", "select", "replay", "duplicate", "stop", "clear"] as const)(
+    "%s publishes the final queue once before unloading once",
+    async (command) => {
+      const { player, selection, getPlayer } = setup();
+      if (command === "duplicate") player.setQueue({ tracks: ["a", "a"], index: 0, position: 0 });
+      await player.play();
+      const expected =
+        command === "clear"
+          ? { tracks: [], index: -1, position: 0 }
+          : {
+              tracks:
+                command === "replace"
+                  ? ["c", "b"]
+                  : command === "duplicate"
+                    ? ["a", "a"]
+                    : ["a", "b"],
+              index: command === "stop" ? -1 : command === "replay" ? 0 : 1,
+              position: 0,
+            };
+      const publish = vi.spyOn(selection.cache!, "setQueue");
+      const component = getPlayer();
+      const unload = component.unload;
+      const stop = vi.spyOn(component, "unload").mockImplementation(() => {
+        expect(selection.cache!.queue).toEqual(expected);
+        unload();
+      });
+      if (command === "replace") await player.replaceQueueAndPlay(["c", "b"], 1);
+      else if (command === "clear") player.clearQueue();
+      else if (command === "stop") player.stop();
+      else await player.playIndex(command === "replay" ? 0 : 1);
+      expect(publish).toHaveBeenCalledOnce();
+      expect(stop).toHaveBeenCalledOnce();
+      expect(selection.cache!.queue).toEqual(expected);
+      stop.mockRestore();
+    },
+  );
+
+  it.each([NaN, 0.5])(
+    "does not autoplay a replacement with invalid start index %s",
+    async (index) => {
+      const { player, selection, audio } = setup();
+      const publish = vi.spyOn(selection.cache!, "setQueue");
+      await player.replaceQueueAndPlay(["a", "b"], index);
+      expect(selection.cache!.queue).toEqual({ tracks: ["a", "b"], index: -1, position: 0 });
+      expect(publish).toHaveBeenCalledOnce();
+      expect(audio.play).not.toHaveBeenCalled();
+    },
+  );
+
+  it("checkpoints progress without changing selection or restarting Player", async () => {
+    const { player, selection, getPlayer, tracks } = setup();
+    await player.play();
+    const membership = selection.cache!.queue.tracks;
+    const publish = vi.spyOn(selection.cache!, "setQueue");
+    const unload = vi.spyOn(getPlayer(), "unload");
+    tracks.getSource.mockClear();
+    player.setPosition(8);
+    expect(publish).toHaveBeenCalledExactlyOnceWith(
+      { tracks: membership, index: 0, position: 8 },
+      { checkpoint: true },
+    );
+    expect(selection.cache!.queue.tracks).toBe(membership);
+    expect(unload).not.toHaveBeenCalled();
+    expect(tracks.getSource).not.toHaveBeenCalled();
+    expect(getPlayer().playing).toBe(true);
+  });
+
   it("reads a new cache atomically and ignores a suspended account's late source", async () => {
     const { selection, player, getPlayer, queuePosition, tracks, audio } = setup();
     const old = selection.cache!;
