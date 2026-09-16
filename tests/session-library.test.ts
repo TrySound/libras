@@ -39,7 +39,7 @@ afterEach(async () => {
 
 describe("session library workflow", () => {
   it("loads the candidate cache before validation, then connects before the library refresh finishes", async () => {
-    const { session, selection, metadata, validate, auth, queue, disk } = setup(false);
+    const { session, selection, metadata, validate, auth, playback, disk } = setup(false);
     await disk.seed(credentials, snapshot());
     const validated = deferred();
     const response = deferred<Library>();
@@ -79,7 +79,7 @@ describe("session library workflow", () => {
     expect(session.refreshError).toContain("Library unavailable");
     expect(auth.load()).not.toBeNull();
     expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
-    expect(queue.refresh).toHaveBeenCalledOnce();
+    expect(playback.refreshQueue).toHaveBeenCalledOnce();
     expect(disk.writes).toBe(0);
   });
 

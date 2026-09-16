@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { installLongPress } from "./long-press";
-  import { PlaybackController } from "./playback-controller.svelte";
+  import { Playback } from "./playback.svelte";
   import Player from "./player.svelte";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
@@ -14,7 +14,6 @@
   import { CoverEngine, immediateCover } from "./cover.svelte";
   import type { Album as AlbumRecord, Artist as ArtistRecord } from "./schema";
   import { Cache, type Immutable } from "./cache.svelte";
-  import { QueueEngine } from "./queue.svelte";
   import { Session } from "./session.svelte";
   import { Network } from "./network.svelte";
   import Router, { navigate, type RouteParams } from "./router.svelte";
@@ -47,7 +46,6 @@
     cache.queue.index >= 0 && cache.queue.index < cache.queue.tracks.length - 1,
   );
   const hasPreviousTrack = $derived(cache.queue.index > 0);
-  const queueEngine = new QueueEngine(selection);
   let queue = $derived(
     cache.queue.tracks.flatMap((id, index) => {
       const track = cache.tracks.get(id);
@@ -59,8 +57,7 @@
   const coverEngine = new CoverEngine(selection);
   const trackEngine = new TrackEngine({ selection });
   let player = $state<ReturnType<typeof Player>>();
-  const playback: PlaybackController = new PlaybackController({
-    queue: queueEngine,
+  const playback: Playback = new Playback({
     selection,
     tracks: trackEngine,
     covers: coverEngine,
@@ -71,7 +68,6 @@
     selection,
     network,
     auth: new AuthStore(),
-    queue: queueEngine,
     covers: coverEngine,
     tracks: trackEngine,
     playback,
@@ -118,7 +114,6 @@
     session.destroy();
     playback.destroy();
     coverEngine.destroy();
-    queueEngine.destroy();
     trackEngine.destroy();
   });
 
@@ -156,6 +151,7 @@
   onnext={() => playback.next()}
   onposition={(position) => playback.setPosition(position)}
   onended={() => playback.ended()}
+  onstatechange={(state) => playback.updatePlayerState(state)}
 />
 
 <svelte:head>
