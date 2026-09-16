@@ -326,6 +326,14 @@ it("renders the cache stress fixture with unique tiles and one shared menu", asy
   flushSync();
   const tiles = [...target.querySelectorAll<HTMLAnchorElement>("a.tile")];
   expect(tiles).toHaveLength(48);
+  for (const tile of tiles) {
+    const artwork = tile.querySelector(".tile-image")!;
+    const label = tile.querySelector(".tile-name")!;
+    expect(artwork.parentElement).toBe(tile);
+    expect(label.parentElement).toBe(tile);
+    expect(artwork.getAttribute("aria-hidden")).toBe("true");
+    expect(label.closest('[aria-hidden="true"]')).toBeNull();
+  }
   expect(cache.artists.size).toBe(100);
   expect(cache.albums.size).toBe(0);
   expect(cache.tracks.size).toBe(0);

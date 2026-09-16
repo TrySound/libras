@@ -100,14 +100,13 @@
               id={artist.artworkId}
               variant="tile"
               viewTransitionName={`artist-cover-${artist.id}`}
+            />
+            <strong
+              class="tile-name type-small"
+              style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
             >
-              <strong
-                class="tile-name type-small"
-                style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
-              >
-                {artist.name}
-              </strong>
-            </Artwork>
+              {artist.name}
+            </strong>
           </a>
         {/each}
       </div>

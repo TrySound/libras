@@ -1020,7 +1020,7 @@ a {
   font-size: 2.2rem;
 }
 
-.tile-image::after {
+.tile::after {
   position: absolute;
   inset: 35% 0 0;
   content: "";

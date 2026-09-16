@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { Snippet } from "svelte";
   import type { Covers } from "./covers.svelte";
   import { onVisible } from "./viewport";
 
@@ -11,7 +10,6 @@
     loading?: "lazy" | "eager";
     iconSize?: number;
     viewTransitionName?: string;
-    children?: Snippet;
   }
 
   let {
@@ -22,7 +20,6 @@
     loading = "lazy",
     iconSize,
     viewTransitionName,
-    children,
   }: Props = $props();
   const cover = $derived(id === undefined ? undefined : covers.ensureCover(id));
   const placeholderSize = $derived(iconSize ?? (variant === "artwork" ? 64 : 20));
@@ -40,7 +37,7 @@
 <span
   class={variant === "tile" ? "tile-image" : variant}
   data-size={variant === "cover" ? size : undefined}
-  aria-hidden={children ? undefined : "true"}
+  aria-hidden="true"
   style:view-transition-name={viewTransitionName ? CSS.escape(viewTransitionName) : undefined}
   {@attach acquire}
 >
@@ -51,5 +48,4 @@
       ><use href="#icon-music"></use></svg
     >
   {/if}
-  {@render children?.()}
 </span>
