@@ -1,5 +1,4 @@
 import { getAccountKey } from "./auth";
-import { resolveArtworkId } from "./artwork";
 import type { CoverEngine } from "./cover.svelte";
 import type { Cache, CachedQueue, CacheSelection, Immutable } from "./cache.svelte";
 import type { QueueConnection, RemoteQueue } from "./network.svelte";
@@ -177,7 +176,7 @@ export class Playback {
     let cover: ReturnType<CoverEngine["ensureCover"]> | undefined;
     const artwork = () => {
       if (selection.cache !== cache) return;
-      const current = covers.ensureCover(resolveArtworkId(cache, "tracks", track.id));
+      const current = covers.ensureCover(cache.tracks.get(track.id)?.artworkId);
       // A new reference needs acquisition; URL publication does not.
       if (current !== cover) {
         cover = current;

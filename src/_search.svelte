@@ -13,6 +13,7 @@
     artist: string;
     album: string;
     href?: string;
+    artworkId?: string;
   }
 
   export function createSearchState() {
@@ -57,6 +58,7 @@
         .map((artist) => ({
           id: artist.id,
           title: artist.name,
+          artworkId: artist.artworkId,
           artist: "",
           album: "",
           href: artistPath(artist.id),
@@ -64,6 +66,7 @@
       Albums: eligibleAlbums.map((album) => ({
         id: album.id,
         title: album.title,
+        artworkId: album.artworkId,
         artist: artists.get(album.artistId)?.name ?? "",
         album: "",
         href: `${artistPath(album.artistId)}/album/${encodeURIComponent(album.id)}`,
@@ -71,6 +74,7 @@
       Tracks: eligibleTracks.map((track) => ({
         id: track.id,
         title: track.title,
+        artworkId: track.artworkId,
         artist: track.artistName ?? artists.get(track.artistId)?.name ?? "",
         album: albums.get(track.albumId)?.title ?? "",
       })),
@@ -115,7 +119,6 @@
 </script>
 
 <script lang="ts">
-  import { resolveArtworkId } from "./artwork";
   import type { Cache } from "./cache.svelte";
   import type { CoverEngine } from "./cover.svelte";
   import type { TrackEngine } from "./track.svelte";
@@ -245,13 +248,7 @@
           </h2>
           <div class="wings">
             {#each records as record (record.id)}
-              {@const cover = coverEngine.ensureCover(
-                resolveArtworkId(
-                  cache,
-                  group === "Artists" ? "artists" : group === "Albums" ? "albums" : "tracks",
-                  record.id,
-                ),
-              )}
+              {@const cover = coverEngine.ensureCover(record.artworkId)}
               <div class="wings-item row-button" {@attach onVisible(cover.load)}>
                 {#if record.href}
                   <a

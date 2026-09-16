@@ -891,8 +891,8 @@ describe("playback", () => {
     expect(session.metadata).toBeNull();
   });
 
-  it("reactively switches artwork IDs and fallbacks without changing text or restarting audio", async () => {
-    const { player, covers, tracks, session, updateTrack, library } = setup();
+  it("follows normalized track artwork IDs without changing text or restarting audio", async () => {
+    const { player, covers, tracks, session, updateTrack } = setup();
     const sources = new SvelteMap([
       ["a", "data:image/jpeg;base64,dHJhY2s="],
       ["album-cover", "data:image/jpeg;base64,YWxidW0="],
@@ -909,18 +909,10 @@ describe("playback", () => {
         });
       return handles.get(id)!;
     });
-    library.albums = new Map(library.albums).set("album", {
-      ...library.albums.get("album")!,
-      artworkId: "album-cover",
-    });
-    library.artists = new Map(library.artists).set("artist", {
-      ...library.artists.get("artist")!,
-      artworkId: "artist-cover",
-    });
     await player.play();
     flushSync();
     expect(session.metadata).toMatchObject({ title: "a", artwork: [{ src: sources.get("a") }] });
-    updateTrack("a", { title: "New title", artworkId: undefined });
+    updateTrack("a", { title: "New title", artworkId: "album-cover" });
     flushSync();
     expect(session.metadata).toMatchObject({
       title: "a",
@@ -929,16 +921,10 @@ describe("playback", () => {
     sources.set("a", "data:image/jpeg;base64,bGF0ZQ==");
     flushSync();
     expect(session.metadata).toMatchObject({ artwork: [{ src: sources.get("album-cover") }] });
-    library.albums = new Map(library.albums).set("album", {
-      ...library.albums.get("album")!,
-      artworkId: undefined,
-    });
+    updateTrack("a", { artworkId: "artist-cover" });
     flushSync();
     expect(session.metadata).toMatchObject({ artwork: [{ src: sources.get("artist-cover") }] });
-    library.artists = new Map(library.artists).set("artist", {
-      ...library.artists.get("artist")!,
-      artworkId: undefined,
-    });
+    updateTrack("a", { artworkId: undefined });
     flushSync();
     expect(session.metadata).toMatchObject({ title: "a", artwork: [] });
     for (const id of ["a", "album-cover", "artist-cover"])
