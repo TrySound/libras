@@ -8,8 +8,6 @@ import {
   downloadTrackSchema,
   type ImageRecord,
   type ImageMetadata,
-  type Album,
-  type Track,
 } from "./schema";
 
 /** Read-only selection dependency. Session is the application's only selector. */
@@ -489,20 +487,8 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
     );
   }
   const artists = entityMap(artistsList);
-  // Older offline snapshots stored only explicit artwork references. Normalize
-  // once at the data boundary, just like fresh network metadata.
-  const albums = entityMap<Immutable<Album>>(
-    (snapshot?.albums ?? []).map((album) => ({
-      ...album,
-      artworkId: album.artworkId ?? artists.get(album.artistId)?.artworkId,
-    })),
-  );
-  const tracks = entityMap<Immutable<Track>>(
-    (snapshot?.tracks ?? []).map((track) => ({
-      ...track,
-      artworkId: track.artworkId ?? albums.get(track.albumId)?.artworkId,
-    })),
-  );
+  const albums = entityMap(snapshot?.albums ?? []);
+  const tracks = entityMap(snapshot?.tracks ?? []);
   const artistAlbums = groupBy(
     albums.values(),
     (album) => album.artistId,

@@ -851,7 +851,7 @@ it("renders cached artwork only near the viewport and drops the previous account
   expect(target.querySelector(".tile-image img")).toBeNull();
 });
 
-it("switches album artwork references and fallbacks without publishing a late old image", async () => {
+it("follows normalized album artwork IDs without publishing a late old image", async () => {
   installDisk();
   let sequence = 0;
   vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:reference-${++sequence}`);
@@ -902,7 +902,7 @@ it("switches album artwork references and fallbacks without publishing a late ol
   await cache.replaceLibrary({
     ...data,
     savedAt: 3,
-    albums: [{ ...data.albums[0], artworkId: undefined }],
+    albums: [{ ...data.albums[0], artworkId: "artist-cover" }],
   });
   await vi.waitFor(() => {
     flushSync();
