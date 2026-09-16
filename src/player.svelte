@@ -7,6 +7,10 @@
     | "seeking"
     | "ended"
     | "error";
+  export interface PlayerState {
+    readonly status: PlaybackStatus;
+    readonly playing: boolean;
+  }
   export interface PlayerSource {
     url: string;
     offset?: number;
@@ -20,7 +24,8 @@
       title: string;
       artist?: string;
       album?: string;
-      artwork?: string;
+      /** May be a reactive getter; text metadata is snapshotted at play time. */
+      readonly artwork?: string;
       duration?: number;
     };
     position?: number;
@@ -41,11 +46,12 @@
     onnext?: () => void;
     onposition?: (seconds: number) => void;
     onended?: () => void;
+    onstatechange?: (state: PlayerState) => void;
   }
 </script>
 
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
 
   const interactive =
     'input, textarea, select, summary, audio, video, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]';
@@ -57,10 +63,12 @@
     onnext,
     onposition,
     onended,
+    onstatechange,
   }: PlayerProps = $props();
   let audio: HTMLAudioElement | undefined;
   let media: MediaSession | undefined;
   let metadataGeneration = 0;
+  let publishedArtwork: string | undefined;
   let track = $state.raw<PlayerTrack>();
   let source: PlayerSource | undefined;
   let currentPosition = $state(0);
@@ -82,6 +90,18 @@
   let forced = false;
   let generation = 0;
   let abort: AbortController | undefined;
+
+  let publishedState: PlayerState = { status: "idle", playing: false };
+  function publishState() {
+    if (publishedState.status === currentStatus && publishedState.playing === isPlaying) return;
+    publishedState = { status: currentStatus, playing: isPlaying };
+    onstatechange?.(publishedState);
+  }
+  function pauseAudio() {
+    // Internal transitions publish their final state, not an intermediate native pause.
+    isPlaying = false;
+    audio?.pause();
+  }
 
   function setPosition(seconds: number) {
     currentPosition = seconds;
@@ -118,9 +138,10 @@
   async function syncMetadata() {
     const generation = ++metadataGeneration;
     const session = media;
-    if (!session) return;
     const metadata = track?.metadata;
     const artwork = metadata?.artwork;
+    publishedArtwork = artwork;
+    if (!session) return;
     const text = metadata && {
       title: metadata.title,
       artist: metadata.artist ?? "Unknown artist",
@@ -174,6 +195,12 @@
   }
   $effect(() => {
     syncNavigation(hasNext, hasPrevious);
+  });
+  $effect(() => {
+    const artwork = track?.metadata.artwork;
+    untrack(() => {
+      if (artwork !== publishedArtwork) void syncMetadata();
+    });
   });
   function invalidate() {
     generation++;
@@ -236,23 +263,29 @@
         }
         isPlaying = true;
         currentStatus = "ready";
+        publishState();
         syncMediaSession();
       },
       pause: () => {
+        if (!element.paused || !isPlaying) return;
         isPlaying = false;
+        publishState();
         syncMediaSession();
       },
       waiting: () => {
         if (intent && status === "ready") currentStatus = "buffering";
+        publishState();
       },
       canplay: () => {
         if (status === "buffering") currentStatus = "ready";
+        publishState();
       },
       ended: () => {
         if (!element.currentSrc || !intent) return;
         intent = false;
         isPlaying = false;
         currentStatus = "ended";
+        publishState();
         onended?.();
         syncMediaSession();
       },
@@ -302,10 +335,10 @@
   function fail(cause: unknown) {
     invalidate();
     intent = false;
-    audio?.pause();
+    pauseAudio();
     currentError = cause;
     currentStatus = "error";
-    isPlaying = false;
+    publishState();
     syncMediaSession();
   }
 
@@ -347,7 +380,7 @@
     if (!element || !current) return;
 
     invalidate();
-    element.pause();
+    pauseAudio();
     clearSource();
     const request = generation;
     const controller = new AbortController();
@@ -356,6 +389,8 @@
     currentError = undefined;
     currentStatus = seeking ? "seeking" : "loading";
     const valid = () => request === generation && audio === element;
+    publishState();
+    if (!valid()) return;
     setPosition(position);
     if (!valid()) return;
     const prepare = async (transcode: boolean) => {
@@ -388,6 +423,7 @@
       if (!valid()) return;
       currentStatus = "ready";
       isPlaying = !element.paused;
+      publishState();
     };
     try {
       try {
@@ -419,17 +455,18 @@
   export async function play(next: PlayerTrack) {
     if (!audio) return;
     unload();
-    track = { ...next, metadata: { ...next.metadata } };
+    track = {
+      ...next,
+      metadata: {
+        ...next.metadata,
+        get artwork() {
+          return next.metadata.artwork;
+        },
+      },
+    };
     currentPosition = Number.isFinite(next.position) ? Math.max(0, next.position ?? 0) : 0;
     void syncMetadata();
     await load(position, true);
-  }
-
-  /** Publish artwork arriving after play without restarting the transport. */
-  export function setArtwork(artwork: string | undefined) {
-    if (!audio || !track || track.metadata.artwork === artwork) return;
-    track = { ...track, metadata: { ...track.metadata, artwork } };
-    void syncMetadata();
   }
 
   /** Resume the loaded track, or restart after end/retry after error.
@@ -457,12 +494,12 @@
   export function pause() {
     invalidate();
     intent = false;
-    audio?.pause();
+    pauseAudio();
     if (status === "loading" || status === "seeking") {
       clearSource();
     }
-    isPlaying = false;
     if (status !== "ended" && status !== "error") currentStatus = track ? "ready" : "idle";
+    publishState();
     syncMediaSession();
   }
 
@@ -508,15 +545,15 @@
   export function unload() {
     invalidate();
     intent = false;
-    audio?.pause();
+    pauseAudio();
     clearSource();
     forced = false;
-    isPlaying = false;
     measuredDuration = 0;
     currentStatus = "idle";
     track = undefined;
     currentPosition = 0;
     currentError = undefined;
+    publishState();
     void syncMetadata();
     syncMediaSession();
   }

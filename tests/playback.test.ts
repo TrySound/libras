@@ -131,6 +131,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
         },
         onposition: (position) => player.setPosition(position),
         onended: () => player.ended(),
+        onstatechange: (state) => player.updatePlayerState(state),
       },
     });
     mountedPlayer = component;
@@ -195,6 +196,31 @@ afterEach(async () => {
 });
 
 describe("playback", () => {
+  it("flushes progress on a native pause through the explicit Player event", async () => {
+    const { player, audio } = setup();
+    vi.setSystemTime(0);
+    const write = vi.fn(async () => {});
+    player.setConnection({
+      account: { host: "https://music.example.com", username: "listener" },
+      signal: new AbortController().signal,
+      read: async () => ({ trackIds: [], position: 0 }),
+      write,
+    });
+    await player.replaceQueueAndPlay(["a", "b"]);
+    await player.flushQueue();
+    write.mockClear();
+    audio.currentTime = 12;
+    audio.dispatchEvent(new Event("timeupdate"));
+    expect(write).not.toHaveBeenCalled();
+    audio.pause();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write).toHaveBeenCalledExactlyOnceWith({
+      trackIds: ["a", "b"],
+      currentTrackId: "a",
+      position: 12,
+    });
+  });
+
   it.each(["replace", "select", "replay", "duplicate", "stop", "clear"] as const)(
     "%s publishes the final queue once before unloading once",
     async (command) => {

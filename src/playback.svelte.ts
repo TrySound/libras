@@ -1,15 +1,14 @@
-import { untrack } from "svelte";
 import { getAccountKey } from "./auth";
 import type { CoverEngine } from "./cover.svelte";
 import type { Cache, CachedQueue, CacheSelection, Immutable } from "./cache.svelte";
 import type { QueueConnection, RemoteQueue } from "./network.svelte";
 import type Player from "./player.svelte";
-import type { PlayerTrack } from "./player.svelte";
+import type { PlayerState, PlayerTrack } from "./player.svelte";
 import type { TrackEngine } from "./track.svelte";
 
 type PlaybackActivity = "active" | "paused" | "inactive";
 
-function playerActivity(player: ReturnType<typeof Player>): PlaybackActivity {
+function playerActivity(player: PlayerState): PlaybackActivity {
   if (player.status === "idle" || player.status === "ended") return "inactive";
   const starting = player.status === "loading" || player.status === "seeking";
   return player.playing || starting ? "active" : "paused";
@@ -63,7 +62,6 @@ export class Playback {
   #cleanup?: () => void;
   #selectedTrackId?: string;
   #sourceIsCached = false;
-  #cover = $state.raw<ReturnType<CoverEngine["ensureTrackCover"]>>();
   #connection?: QueueConnection;
   #refreshPending?: Promise<void>;
   #refreshController?: AbortController;
@@ -129,9 +127,12 @@ export class Playback {
       void this.flushQueue();
     }
   }
+  updatePlayerState(state: PlayerState) {
+    if (!this.#player || this.#destroyed) return;
+    this.#setActivity(playerActivity(state));
+  }
   ended() {
     if (!this.#player || this.#destroyed) return;
-    this.#setActivity("inactive");
     void this.next();
   }
 
@@ -139,27 +140,16 @@ export class Playback {
     if (this.#destroyed) return () => {};
     this.#cleanup?.();
     this.#player = player;
-    const stopEffects = $effect.root(() => {
-      $effect(() => {
-        const cover = this.#cover;
-        const source = cover?.source;
-        if (cover) untrack(() => player.setArtwork(source));
-      });
-      $effect(() => {
-        const activity = playerActivity(player);
-        untrack(() => this.#setActivity(activity));
-      });
-    });
     const hidden = () => {
       if (document.visibilityState === "hidden") void this.flushQueue();
     };
     document.addEventListener("visibilitychange", hidden);
     this.#syncSelection();
+    this.updatePlayerState(player);
     let disposed = false;
     const cleanup = () => {
       if (disposed) return;
       disposed = true;
-      stopEffects();
       document.removeEventListener("visibilitychange", hidden);
       this.suspend();
       this.#player = undefined;
@@ -181,7 +171,6 @@ export class Playback {
       contentType: track.mimeType,
     };
     const cover = this.#covers.ensureTrackCover(track.id);
-    this.#cover = cover;
     cover.load();
     return {
       metadata: {
@@ -189,7 +178,9 @@ export class Playback {
         artist: descriptor.artist,
         album: descriptor.album,
         duration: track.duration,
-        artwork: cover.source,
+        get artwork() {
+          return cover.source;
+        },
       },
       position: this.#localQueue.position,
       getSource: async (options) => {
@@ -224,10 +215,7 @@ export class Playback {
     }
   }
   pause() {
-    const player = this.#player;
-    if (!player) return;
-    player.pause();
-    this.#setActivity(playerActivity(player));
+    this.#player?.pause();
   }
   async toggle() {
     const player = this.#player;
@@ -302,7 +290,6 @@ export class Playback {
       this.suspend();
   }
   suspend() {
-    this.#cover = undefined;
     this.#player?.unload();
     this.#sourceIsCached = false;
     this.#setActivity("inactive");
@@ -370,7 +357,7 @@ export class Playback {
       cache.key === getAccountKey(this.#connection.account)
     );
   }
-  /** Commands publish intent synchronously, before awaiting Player; observations
+  /** Commands publish intent before awaiting Player; explicit transport events
    * reconcile actual status here. Both paths share idempotent save/read policy. */
   #setActivity(state: PlaybackActivity) {
     if (this.#destroyed || state === this.#activity) return;

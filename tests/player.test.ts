@@ -6,6 +6,7 @@ import Player, {
   type PlayerTrack,
   type PlayerSource,
   type PlayerProps,
+  type PlayerState,
 } from "../src/player.svelte";
 
 class AudioStub extends EventTarget {
@@ -77,7 +78,9 @@ function setup() {
   vi.stubGlobal("navigator", { mediaSession: session });
   const navigation = writable({ previous: true, next: true });
   const availability = fromStore(navigation);
+  const onstatechange = vi.fn<(state: PlayerState) => void>();
   const props: PlayerProps = {
+    onstatechange,
     get hasPrevious() {
       return availability.current.previous;
     },
@@ -94,7 +97,19 @@ function setup() {
   const detach = () => unmount(player);
   cleanups.push(detach);
   const item: PlayerTrack = { metadata: { title: "A", duration: 300 }, position: 0, getSource };
-  return { player, audio, getSource, release, props, item, session, handlers, detach, navigation };
+  return {
+    player,
+    audio,
+    getSource,
+    release,
+    props,
+    item,
+    session,
+    handlers,
+    detach,
+    navigation,
+    onstatechange,
+  };
 }
 
 class TestElement extends EventTarget {
@@ -128,6 +143,87 @@ async function setupShortcuts() {
 }
 
 describe("Player component", () => {
+  it("emits complete transport states synchronously, including native pause and buffering", async () => {
+    const { player, audio, item, getSource, onstatechange } = setup();
+    const source = Promise.withResolvers<PlayerSource>();
+    getSource.mockReturnValueOnce(source.promise);
+    const playing = player.play(item);
+    expect(onstatechange).toHaveBeenCalledExactlyOnceWith({ status: "loading", playing: false });
+    source.resolve({ url: "blob:track", seekMode: "full", release() {} });
+    await playing;
+    audio.dispatchEvent(new Event("waiting"));
+    audio.dispatchEvent(new Event("waiting"));
+    audio.dispatchEvent(new Event("canplay"));
+    audio.pause();
+    await player.resume();
+    audio.dispatchEvent(new Event("ended"));
+    player.unload();
+    expect(onstatechange.mock.calls.map(([state]) => state)).toEqual([
+      { status: "loading", playing: false },
+      { status: "ready", playing: true },
+      { status: "buffering", playing: true },
+      { status: "ready", playing: true },
+      { status: "ready", playing: false },
+      { status: "ready", playing: true },
+      { status: "ended", playing: false },
+      { status: "idle", playing: false },
+    ]);
+  });
+
+  it("reports seeking without exposing the internal audio pause as a user pause", async () => {
+    const { player, item, getSource, onstatechange } = setup();
+    getSource.mockResolvedValue({ url: "blob:track", seekMode: "buffered", release() {} });
+    await player.play(item);
+    onstatechange.mockClear();
+    const source = Promise.withResolvers<PlayerSource>();
+    getSource.mockReturnValueOnce(source.promise);
+    const seeking = player.seek(200);
+    expect(onstatechange).toHaveBeenCalledExactlyOnceWith({ status: "seeking", playing: false });
+    source.resolve({ url: "blob:seek", seekMode: "buffered", release() {} });
+    await seeking;
+    expect(onstatechange.mock.calls.map(([state]) => state)).toEqual([
+      { status: "seeking", playing: false },
+      { status: "ready", playing: true },
+    ]);
+  });
+
+  it("reports failures, retry, and idempotent pause commands without an effect", async () => {
+    const { player, item, getSource, onstatechange } = setup();
+    getSource.mockRejectedValueOnce(new Error("Unavailable"));
+    await player.play(item);
+    await player.resume();
+    player.pause();
+    player.pause();
+    expect(onstatechange.mock.calls.map(([state]) => state)).toEqual([
+      { status: "loading", playing: false },
+      { status: "error", playing: false },
+      { status: "loading", playing: false },
+      { status: "ready", playing: true },
+      { status: "ready", playing: false },
+    ]);
+  });
+
+  it("does not request a source if a loading notification unloads the player", async () => {
+    const { player, item, getSource, onstatechange } = setup();
+    onstatechange.mockImplementation((state) => {
+      if (state.status === "loading") player.unload();
+    });
+    await player.play(item);
+    expect(player.status).toBe("idle");
+    expect(getSource).not.toHaveBeenCalled();
+  });
+
+  it("emits idle on teardown but ignores later audio events", async () => {
+    const { player, item, audio, detach, onstatechange } = setup();
+    await player.play(item);
+    onstatechange.mockClear();
+    await detach();
+    audio.dispatchEvent(new Event("playing"));
+    audio.dispatchEvent(new Event("waiting"));
+    audio.dispatchEvent(new Event("ended"));
+    expect(onstatechange).toHaveBeenCalledExactlyOnceWith({ status: "idle", playing: false });
+  });
+
   describe("keyboard shortcuts", async () => {
     it("toggles playback with Space and prevents scrolling", async () => {
       const { toggle, dispatch } = await setupShortcuts();

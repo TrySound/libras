@@ -52,6 +52,7 @@ function createPlayback(selection: TestSelection) {
       },
       onposition: (position) => playback.setPosition(position),
       onended: () => playback.ended(),
+      onstatechange: (state) => playback.updatePlayerState(state),
     },
   });
   flushSync();

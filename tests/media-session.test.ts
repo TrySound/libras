@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Player, { type PlayerTrack } from "../src/player.svelte";
 
@@ -86,7 +87,7 @@ afterEach(async () => {
 
 describe("Player Media Session integration", () => {
   it("publishes track metadata and converts late artwork to self-contained bytes", async () => {
-    const { play, player, session } = setup();
+    const { play, session } = setup();
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -96,9 +97,17 @@ describe("Player Media Session integration", () => {
           }),
       ),
     );
-    await play({ title: "Song", artist: "Artist", album: "Album" });
+    const artwork = new SvelteMap<string, string>();
+    await play({
+      title: "Song",
+      artist: "Artist",
+      album: "Album",
+      get artwork() {
+        return artwork.get("source");
+      },
+    });
     expect(session.metadata).toMatchObject({ title: "Song", artwork: [] });
-    player.setArtwork("blob:cover");
+    artwork.set("source", "blob:cover");
     await vi.waitFor(() =>
       expect(session.metadata).toMatchObject({
         title: "Song",
@@ -110,6 +119,37 @@ describe("Player Media Session integration", () => {
     await play({ title: "Next song" });
     expect(session.metadata).toMatchObject({ title: "Next song", artwork: [] });
     expect(session.playbackState).toBe("playing");
+  });
+
+  it("observes only the current artwork getter while keeping text metadata snapshotted", async () => {
+    const { play, session, destroy } = setup();
+    const artwork = new SvelteMap<string, string>();
+    const metadata = {
+      title: "Original",
+      get artwork() {
+        return artwork.get("source");
+      },
+    };
+    await play(metadata);
+    metadata.title = "Changed";
+    artwork.set("source", "data:image/png;base64,aW1hZ2U=");
+    flushSync();
+    expect(session.metadata).toMatchObject({
+      title: "Original",
+      artwork: [{ src: "data:image/png;base64,aW1hZ2U=" }],
+    });
+    await play({ title: "Next" });
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    artwork.set("source", "blob:obsolete");
+    flushSync();
+    expect(session.metadata).toMatchObject({ title: "Next", artwork: [] });
+    expect(fetcher).not.toHaveBeenCalled();
+    await destroy();
+    artwork.set("source", "blob:destroyed");
+    flushSync();
+    expect(session.metadata).toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("does not publish stale artwork after a track change or destruction", async () => {

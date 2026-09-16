@@ -151,6 +151,7 @@
   onnext={() => playback.next()}
   onposition={(position) => playback.setPosition(position)}
   onended={() => playback.ended()}
+  onstatechange={(state) => playback.updatePlayerState(state)}
 />
 
 <svelte:head>
