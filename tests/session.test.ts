@@ -433,19 +433,28 @@ describe("session", () => {
     },
   );
 
-  it("preserves the workspace when saving credentials fails", async () => {
-    const { session, auth, selection, storage } = await connected();
-    session.disconnect();
-    const previous = selection.cache;
-    vi.spyOn(auth, "save").mockImplementationOnce(() => {
-      throw new Error("Storage full");
-    });
-    expect(await session.connect({ ...input, username: "other" })).toBe(false);
-    expect(session.error).toBe("Storage full");
-    expect(selection.cache).toBe(previous);
-    expect(auth.load()).toBeNull();
-    expect(storage.getItem("navidrome-offline-mode")).toBe("true");
-  });
+  it.each(["listener", "other"])(
+    "suspends once before committing %s and preserves the workspace if credentials cannot be saved",
+    async (username) => {
+      const { session, auth, selection, storage, playback, validate } = await connected();
+      session.disconnect();
+      const previous = selection.cache;
+      validate.mockImplementationOnce(async () => {
+        expect(playback.suspend).not.toHaveBeenCalled();
+      });
+      vi.spyOn(auth, "save").mockImplementationOnce(() => {
+        expect(playback.suspend).toHaveBeenCalledOnce();
+        expect(selection.cache).toBe(previous);
+        throw new Error("Storage full");
+      });
+      expect(await session.connect({ ...input, username })).toBe(false);
+      expect(playback.suspend).toHaveBeenCalledOnce();
+      expect(session.error).toBe("Storage full");
+      expect(selection.cache).toBe(previous);
+      expect(auth.load()).toBeNull();
+      expect(storage.getItem("navidrome-offline-mode")).toBe("true");
+    },
+  );
 
   it.each(["load", "retirement"] as const)(
     "does not publish credentials while %s preparation is pending or fails",
