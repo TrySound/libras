@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import { AuthStore, getAccountKey } from "../src/auth";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
-import { Network, type MetadataConnection, type NetworkConnection } from "../src/network.svelte";
+import { Network, type MetadataConnection } from "../src/network.svelte";
 import { CoverEngine } from "../src/cover.svelte";
 import { QueueEngine } from "../src/queue.svelte";
 import { TrackEngine } from "../src/track.svelte";
@@ -59,11 +59,14 @@ export function createSession(saved = false, storage = createStorage()) {
   const selection = new TestSelection();
   const auth = new AuthStore(storage);
   if (saved) auth.save(credentials);
+  const loaded = new WeakSet<Cache>();
   const loadCache = vi
     .spyOn(Cache.prototype, "load")
     .mockReset()
     .mockImplementation(async function (this: Cache, signal) {
       signal?.throwIfAborted();
+      if (loaded.has(this)) return;
+      loaded.add(this);
       const account = [
         auth.loadAccount() ?? credentials,
         ...prepare.mock.calls.map(([credentials]) => credentials),
@@ -126,23 +129,11 @@ export function createSession(saved = false, storage = createStorage()) {
     suspendNetwork: vi.spyOn(playbackController, "suspendNetwork").mockImplementation(() => {}),
   };
   const network = new Network();
-  const candidate = {
-    getModifiedAt: vi.fn<MetadataConnection["getModifiedAt"]>(async () => 10),
-    readLibrary: vi.fn<MetadataConnection["readLibrary"]>(async () =>
-      snapshot(prepare.mock.calls.at(-1)![0]),
-    ),
-  };
-  const candidates = new WeakMap<NetworkConnection, NetworkConnection>();
-  const prepareConnection = network.prepare.bind(network);
-  const prepare = vi.spyOn(network, "prepare").mockImplementation((credentials) => {
-    const original = prepareConnection(credentials);
-    const connection = { ...original, metadata: { ...original.metadata, ...candidate } };
-    candidates.set(connection, original);
-    return connection;
-  });
+  const prepare = vi.spyOn(network, "prepare");
+  const validate = vi.spyOn(network, "validate").mockResolvedValue(undefined);
   const accept = network.accept.bind(network);
   vi.spyOn(network, "accept").mockImplementation((candidate) => {
-    const active = accept(candidates.get(candidate) ?? candidate);
+    const active = accept(candidate);
     return {
       ...active,
       metadata: {
@@ -182,7 +173,7 @@ export function createSession(saved = false, storage = createStorage()) {
     tracks,
     playback,
     storage,
-    candidate,
+    validate,
     loadCache,
     saveLibrary,
   };

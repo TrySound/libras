@@ -4,7 +4,6 @@ import {
   NetworkTransportError,
   type ActiveNetworkConnection,
   type LibraryProgress,
-  type MetadataConnection,
   type Network,
   type NetworkConnection,
   type PasswordAuth,
@@ -13,7 +12,7 @@ import type { PlaybackController } from "./playback-controller.svelte";
 import type { QueueEngine } from "./queue.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
-import { Cache, type LibrarySnapshot } from "./cache.svelte";
+import { Cache } from "./cache.svelte";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -189,23 +188,17 @@ export class Session {
     }
   }
 
-  /** Prepare durable local data without publishing credentials or a new selection.
-   * Same-account reconnects deliberately reuse the live writer to retain queue edits. */
-  async #prepareWorkspace(connection: NetworkConnection, generation: number) {
-    const modified = await connection.metadata.getModifiedAt();
-    const library = await this.#readLibrary(connection.metadata, modified, generation);
-    connection.signal.throwIfAborted();
+  /** Load local data before validating credentials, without selecting the account.
+   * Same-account reconnects reuse the live writer to retain queue edits. */
+  async #prepareWorkspace(connection: NetworkConnection) {
     const previous = this.#options.selection.cache;
     const key = getAccountKey(connection.account);
     const cache = previous?.key === key ? previous : new Cache(key);
-    // Fresh metadata repairs library read failures; other documents remain independent.
+    // Independent cache failures remain visible after acceptance; a background
+    // refresh can repair the library without making login depend on its availability.
     await cache.load(connection.signal).catch((error) => {
       if (!(error instanceof AggregateError)) throw error;
     });
-    connection.signal.throwIfAborted();
-    await cache.replaceLibrary(library, connection.signal);
-    connection.signal.throwIfAborted();
-    await cache.flush();
     connection.signal.throwIfAborted();
     return cache;
   }
@@ -244,6 +237,7 @@ export class Session {
     this.localReady = true;
   }
 
+  /** Login succeeds once local data and credentials are accepted, not when sync finishes. */
   async connect(input: PasswordAuth): Promise<boolean> {
     if (this.auth || this.busy || this.#destroyed) return false;
     const generation = this.#begin();
@@ -253,15 +247,15 @@ export class Session {
       const connection = this.#options.network.prepare(credentials);
       await this.#restoration;
       if (!this.#valid(generation)) return false;
-      const cache = await this.#prepareWorkspace(connection, generation);
+      const cache = await this.#prepareWorkspace(connection);
+      await this.#options.network.validate(connection);
+      connection.signal.throwIfAborted();
+      if (!this.#valid(generation)) return false;
       await this.#retireWorkspace(cache, connection.signal);
       if (!this.#valid(generation)) return false;
       this.#commitWorkspace(cache, credentials, connection);
-      await this.#options.covers.refresh();
-      if (!this.#valid(generation)) return false;
-      await this.#options.queue.refresh();
-      if (!this.#valid(generation)) return false;
       this.status = "connected";
+      void this.#refresh(false);
       return true;
     } catch (error) {
       if (this.#valid(generation)) {
@@ -301,29 +295,6 @@ export class Session {
     await this.#refresh(true);
   }
 
-  /** Fetch only: candidate acceptance and active-cache publication stay separate. */
-  async #readLibrary(
-    connection: MetadataConnection,
-    lastModified: number | null,
-    generation: number,
-  ): Promise<LibrarySnapshot> {
-    const check = () => {
-      connection.signal.throwIfAborted();
-      if (!this.#valid(generation)) throw new DOMException("Session superseded.", "AbortError");
-    };
-    check();
-    this.#libraryProgress = { albums: 0, tracks: 0 };
-    try {
-      const library = await connection.readLibrary(connection.signal, (progress) => {
-        if (this.#valid(generation) && !connection.signal.aborted) this.#libraryProgress = progress;
-      });
-      check();
-      return { ...library, lastModified, savedAt: Date.now() };
-    } finally {
-      if (this.#valid(generation)) this.#libraryProgress = undefined;
-    }
-  }
-
   async #refreshLibrary(force: boolean, generation: number) {
     const connection = this.#connection?.metadata;
     const cache = this.#options.selection.cache;
@@ -346,8 +317,19 @@ export class Session {
       modified === cache.lastModified
     )
       return;
-    const library = await this.#readLibrary(connection, modified, generation);
-    if (current()) await cache.replaceLibrary(library, connection.signal);
+    this.#libraryProgress = { albums: 0, tracks: 0 };
+    try {
+      const library = await connection.readLibrary(connection.signal, (progress) => {
+        if (current()) this.#libraryProgress = progress;
+      });
+      if (current())
+        await cache.replaceLibrary(
+          { ...library, lastModified: modified, savedAt: Date.now() },
+          connection.signal,
+        );
+    } finally {
+      if (this.#valid(generation)) this.#libraryProgress = undefined;
+    }
   }
 
   #refresh(force: boolean): Promise<void> {

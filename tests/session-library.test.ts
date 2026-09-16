@@ -17,7 +17,6 @@ function setup(saved = true) {
   const disk = installMetadataStorage();
   fixture.metadata.getModifiedAt.mockResolvedValue(10);
   fixture.metadata.readLibrary.mockResolvedValue(snapshot());
-  fixture.candidate.readLibrary.mockResolvedValue(snapshot());
   return { ...fixture, disk };
 }
 
@@ -39,6 +38,88 @@ afterEach(async () => {
 });
 
 describe("session library workflow", () => {
+  it("loads the candidate cache before validation, then connects before the library refresh finishes", async () => {
+    const { session, selection, metadata, validate, auth, queue, disk } = setup(false);
+    await disk.seed(credentials, snapshot());
+    const validated = deferred();
+    const response = deferred<Library>();
+    let prepared: Cache | undefined;
+    const load = Cache.prototype.load;
+    vi.spyOn(Cache.prototype, "load").mockImplementationOnce(async function (this: Cache, signal) {
+      await load.call(this, signal);
+      prepared = this;
+    });
+    validate.mockImplementationOnce(async () => {
+      expect(prepared?.tracks.get("song")).toEqual(snapshot().tracks[0]);
+      expect(selection.cache).toBeUndefined();
+      expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+      expect(auth.load()).toBeNull();
+      await validated.promise;
+    });
+    metadata.getModifiedAt.mockResolvedValue(20);
+    metadata.readLibrary.mockReturnValueOnce(response.promise);
+    const connecting = session.connect(input);
+    await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
+    expect(session.status).toBe("connecting");
+    expect(session.libraryProgress).toBeUndefined();
+    validated.resolve();
+    expect(await connecting).toBe(true);
+    expect(session.status).toBe("connected");
+    expect(session.localReady).toBe(true);
+    expect(session.busy).toBe(false);
+    expect(session.syncing).toBe(true);
+    expect(auth.load()).not.toBeNull();
+    expect(selection.cache).toBe(prepared);
+    expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
+    const refreshing = session.refresh();
+    response.reject(new Error("Library unavailable"));
+    await refreshing;
+    expect(session.status).toBe("connected");
+    expect(session.error).toBe("");
+    expect(session.refreshError).toContain("Library unavailable");
+    expect(auth.load()).not.toBeNull();
+    expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
+    expect(queue.refresh).toHaveBeenCalledOnce();
+    expect(disk.writes).toBe(0);
+  });
+
+  it("accepts a first login with no cached library even when its initial refresh fails", async () => {
+    const { session, selection, metadata, auth } = setup(false);
+    metadata.getModifiedAt.mockRejectedValue(new Error("Library unavailable"));
+    expect(await session.connect(input)).toBe(true);
+    await vi.waitFor(() => expect(session.syncing).toBe(false));
+    expect(session.status).toBe("connected");
+    expect(auth.load()).not.toBeNull();
+    expect(session.localReady).toBe(true);
+    expect(selection.cache!.tracks.size).toBe(0);
+    expect(session.refreshError).toContain("Library unavailable");
+  });
+
+  it("revalidates rather than refetching an unchanged library after explicit login", async () => {
+    const { session, selection, metadata, validate, disk } = setup(false);
+    await disk.seed(credentials, snapshot());
+    expect(await session.connect(input)).toBe(true);
+    await vi.waitFor(() => expect(session.syncing).toBe(false));
+    expect(validate).toHaveBeenCalledOnce();
+    expect(metadata.getModifiedAt).toHaveBeenCalledWith(10);
+    expect(metadata.readLibrary).not.toHaveBeenCalled();
+    expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
+    expect(disk.writes).toBe(0);
+  });
+
+  it("restores an offline account without validating credentials or requesting a library", async () => {
+    const { session, selection, metadata, validate, auth, disk } = setup(false);
+    await disk.seed(credentials, snapshot());
+    auth.saveAccount(credentials);
+    session.start();
+    await vi.waitFor(() => expect(session.localReady).toBe(true));
+    expect(session.offlineMode).toBe(true);
+    expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
+    expect(validate).not.toHaveBeenCalled();
+    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+    expect(metadata.readLibrary).not.toHaveBeenCalled();
+  });
+
   it("revalidates restored metadata without rereading storage, but forces manual refresh", async () => {
     const { session, metadata, selection, disk } = await restored();
     expect(metadata.getModifiedAt).toHaveBeenCalledWith(10);
@@ -140,6 +221,8 @@ describe("session library workflow", () => {
   it("persists library-only data that can be restored offline in a new session", async () => {
     const { session, selection, disk } = setup(false);
     expect(await session.connect(input)).toBe(true);
+    await session.refresh();
+    await selection.cache!.flush();
     const text = await disk.files.get(await snapshotPath(credentials))!.text();
     expect(text).not.toContain('"account"');
     expect(text).not.toContain('"token"');
@@ -154,7 +237,7 @@ describe("session library workflow", () => {
     await vi.waitFor(() => expect(next.session.localReady).toBe(true));
     expect(next.selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
     expect(next.metadata.getModifiedAt).not.toHaveBeenCalled();
-    expect(next.candidate.readLibrary).not.toHaveBeenCalled();
+    expect(next.validate).not.toHaveBeenCalled();
   });
 
   for (const mode of ["connect", "refresh"] as const) {
@@ -163,16 +246,17 @@ describe("session library workflow", () => {
       async (action) => {
         const fixture = mode === "refresh" ? await restored() : setup(false);
         const { session, selection, disk } = fixture;
-        const reader = mode === "refresh" ? fixture.metadata : fixture.candidate;
+        const reader = fixture.metadata;
         const pending = deferred<Library>();
         let report: ((progress: LibraryProgress) => void) | undefined;
         reader.readLibrary.mockImplementationOnce(async (_signal, onProgress) => {
           report = onProgress;
           return pending.promise;
         });
-        const previous = selection.cache?.tracks;
         const run = mode === "refresh" ? session.refresh() : session.connect(input);
         await vi.waitFor(() => expect(report).toBeDefined());
+        const previous = selection.cache?.tracks;
+        const completed = session.refresh();
         expect(session.libraryProgress).toEqual({ albums: 0, tracks: 0 });
         report!({ albums: 500, tracks: 1000 });
         expect(session.libraryProgress).toEqual({ albums: 500, tracks: 1000 });
@@ -184,22 +268,23 @@ describe("session library workflow", () => {
         expect(session.libraryProgress).toBeUndefined();
         pending.resolve(snapshot());
         await run;
+        await completed;
         expect(selection.cache?.tracks).toBe(previous);
         expect(disk.writes).toBe(0);
       },
     );
   }
 
-  it("does not fetch candidate pages after disconnect during the timestamp request", async () => {
-    const { session, candidate, disk, selection } = setup(false);
-    const timestamp = deferred<number>();
-    candidate.getModifiedAt.mockReturnValueOnce(timestamp.promise);
+  it("does not fetch a library after disconnect during credential validation", async () => {
+    const { session, validate, metadata, disk, selection } = setup(false);
+    const validation = deferred();
+    validate.mockReturnValueOnce(validation.promise);
     const connecting = session.connect(input);
-    await vi.waitFor(() => expect(candidate.getModifiedAt).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
     session.disconnect();
-    timestamp.resolve(10);
+    validation.resolve();
     expect(await connecting).toBe(false);
-    expect(candidate.readLibrary).not.toHaveBeenCalled();
+    expect(metadata.readLibrary).not.toHaveBeenCalled();
     expect(selection.cache).toBeUndefined();
     expect(disk.writes).toBe(0);
   });
@@ -235,7 +320,7 @@ describe("session library workflow", () => {
   });
 
   it("does not publish an obsolete refresh after accepting a different account", async () => {
-    const { session, selection, metadata, candidate, disk } = await restored();
+    const { session, selection, metadata, disk } = await restored();
     const old = deferred<Library>();
     metadata.readLibrary.mockReturnValueOnce(old.promise);
     const refreshing = session.refresh();
@@ -246,8 +331,10 @@ describe("session library workflow", () => {
       ...snapshot(),
       artists: [{ id: "artist", name: "Other", genres: [] }],
     };
-    candidate.readLibrary.mockResolvedValueOnce(next);
+    metadata.readLibrary.mockResolvedValueOnce(next);
     expect(await session.connect(other)).toBe(true);
+    await vi.waitFor(() => expect(session.syncing).toBe(false));
+    await selection.cache!.flush();
     const accepted = selection.cache!;
     const writes = disk.writes;
     old.resolve(snapshot());
