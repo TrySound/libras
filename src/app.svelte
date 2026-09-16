@@ -376,7 +376,7 @@
 
   <section class="player-view">
     <div class="player-main">
-      <Artwork {covers} id={currentTrack?.artworkId} variant="artwork" loading="eager" />
+      <Artwork {covers} id={currentTrack?.artworkId} size="stretch" loading="eager" />
 
       <div class="view player-content">
         {#if currentTrack}

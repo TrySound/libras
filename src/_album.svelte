@@ -48,7 +48,7 @@
       <Artwork
         {covers}
         id={album.artworkId}
-        variant="artwork"
+        size="stretch"
         loading="eager"
         iconSize={20}
         viewTransitionName={`album-cover-${album.id}`}

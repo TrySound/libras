@@ -327,7 +327,7 @@ it("renders the cache stress fixture with unique tiles and one shared menu", asy
   const tiles = [...target.querySelectorAll<HTMLAnchorElement>("a.tile")];
   expect(tiles).toHaveLength(48);
   for (const tile of tiles) {
-    const artwork = tile.querySelector(".tile-image")!;
+    const artwork = tile.querySelector(".artwork")!;
     const label = tile.querySelector(".tile-name")!;
     expect(artwork.parentElement).toBe(tile);
     expect(label.parentElement).toBe(tile);
@@ -340,7 +340,7 @@ it("renders the cache stress fixture with unique tiles and one shared menu", asy
   expect(new Set(tiles.map((tile) => tile.getAttribute("href"))).size).toBe(48);
   expect(
     new Set(
-      tiles.map((tile) => tile.querySelector<HTMLElement>(".tile-image")!.style.viewTransitionName),
+      tiles.map((tile) => tile.querySelector<HTMLElement>(".artwork")!.style.viewTransitionName),
     ).size,
   ).toBe(48);
   expect(target.querySelectorAll("#artist-menu")).toHaveLength(1);
@@ -775,11 +775,11 @@ it.each([
   expect(observers.size).toBe(observesArtwork ? 1 : 0);
   if (observesArtwork) {
     expect(load).not.toHaveBeenCalled();
-    observers.get(row.querySelector(".cover")!)!(false);
+    observers.get(row.querySelector(".artwork")!)!(false);
     expect(load).not.toHaveBeenCalled();
-    observers.get(row.querySelector(".cover")!)!(true);
+    observers.get(row.querySelector(".artwork")!)!(true);
     expect(load).toHaveBeenCalledOnce();
-    observers.get(row.querySelector(".cover")!)!(false);
+    observers.get(row.querySelector(".artwork")!)!(false);
     expect(row.hasAttribute("data-viewport-hidden")).toBe(false);
   }
 });
@@ -792,7 +792,7 @@ it("renders cached artwork only near the viewport and drops the previous account
     class {
       constructor(private callback: IntersectionObserverCallback) {}
       observe(target: Element) {
-        expect(target.matches(".tile-image")).toBe(true);
+        expect(target.matches(".artwork")).toBe(true);
         intersections.push((visible) =>
           this.callback(
             [{ target, isIntersecting: visible } as IntersectionObserverEntry],
@@ -817,13 +817,13 @@ it("renders cached artwork only near the viewport and drops the previous account
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  expect(target.querySelector(".tile-image img")).toBeNull();
+  expect(target.querySelector(".artwork img")).toBeNull();
 
   await first.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" });
   await mocks.options!.covers.refresh();
   flushSync();
   expect(mocks.options!.selection.cache!.images).toBe(first.images);
-  expect(target.querySelector(".tile-image img")).toBeNull();
+  expect(target.querySelector(".artwork img")).toBeNull();
   expect(URL.createObjectURL).not.toHaveBeenCalled();
   const tile = target.querySelector("a.tile")!;
   expect(tile.getAttribute("aria-label")).toBe("Artist");
@@ -832,7 +832,7 @@ it("renders cached artwork only near the viewport and drops the previous account
   expect(tile.hasAttribute("data-viewport-hidden")).toBe(false);
   await vi.waitFor(() => {
     flushSync();
-    expect(target.querySelector(".tile-image img")?.getAttribute("src")).toBe("blob:artwork-1");
+    expect(target.querySelector(".artwork img")?.getAttribute("src")).toBe("blob:artwork-1");
   });
   intersections[0](false);
   expect(tile.hasAttribute("data-viewport-hidden")).toBe(false);
@@ -848,7 +848,7 @@ it("renders cached artwork only near the viewport and drops the previous account
   flushSync();
   await mocks.options!.covers.refresh();
   flushSync();
-  expect(target.querySelector(".tile-image img")).toBeNull();
+  expect(target.querySelector(".artwork img")).toBeNull();
   expect(revoke).toHaveBeenCalledWith("blob:artwork-1");
   expect(mocks.options!.selection.cache!.images).toBe(second.images);
   expect(mocks.options!.selection.cache!.images.size).toBe(0);
@@ -856,7 +856,7 @@ it("renders cached artwork only near the viewport and drops the previous account
   await first.saveImage("cover", { blob: new Blob(["late old image"]), type: "image/png" });
   await mocks.options!.covers.refresh();
   flushSync();
-  expect(target.querySelector(".tile-image img")).toBeNull();
+  expect(target.querySelector(".artwork img")).toBeNull();
 });
 
 it("follows normalized album artwork IDs without publishing a late old image", async () => {

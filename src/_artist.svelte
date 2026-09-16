@@ -58,7 +58,7 @@
       <Artwork
         {covers}
         id={artist.artworkId}
-        variant="artwork"
+        size="stretch"
         loading="eager"
         viewTransitionName={`artist-cover-${artist.id}`}
       />

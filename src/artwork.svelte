@@ -5,24 +5,15 @@
   interface Props {
     covers: Covers;
     id?: string;
-    variant?: "cover" | "tile" | "artwork";
-    size?: "sm" | "md";
+    size?: "sm" | "md" | "stretch";
     loading?: "lazy" | "eager";
     iconSize?: number;
     viewTransitionName?: string;
   }
 
-  let {
-    covers,
-    id,
-    variant = "cover",
-    size = "md",
-    loading = "lazy",
-    iconSize,
-    viewTransitionName,
-  }: Props = $props();
+  let { covers, id, size = "md", loading = "lazy", iconSize, viewTransitionName }: Props = $props();
   const cover = $derived(id === undefined ? undefined : covers.ensureCover(id));
-  const placeholderSize = $derived(iconSize ?? (variant === "artwork" ? 64 : 20));
+  const placeholderSize = $derived(iconSize ?? (size === "stretch" ? 64 : 20));
 
   function acquire(node: Element) {
     if (!cover) return;
@@ -35,8 +26,8 @@
 </script>
 
 <span
-  class={variant === "tile" ? "tile-image" : variant}
-  data-size={variant === "cover" ? size : undefined}
+  class="artwork"
+  data-size={size}
   aria-hidden="true"
   style:view-transition-name={viewTransitionName ? CSS.escape(viewTransitionName) : undefined}
   {@attach acquire}

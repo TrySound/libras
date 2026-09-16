@@ -63,9 +63,6 @@ function setup(overrides: Partial<Props> = {}, observation = true) {
       get loading() {
         return state.current.loading;
       },
-      get variant() {
-        return state.current.variant;
-      },
       get size() {
         return state.current.size;
       },
@@ -114,6 +111,14 @@ function setup(overrides: Partial<Props> = {}, observation = true) {
 }
 
 describe("Artwork", () => {
+  it.each(["sm", "md", "stretch"] as const)("uses the shared artwork class for %s", (size) => {
+    const { target } = setup({ size });
+    const root = target.firstElementChild!;
+    expect(root.className).toBe("artwork");
+    expect(root.getAttribute("data-size")).toBe(size);
+    expect(root.querySelector("svg")?.getAttribute("width")).toBe(size === "stretch" ? "64" : "20");
+  });
+
   it("lazily acquires an artwork ID and reacts to its source without reobserving", () => {
     const { target, loads, sources, observe, intersect } = setup();
     const load = loads.get("a")!;
@@ -136,7 +141,7 @@ describe("Artwork", () => {
   });
 
   it("loads prominent artwork immediately without observing", () => {
-    const { target, loads, sources, observer } = setup({ loading: "eager", variant: "artwork" });
+    const { target, loads, sources, observer } = setup({ loading: "eager", size: "stretch" });
     expect(target.querySelector(".artwork svg")?.getAttribute("width")).toBe("64");
     sources.set("a", "blob:cover");
     flushSync();
@@ -151,7 +156,7 @@ describe("Artwork", () => {
   });
 
   it("renders an empty player placeholder without requesting or observing a missing ID", () => {
-    const { target, ensureCover, observer } = setup({ id: undefined, variant: "artwork" });
+    const { target, ensureCover, observer } = setup({ id: undefined, size: "stretch" });
     expect(target.querySelector("svg")).not.toBeNull();
     expect(ensureCover).not.toHaveBeenCalled();
     expect(observer).not.toHaveBeenCalled();
@@ -192,12 +197,13 @@ describe("Artwork", () => {
   });
 
   it("preserves styling and escapes view-transition names", () => {
-    const { target, set } = setup({ variant: "tile", viewTransitionName: "artist-cover-a b" });
+    const { target, set } = setup({ size: "stretch", viewTransitionName: "artist-cover-a b" });
     const root = target.firstElementChild as HTMLElement;
-    expect(root.className).toBe("tile-image");
+    expect(root.className).toBe("artwork");
+    expect(root.dataset.size).toBe("stretch");
     expect(root.style.viewTransitionName).toBe(CSS.escape("artist-cover-a b"));
-    set({ variant: "cover", size: "sm", viewTransitionName: undefined, iconSize: 32 });
-    expect(root.className).toBe("cover");
+    set({ size: "sm", viewTransitionName: undefined, iconSize: 32 });
+    expect(root.className).toBe("artwork");
     expect(root.dataset.size).toBe("sm");
     expect(root.style.viewTransitionName).toBe("");
     expect(root.querySelector("svg")?.getAttribute("width")).toBe("32");
