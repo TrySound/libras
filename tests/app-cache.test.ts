@@ -717,7 +717,10 @@ it.each([
 ])("keeps row controls accessible on $route", async ({ route, selector, observesArtwork }) => {
   installDisk();
   const load = vi.fn();
-  vi.spyOn(CoverEngine.prototype, "ensureAlbumCover").mockReturnValue({ source: undefined, load });
+  vi.spyOn(CoverEngine.prototype, "ensureCover").mockImplementation((id) => ({
+    source: undefined,
+    load: id === "album-cover" ? load : () => {},
+  }));
   const observers = new Map<Element, (visible: boolean) => void>();
   vi.stubGlobal(
     "IntersectionObserver",
@@ -742,7 +745,9 @@ it.each([
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
     ...library("Artist", 1),
-    albums: [{ id: "album", artistId: "artist", title: "Album", genres: [] }],
+    albums: [
+      { id: "album", artistId: "artist", title: "Album", artworkId: "album-cover", genres: [] },
+    ],
     tracks: [{ id: "track", albumId: "album", artistId: "artist", title: "Track", genres: [] }],
   });
   mocks.cache = cache;
@@ -844,4 +849,72 @@ it("renders cached artwork only near the viewport and drops the previous account
   await mocks.options!.covers.refresh();
   flushSync();
   expect(target.querySelector(".tile-image img")).toBeNull();
+});
+
+it("follows normalized album artwork IDs without publishing a late old image", async () => {
+  installDisk();
+  let sequence = 0;
+  vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:reference-${++sequence}`);
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+  const data = {
+    ...library("Artist", 1),
+    artists: [{ id: "artist", name: "Artist", artworkId: "artist-cover", genres: [] }],
+    albums: [
+      { id: "album", artistId: "artist", title: "Album", artworkId: "old-cover", genres: [] },
+    ],
+  };
+  await cache.replaceLibrary(data);
+  for (const id of ["old-cover", "new-cover", "artist-cover"]) {
+    await cache.saveImage(id, { blob: new Blob([id]), type: "image/png" });
+  }
+  const opened = await cache.readImage("old-cover");
+  let completeOld!: (value: typeof opened) => void;
+  const pending = new Promise<typeof opened>((resolve) => {
+    completeOld = resolve;
+  });
+  const readImage = cache.readImage.bind(cache);
+  const read = vi
+    .spyOn(cache, "readImage")
+    .mockImplementation((id, signal) => (id === "old-cover" ? pending : readImage(id, signal)));
+  mocks.cache = cache;
+  window.history.replaceState(null, "", "#/library/artist/artist/album/album");
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  await vi.waitFor(() => expect(read).toHaveBeenCalledWith("old-cover", expect.any(AbortSignal)));
+  await cache.replaceLibrary({
+    ...data,
+    savedAt: 2,
+    albums: [{ ...data.albums[0], artworkId: "new-cover" }],
+  });
+  const image = () => target.querySelector(".collection-view .artwork img")?.getAttribute("src");
+  await vi.waitFor(() => {
+    flushSync();
+    expect(image()).toBe("blob:reference-1");
+  });
+  completeOld(opened);
+  await vi.waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(2));
+  flushSync();
+  expect(image()).toBe("blob:reference-1");
+  await cache.replaceLibrary({
+    ...data,
+    savedAt: 3,
+    albums: [{ ...data.albums[0], artworkId: "artist-cover" }],
+  });
+  await vi.waitFor(() => {
+    flushSync();
+    expect(image()).toBe("blob:reference-3");
+  });
+  await cache.replaceLibrary({
+    ...data,
+    savedAt: 4,
+    albums: [{ ...data.albums[0], artworkId: undefined }],
+    artists: [{ ...data.artists[0], artworkId: undefined }],
+  });
+  flushSync();
+  expect(image()).toBeUndefined();
+  expect(target.querySelector(".collection-view .artwork svg")).not.toBeNull();
 });

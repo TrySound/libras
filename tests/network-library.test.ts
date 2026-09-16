@@ -57,6 +57,77 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("network library", () => {
+  it.each([
+    {
+      artist: "artist-art",
+      album: "album-art",
+      track: "track-art",
+      expectedAlbum: "album-art",
+      expectedTrack: "track-art",
+    },
+    {
+      artist: "artist-art",
+      album: "album-art",
+      track: undefined,
+      expectedAlbum: "album-art",
+      expectedTrack: "album-art",
+    },
+    {
+      artist: "artist-art",
+      album: undefined,
+      track: undefined,
+      expectedAlbum: "artist-art",
+      expectedTrack: "artist-art",
+    },
+    {
+      artist: undefined,
+      album: undefined,
+      track: undefined,
+      expectedAlbum: undefined,
+      expectedTrack: undefined,
+    },
+  ])(
+    "materializes effective artwork IDs: $expectedAlbum / $expectedTrack",
+    async ({ artist, album, track, expectedAlbum, expectedTrack }) => {
+      vi.stubGlobal(
+        "fetch",
+        serveLibrary({
+          artists: [
+            { id: "artist", name: "Artist", coverArt: artist },
+            { id: "guest", name: "Guest", coverArt: "guest-art" },
+          ],
+          albums: [{ id: "album", name: "Album", artistId: "artist", coverArt: album }],
+          tracks: [
+            { id: "song", title: "Song", albumId: "album", artistId: "guest", coverArt: track },
+          ],
+        }),
+      );
+      const connection = createConnection();
+      const library = await connection.readLibrary(connection.signal);
+      expect(library.albums[0].artworkId).toBe(expectedAlbum);
+      expect(library.tracks[0].artworkId).toBe(expectedTrack);
+      expect(library.tracks[0].artistId).toBe("guest");
+      connection.abort();
+    },
+  );
+
+  it("recomputes inherited IDs from fresh server metadata on every refresh", async () => {
+    const artists = [{ id: "artist", name: "Artist", coverArt: "first" }];
+    vi.stubGlobal("fetch", serveLibrary({ artists }));
+    const connection = createConnection();
+    const first = await connection.readLibrary(connection.signal);
+    expect(first.tracks[0].artworkId).toBe("first");
+    artists[0].coverArt = "second";
+    const second = await connection.readLibrary(connection.signal);
+    expect(second.albums[0].artworkId).toBe("second");
+    expect(second.tracks[0].artworkId).toBe("second");
+    artists[0].coverArt = "";
+    const third = await connection.readLibrary(connection.signal);
+    expect(third.albums[0].artworkId).toBeUndefined();
+    expect(third.tracks[0].artworkId).toBeUndefined();
+    connection.abort();
+  });
+
   it("paginates all metadata independently through search3", async () => {
     const albums = Array.from({ length: 501 }, (_, index) => ({
       id: `album-${index}`,

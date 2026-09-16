@@ -85,7 +85,7 @@
     {#if visibleArtists.length > 0}
       <div class="tiles-grid">
         {#each artistPage as artist}
-          {@const cover = coverEngine.ensureArtistCover(artist.id)}
+          {@const cover = coverEngine.ensureCover(artist.artworkId)}
           <a
             class="tile"
             {@attach onVisible(cover.load)}

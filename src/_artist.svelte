@@ -54,7 +54,7 @@
 
 <section>
   {#if libraryAvailable && artist}
-    {@const artwork = coverEngine.ensureArtistCover(artist.id)}
+    {@const artwork = coverEngine.ensureCover(artist.artworkId)}
     <div class="view collection-view">
       <div
         class="artwork"
@@ -112,7 +112,7 @@
       {#each visibleAlbums as album, index}
         {@const albumMenuId = `album-menu-${index}`}
         {@const visibleTrackIds = availableTrackIds(cache.albumTracks.get(album.id) ?? [])}
-        {@const cover = coverEngine.ensureAlbumCover(album.id)}
+        {@const cover = coverEngine.ensureCover(album.artworkId)}
         <article class="wings-item row-button">
           <a
             class="linkarea"

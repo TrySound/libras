@@ -5,26 +5,6 @@ import type { Cache, CacheSelection, Immutable } from "./cache.svelte";
 import { artworkNoStore, type ArtworkConnection } from "./network.svelte";
 import type { ImageMetadata, ImageRecord } from "./schema";
 
-type Entity = "artists" | "albums" | "tracks";
-
-/** Select one metadata reference; unavailable bytes do not select another image.
- * Track fallbacks use the album artist, including for compilation tracks. */
-export function resolveArtworkId(
-  library: Pick<Cache, "artists" | "albums" | "tracks">,
-  entity: Entity,
-  id: string,
-): string | undefined {
-  if (entity === "artists") return library.artists.get(id)?.artworkId;
-  const track = entity === "tracks" ? library.tracks.get(id) : undefined;
-  if (entity === "tracks" && !track) return undefined;
-  const album = library.albums.get(track ? track.albumId : id);
-  return (
-    track?.artworkId ??
-    album?.artworkId ??
-    (album && library.artists.get(album.artistId)?.artworkId)
-  );
-}
-
 interface Cover {
   readonly source: string | undefined;
   readonly load: () => void;
@@ -34,8 +14,9 @@ export function immediateCover(cover: { load(): void }): Attachment {
   return () => cover.load();
 }
 
+const emptyCover: Cover = { source: undefined, load() {} };
+
 interface CoverEntry {
-  entity: Entity;
   id: string;
   cover: Cover;
   generation: number;
@@ -82,7 +63,7 @@ export class CoverEngine {
     this.#version++;
   }
 
-  /** Re-resolve references and check freshness for demanded covers. */
+  /** Check freshness for demanded images. */
   async refresh(force = false) {
     if (this.#destroyed) return;
     if (force) {
@@ -146,8 +127,8 @@ export class CoverEngine {
     const previous = this.#objectUrls.get(id);
     this.#objectUrls.set(id, image);
     if (!previous) return;
-    for (const entry of this.#covers.values())
-      if (entry.source === previous.source) entry.source = image.source;
+    const entry = this.#covers.get(id);
+    if (entry?.source === previous.source) entry.source = image.source;
     // Let Svelte switch mounted images before retiring the previous URL.
     void tick().then(() => URL.revokeObjectURL(previous.source));
   }
@@ -181,51 +162,41 @@ export class CoverEngine {
     return load;
   }
 
-  #artworkId(entry: CoverEntry) {
-    const cache = this.#selection.cache;
-    return cache && resolveArtworkId(cache, entry.entity, entry.id);
-  }
   async #resolve(entry: CoverEntry, revalidate: boolean) {
     // Refreshes, reconnects and shared image updates must not acquire offscreen artwork.
     if (!entry.demanded) return;
     const request = ++entry.generation;
     const signal = this.#scope.signal;
     const cache = this.#selection.cache;
-    const id = this.#artworkId(entry);
+    const id = entry.id;
     const valid = () =>
       !this.#destroyed &&
       !signal.aborted &&
       cache === this.#selection.cache &&
-      request === entry.generation &&
-      id === this.#artworkId(entry);
+      request === entry.generation;
     if (!cache) return;
-    if (id !== undefined) {
-      try {
-        const record = cache.images.get(id);
-        const image =
-          this.#currentImage(id) ?? (record ? await this.#install(cache, record) : undefined);
-        if (!valid()) return;
-        if (image && image === this.#currentImage(id)) {
-          entry.source = image.source;
-          if (revalidate) this.#cacheImage(id);
-          return;
-        }
-      } catch {
-        if (!valid()) return;
+    try {
+      const record = cache.images.get(id);
+      const image =
+        this.#currentImage(id) ?? (record ? await this.#install(cache, record) : undefined);
+      if (!valid()) return;
+      if (image && image === this.#currentImage(id)) {
+        entry.source = image.source;
+        if (revalidate) this.#cacheImage(id);
+        return;
       }
+    } catch {
+      if (!valid()) return;
     }
     if (!valid()) return;
     entry.source = undefined;
-    if (revalidate && id !== undefined) this.#cacheImage(id);
+    if (revalidate) this.#cacheImage(id);
   }
 
-  /** Image changes only affect handles referencing that artwork, never the whole catalog. */
+  /** Refresh only this image's handle, never the whole catalog. */
   #refreshImage(id: string) {
-    return Promise.all(
-      [...this.#covers.values()]
-        .filter((entry) => entry.demanded && this.#artworkId(entry) === id)
-        .map((entry) => this.#resolve(entry, false)),
-    );
+    const entry = this.#covers.get(id);
+    return entry?.demanded ? this.#resolve(entry, false) : Promise.resolve();
   }
 
   #networkConnection() {
@@ -314,15 +285,14 @@ export class CoverEngine {
       });
   }
 
-  /** Creating or reading a handle never schedules I/O. load() gates all acquisition. */
-  #ensureCover(entity: Entity, id: string): Cover {
+  /** One handle per artwork ID in the selected account. Reading never schedules I/O. */
+  ensureCover(id: string | undefined): Cover {
     this.#version;
-    const key = JSON.stringify([entity, id]);
-    const existing = this.#covers.get(key);
+    if (id === undefined) return emptyCover;
+    const existing = this.#covers.get(id);
     if (existing) return existing.cover;
     const engine = this;
     const entry: CoverEntry = $state({
-      entity,
       id,
       generation: 0,
       demanded: false,
@@ -332,24 +302,15 @@ export class CoverEngine {
         },
         load() {
           untrack(() => {
-            if (engine.#covers.get(key) !== entry || engine.#destroyed) return;
+            if (engine.#covers.get(id) !== entry || engine.#destroyed) return;
             entry.demanded = true;
             void engine.#resolve(entry, true);
           });
         },
       },
     });
-    this.#covers.set(key, entry);
+    this.#covers.set(id, entry);
     return entry.cover;
-  }
-  ensureArtistCover(id: string) {
-    return this.#ensureCover("artists", id);
-  }
-  ensureAlbumCover(id: string) {
-    return this.#ensureCover("albums", id);
-  }
-  ensureTrackCover(id: string) {
-    return this.#ensureCover("tracks", id);
   }
 
   /** Session owns network access; disconnected handles retain local artwork and demand. */

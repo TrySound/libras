@@ -324,7 +324,7 @@
 </main>
 
 {#if currentTrack}
-  {@const cover = coverEngine.ensureTrackCover(currentTrack.id)}
+  {@const cover = coverEngine.ensureCover(currentTrack.artworkId)}
   <div class="mini-player wings">
     <button
       class="linkarea"
@@ -386,11 +386,11 @@
         class="artwork"
         aria-hidden="true"
         {@attach currentTrack
-          ? immediateCover(coverEngine.ensureTrackCover(currentTrack.id))
+          ? immediateCover(coverEngine.ensureCover(currentTrack.artworkId))
           : undefined}
       >
         {#if currentTrack}
-          {@const cover = coverEngine.ensureTrackCover(currentTrack.id)}
+          {@const cover = coverEngine.ensureCover(currentTrack.artworkId)}
           {#if cover.source}
             <img src={cover.source} alt="" />
           {:else}

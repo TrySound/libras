@@ -44,7 +44,7 @@
 
 <section>
   {#if libraryAvailable && artist && album}
-    {@const artwork = coverEngine.ensureAlbumCover(album.id)}
+    {@const artwork = coverEngine.ensureCover(album.artworkId)}
     <div class="view collection-view">
       <div
         class="artwork"

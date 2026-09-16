@@ -159,11 +159,15 @@ function normalizeLibrary(
   for (const source of sourceAlbums) {
     const owner = artistFor(source.artistId, source.artistName);
     albumArtistIds.add(owner.id);
+    // Resolve inheritance while building fresh records, avoiding another traversal
+    // and record copies in Cache. Stored IDs are used as-is, including in legacy
+    // offline snapshots; their inherited IDs are filled on the next network refresh.
+    const artworkId = source.artworkId ?? owner.artworkId;
     albums.push({
       id: source.id,
       title: source.title,
       artistId: owner.id,
-      artworkId: source.artworkId,
+      artworkId,
       year: source.year,
       genres: source.genres,
     });
@@ -175,7 +179,7 @@ function normalizeLibrary(
         albumId: source.id,
         artistId: trackArtist.id,
         artistName: sourceTrack.artistName || trackArtist.name,
-        artworkId: sourceTrack.artworkId,
+        artworkId: sourceTrack.artworkId ?? artworkId,
         number: sourceTrack.number,
         disc: sourceTrack.disc,
         duration: sourceTrack.duration,
