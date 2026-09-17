@@ -759,7 +759,7 @@ describe("playback", () => {
     expect(audio.play).not.toHaveBeenCalled();
   });
 
-  it("computes audio request and catalog fields from metadata at playback time", async () => {
+  it("passes only source identity and content type while keeping presentation metadata in Player", async () => {
     const { player, updateTrack, tracks, selection, session, library } = setup();
     library.artists = new Map([["artist", { id: "artist", name: "New artist", genres: [] }]]);
     library.albums = new Map([
@@ -770,9 +770,6 @@ describe("playback", () => {
     expect(tracks.getSource).toHaveBeenCalledWith(
       {
         id: "a",
-        title: "a",
-        artist: "New artist",
-        album: "New album",
         contentType: "audio/flac",
       },
       { forceTranscode: false, position: 0, signal: expect.any(AbortSignal) },

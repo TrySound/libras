@@ -166,9 +166,6 @@ export class Playback {
     if (!cache || !track || !this.#canPlay(this.#localQueue.index)) return;
     const descriptor = {
       id: track.id,
-      title: track.title,
-      artist: track.artistName ?? cache.artists.get(track.artistId)?.name,
-      album: cache.albums.get(track.albumId)?.title,
       contentType: track.mimeType,
     };
     const selection = this.#selection;
@@ -187,9 +184,9 @@ export class Playback {
     artwork();
     return {
       metadata: {
-        title: descriptor.title,
-        artist: descriptor.artist,
-        album: descriptor.album,
+        title: track.title,
+        artist: track.artistName ?? cache.artists.get(track.artistId)?.name,
+        album: cache.albums.get(track.albumId)?.title,
         duration: track.duration,
         get artwork() {
           return artwork();
