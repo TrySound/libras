@@ -353,7 +353,7 @@
     <button
       class="wings-item row-button"
       disabled={!menuTracks.length || menuDownloadStatus !== "idle"}
-      onclick={() => menuTracks.forEach((track) => void trackEngine.download(track.id))}
+      onclick={() => trackEngine.downloadMany(menuTracks.map((track) => track.id))}
     >
       <svg class="self-center" aria-hidden="true" width="20" height="20">
         <use href={`#icon-${downloadPresentation[menuDownloadStatus].icon}`}></use>

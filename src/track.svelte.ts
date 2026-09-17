@@ -177,6 +177,14 @@ export class TrackEngine {
     return promise;
   }
 
+  /** Ensure a selection is available offline, accepting either saved format.
+   * Preserve input order; download() owns scheduling and fire-and-forget errors. */
+  downloadMany(trackIds: Iterable<string>) {
+    for (const id of new Set(trackIds)) {
+      if (this.getStatus(id) === "idle") void this.download(id);
+    }
+  }
+
   #queueDownload(trackId: string, options: TrackSourceOptions) {
     const selected = this.#selection.cache;
     const record = selected?.tracks.get(trackId);

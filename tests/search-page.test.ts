@@ -17,7 +17,7 @@ it("focuses the input, expands results, retains route state, and uses album play
   const match = vi.spyOn(fuzzysort, "go");
   const playback = { replaceQueueAndPlay: vi.fn(), enqueue: vi.fn() };
   const cover = { load: vi.fn(), source: undefined };
-  const download = vi.fn();
+  const downloadMany = vi.fn();
   const props = {
     cache: {
       artists: new Map([["artist", { id: "artist", name: "Artist", genres: [] }]]),
@@ -27,7 +27,7 @@ it("focuses the input, expands results, retains route state, and uses album play
       artistAlbums: new Map([["artist", [{ id: "album" }]]]),
     },
     session: { localReady: true, offlineMode: false },
-    trackEngine: { getStatus: () => "downloaded", download },
+    trackEngine: { getStatus: () => "downloaded", downloadMany },
     covers: {
       ensureCover: () => cover,
     },
@@ -101,8 +101,9 @@ it("focuses the input, expands results, retains route state, and uses album play
         "next",
       );
       button("Download").click();
-      expect(download).toHaveBeenCalledTimes(12);
-      download.mockClear();
+      expect(downloadMany).toHaveBeenCalledOnce();
+      expect(downloadMany).toHaveBeenCalledWith(tracks.map((track) => track.id));
+      downloadMany.mockClear();
     }
     input.value = "Song";
     input.dispatchEvent(new Event("input", { bubbles: true }));
