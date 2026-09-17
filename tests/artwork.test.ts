@@ -66,9 +66,6 @@ function setup(overrides: Partial<Props> = {}, observation = true) {
       get size() {
         return state.current.size;
       },
-      get iconSize() {
-        return state.current.iconSize;
-      },
       get viewTransitionName() {
         return state.current.viewTransitionName;
       },
@@ -202,10 +199,11 @@ describe("Artwork", () => {
     expect(root.className).toBe("artwork");
     expect(root.dataset.size).toBe("stretch");
     expect(root.style.viewTransitionName).toBe(CSS.escape("artist-cover-a b"));
-    set({ size: "sm", viewTransitionName: undefined, iconSize: 32 });
+    expect(root.querySelector("svg")?.getAttribute("width")).toBe("64");
+    set({ size: "sm", viewTransitionName: undefined });
     expect(root.className).toBe("artwork");
     expect(root.dataset.size).toBe("sm");
     expect(root.style.viewTransitionName).toBe("");
-    expect(root.querySelector("svg")?.getAttribute("width")).toBe("32");
+    expect(root.querySelector("svg")?.getAttribute("width")).toBe("20");
   });
 });

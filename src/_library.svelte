@@ -99,7 +99,6 @@
               {covers}
               id={artist.artworkId}
               size="stretch"
-              iconSize={20}
               viewTransitionName={`artist-cover-${artist.id}`}
             />
             <strong

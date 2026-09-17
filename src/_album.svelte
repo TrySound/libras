@@ -50,7 +50,6 @@
         id={album.artworkId}
         size="stretch"
         loading="eager"
-        iconSize={20}
         viewTransitionName={`album-cover-${album.id}`}
       />
       <div class="section-heading collection-heading">

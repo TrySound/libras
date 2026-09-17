@@ -7,13 +7,12 @@
     id?: string;
     size?: "sm" | "md" | "stretch";
     loading?: "lazy" | "eager";
-    iconSize?: number;
     viewTransitionName?: string;
   }
 
-  let { covers, id, size = "md", loading = "lazy", iconSize, viewTransitionName }: Props = $props();
+  let { covers, id, size = "md", loading = "lazy", viewTransitionName }: Props = $props();
   const cover = $derived(id === undefined ? undefined : covers.ensureCover(id));
-  const placeholderSize = $derived(iconSize ?? (size === "stretch" ? 64 : 20));
+  const placeholderSize = $derived(size === "stretch" ? 64 : 20);
 
   function acquire(node: Element) {
     if (!cover) return;
