@@ -11,7 +11,8 @@
   import SearchRoute, { createSearchState } from "./_search.svelte";
   import WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
-  import { CoverEngine, immediateCover } from "./cover.svelte";
+  import { Covers } from "./covers.svelte";
+  import Artwork from "./artwork.svelte";
   import type { Album as AlbumRecord, Artist as ArtistRecord } from "./schema";
   import { Cache, type Immutable } from "./cache.svelte";
   import { Session } from "./session.svelte";
@@ -54,13 +55,13 @@
         : [];
     }),
   );
-  const coverEngine = new CoverEngine(selection);
+  const covers = new Covers(selection);
   const trackEngine = new TrackEngine({ selection });
   let player = $state<ReturnType<typeof Player>>();
   const playback: Playback = new Playback({
     selection,
     tracks: trackEngine,
-    covers: coverEngine,
+    covers,
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
   });
   const network = new Network();
@@ -68,7 +69,7 @@
     selection,
     network,
     auth: new AuthStore(),
-    covers: coverEngine,
+    covers,
     tracks: trackEngine,
     playback,
     preferences: localStorage,
@@ -113,7 +114,7 @@
   onDestroy(() => {
     session.destroy();
     playback.destroy();
-    coverEngine.destroy();
+    covers.destroy();
     trackEngine.destroy();
   });
 
@@ -196,22 +197,22 @@
 {/snippet}
 
 {#snippet libraryRoute()}
-  <LibraryRoute {cache} {coverEngine} {trackEngine} {session} {playback} />
+  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} />
 {/snippet}
 
 {#snippet searchRoute()}
-  <SearchRoute {cache} {coverEngine} {trackEngine} {session} {playback} state={searchState} />
+  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} state={searchState} />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
-  <ArtistRoute {params} {cache} {coverEngine} {trackEngine} {session} {playback} />
+  <ArtistRoute {params} {cache} {covers} {trackEngine} {session} {playback} />
 {/snippet}
 
 {#snippet albumRoute(params: RouteParams)}
   <AlbumRoute
     {params}
     {cache}
-    {coverEngine}
+    {covers}
     {trackEngine}
     {session}
     {playback}
@@ -324,7 +325,6 @@
 </main>
 
 {#if currentTrack}
-  {@const cover = coverEngine.ensureCover(currentTrack.artworkId)}
   <div class="mini-player wings">
     <button
       class="linkarea"
@@ -332,13 +332,7 @@
       command="show-modal"
       aria-label="Open player"
     ></button>
-    <span class="cover" data-size="sm" {@attach immediateCover(cover)}>
-      {#if cover.source}
-        <img src={cover.source} alt="" />
-      {:else}
-        <span>{@render icon("music")}</span>
-      {/if}
-    </span>
+    <Artwork {covers} id={currentTrack.artworkId} size="sm" loading="eager" />
     <span class="mini-copy stack-xs">
       <strong class="type-title">
         {currentTrack.title}
@@ -382,24 +376,7 @@
 
   <section class="player-view">
     <div class="player-main">
-      <div
-        class="artwork"
-        aria-hidden="true"
-        {@attach currentTrack
-          ? immediateCover(coverEngine.ensureCover(currentTrack.artworkId))
-          : undefined}
-      >
-        {#if currentTrack}
-          {@const cover = coverEngine.ensureCover(currentTrack.artworkId)}
-          {#if cover.source}
-            <img src={cover.source} alt="" />
-          {:else}
-            <span>{@render icon("music", 64)}</span>
-          {/if}
-        {:else}
-          <span>{@render icon("music", 64)}</span>
-        {/if}
-      </div>
+      <Artwork {covers} id={currentTrack?.artworkId} size="stretch" loading="eager" />
 
       <div class="view player-content">
         {#if currentTrack}

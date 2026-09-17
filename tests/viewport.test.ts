@@ -1,5 +1,4 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { immediateCover } from "../src/cover.svelte";
 import { onVisible } from "../src/viewport";
 
 const cleanups: (() => void)[] = [];
@@ -101,13 +100,4 @@ it("loads immediately when IntersectionObserver is unavailable", () => {
   const cover = { load: vi.fn() };
   onVisible(cover.load)({} as Element);
   expect(cover.load).toHaveBeenCalledOnce();
-});
-
-it("loads prominent artwork immediately without observing", () => {
-  const observer = vi.fn();
-  vi.stubGlobal("IntersectionObserver", observer);
-  const cover = { load: vi.fn() };
-  immediateCover(cover)({} as Element);
-  expect(cover.load).toHaveBeenCalledOnce();
-  expect(observer).not.toHaveBeenCalled();
 });

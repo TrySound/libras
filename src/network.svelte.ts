@@ -369,7 +369,7 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicClient, reque
         const response = await networkFetch(client.getCoverArtUrl(id, options.size), {
           headers,
           signal: requestSignal,
-          // CoverEngine owns freshness; consult the server whenever it requests bytes.
+          // Covers owns freshness; consult the server whenever it requests bytes.
           cache: "no-cache",
         });
         requestSignal.throwIfAborted();

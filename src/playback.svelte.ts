@@ -1,5 +1,5 @@
 import { getAccountKey } from "./auth";
-import type { CoverEngine } from "./cover.svelte";
+import type { Covers } from "./covers.svelte";
 import type { Cache, CachedQueue, CacheSelection, Immutable } from "./cache.svelte";
 import type { QueueConnection, RemoteQueue } from "./network.svelte";
 import type Player from "./player.svelte";
@@ -23,7 +23,7 @@ interface QueueState {
 interface PlaybackOptions {
   selection: CacheSelection;
   tracks: TrackEngine;
-  covers: CoverEngine;
+  covers: Covers;
   isAvailable?: (id: string) => boolean;
 }
 
@@ -55,7 +55,7 @@ function toRemoteQueue(local: Immutable<CachedQueue>): RemoteQueue {
  * Cache remains the authoritative queue and owns local durability; Player owns audio. */
 export class Playback {
   #selection: CacheSelection;
-  #covers: CoverEngine;
+  #covers: Covers;
   #tracks: TrackEngine;
   #player?: ReturnType<typeof Player>;
   #isAvailable: (id: string) => boolean;
@@ -173,7 +173,7 @@ export class Playback {
     };
     const selection = this.#selection;
     const covers = this.#covers;
-    let cover: ReturnType<CoverEngine["ensureCover"]> | undefined;
+    let cover: ReturnType<Covers["ensureCover"]> | undefined;
     const artwork = () => {
       if (selection.cache !== cache) return;
       const current = covers.ensureCover(cache.tracks.get(track.id)?.artworkId);

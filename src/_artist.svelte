@@ -1,23 +1,23 @@
 <script lang="ts">
   import type { Cache, Immutable } from "./cache.svelte";
-  import { immediateCover, type CoverEngine } from "./cover.svelte";
+  import type { Covers } from "./covers.svelte";
+  import Artwork from "./artwork.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
   import type { RouteParams } from "./router.svelte";
   import type { Session } from "./session.svelte";
-  import { onVisible } from "./viewport";
 
   interface Props {
     params: RouteParams;
     cache: Cache;
-    coverEngine: CoverEngine;
+    covers: Covers;
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
   }
 
-  let { params, cache, coverEngine, trackEngine, session, playback }: Props = $props();
+  let { params, cache, covers, trackEngine, session, playback }: Props = $props();
 
   const loading = $derived(!session.localReady);
   const offlineMode = $derived(session.offlineMode);
@@ -54,20 +54,14 @@
 
 <section>
   {#if libraryAvailable && artist}
-    {@const artwork = coverEngine.ensureCover(artist.artworkId)}
     <div class="view collection-view">
-      <div
-        class="artwork"
-        style:view-transition-name={CSS.escape(`artist-cover-${artist.id}`)}
-        aria-hidden="true"
-        {@attach immediateCover(artwork)}
-      >
-        {#if artwork.source}
-          <img src={artwork.source} alt="" />
-        {:else}
-          <svg aria-hidden="true" width="64" height="64"><use href="#icon-music"></use></svg>
-        {/if}
-      </div>
+      <Artwork
+        {covers}
+        id={artist.artworkId}
+        size="stretch"
+        loading="eager"
+        viewTransitionName={`artist-cover-${artist.id}`}
+      />
       <div class="section-heading collection-heading">
         <div>
           <h2
@@ -112,31 +106,16 @@
       {#each visibleAlbums as album, index}
         {@const albumMenuId = `album-menu-${index}`}
         {@const visibleTrackIds = availableTrackIds(cache.albumTracks.get(album.id) ?? [])}
-        {@const cover = coverEngine.ensureCover(album.artworkId)}
         <article class="wings-item row-button">
           <a
             class="linkarea"
-            {@attach onVisible(cover.load)}
             href={`#/library/artist/${encodeURIComponent(artist.id)}/album/${encodeURIComponent(album.id)}`}
             aria-label={`Open ${album.title}`}
             data-longpressfor={albumMenuId}
             data-longpress="show-modal"
             title={`${album.title} — hold for actions`}
           ></a>
-          <span
-            class="cover"
-            data-size="md"
-            style:view-transition-name={CSS.escape(`album-cover-${album.id}`)}
-          >
-            {#if cover.source}
-              <img src={cover.source} alt="" />
-            {:else}
-              <span
-                ><svg aria-hidden="true" width="20" height="20"><use href="#icon-music"></use></svg
-                ></span
-              >
-            {/if}
-          </span>
+          <Artwork {covers} id={album.artworkId} viewTransitionName={`album-cover-${album.id}`} />
           <span class="stack-xs">
             <strong
               class="type-title"

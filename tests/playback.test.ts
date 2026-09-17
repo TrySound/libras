@@ -10,7 +10,7 @@ import { Cache } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import type { Track } from "../src/schema";
 import { TrackEngine, type TrackSource } from "../src/track.svelte";
-import { CoverEngine } from "../src/cover.svelte";
+import { Covers } from "../src/covers.svelte";
 import { Network } from "../src/network.svelte";
 import { TestSelection, playbackLibrary } from "./cache-selection-test-helpers.svelte";
 
@@ -74,8 +74,8 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
   const artwork = new SvelteMap<string, string | undefined>([
     ["source", "data:image/jpeg;base64,aW1hZ2U="],
   ]);
-  const coverEngine = new CoverEngine(selection);
-  const coverHandles = new Map<string | undefined, ReturnType<CoverEngine["ensureCover"]>>();
+  const coverEngine = new Covers(selection);
+  const coverHandles = new Map<string | undefined, ReturnType<Covers["ensureCover"]>>();
   const covers = {
     ensureCover: vi.spyOn(coverEngine, "ensureCover").mockImplementation((id) => {
       if (!coverHandles.has(id))
@@ -898,7 +898,7 @@ describe("playback", () => {
       ["album-cover", "data:image/jpeg;base64,YWxidW0="],
       ["artist-cover", "data:image/jpeg;base64,YXJ0aXN0="],
     ]);
-    const handles = new Map<string | undefined, ReturnType<CoverEngine["ensureCover"]>>();
+    const handles = new Map<string | undefined, ReturnType<Covers["ensureCover"]>>();
     covers.ensureCover.mockImplementation((id) => {
       if (!handles.has(id))
         handles.set(id, {

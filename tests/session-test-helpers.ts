@@ -2,7 +2,7 @@ import { vi } from "vitest";
 import { AuthStore, getAccountKey } from "../src/auth";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { Network, type MetadataConnection } from "../src/network.svelte";
-import { CoverEngine } from "../src/cover.svelte";
+import { Covers } from "../src/covers.svelte";
 import { TrackEngine } from "../src/track.svelte";
 import { Playback } from "../src/playback.svelte";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
@@ -91,12 +91,12 @@ export function createSession(saved = false, storage = createStorage()) {
       );
       vi.spyOn(this, "savedAt", "get").mockReturnValue(value.savedAt);
     });
-  const coverEngine = new CoverEngine(selection);
+  const coverResources = new Covers(selection);
   const trackEngine = new TrackEngine({ selection });
   const player = new Playback({
     selection,
     tracks: trackEngine,
-    covers: coverEngine,
+    covers: coverResources,
   });
   const metadata = {
     getModifiedAt: vi.fn<MetadataConnection["getModifiedAt"]>(async () => 100),
@@ -107,9 +107,9 @@ export function createSession(saved = false, storage = createStorage()) {
     })),
   };
   const covers = {
-    activate: vi.spyOn(coverEngine, "activate").mockImplementation(() => {}),
-    refresh: vi.spyOn(coverEngine, "refresh").mockResolvedValue(undefined),
-    setConnection: vi.spyOn(coverEngine, "setConnection").mockImplementation(() => {}),
+    activate: vi.spyOn(coverResources, "activate").mockImplementation(() => {}),
+    refresh: vi.spyOn(coverResources, "refresh").mockResolvedValue(undefined),
+    setConnection: vi.spyOn(coverResources, "setConnection").mockImplementation(() => {}),
   };
   const tracks = {
     activate: vi.spyOn(trackEngine, "activate").mockImplementation(() => {}),
@@ -143,7 +143,7 @@ export function createSession(saved = false, storage = createStorage()) {
     selection,
     network,
     auth,
-    covers: coverEngine,
+    covers: coverResources,
     tracks: trackEngine,
     playback: player,
     preferences: storage,
@@ -153,7 +153,7 @@ export function createSession(saved = false, storage = createStorage()) {
       session.destroy();
       await player.destroy();
       covers.activate.mockRestore();
-      coverEngine.destroy();
+      coverResources.destroy();
       trackEngine.destroy();
     },
     session,

@@ -28,7 +28,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     },
     session: { localReady: true, offlineMode: false },
     trackEngine: { getStatus: () => "downloaded", download },
-    coverEngine: {
+    covers: {
       ensureCover: () => cover,
     },
     playback,

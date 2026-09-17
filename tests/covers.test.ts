@@ -2,7 +2,7 @@ import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { flushSync } from "svelte";
 import { observeCover } from "./cover-reactivity.test.svelte";
-import { CoverEngine } from "../src/cover.svelte";
+import { Covers } from "../src/covers.svelte";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { Network } from "../src/network.svelte";
@@ -50,7 +50,7 @@ function createConnection(credentials = auth) {
     abort: () => network.setMode("offline"),
   };
 }
-const engines: CoverEngine[] = [];
+const engines: Covers[] = [];
 function installOpfs() {
   const disk = installDisk();
   let sequence = 0;
@@ -63,7 +63,7 @@ async function engine(cache = new Cache(getAccountKey(account))) {
   await cache.flush();
   const selection = new TestSelection();
   selection.cache = cache;
-  const covers = new CoverEngine(selection);
+  const covers = new Covers(selection);
   engines.push(covers);
   covers.activate();
   return { selection, cache, covers };
