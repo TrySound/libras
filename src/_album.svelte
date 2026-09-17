@@ -233,8 +233,8 @@
       <button
         class="wings-item row-button"
         onclick={() =>
-          (cache.albumTracks.get(album.id) ?? []).forEach(
-            (track) => void trackEngine.download(track.id),
+          trackEngine.downloadMany(
+            (cache.albumTracks.get(album.id) ?? []).map((track) => track.id),
           )}
       >
         <svg class="self-center" aria-hidden="true" width="20" height="20"

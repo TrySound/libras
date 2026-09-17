@@ -188,7 +188,7 @@
     </button>
     <button
       class="wings-item row-button"
-      onclick={() => tracks.forEach((track) => void trackEngine.download(track.id))}
+      onclick={() => trackEngine.downloadMany(tracks.map((track) => track.id))}
     >
       <svg class="self-center" aria-hidden="true" width="20" height="20">
         <use href="#icon-download"></use>

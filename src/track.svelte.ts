@@ -3,11 +3,8 @@ import { downloadKey, type Cache, type CacheSelection, type DownloadFormat } fro
 import type { DownloadTrack } from "./schema";
 import { getAccountKey } from "./auth";
 
-interface EngineTrack {
+interface SourceTrack {
   id: string;
-  title?: string;
-  artist?: string;
-  album?: string;
   contentType?: string;
 }
 export interface TrackSource {
@@ -82,16 +79,7 @@ export class TrackEngine {
     return this.#error;
   }
 
-  #track(track: EngineTrack): DownloadTrack {
-    return {
-      id: track.id,
-      title: track.title ?? track.id,
-      artist: track.artist ?? "Unknown artist",
-      album: track.album ?? "Unknown album",
-      contentType: track.contentType,
-    };
-  }
-  #describe(track: EngineTrack, options: TrackSourceOptions = {}): Descriptor {
+  #describe(track: SourceTrack, options: TrackSourceOptions = {}): Descriptor {
     const cache = this.#selection.cache;
     if (cache?.key === undefined) throw new Error("No music account selected.");
     const format =
@@ -189,14 +177,25 @@ export class TrackEngine {
     return promise;
   }
 
+  /** Ensure a selection is available offline, accepting either saved format.
+   * Preserve input order; download() owns scheduling and fire-and-forget errors. */
+  downloadMany(trackIds: Iterable<string>) {
+    for (const id of new Set(trackIds)) {
+      if (this.getStatus(id) === "idle") void this.download(id);
+    }
+  }
+
   #queueDownload(trackId: string, options: TrackSourceOptions) {
     const selected = this.#selection.cache;
     const record = selected?.tracks.get(trackId);
-    const track: EngineTrack = {
+    const track: DownloadTrack = {
       id: trackId,
-      title: record?.title,
-      artist: record?.artistName ?? (record && selected?.artists.get(record.artistId)?.name),
-      album: record && selected?.albums.get(record.albumId)?.title,
+      title: record?.title ?? trackId,
+      artist:
+        record?.artistName ??
+        (record && selected?.artists.get(record.artistId)?.name) ??
+        "Unknown artist",
+      album: (record && selected?.albums.get(record.albumId)?.title) ?? "Unknown album",
       contentType: record?.mimeType,
     };
     const descriptor = this.#describe(track, options);
@@ -211,7 +210,7 @@ export class TrackEngine {
       connection,
       cache,
       signal: AbortSignal.any([controller.signal, connection.signal]),
-      track: this.#track(track),
+      track,
       status: "queued",
       controller,
       promise,
@@ -223,7 +222,7 @@ export class TrackEngine {
     return promise;
   }
 
-  async #cached(cache: Cache, track: EngineTrack, descriptor: Descriptor, signal: AbortSignal) {
+  async #cached(cache: Cache, track: SourceTrack, descriptor: Descriptor, signal: AbortSignal) {
     const file = await cache.readDownload(track.id, descriptor.format, signal);
     if (file)
       return {
@@ -248,7 +247,7 @@ export class TrackEngine {
     return keys.some((key) => cache.downloads.has(key)) ? "downloaded" : "idle";
   }
   async getSource(
-    track: EngineTrack,
+    track: SourceTrack,
     options: TrackSourceOptions & { position?: number; signal?: AbortSignal } = {},
   ): Promise<TrackSource> {
     if (this.#destroyed) throw new DOMException("Playback stopped.", "AbortError");

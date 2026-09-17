@@ -61,6 +61,88 @@ afterEach(() => {
 });
 
 describe("TrackEngine using Cache", () => {
+  it("batches only missing tracks, skipping either saved format and pending jobs in input order", async () => {
+    install();
+    const { cache, engine } = setup({ online: true, concurrency: 1 });
+    for (const format of ["raw", "mp3"] as const) {
+      await cache.saveDownload(
+        { ...track, id: `saved-${format}` },
+        format,
+        "audio/mpeg",
+        new Response("cached"),
+        new AbortController().signal,
+      );
+    }
+    const pending = deferred<Response>();
+    const fetcher = vi
+      .fn(async () => new Response("audio"))
+      .mockImplementationOnce(() => pending.promise);
+    vi.stubGlobal("fetch", fetcher);
+    const active = engine.download("active");
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    const queued = engine.download("queued");
+    const download = vi.spyOn(engine, "download");
+    const read = vi.spyOn(cache, "readDownload");
+    const ids = ["saved-raw", "active", "new-a", "queued", "new-a", "saved-mp3", "new-b"];
+    engine.downloadMany(ids);
+    engine.downloadMany(ids);
+    expect(download.mock.calls.map(([id]) => id)).toEqual(["new-a", "new-b"]);
+    expect(engine.downloadJobs.map((job) => job.track.id)).toEqual([
+      "active",
+      "queued",
+      "new-a",
+      "new-b",
+    ]);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(read).not.toHaveBeenCalled();
+    pending.resolve(new Response("audio"));
+    await active;
+    await queued;
+    await vi.waitFor(() => expect(engine.downloadJobs).toHaveLength(0));
+    expect(engine.getStatus("new-a")).toBe("downloaded");
+    expect(engine.getStatus("new-b")).toBe("downloaded");
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not require a connection or disk reads for an already saved batch", async () => {
+    install("probably");
+    const { cache, engine } = setup({ cache: await seed() });
+    const read = vi.spyOn(cache, "readDownload");
+    const download = vi.spyOn(engine, "download");
+    engine.downloadMany([track.id, track.id]);
+    engine.downloadMany([]);
+    expect(download).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+    expect(engine.error).toBeUndefined();
+  });
+
+  it("deduplicates failed batch setup and reports errors without unhandled rejections", async () => {
+    install();
+    const { engine } = setup();
+    const download = vi.spyOn(engine, "download");
+    engine.downloadMany(["missing", "missing"]);
+    await turn();
+    expect(download).toHaveBeenCalledOnce();
+    expect(engine.error).toBeInstanceOf(Error);
+  });
+
+  it("continues a batch after an individual transfer fails", async () => {
+    install();
+    const { engine } = setup({ online: true, concurrency: 1 });
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response("failure", { status: 500 }))
+        .mockResolvedValueOnce(new Response("audio")),
+    );
+    engine.downloadMany(["bad", "good"]);
+    await vi.waitFor(() => expect(engine.getStatus("good")).toBe("downloaded"));
+    expect(engine.downloadJobs).toHaveLength(0);
+    expect(engine.getStatus("bad")).toBe("idle");
+    expect(engine.error).toBeInstanceOf(Error);
+  });
+
   it.each([undefined, "Track artist"])(
     "resolves download metadata from the selected cache (artist override: %s)",
     async (artistName) => {
