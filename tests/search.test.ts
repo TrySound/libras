@@ -3,7 +3,7 @@ import { createSearchIndex, searchLibrary } from "../src/_search.svelte";
 import type { Album, Artist, Track } from "../src/schema";
 
 function fixture(count = 12) {
-  const artists = new Map<string, Artist>([["a", { id: "a", name: "Beyoncé", genres: [] }]]);
+  const artists = new Map<string, Artist>([["a", { id: "a", name: "Beyoncé" }]]);
   const albums = new Map<string, Album>([
     ["b", { id: "b", title: "Lemonade", artistId: "a", genres: [] }],
   ]);

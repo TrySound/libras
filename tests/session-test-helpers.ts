@@ -30,7 +30,7 @@ export function snapshot(account: Account): LibrarySnapshot {
   return {
     savedAt: 100,
     lastModified: 10,
-    artists: [{ id: "artist", name: account.username, genres: [] }],
+    artists: [{ id: "artist", name: account.username }],
     albums: [],
     tracks: [],
   };

@@ -219,11 +219,7 @@ describe("network library", () => {
       duration: 120,
     });
     expect(library.tracks.find((track) => track.id === "first")?.artistId).toBe("artist");
-    expect(
-      library.artists
-        .find((artist) => artist.id === "artist")
-        ?.genres.map((genre) => genre.toLowerCase()),
-    ).toEqual([]);
+    expect(library.artists.find((artist) => artist.id === "artist")).not.toHaveProperty("genres");
     expect(library.artists.map((artist) => artist.id)).toEqual(["artist"]);
     expect(library.artists[0]).not.toHaveProperty("albums");
     expect(library.albums[0]).not.toHaveProperty("tracks");
@@ -233,8 +229,8 @@ describe("network library", () => {
 
   it.each([
     {
-      genres: [{ name: " Rock " }, { name: "rock" }, { name: "Jazz|Fusion" }, { name: " " }],
-      expected: ["Jazz|Fusion", "rock"],
+      genres: [{ name: "Rock" }, { name: "rock" }, { name: "Jazz|Fusion" }],
+      expected: ["Rock", "rock", "Jazz|Fusion"],
     },
     { genres: [], expected: [] },
     { genres: undefined, expected: [] },
@@ -255,7 +251,7 @@ describe("network library", () => {
       );
       const connection = createConnection();
       const library = await connection.readLibrary(connection.signal);
-      expect(library.artists[0].genres).toEqual([]);
+      expect(library.artists[0]).not.toHaveProperty("genres");
       expect(library.albums[0].genres).toEqual(expected);
       expect(library.tracks[0].genres).toEqual(expected);
       connection.abort();

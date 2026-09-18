@@ -153,7 +153,7 @@ describe("TrackEngine using Cache", () => {
       );
       const { cache, engine } = setup({ online: true });
       await cache.replaceLibrary({
-        artists: [{ id: "artist", name: "Library artist", genres: [] }],
+        artists: [{ id: "artist", name: "Library artist" }],
         albums: [{ id: "album", artistId: "artist", title: "Library album", genres: [] }],
         tracks: [
           {

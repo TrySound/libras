@@ -34,16 +34,7 @@
         )
       : albums,
   );
-  const genres = $derived(
-    [
-      ...new Map(
-        [...(artist?.genres ?? []), ...albums.flatMap((album) => album.genres)].map((genre) => [
-          genre.toLocaleLowerCase(),
-          genre,
-        ]),
-      ).values(),
-    ].sort((a, b) => a.localeCompare(b)),
-  );
+  const genres = $derived([...new Set(albums.flatMap((album) => album.genres))]);
 
   function availableTrackIds(items: readonly Immutable<Track>[]) {
     return items

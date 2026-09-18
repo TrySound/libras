@@ -62,7 +62,7 @@ afterEach(async () => {
 
 function library(name: string, savedAt: number): LibrarySnapshot {
   return {
-    artists: [{ id: "artist", name, genres: [] }],
+    artists: [{ id: "artist", name }],
     albums: [],
     tracks: [],
     lastModified: savedAt,
@@ -270,7 +270,7 @@ it("preserves artist pagination when offline eligibility changes", async () => {
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
     ...library("Artist", 1),
-    artists: [...downloaded].map((id) => ({ id, name: `Artist ${id}`, genres: [] })),
+    artists: [...downloaded].map((id) => ({ id, name: `Artist ${id}` })),
     albums: [...downloaded].map((id) => ({ id, title: `Album ${id}`, artistId: id, genres: [] })),
     tracks: [...downloaded].map((id) => ({
       id,
@@ -498,7 +498,7 @@ it("reuses one library menu for the long-pressed artist", async () => {
   installDisk();
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
-    artists: ["one", "two"].map((id) => ({ id, name: `Artist ${id}`, genres: [] })),
+    artists: ["one", "two"].map((id) => ({ id, name: `Artist ${id}` })),
     albums: ["one", "two"].map((id) => ({ id, artistId: id, title: id, genres: [] })),
     tracks: ["one", "two"].map((id) => ({ id, artistId: id, albumId: id, title: id, genres: [] })),
     lastModified: 1,
@@ -533,6 +533,50 @@ it("reuses one library menu for the long-pressed artist", async () => {
     expect(target.querySelectorAll(".action-menu")).toHaveLength(1);
   }
   expect(download).toHaveBeenCalledTimes(2);
+});
+
+it("derives artist genres from albums and reacts to library updates", async () => {
+  installDisk();
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+  const snapshot = {
+    ...library("Artist", 1),
+    albums: [
+      { id: "album", artistId: "artist", title: "Album", genres: ["Rock", "Jazz"] },
+      { id: "second", artistId: "artist", title: "Second", genres: ["Jazz", "Soul"] },
+    ],
+    tracks: [
+      {
+        id: "track",
+        albumId: "album",
+        artistId: "artist",
+        title: "Track",
+        genres: ["Track-only genre"],
+      },
+    ],
+  };
+  await cache.replaceLibrary(snapshot);
+  mocks.cache = cache;
+  installNavigation("/library/artist/artist", mocks.navigate);
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const labels = () =>
+    [...target.querySelectorAll(".genre-list > *")].map((node) => node.textContent?.trim());
+  expect(labels()).toEqual(["Rock", "Jazz", "Soul"]);
+  expect(cache.artists.get("artist")).not.toHaveProperty("genres");
+
+  await cache.replaceLibrary({
+    ...snapshot,
+    albums: [{ ...snapshot.albums[0], genres: ["Blues"] }],
+  });
+  flushSync();
+  expect(labels()).toEqual(["Blues"]);
+
+  await cache.replaceLibrary({ ...snapshot, albums: [{ ...snapshot.albums[0], genres: [] }] });
+  flushSync();
+  expect(target.querySelector(".genre-list")).toBeNull();
 });
 
 it("shows only album genres on the album route", async () => {
@@ -867,7 +911,7 @@ it("follows normalized album artwork IDs without publishing a late old image", a
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   const data = {
     ...library("Artist", 1),
-    artists: [{ id: "artist", name: "Artist", artworkId: "artist-cover", genres: [] }],
+    artists: [{ id: "artist", name: "Artist", artworkId: "artist-cover" }],
     albums: [
       { id: "album", artistId: "artist", title: "Album", artworkId: "old-cover", genres: [] },
     ],

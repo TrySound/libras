@@ -13,8 +13,8 @@ describe("cached library", () => {
     const storage = installMetadataStorage();
     const data = snapshot();
     data.artists = [
-      { id: "b", name: "Beta", genres: [] },
-      { id: "a", name: "Alpha", genres: [] },
+      { id: "b", name: "Beta" },
+      { id: "a", name: "Alpha" },
     ];
     data.albums = [
       { id: "later", artistId: "a", title: "Later", year: 2020, genres: [] },

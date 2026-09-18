@@ -51,7 +51,7 @@ For implementation details, consult the owning module and its tests rather than 
 
 ### Genre metadata
 
-Library synchronization reads OpenSubsonic structured `genres` on albums and tracks. Names are trimmed, deduplicated case-insensitively, and sorted; delimiters such as `|` remain part of a name. Missing genres become empty arrays, without falling back to legacy `genre` strings. ArtistID3 has no genre fields, so artist genres are ignored and local artist records use empty genre arrays.
+Library synchronization reads OpenSubsonic structured `genres` on albums and tracks. Names and their order are preserved as supplied, including duplicates; delimiters such as `|` remain part of a name. Missing genres become empty arrays, without falling back to legacy `genre` strings. ArtistID3 has no genre fields, so artist records do not store genres. The artist page derives its genres from the artist's albums.
 
 ## Testing browser behavior
 

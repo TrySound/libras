@@ -115,16 +115,6 @@ type RemoteArtwork = ImageMetadata & { notModified: false; blob: Blob; type: str
 
 export type ArtworkConnection = ReturnType<typeof artworkAccess>;
 
-function genres(item: { genres?: { name: string }[] }) {
-  const names = (item.genres ?? [])
-    .map((genre) => genre.name)
-    .map((name) => name.trim())
-    .filter(Boolean);
-  return [...new Map(names.map((name) => [name.toLocaleLowerCase(), name])).values()].sort((a, b) =>
-    a.localeCompare(b),
-  );
-}
-
 function normalizeLibrary(
   sourceArtists: readonly RemoteArtist[],
   sourceAlbums: readonly RemoteAlbum[],
@@ -138,7 +128,6 @@ function normalizeLibrary(
       id: source.id || syntheticId(source.name),
       name: source.name,
       artworkId: source.artworkId,
-      genres: source.genres,
     };
     artists.set(artist.id, artist);
     byName.set(artist.name, artist);
@@ -148,7 +137,7 @@ function normalizeLibrary(
     const existing = id ? artists.get(id) : name ? byName.get(name) : undefined;
     if (existing) return existing;
     const resolvedName = name || "Unknown artist";
-    const artist: Artist = { id: id || syntheticId(resolvedName), name: resolvedName, genres: [] };
+    const artist: Artist = { id: id || syntheticId(resolvedName), name: resolvedName };
     artists.set(artist.id, artist);
     byName.set(artist.name, artist);
     return artist;
@@ -270,8 +259,6 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
               id: artist.id,
               name: artist.name,
               artworkId: artist.coverArt || undefined,
-              // ArtistID3 has no genres; they belong to albums and tracks.
-              genres: [],
             })),
             artists,
             (artist) => artist.id || `local:artist:${encodeURIComponent(artist.name)}`,
@@ -285,7 +272,7 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
               artistName: album.artist,
               artworkId: album.coverArt || undefined,
               year: album.year && album.year > 0 ? album.year : undefined,
-              genres: genres(album),
+              genres: album.genres?.map((genre) => genre.name) ?? [],
             })),
             albums,
             (album) => album.id,
@@ -303,7 +290,7 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
               disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,
               duration: track.duration,
               mimeType: track.contentType,
-              genres: genres(track),
+              genres: track.genres?.map((genre) => genre.name) ?? [],
             })),
             tracks,
             (track) => track.id,
