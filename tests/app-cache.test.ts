@@ -579,6 +579,51 @@ it("derives artist genres from albums and reacts to library updates", async () =
   expect(target.querySelector(".genre-list")).toBeNull();
 });
 
+it("shows current track genres in the player without album fallbacks", async () => {
+  installDisk();
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+  await cache.replaceLibrary({
+    ...library("Artist", 1),
+    albums: [{ id: "album", artistId: "artist", title: "Album", genres: ["Album-only genre"] }],
+    tracks: [
+      {
+        id: "first",
+        albumId: "album",
+        artistId: "artist",
+        title: "First",
+        genres: ["Soul", "Jazz|Fusion"],
+      },
+      { id: "second", albumId: "album", artistId: "artist", title: "Second", genres: ["Rock"] },
+      { id: "third", albumId: "album", artistId: "artist", title: "Third", genres: [] },
+    ],
+  });
+  const tracks = ["first", "second", "third"];
+  cache.setQueue({ tracks, index: 0, position: 0 });
+  mocks.cache = cache;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const labels = () =>
+    [...target.querySelectorAll("#player-dialog .genre-list span")].map((node) =>
+      node.textContent?.trim(),
+    );
+  expect(labels()).toEqual(["Soul", "Jazz|Fusion"]);
+
+  cache.setQueue({ tracks, index: 1, position: 0 });
+  flushSync();
+  expect(labels()).toEqual(["Rock"]);
+
+  cache.setQueue({ tracks, index: 2, position: 0 });
+  flushSync();
+  expect(target.querySelector("#player-dialog .genre-list")).toBeNull();
+
+  cache.setQueue({ tracks: [], index: 0, position: 0 });
+  flushSync();
+  expect(target.querySelector("#player-dialog .genre-list")).toBeNull();
+});
+
 it("shows only album genres on the album route", async () => {
   installDisk();
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
