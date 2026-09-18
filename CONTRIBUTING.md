@@ -49,6 +49,10 @@ Keep these boundaries in mind:
 
 For implementation details, consult the owning module and its tests rather than adding a second state store or synchronization layer.
 
+### Genre metadata
+
+Library synchronization reads OpenSubsonic structured `genres` on albums and tracks. Names are trimmed, deduplicated case-insensitively, and sorted; delimiters such as `|` remain part of a name. Missing genres become empty arrays, without falling back to legacy `genre` strings. ArtistID3 has no genre fields, so artist genres are ignored and local artist records use empty genre arrays.
+
 ## Testing browser behavior
 
 For playback or synchronization changes, check refresh, disconnect/reload, offline playback, failed reconnects, and switching accounts with overlapping track IDs. Test seeking, duplicate queue entries, and cancellation during in-flight work.

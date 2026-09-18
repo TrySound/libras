@@ -115,9 +115,9 @@ type RemoteArtwork = ImageMetadata & { notModified: false; blob: Blob; type: str
 
 export type ArtworkConnection = ReturnType<typeof artworkAccess>;
 
-function genres(item: { genre?: string; genres?: { name: string }[] }) {
-  const names = [item.genre ?? "", ...(item.genres ?? []).map((genre) => genre.name)]
-    .flatMap((name) => name.split("|"))
+function genres(item: { genres?: { name: string }[] }) {
+  const names = (item.genres ?? [])
+    .map((genre) => genre.name)
     .map((name) => name.trim())
     .filter(Boolean);
   return [...new Map(names.map((name) => [name.toLocaleLowerCase(), name])).values()].sort((a, b) =>
@@ -270,7 +270,8 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
               id: artist.id,
               name: artist.name,
               artworkId: artist.coverArt || undefined,
-              genres: genres(artist),
+              // ArtistID3 has no genres; they belong to albums and tracks.
+              genres: [],
             })),
             artists,
             (artist) => artist.id || `local:artist:${encodeURIComponent(artist.name)}`,

@@ -96,6 +96,40 @@ describe("subsonic client", () => {
     await expect(client.search3(page)).rejects.toThrow("invalid Subsonic response");
   });
 
+  it("strips legacy and artist genre fields while preserving structured genres", async () => {
+    const genres = [{ name: "Jazz|Fusion" }];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          searchResult3: {
+            artist: [{ id: "artist", name: "Artist", genre: 123, genres: "ignored" }],
+            album: [{ id: "album", name: "Album", genre: 123, genres }],
+            song: [{ id: "song", title: "Song", genre: 123, genres }],
+          },
+        }),
+      ),
+    );
+    const client = new SubsonicClient(auth);
+    await expect(client.search3(page)).resolves.toEqual({
+      artists: [{ id: "artist", name: "Artist" }],
+      albums: [{ id: "album", name: "Album", genres }],
+      tracks: [{ id: "song", title: "Song", genres }],
+    });
+  });
+
+  it.each([
+    { album: [{ id: "album", name: "Album", genres: ["Rock"] }] },
+    { song: [{ id: "song", title: "Song", genres: [{ name: 123 }] }] },
+  ])("rejects malformed structured genres: %j", async (searchResult3) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response({ searchResult3 })),
+    );
+    const client = new SubsonicClient(auth);
+    await expect(client.search3(page)).rejects.toThrow("invalid Subsonic response");
+  });
+
   it("builds authenticated media URLs", () => {
     const client = new SubsonicClient(auth);
 

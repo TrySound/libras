@@ -29,8 +29,6 @@ const artistSchema = v.object({
   id: v.optional(v.string()),
   name: v.string(),
   coverArt: v.optional(v.string()),
-  genre: v.optional(v.string()),
-  genres: v.optional(v.array(genreSchema)),
 });
 
 const albumSchema = v.object({
@@ -39,7 +37,6 @@ const albumSchema = v.object({
   artist: v.optional(v.string()),
   artistId: v.optional(v.string()),
   coverArt: v.optional(v.string()),
-  genre: v.optional(v.string()),
   genres: v.optional(v.array(genreSchema)),
   year: v.optional(v.number()),
 });
@@ -55,7 +52,6 @@ const trackSchema = v.object({
   contentType: v.optional(v.string()),
   coverArt: v.optional(v.string()),
   discNumber: v.optional(v.number()),
-  genre: v.optional(v.string()),
   genres: v.optional(v.array(genreSchema)),
   track: v.optional(v.number()),
 });
