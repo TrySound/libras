@@ -407,6 +407,13 @@
               {playerAlbum?.title}
             {/if}
           </p>
+          {#if currentTrack.genres.length > 0}
+            <div class="genre-list">
+              {#each currentTrack.genres as genre}
+                <span class="type-caption">{genre}</span>
+              {/each}
+            </div>
+          {/if}
         {/if}
 
         <div class="playback-progress">

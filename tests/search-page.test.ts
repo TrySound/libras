@@ -20,7 +20,7 @@ it("focuses the input, expands results, retains route state, and uses album play
   const downloadMany = vi.fn();
   const props = {
     cache: {
-      artists: new Map([["artist", { id: "artist", name: "Artist", genres: [] }]]),
+      artists: new Map([["artist", { id: "artist", name: "Artist" }]]),
       albums: new Map([["album", { id: "album", title: "Album", artistId: "artist", genres: [] }]]),
       tracks: new Map(tracks.map((t) => [t.id, t])),
       albumTracks: new Map([["album", tracks]]),

@@ -20,7 +20,7 @@ function snapshot(): LibrarySnapshot {
   return {
     lastModified: 10,
     savedAt: 100,
-    artists: [{ id: "artist", name: "Artist", artworkId: "artist-cover", genres: [] }],
+    artists: [{ id: "artist", name: "Artist", artworkId: "artist-cover" }],
     albums: [
       { id: "album", title: "Album", artistId: "artist", artworkId: "album-cover", genres: [] },
     ],
@@ -399,7 +399,6 @@ describe("cover engine using Cache", () => {
       id: "unrelated",
       name: "Unrelated",
       artworkId: "unrelated-cover",
-      genres: [],
     });
     await cache.replaceLibrary({ ...library, savedAt: 200 });
     const unrelated = covers.ensureCover("unrelated-cover");

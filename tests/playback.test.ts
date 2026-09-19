@@ -48,7 +48,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
   );
   const library = playbackLibrary(selection.cache);
   library.tracks = new Map(["a", "b", "c"].map((id) => [id, song(id)]));
-  library.artists = new Map([["artist", { id: "artist", name: "Artist", genres: [] }]]);
+  library.artists = new Map([["artist", { id: "artist", name: "Artist" }]]);
   library.albums = new Map([
     ["album", { id: "album", title: "Album", artistId: "artist", genres: [] }],
   ]);
@@ -761,7 +761,7 @@ describe("playback", () => {
 
   it("passes only source identity and content type while keeping presentation metadata in Player", async () => {
     const { player, updateTrack, tracks, selection, session, library } = setup();
-    library.artists = new Map([["artist", { id: "artist", name: "New artist", genres: [] }]]);
+    library.artists = new Map([["artist", { id: "artist", name: "New artist" }]]);
     library.albums = new Map([
       ["album", { id: "album", artistId: "artist", title: "New album", genres: [] }],
     ]);

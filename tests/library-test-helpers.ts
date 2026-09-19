@@ -8,7 +8,7 @@ export function snapshot(): LibrarySnapshot {
   return {
     lastModified: 10,
     savedAt: 100,
-    artists: [{ id: "artist", name: "Artist", genres: [] }],
+    artists: [{ id: "artist", name: "Artist" }],
     albums: [{ id: "album", title: "Album", artistId: "artist", genres: [] }],
     tracks: [{ id: "song", title: "Song", albumId: "album", artistId: "artist", genres: [] }],
   };

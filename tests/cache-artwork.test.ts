@@ -20,8 +20,8 @@ it.each([
       savedAt: 100,
       lastModified: 90,
       artists: [
-        { id: "artist", name: "Artist", artworkId: "artist-art", genres: [] },
-        { id: "guest", name: "Guest", artworkId: "guest-art", genres: [] },
+        { id: "artist", name: "Artist", artworkId: "artist-art" },
+        { id: "guest", name: "Guest", artworkId: "guest-art" },
       ],
       albums: [{ id: "album", title: "Album", artistId: "artist", artworkId: album, genres: [] }],
       tracks: [
@@ -66,7 +66,7 @@ it("does not borrow artwork from a track artist when its album is missing", asyn
   await storage.seed(account, {
     savedAt: 100,
     lastModified: 90,
-    artists: [{ id: "artist", name: "Artist", artworkId: "artist-art", genres: [] }],
+    artists: [{ id: "artist", name: "Artist", artworkId: "artist-art" }],
     albums: [],
     tracks: [{ id: "track", title: "Track", albumId: "missing", artistId: "artist", genres: [] }],
   });

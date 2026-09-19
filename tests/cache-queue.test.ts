@@ -13,7 +13,7 @@ const queue = (position = 10): CachedQueue => ({
   position,
 });
 const library: LibrarySnapshot = {
-  artists: [{ id: "artist", name: "Artist", genres: [] }],
+  artists: [{ id: "artist", name: "Artist" }],
   albums: [],
   tracks: [],
   savedAt: 100,

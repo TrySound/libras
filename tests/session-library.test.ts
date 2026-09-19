@@ -329,7 +329,7 @@ describe("session library workflow", () => {
     const other = { ...input, username: "other" };
     const next: LibrarySnapshot = {
       ...snapshot(),
-      artists: [{ id: "artist", name: "Other", genres: [] }],
+      artists: [{ id: "artist", name: "Other" }],
     };
     metadata.readLibrary.mockResolvedValueOnce(next);
     expect(await session.connect(other)).toBe(true);

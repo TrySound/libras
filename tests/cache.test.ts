@@ -11,7 +11,7 @@ function library(savedAt = 100): LibrarySnapshot {
   return {
     lastModified: 10,
     savedAt,
-    artists: [{ id: "artist", name: "Artist", genres: [] }],
+    artists: [{ id: "artist", name: "Artist" }],
     albums: [{ id: "album", title: "Album", artistId: "artist", genres: [] }],
     tracks: [{ id: "track", title: "Track", artistId: "artist", albumId: "album", genres: [] }],
   };
@@ -74,7 +74,7 @@ describe("memory-first library", () => {
     installDisk();
     const cache = new Cache(getAccountKey(account));
     const value = library();
-    value.artists.unshift({ id: "z", name: "Z", genres: [] });
+    value.artists.unshift({ id: "z", name: "Z" });
     value.albums.push({ ...value.albums[0], id: "older", year: 1990 });
     value.tracks.push({ ...value.tracks[0], id: "first", number: 1 });
     await cache.replaceLibrary(value);

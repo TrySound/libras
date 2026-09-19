@@ -219,17 +219,44 @@ describe("network library", () => {
       duration: 120,
     });
     expect(library.tracks.find((track) => track.id === "first")?.artistId).toBe("artist");
-    expect(
-      library.artists
-        .find((artist) => artist.id === "artist")
-        ?.genres.map((genre) => genre.toLowerCase()),
-    ).toEqual(["jazz", "rock"]);
+    expect(library.artists.find((artist) => artist.id === "artist")).not.toHaveProperty("genres");
     expect(library.artists.map((artist) => artist.id)).toEqual(["artist"]);
     expect(library.artists[0]).not.toHaveProperty("albums");
     expect(library.albums[0]).not.toHaveProperty("tracks");
     expect(JSON.stringify(library)).not.toMatch(/contentType|coverArt|discNumber/);
     connection.abort();
   });
+
+  it.each([
+    {
+      genres: [{ name: "Rock" }, { name: "rock" }, { name: "Jazz|Fusion" }],
+      expected: ["Rock", "rock", "Jazz|Fusion"],
+    },
+    { genres: [], expected: [] },
+    { genres: undefined, expected: [] },
+  ])(
+    "normalizes structured genres without legacy fallbacks: $genres",
+    async ({ genres, expected }) => {
+      vi.stubGlobal(
+        "fetch",
+        serveLibrary({
+          artists: [
+            { id: "artist", name: "Artist", genre: "Ignored", genres: [{ name: "Ignored" }] },
+          ],
+          albums: [
+            { id: "album", name: "Album", artistId: "artist", genre: "Legacy|Genre", genres },
+          ],
+          tracks: [{ id: "song", title: "Song", albumId: "album", genre: "Legacy|Genre", genres }],
+        }),
+      );
+      const connection = createConnection();
+      const library = await connection.readLibrary(connection.signal);
+      expect(library.artists[0]).not.toHaveProperty("genres");
+      expect(library.albums[0].genres).toEqual(expected);
+      expect(library.tracks[0].genres).toEqual(expected);
+      connection.abort();
+    },
+  );
 
   it("keeps artists who own later albums and removes unreferenced search artists", async () => {
     vi.stubGlobal(

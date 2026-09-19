@@ -12,7 +12,6 @@ export const artistSchema = v.strictObject({
   id,
   name: v.string(),
   artworkId: v.optional(id),
-  genres: v.array(v.string()),
 });
 
 export const albumSchema = v.strictObject({
