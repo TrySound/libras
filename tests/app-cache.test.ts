@@ -336,6 +336,7 @@ it("renders the cache stress fixture with unique tiles and one shared menu", asy
     const label = tile.querySelector(".tile-name")!;
     expect(artwork.parentElement).toBe(tile);
     expect(label.parentElement).toBe(tile);
+    expect(label.classList.contains("truncate")).toBe(true);
     expect(artwork.getAttribute("aria-hidden")).toBe("true");
     expect(label.closest('[aria-hidden="true"]')).toBeNull();
   }
@@ -620,6 +621,8 @@ it.each([
   cleanups.push(() => unmount(component));
   flushSync();
   expect(target.querySelector(".mini-copy small")?.textContent?.trim()).toBe(expected);
+  expect(target.querySelector(".mini-copy strong")?.classList.contains("truncate")).toBe(true);
+  expect(target.querySelector(".mini-copy small")?.classList.contains("truncate")).toBe(true);
   const artistLink = target.querySelector("#player-dialog .player-content a");
   expect(artistLink?.textContent?.trim()).toBe(expected);
   expect(artistLink?.getAttribute("href")).toBe("#/library/artist/artist");

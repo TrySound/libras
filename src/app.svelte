@@ -334,10 +334,10 @@
     ></button>
     <Artwork {covers} id={currentTrack.artworkId} size="sm" loading="eager" />
     <span class="mini-copy stack-xs">
-      <strong class="type-title">
+      <strong class="type-title truncate">
         {currentTrack.title}
       </strong>
-      <small class="type-small text-muted">
+      <small class="type-small text-muted truncate">
         {currentTrack.displayArtist ?? cache.artists.get(currentTrack.artistIds[0])?.name}
       </small>
     </span>

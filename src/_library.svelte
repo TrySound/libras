@@ -102,7 +102,7 @@
               viewTransitionName={`artist-cover-${artist.id}`}
             />
             <strong
-              class="tile-name type-small"
+              class="tile-name type-small truncate"
               style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
             >
               {artist.name}

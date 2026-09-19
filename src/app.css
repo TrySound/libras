@@ -962,11 +962,8 @@ a {
   right: 0.7rem;
   bottom: 0.65rem;
   left: 0.7rem;
-  overflow: hidden;
   color: var(--color-text-on-image);
   font-weight: var(--weight-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .action-menu {
@@ -1169,13 +1166,6 @@ a {
 
 .mini-copy {
   min-width: 0;
-}
-
-.mini-copy strong,
-.mini-copy small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .notification-popover {
