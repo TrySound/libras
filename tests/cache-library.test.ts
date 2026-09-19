@@ -17,18 +17,28 @@ describe("cached library", () => {
       { id: "a", name: "Alpha" },
     ];
     data.albums = [
-      { id: "later", artistId: "a", title: "Later", year: 2020, genres: [] },
-      { id: "earlier", artistId: "a", title: "Earlier", year: 2000, genres: [] },
+      { id: "later", artistIds: ["b", "a", "b"], title: "Later", year: 2020, genres: [] },
+      { id: "earlier", artistIds: ["a"], title: "Earlier", year: 2000, genres: [] },
     ];
     data.tracks = [
-      { id: "second", albumId: "earlier", artistId: "a", title: "Second", number: 2, genres: [] },
-      { id: "first", albumId: "earlier", artistId: "a", title: "First", number: 1, genres: [] },
+      {
+        id: "second",
+        albumId: "earlier",
+        artistIds: ["b", "a"],
+        title: "Second",
+        number: 2,
+        genres: [],
+      },
+      { id: "first", albumId: "earlier", artistIds: ["a"], title: "First", number: 1, genres: [] },
     ];
     await storage.seed(account, data);
     const cache = new Cache(getAccountKey(account));
     await cache.load();
     expect([...cache.artists.values()].map((item) => item.id)).toEqual(["a", "b"]);
     expect(cache.artistAlbums.get("a")?.map((item) => item.id)).toEqual(["earlier", "later"]);
+    expect(cache.artistAlbums.get("b")?.map((item) => item.id)).toEqual(["later"]);
+    expect(cache.albums.get("later")?.artistIds).toEqual(["b", "a", "b"]);
+    expect(cache.tracks.get("second")?.artistIds).toEqual(["b", "a"]);
     expect(cache.albumTracks.get("earlier")?.map((item) => item.id)).toEqual(["first", "second"]);
     expect(cache.albumTracks.get("earlier")).toBe(cache.albumTracks.get("earlier"));
     expect(cache.artistAlbums.get("missing")).toBeUndefined();

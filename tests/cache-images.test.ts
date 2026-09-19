@@ -20,7 +20,7 @@ function library(): LibrarySnapshot {
       {
         id: "album",
         title: "Album",
-        artistId: "artist",
+        artistIds: ["artist"],
         artworkId: "album-art",
         year: 2000,
         genres: [],
@@ -28,7 +28,7 @@ function library(): LibrarySnapshot {
       {
         id: "older",
         title: "Older",
-        artistId: "artist",
+        artistIds: ["artist"],
         artworkId: "older-art",
         year: 1990,
         genres: [],
@@ -38,7 +38,7 @@ function library(): LibrarySnapshot {
       {
         id: "track",
         title: "Track",
-        artistId: "artist",
+        artistIds: ["artist"],
         albumId: "album",
         artworkId: "track-art",
         genres: [],
@@ -47,7 +47,7 @@ function library(): LibrarySnapshot {
       {
         id: "first",
         title: "First",
-        artistId: "artist",
+        artistIds: ["artist"],
         albumId: "album",
         artworkId: "album-art",
         genres: [],

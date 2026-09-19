@@ -40,9 +40,9 @@
     return newSearchState();
   });
   const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
-  const playerArtist = $derived(currentTrack && cache.artists.get(currentTrack.artistId));
+  const playerArtist = $derived(currentTrack && cache.artists.get(currentTrack.artistIds[0]));
   const playerAlbum = $derived(currentTrack && cache.albums.get(currentTrack.albumId));
-  const playerAlbumArtist = $derived(playerAlbum && cache.artists.get(playerAlbum.artistId));
+  const playerAlbumArtist = $derived(playerAlbum && cache.artists.get(playerAlbum.artistIds[0]));
   const hasNextTrack = $derived(
     cache.queue.index >= 0 && cache.queue.index < cache.queue.tracks.length - 1,
   );
@@ -338,7 +338,7 @@
         {currentTrack.title}
       </strong>
       <small class="type-small text-muted">
-        {currentTrack.displayArtist ?? cache.artists.get(currentTrack.artistId)?.name}
+        {currentTrack.displayArtist ?? cache.artists.get(currentTrack.artistIds[0])?.name}
       </small>
     </span>
     <button

@@ -121,7 +121,7 @@ describe("network library", () => {
       const library = await connection.readLibrary(connection.signal);
       expect(library.albums[0].artworkId).toBe(expectedAlbum);
       expect(library.tracks[0].artworkId).toBe(expectedTrack);
-      expect(library.tracks[0].artistId).toBe("guest");
+      expect(library.tracks[0].artistIds).toEqual(["guest"]);
       connection.abort();
     },
   );
@@ -189,7 +189,7 @@ describe("network library", () => {
     connection.abort();
   });
 
-  it("normalizes only album artists while preserving track artist names", async () => {
+  it("normalizes all referenced artists while preserving track display credits", async () => {
     vi.stubGlobal(
       "fetch",
       serveLibrary({
@@ -227,13 +227,13 @@ describe("network library", () => {
     expect(library.albums.find((album) => album.id === "album")).toEqual({
       id: "album",
       title: "Album",
-      artistId: "artist",
+      artistIds: ["artist"],
       artworkId: "cover",
       year: 2024,
       genres: [],
     });
     expect(library.tracks.find((track) => track.id === "second")).toMatchObject({
-      artistId: "guest",
+      artistIds: ["guest"],
       displayArtist: "Guest",
       albumId: "album",
       number: 2,
@@ -241,9 +241,9 @@ describe("network library", () => {
       mimeType: "audio/flac",
       duration: 120,
     });
-    expect(library.tracks.find((track) => track.id === "first")?.artistId).toBe("artist");
+    expect(library.tracks.find((track) => track.id === "first")?.artistIds).toEqual(["artist"]);
     expect(library.artists.find((artist) => artist.id === "artist")).not.toHaveProperty("genres");
-    expect(library.artists.map((artist) => artist.id)).toEqual(["artist"]);
+    expect(library.artists.map((artist) => artist.id)).toEqual(["artist", "guest"]);
     expect(library.artists[0]).not.toHaveProperty("albums");
     expect(library.albums[0]).not.toHaveProperty("tracks");
     expect(JSON.stringify(library)).not.toMatch(/contentType|coverArt|discNumber/);
@@ -328,11 +328,21 @@ describe("network library", () => {
       );
       const connection = createConnection();
       const library = await connection.readLibrary(connection.signal);
-      expect(library.albums[0].artistId).toBe("owner");
-      expect(library.tracks[0]).toMatchObject({ artistId: "lead", displayArtist: expected });
+      expect(library.albums[0].artistIds).toEqual(["owner", "other"]);
+      expect(library.tracks[0]).toMatchObject({
+        artistIds: ["lead", "guest"],
+        displayArtist: expected,
+      });
+      expect(library.albums[0]).not.toHaveProperty("artistId");
+      expect(library.tracks[0]).not.toHaveProperty("artistId");
       expect(library.tracks[0]).not.toHaveProperty("artistName");
       expect(library.tracks[0]).not.toHaveProperty("artists");
-      expect(library.artists.map((artist) => artist.id)).toEqual(["owner"]);
+      expect(library.artists).toEqual([
+        { id: "owner", name: "Owner" },
+        { id: "other", name: "Other" },
+        { id: "lead", name: "Lead" },
+        { id: "guest", name: "Guest" },
+      ]);
       connection.abort();
     },
   );
@@ -363,9 +373,9 @@ describe("network library", () => {
         id: "local:artist:Unknown%20artist",
         name: "Unknown artist",
       });
-      expect(library.albums[0].artistId).toBe(library.artists[0].id);
+      expect(library.albums[0].artistIds).toEqual([library.artists[0].id]);
       expect(library.tracks[0]).toMatchObject({
-        artistId: library.artists[0].id,
+        artistIds: [library.artists[0].id],
         displayArtist: "Unknown artist",
       });
       connection.abort();
@@ -397,7 +407,7 @@ describe("network library", () => {
     const connection = createConnection(auth);
     const library = await connection.readLibrary(new AbortController().signal);
     expect(library.artists.map((artist) => artist.id).sort()).toEqual(["guest", "owner"]);
-    expect(library.tracks[0]).toMatchObject({ artistId: "guest", displayArtist: "Guest" });
+    expect(library.tracks[0]).toMatchObject({ artistIds: ["guest"], displayArtist: "Guest" });
     vi.stubGlobal(
       "fetch",
       serveLibrary({ artists: [{ id: "unused", name: "Unused" }], albums: [], tracks: [] }),
@@ -407,6 +417,37 @@ describe("network library", () => {
       albums: [],
       tracks: [],
     });
+    connection.abort();
+  });
+
+  it("inherits all album credits when a track has none", async () => {
+    vi.stubGlobal(
+      "fetch",
+      serveLibrary({
+        artists: [],
+        albums: [
+          {
+            id: "album",
+            name: "Album",
+            artists: [
+              { id: "a", name: "Alpha" },
+              { id: "b", name: "Beta" },
+            ],
+          },
+        ],
+        tracks: [{ id: "song", title: "Song", albumId: "album" }],
+      }),
+    );
+    const connection = createConnection();
+    const library = await connection.readLibrary(connection.signal);
+    expect(library.tracks[0]).toMatchObject({
+      artistIds: ["a", "b"],
+      displayArtist: "Alpha, Beta",
+    });
+    expect(library.artists).toEqual([
+      { id: "a", name: "Alpha" },
+      { id: "b", name: "Beta" },
+    ]);
     connection.abort();
   });
 
@@ -422,9 +463,9 @@ describe("network library", () => {
     const connection = createConnection();
     const library = await connection.readLibrary(connection.signal);
     const ids = library.artists.map((artist) => artist.id);
-    expect(ids).toHaveLength(1);
-    expect(ids).toContain(library.albums.find((album) => album.id === "album")?.artistId);
-    expect(ids).not.toContain(library.tracks.find((track) => track.id === "song")?.artistId);
+    expect(ids).toHaveLength(2);
+    expect(ids).toContain(library.albums.find((album) => album.id === "album")?.artistIds[0]);
+    expect(ids).toContain(library.tracks.find((track) => track.id === "song")?.artistIds[0]);
     expect(library.tracks.find((track) => track.id === "song")?.displayArtist).toBe("Guest");
     const refreshed = await connection.readLibrary(connection.signal);
     expect(refreshed.artists.map((artist) => artist.id)).toEqual(ids);

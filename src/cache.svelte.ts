@@ -461,15 +461,16 @@ function entityMap<T extends { readonly id: string }>(
 
 function groupBy<T>(
   records: Iterable<T>,
-  key: (record: T) => string,
+  keys: (record: T) => readonly string[],
   compare: (a: T, b: T) => number,
 ) {
   const groups = new Map<string, T[]>();
   for (const record of records) {
-    const id = key(record);
-    const group = groups.get(id) ?? [];
-    group.push(record);
-    groups.set(id, group);
+    for (const id of new Set(keys(record))) {
+      const group = groups.get(id) ?? [];
+      group.push(record);
+      groups.set(id, group);
+    }
   }
   for (const group of groups.values()) group.sort(compare);
   return groups as ReadonlyMap<string, readonly T[]>;
@@ -491,12 +492,12 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
   const tracks = entityMap(snapshot?.tracks ?? []);
   const artistAlbums = groupBy(
     albums.values(),
-    (album) => album.artistId,
+    (album) => album.artistIds,
     (a, b) => (a.year ?? Infinity) - (b.year ?? Infinity) || a.title.localeCompare(b.title),
   );
   const albumTracks = groupBy(
     tracks.values(),
-    (track) => track.albumId,
+    (track) => [track.albumId],
     (a, b) =>
       (a.disc ?? 1) - (b.disc ?? 1) ||
       (a.number ?? Infinity) - (b.number ?? Infinity) ||

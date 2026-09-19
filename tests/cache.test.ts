@@ -12,8 +12,8 @@ function library(savedAt = 100): LibrarySnapshot {
     lastModified: 10,
     savedAt,
     artists: [{ id: "artist", name: "Artist" }],
-    albums: [{ id: "album", title: "Album", artistId: "artist", genres: [] }],
-    tracks: [{ id: "track", title: "Track", artistId: "artist", albumId: "album", genres: [] }],
+    albums: [{ id: "album", title: "Album", artistIds: ["artist"], genres: [] }],
+    tracks: [{ id: "track", title: "Track", artistIds: ["artist"], albumId: "album", genres: [] }],
   };
 }
 

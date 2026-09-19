@@ -55,9 +55,9 @@ Library synchronization reads OpenSubsonic structured `genres` on albums and tra
 
 ### Artist credits
 
-Library synchronization reads OpenSubsonic `artists` and `displayArtist` on albums and tracks, without falling back to legacy `artist` or `artistId` response fields. Artist records and structured credits require IDs and names. The local browsing model still retains only the first credited artist's ID; additional artist relationships are not persisted or individually browsable.
+Library synchronization reads OpenSubsonic `artists` and `displayArtist` on albums and tracks, without falling back to legacy `artist` or `artistId` response fields. Artist records and structured credits require IDs and names. Albums and tracks store ordered `artistIds` arrays. Every referenced artist, including track-only contributors, is retained once in the artist collection. Albums are indexed under each credited album artist; primary navigation links still use the first credit.
 
-Tracks store `displayArtist`: the supplied display credit, otherwise the structured names joined with commas. Missing track credits inherit the album artist; display-only credits get stable local IDs, and albums without credits use an unknown-artist placeholder. The internal name used to resolve identity is not separately persisted. This replaces the stored track `artistName` field without a cache compatibility layer; old cached libraries need to be fetched again.
+Tracks store `displayArtist`: the supplied display credit, otherwise the resolved artist names joined with commas. Missing track credits inherit all album artists; display-only credits get stable local IDs, and albums without credits use an unknown-artist placeholder. Embedded credit names and artwork are not duplicated in stored album/track relationships. This replaces the stored `artistId` and track `artistName` fields without a cache compatibility layer; old cached libraries need to be fetched again.
 
 ## Testing browser behavior
 

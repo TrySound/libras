@@ -50,7 +50,7 @@
     const eligibleAlbums = [...albums.values()].filter(
       (album) => !available || albumIds.has(album.id),
     );
-    const artistIds = new Set(eligibleAlbums.map((album) => album.artistId));
+    const artistIds = new Set(eligibleAlbums.flatMap((album) => album.artistIds));
     const artistPath = (id: string) => `#/library/artist/${encodeURIComponent(id)}`;
     const records: Record<SearchGroup, SearchRecord[]> = {
       Artists: [...artists.values()]
@@ -67,15 +67,15 @@
         id: album.id,
         title: album.title,
         artworkId: album.artworkId,
-        artist: artists.get(album.artistId)?.name ?? "",
+        artist: album.artistIds.map((id) => artists.get(id)?.name ?? "").join(", "),
         album: "",
-        href: `${artistPath(album.artistId)}/album/${encodeURIComponent(album.id)}`,
+        href: `${artistPath(album.artistIds[0])}/album/${encodeURIComponent(album.id)}`,
       })),
       Tracks: eligibleTracks.map((track) => ({
         id: track.id,
         title: track.title,
         artworkId: track.artworkId,
-        artist: track.displayArtist ?? artists.get(track.artistId)?.name ?? "",
+        artist: track.displayArtist ?? artists.get(track.artistIds[0])?.name ?? "",
         album: albums.get(track.albumId)?.title ?? "",
       })),
     };

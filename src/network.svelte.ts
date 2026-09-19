@@ -23,12 +23,15 @@ interface NetworkIdentity {
   readonly signal: AbortSignal;
 }
 
-type RemoteAlbum = Omit<Album, "artistId"> & { artistId?: string; artistName?: string };
-type RemoteTrack = Omit<Track, "artistId" | "albumId"> & {
-  artistId?: string;
-  artistName?: string;
-  albumId?: string;
+type ArtistCredits = {
+  artists?: readonly Pick<Artist, "id" | "name">[];
+  displayArtist?: string;
 };
+type RemoteAlbum = Omit<Album, "artistIds"> & ArtistCredits;
+type RemoteTrack = Omit<Track, "artistIds" | "albumId"> &
+  ArtistCredits & {
+    albumId?: string;
+  };
 
 export type LibraryProgress = { albums: number; tracks: number };
 
@@ -126,8 +129,7 @@ function normalizeLibrary(
     artists.set(artist.id, artist);
     byName.set(artist.name, artist);
   }
-  const artistFor = (id?: string, name?: string, fallback?: Artist) => {
-    if (!id && !name && fallback) return fallback;
+  const artistFor = (id?: string, name?: string) => {
     const existing = id ? artists.get(id) : name ? byName.get(name) : undefined;
     if (existing) return existing;
     const resolvedName = name || "Unknown artist";
@@ -136,12 +138,21 @@ function normalizeLibrary(
     byName.set(artist.name, artist);
     return artist;
   };
+  const referencedArtistIds = new Set<string>();
+  const artistsFor = (source: ArtistCredits, fallback?: readonly Artist[]) => {
+    const credits = source.artists?.length
+      ? source.artists.map((artist) => artistFor(artist.id, artist.name))
+      : source.displayArtist || !fallback
+        ? [artistFor(undefined, source.displayArtist)]
+        : fallback;
+    for (const artist of credits) referencedArtistIds.add(artist.id);
+    return credits;
+  };
   const albums: Album[] = [];
   const tracks: Track[] = [];
-  const albumArtistIds = new Set<string>();
   for (const source of sourceAlbums) {
-    const owner = artistFor(source.artistId, source.artistName);
-    albumArtistIds.add(owner.id);
+    const owners = artistsFor(source);
+    const owner = owners[0];
     // Resolve inheritance while building fresh records, avoiding another traversal
     // and record copies in Cache. Stored IDs are used as-is, including in legacy
     // offline snapshots; their inherited IDs are filled on the next network refresh.
@@ -149,19 +160,19 @@ function normalizeLibrary(
     albums.push({
       id: source.id,
       title: source.title,
-      artistId: owner.id,
+      artistIds: owners.map((artist) => artist.id),
       artworkId,
       year: source.year,
       genres: source.genres,
     });
     for (const sourceTrack of tracksByAlbum.get(source.id) ?? []) {
-      const trackArtist = artistFor(sourceTrack.artistId, sourceTrack.artistName, owner);
+      const credits = artistsFor(sourceTrack, owners);
       tracks.push({
         id: sourceTrack.id,
         title: sourceTrack.title,
         albumId: source.id,
-        artistId: trackArtist.id,
-        displayArtist: sourceTrack.displayArtist || trackArtist.name,
+        artistIds: credits.map((artist) => artist.id),
+        displayArtist: sourceTrack.displayArtist || credits.map((artist) => artist.name).join(", "),
         artworkId: sourceTrack.artworkId ?? artworkId,
         number: sourceTrack.number,
         disc: sourceTrack.disc,
@@ -171,10 +182,9 @@ function normalizeLibrary(
       });
     }
   }
-  // Search includes contributors and track-only artists; only album owners belong
-  // in the library's artist collection. Tracks retain their own artist identity/name.
+  // Keep names once for every referenced artist, including track-only contributors.
   return {
-    artists: [...artists.values()].filter((artist) => albumArtistIds.has(artist.id)),
+    artists: [...artists.values()].filter((artist) => referencedArtistIds.has(artist.id)),
     albums,
     tracks,
   };
@@ -262,9 +272,8 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
             page.albums.map((album) => ({
               id: album.id,
               title: album.name,
-              // Browsing still uses the first credited artist as the album owner.
-              artistId: album.artists?.[0]?.id,
-              artistName: album.artists?.[0]?.name || album.displayArtist,
+              artists: album.artists,
+              displayArtist: album.displayArtist,
               artworkId: album.coverArt || undefined,
               year: album.year && album.year > 0 ? album.year : undefined,
               genres: album.genres?.map((genre) => genre.name) ?? [],
@@ -278,10 +287,8 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
               id: track.id,
               title: track.title,
               albumId: track.albumId,
-              artistId: track.artists?.[0]?.id,
-              artistName: track.artists?.[0]?.name || track.displayArtist,
-              displayArtist:
-                track.displayArtist || track.artists?.map((artist) => artist.name).join(", "),
+              artists: track.artists,
+              displayArtist: track.displayArtist,
               artworkId: track.coverArt || undefined,
               number: track.track && track.track > 0 ? track.track : undefined,
               disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,

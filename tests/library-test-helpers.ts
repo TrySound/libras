@@ -9,8 +9,8 @@ export function snapshot(): LibrarySnapshot {
     lastModified: 10,
     savedAt: 100,
     artists: [{ id: "artist", name: "Artist" }],
-    albums: [{ id: "album", title: "Album", artistId: "artist", genres: [] }],
-    tracks: [{ id: "song", title: "Song", albumId: "album", artistId: "artist", genres: [] }],
+    albums: [{ id: "album", title: "Album", artistIds: ["artist"], genres: [] }],
+    tracks: [{ id: "song", title: "Song", albumId: "album", artistIds: ["artist"], genres: [] }],
   };
 }
 export async function snapshotPath(identity: Account) {
