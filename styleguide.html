@@ -32,7 +32,28 @@
         border: 1px solid #2c3240;
         border-radius: 1rem;
         background: rgb(23 27 35 / 88%);
-        box-shadow: 0 1rem 3rem rgb(0 0 0 / 20%);
+        box-shadow: var(--elevation-md);
+      }
+
+      .surface-example {
+        padding: var(--space-lg);
+        border: var(--surface-base-border);
+        border-radius: var(--space-sm);
+        background: var(--surface-base-background);
+      }
+
+      .surface-example-raised {
+        border: var(--surface-raised-border);
+        background: var(--surface-raised-background);
+        box-shadow: var(--surface-raised-shadow);
+        backdrop-filter: blur(var(--surface-raised-blur));
+      }
+
+      .surface-example-floating {
+        border: var(--surface-floating-border);
+        background: var(--surface-floating-background);
+        box-shadow: var(--surface-floating-shadow);
+        backdrop-filter: blur(var(--surface-floating-blur));
       }
 
       .type-samples,
@@ -118,6 +139,57 @@
           A reference for the semantic type roles and stack spacing used throughout the application.
         </p>
       </header>
+
+      <section class="styleguide-panel stack-lg" aria-labelledby="surfaces-heading">
+        <header class="stack-xs">
+          <h2 class="type-heading" id="surfaces-heading">Surfaces and elevation</h2>
+          <p class="type-body text-muted">
+            Base, raised, and floating surfaces describe material. Elevation describes depth,
+            independently of layout, radius, and stacking order. Components consume variables
+            directly.
+          </p>
+        </header>
+        <div class="button-samples">
+          <article class="surface-example stack-sm">
+            <p class="type-title">Base</p>
+            <p class="type-small text-muted">Opaque page surface; no default shadow.</p>
+          </article>
+          <article class="surface-example surface-example-raised stack-sm">
+            <p class="type-title">Raised</p>
+            <p class="type-small text-muted">
+              The sticky topbar uses medium elevation with its own background, border, and blur
+              tokens, initially sharing the floating material.
+            </p>
+          </article>
+          <article class="surface-example surface-example-floating stack-sm">
+            <p class="type-title">Floating</p>
+            <p class="type-small text-muted">
+              Shared translucent background, border, blur, and large elevation for the mini-player,
+              notifications, action sheets, and desktop player dialog.
+            </p>
+          </article>
+          <article class="surface-example stack-sm" style="box-shadow: var(--elevation-sm)">
+            <code>--elevation-sm</code>
+            <p class="type-small text-muted">Shallow depth: hovered and pressed tiles.</p>
+          </article>
+          <article class="surface-example stack-sm" style="box-shadow: var(--elevation-md)">
+            <code>--elevation-md</code>
+            <p class="type-small text-muted">Resting tiles, artwork, and these demo panels.</p>
+          </article>
+          <article class="surface-example stack-sm" style="box-shadow: var(--elevation-lg)">
+            <code>--elevation-lg</code>
+            <p class="type-small text-muted">
+              Floating depth, also usable independently of material.
+            </p>
+          </article>
+        </div>
+        <p class="type-small text-muted">
+          Try the library tile below: hover and press lower its shadow; pressing also dims and
+          scales it. Scaling and transitions respect reduced motion. Existing cards remain
+          shadow-free, player background artwork keeps no shadow, and status glows are not
+          elevation.
+        </p>
+      </section>
 
       <section class="styleguide-panel stack-lg" aria-labelledby="typography-heading">
         <header class="stack-xs">
