@@ -95,16 +95,8 @@
             onfocus={() => (menuArtistId = artist.id)}
             title={`${artist.name} — hold for actions`}
           >
-            <Artwork
-              {covers}
-              id={artist.artworkId}
-              size="stretch"
-              viewTransitionName={`artist-cover-${artist.id}`}
-            />
-            <strong
-              class="tile-name type-small truncate"
-              style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
-            >
+            <Artwork {covers} id={artist.artworkId} size="stretch" />
+            <strong class="tile-name type-small truncate">
               {artist.name}
             </strong>
           </a>

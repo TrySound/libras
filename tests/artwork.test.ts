@@ -66,9 +66,6 @@ function setup(overrides: Partial<Props> = {}, observation = true) {
       get size() {
         return state.current.size;
       },
-      get viewTransitionName() {
-        return state.current.viewTransitionName;
-      },
     },
   });
   flushSync();
@@ -193,14 +190,14 @@ describe("Artwork", () => {
     expect(loads.get("b")).toHaveBeenCalledOnce();
   });
 
-  it("preserves styling and escapes view-transition names", () => {
-    const { target, set } = setup({ size: "stretch", viewTransitionName: "artist-cover-a b" });
+  it("preserves styling without shared-element transitions", () => {
+    const { target, set } = setup({ size: "stretch" });
     const root = target.firstElementChild as HTMLElement;
     expect(root.className).toBe("artwork");
     expect(root.dataset.size).toBe("stretch");
-    expect(root.style.viewTransitionName).toBe(CSS.escape("artist-cover-a b"));
+    expect(root.style.viewTransitionName).toBe("");
     expect(root.querySelector("svg")?.getAttribute("width")).toBe("64");
-    set({ size: "sm", viewTransitionName: undefined });
+    set({ size: "sm" });
     expect(root.className).toBe("artwork");
     expect(root.dataset.size).toBe("sm");
     expect(root.style.viewTransitionName).toBe("");

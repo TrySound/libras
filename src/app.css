@@ -2,12 +2,6 @@
   display: none !important;
 }
 
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-
 ::view-transition-group(mini-player) {
   z-index: 20;
   animation: none;

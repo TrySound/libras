@@ -346,6 +346,8 @@ it("renders the cache stress fixture with unique tiles and one shared menu", asy
     expect(artwork.parentElement).toBe(tile);
     expect(label.parentElement).toBe(tile);
     expect(label.classList.contains("truncate")).toBe(true);
+    expect((artwork as HTMLElement).style.viewTransitionName).toBe("");
+    expect((label as HTMLElement).style.viewTransitionName).toBe("");
     expect(artwork.getAttribute("aria-hidden")).toBe("true");
     expect(label.closest('[aria-hidden="true"]')).toBeNull();
   }
@@ -353,11 +355,6 @@ it("renders the cache stress fixture with unique tiles and one shared menu", asy
   expect(cache.albums.size).toBe(0);
   expect(cache.tracks.size).toBe(0);
   expect(new Set(tiles.map((tile) => tile.getAttribute("href"))).size).toBe(48);
-  expect(
-    new Set(
-      tiles.map((tile) => tile.querySelector<HTMLElement>(".artwork")!.style.viewTransitionName),
-    ).size,
-  ).toBe(48);
   expect(target.querySelectorAll("#artist-menu")).toHaveLength(1);
   tiles[47].focus();
   flushSync();

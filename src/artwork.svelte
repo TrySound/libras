@@ -7,10 +7,9 @@
     id?: string;
     size?: "sm" | "md" | "stretch";
     loading?: "lazy" | "eager";
-    viewTransitionName?: string;
   }
 
-  let { covers, id, size = "md", loading = "lazy", viewTransitionName }: Props = $props();
+  let { covers, id, size = "md", loading = "lazy" }: Props = $props();
   const cover = $derived(id === undefined ? undefined : covers.ensureCover(id));
   const placeholderSize = $derived(size === "stretch" ? 64 : 20);
 
@@ -24,13 +23,7 @@
   }
 </script>
 
-<span
-  class="artwork"
-  data-size={size}
-  aria-hidden="true"
-  style:view-transition-name={viewTransitionName ? CSS.escape(viewTransitionName) : undefined}
-  {@attach acquire}
->
+<span class="artwork" data-size={size} aria-hidden="true" {@attach acquire}>
   {#if cover?.source}
     <img src={cover.source} alt="" />
   {:else}

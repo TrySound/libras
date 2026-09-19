@@ -46,13 +46,7 @@
   {#if libraryAvailable && artist && album}
     <div class="view container collection-view">
       <div class="collection-artwork">
-        <Artwork
-          {covers}
-          id={album.artworkId}
-          size="stretch"
-          loading="eager"
-          viewTransitionName={`album-cover-${album.id}`}
-        />
+        <Artwork {covers} id={album.artworkId} size="stretch" loading="eager" />
       </div>
       <div class="row-md collection-heading">
         <div class="stack-xs grow">
@@ -62,10 +56,7 @@
           >
             {album.displayArtist ?? artist.name}
           </a>
-          <h2
-            class="type-heading"
-            style:view-transition-name={CSS.escape(`album-name-${album.id}`)}
-          >
+          <h2 class="type-heading">
             {album.title}
           </h2>
           <p class="library-meta type-small">

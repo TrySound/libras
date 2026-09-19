@@ -47,20 +47,11 @@
   {#if libraryAvailable && artist}
     <div class="view container collection-view">
       <div class="collection-artwork">
-        <Artwork
-          {covers}
-          id={artist.artworkId}
-          size="stretch"
-          loading="eager"
-          viewTransitionName={`artist-cover-${artist.id}`}
-        />
+        <Artwork {covers} id={artist.artworkId} size="stretch" loading="eager" />
       </div>
       <div class="row-md collection-heading">
         <div class="stack-xs grow">
-          <h2
-            class="type-heading"
-            style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}
-          >
+          <h2 class="type-heading">
             {artist.name}
           </h2>
           <p class="library-meta type-small">
@@ -108,13 +99,9 @@
             data-longpress="show-modal"
             title={`${album.title} — hold for actions`}
           ></a>
-          <Artwork {covers} id={album.artworkId} viewTransitionName={`album-cover-${album.id}`} />
+          <Artwork {covers} id={album.artworkId} />
           <span class="stack-xs">
-            <strong
-              class="type-title"
-              style:view-transition-name={CSS.escape(`album-name-${album.id}`)}
-              >{album.title}</strong
-            >
+            <strong class="type-title">{album.title}</strong>
             <small class="type-small text-muted">
               {album.year ?? "Unknown year"} · {visibleTrackIds.length} tracks
             </small>
