@@ -473,9 +473,9 @@
       </div>
     </div>
 
-    <div class="player-queue">
-      <div class="view section-heading">
-        <div>
+    <div class="player-queue stack-md">
+      <div class="view row-md">
+        <div class="stack-xs grow">
           <span class="type-eyebrow text-muted">Up next</span>
           <h2 class="type-heading">
             {queue.length} track{queue.length === 1 ? "" : "s"}

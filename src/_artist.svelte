@@ -53,8 +53,8 @@
         loading="eager"
         viewTransitionName={`artist-cover-${artist.id}`}
       />
-      <div class="section-heading collection-heading">
-        <div>
+      <div class="row-md collection-heading">
+        <div class="stack-xs grow">
           <h2
             class="type-heading"
             style:view-transition-name={CSS.escape(`artist-name-${artist.id}`)}

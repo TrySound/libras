@@ -52,8 +52,8 @@
         loading="eager"
         viewTransitionName={`album-cover-${album.id}`}
       />
-      <div class="section-heading collection-heading">
-        <div>
+      <div class="row-md collection-heading">
+        <div class="stack-xs grow">
           <a
             class="text-link type-eyebrow text-muted"
             href={`#/library/artist/${encodeURIComponent(artist.id)}`}

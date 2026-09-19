@@ -724,22 +724,6 @@ a {
   outline-offset: var(--focus-outline-offset);
 }
 
-.section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.section-heading > div {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  grid-auto-rows: max-content;
-  gap: var(--space-xs);
-}
-
 .collection-view,
 .settings-view {
   box-sizing: border-box;

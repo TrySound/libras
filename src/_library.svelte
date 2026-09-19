@@ -54,10 +54,10 @@
   }
 </script>
 
-<section class="view library-view">
+<section class="view library-view stack-md">
   {#if libraryAvailable}
-    <div class="section-heading">
-      <div>
+    <div class="row-md">
+      <div class="stack-xs grow">
         <span class="type-eyebrow text-muted">
           {offlineMode ? "Downloaded music" : "Your music"}
         </span>

@@ -424,9 +424,11 @@ it.each([
   expect(target.querySelector(".player-main > .artwork")!.closest(".view")).toBeNull();
   expect(target.querySelector(".player-main > .player-content.view .controls")).not.toBeNull();
   expect(target.querySelector(".player-content .playback-slider")).not.toBeNull();
-  expect(target.querySelector(".player-queue > .section-heading")!.classList.contains("view")).toBe(
-    true,
-  );
+  const queue = target.querySelector(".player-queue")!;
+  expect(queue.classList.contains("stack-md")).toBe(true);
+  const heading = queue.querySelector(":scope > .view.row-md")!;
+  expect(heading).not.toBeNull();
+  expect(heading.querySelector(":scope > .stack-xs.grow h2")).not.toBeNull();
   const controls = target.querySelectorAll(".topbar a, .topbar button");
   expect(controls.length).toBeGreaterThan(0);
   for (const control of controls) expect(control.getAttribute("data-variant")).toBe("ghost");
