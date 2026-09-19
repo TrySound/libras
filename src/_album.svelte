@@ -95,11 +95,11 @@
       </div>
 
       {#if loading}
-        <div class="empty-state">
+        <div class="empty-state stack-md">
           <div class="scan-spinner">
             <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg>
           </div>
-          <p class="type-body">Restoring local library…</p>
+          <p class="type-body text-muted">Restoring local library…</p>
         </div>
       {/if}
     </div>
@@ -159,8 +159,8 @@
         </div>
       {:else}
         {#if !loading}
-          <div class="empty-state">
-            <p class="type-body">
+          <div class="empty-state stack-md">
+            <p class="type-body text-muted">
               {offlineMode ? "No downloaded tracks." : "No tracks found."}
             </p>
           </div>
@@ -168,11 +168,9 @@
       {/each}
     </div>
   {:else if !loading}
-    <div class="empty-state">
-      <span
-        ><svg aria-hidden="true" width="20" height="20"><use href="#icon-music"></use></svg></span
-      >
-      <p class="type-body">
+    <div class="empty-state stack-md">
+      <Artwork {covers} />
+      <p class="type-body text-muted">
         {libraryAvailable ? "Album not found." : "Connect your library."}
       </p>
       <a

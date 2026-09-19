@@ -76,11 +76,11 @@
     </div>
 
     {#if loading}
-      <div class="empty-state">
+      <div class="empty-state stack-md">
         <div class="scan-spinner">
           <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg>
         </div>
-        <p class="type-body">Restoring local library…</p>
+        <p class="type-body text-muted">Restoring local library…</p>
       </div>
     {/if}
     {#if visibleArtists.length > 0}
@@ -117,26 +117,18 @@
         {/key}
       {/if}
     {:else if !loading}
-      <div class="empty-state">
-        <span>
-          <svg aria-hidden="true" width="20" height="20">
-            <use href="#icon-music"></use>
-          </svg>
-        </span>
-        <p class="type-body">
+      <div class="empty-state stack-md">
+        <Artwork {covers} />
+        <p class="type-body text-muted">
           {offlineMode ? "No downloaded artists." : "No artists found."}
         </p>
       </div>
     {/if}
   {:else if !loading}
-    <div class="empty-state">
-      <span>
-        <svg aria-hidden="true" width="20" height="20">
-          <use href="#icon-music"></use>
-        </svg>
-      </span>
+    <div class="empty-state stack-md">
+      <Artwork {covers} />
       <h2 class="type-heading">Connect your library</h2>
-      <p class="type-body">Add your music server to start listening.</p>
+      <p class="type-body text-muted">Add your music server to start listening.</p>
       <a class="button" data-size="md" data-variant="neutral" href="#/settings"> Open settings </a>
     </div>
   {/if}

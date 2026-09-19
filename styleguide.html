@@ -97,6 +97,19 @@
       >
         <path d="M12 5v14M5 12h14" />
       </symbol>
+      <symbol
+        id="guide-music"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M9 18V5l11-2v13M9 9l11-2" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="17" cy="16" r="3" />
+      </symbol>
     </svg>
     <main class="styleguide stack-xl">
       <header class="styleguide-intro stack-sm">
@@ -187,7 +200,7 @@
           </div>
           <div class="card stack-sm" style="border-radius: var(--radius-lg)">
             <code>--radius-lg · 1.4rem</code>
-            <span class="type-small text-muted">Empty-state icons</span>
+            <span class="type-small text-muted">Large rounded corners</span>
           </div>
           <div class="stack-sm">
             <code>--radius-pill · 999px</code>
@@ -770,6 +783,39 @@
               <svg width="20" height="20"><use href="#guide-plus" /></svg>
             </button>
           </article>
+        </div>
+      </section>
+
+      <section class="card stack-lg" aria-labelledby="empty-states-heading">
+        <header class="stack-xs">
+          <h2 class="type-heading" id="empty-states-heading">Empty states</h2>
+          <p class="type-body text-muted">
+            Compose <code>.stack-md</code> with explicit typography and text colors.
+            <code>.empty-state</code> supplies centering, page padding, and minimum height; the
+            optional decorative artwork uses <code>Artwork</code> without an image ID, reusing its
+            music placeholder.
+          </p>
+        </header>
+        <div class="example-grid">
+          <div class="card empty-state stack-md">
+            <span class="artwork" data-size="md" aria-hidden="true">
+              <svg width="20" height="20"><use href="#guide-music"></use></svg>
+            </span>
+            <h3 class="type-heading">Connect your library</h3>
+            <p class="type-body text-muted">Add your music server to start listening.</p>
+            <a class="button" data-size="md" data-variant="neutral" href="#inputs-heading"
+              >Open settings</a
+            >
+          </div>
+          <div class="card empty-state stack-md">
+            <span class="artwork" data-size="md" aria-hidden="true">
+              <svg width="20" height="20"><use href="#guide-music"></use></svg>
+            </span>
+            <p class="type-body text-muted">No downloaded artists.</p>
+          </div>
+          <div class="card empty-state stack-md">
+            <p class="type-body text-muted">No tracks found.</p>
+          </div>
         </div>
       </section>
 

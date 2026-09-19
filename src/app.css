@@ -1118,28 +1118,11 @@ a {
 }
 
 .empty-state {
-  display: grid;
   min-height: 55dvh;
+  padding: var(--space-xl);
   place-items: center;
   align-content: center;
-  padding: 2rem;
   text-align: center;
-}
-
-.empty-state > span {
-  display: grid;
-  width: 5rem;
-  height: 5rem;
-  margin-bottom: 1rem;
-  place-items: center;
-  border-radius: var(--radius-lg);
-  color: var(--color-accent-text);
-  background: var(--color-surface-accent);
-  font-size: 2rem;
-}
-
-.empty-state p {
-  color: var(--color-text-muted);
 }
 
 .mini-player {

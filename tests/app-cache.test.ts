@@ -129,6 +129,15 @@ it("uses the empty fallback before account selection and when selection is clear
   flushSync();
   expect(target.querySelector(".tile-name")).toBeNull();
   expect(target.textContent).toContain("Connect your library");
+  const empty = target.querySelector(".empty-state")!;
+  expect(empty.classList.contains("stack-md")).toBe(true);
+  const artwork = empty.querySelector(".artwork")!;
+  expect(artwork.getAttribute("aria-hidden")).toBe("true");
+  expect(artwork.getAttribute("data-size")).toBe("md");
+  expect(artwork.querySelector("img")).toBeNull();
+  expect(artwork.querySelector("use")?.getAttribute("href")).toBe("#icon-music");
+  expect(empty.querySelector("p")?.classList.contains("text-muted")).toBe(true);
+  expect(empty.querySelector('a[href="#/settings"]')).not.toBeNull();
 });
 
 it("automatically loads another batch each time the new sentinel is nearby", async () => {
