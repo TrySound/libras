@@ -29,7 +29,7 @@ export const trackSchema = v.strictObject({
   title: v.string(),
   albumId: id,
   artistId: id,
-  artistName: v.optional(v.string()),
+  displayArtist: v.optional(v.string()),
   // Effective artwork: explicit track image, otherwise its album's effective image.
   artworkId: v.optional(id),
   number: ordinal,

@@ -160,7 +160,7 @@ describe("TrackEngine using Cache", () => {
             id: track.id,
             title: "Library track",
             artistId: "artist",
-            artistName,
+            displayArtist: artistName,
             albumId: "album",
             mimeType: "audio/flac",
             genres: [],

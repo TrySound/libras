@@ -23,7 +23,6 @@ interface NetworkIdentity {
   readonly signal: AbortSignal;
 }
 
-type RemoteArtist = Omit<Artist, "id"> & { id?: string };
 type RemoteAlbum = Omit<Album, "artistId"> & { artistId?: string; artistName?: string };
 type RemoteTrack = Omit<Track, "artistId" | "albumId"> & {
   artistId?: string;
@@ -116,19 +115,14 @@ type RemoteArtwork = ImageMetadata & { notModified: false; blob: Blob; type: str
 export type ArtworkConnection = ReturnType<typeof artworkAccess>;
 
 function normalizeLibrary(
-  sourceArtists: readonly RemoteArtist[],
+  sourceArtists: readonly Artist[],
   sourceAlbums: readonly RemoteAlbum[],
   tracksByAlbum: ReadonlyMap<string, readonly RemoteTrack[]>,
 ): Library {
   const artists = new Map<string, Artist>();
   const byName = new Map<string, Artist>();
   const syntheticId = (name: string) => `local:artist:${encodeURIComponent(name)}`;
-  for (const source of sourceArtists) {
-    const artist: Artist = {
-      id: source.id || syntheticId(source.name),
-      name: source.name,
-      artworkId: source.artworkId,
-    };
+  for (const artist of sourceArtists) {
     artists.set(artist.id, artist);
     byName.set(artist.name, artist);
   }
@@ -167,7 +161,7 @@ function normalizeLibrary(
         title: sourceTrack.title,
         albumId: source.id,
         artistId: trackArtist.id,
-        artistName: sourceTrack.artistName || trackArtist.name,
+        displayArtist: sourceTrack.displayArtist || trackArtist.name,
         artworkId: sourceTrack.artworkId ?? artworkId,
         number: sourceTrack.number,
         disc: sourceTrack.disc,
@@ -215,7 +209,7 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
         signal.throwIfAborted();
         return result;
       };
-      const artists = new Map<string, RemoteArtist>();
+      const artists = new Map<string, Artist>();
       const albums = new Map<string, RemoteAlbum>();
       const tracks = new Map<string, RemoteTrack>();
       const offsets = { artists: 0, albums: 0, tracks: 0 };
@@ -261,15 +255,16 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
               artworkId: artist.coverArt || undefined,
             })),
             artists,
-            (artist) => artist.id || `local:artist:${encodeURIComponent(artist.name)}`,
+            (artist) => artist.id,
           );
           collect(
             "albums",
             page.albums.map((album) => ({
               id: album.id,
               title: album.name,
-              artistId: album.artistId,
-              artistName: album.artist,
+              // Browsing still uses the first credited artist as the album owner.
+              artistId: album.artists?.[0]?.id,
+              artistName: album.artists?.[0]?.name || album.displayArtist,
               artworkId: album.coverArt || undefined,
               year: album.year && album.year > 0 ? album.year : undefined,
               genres: album.genres?.map((genre) => genre.name) ?? [],
@@ -283,8 +278,10 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
               id: track.id,
               title: track.title,
               albumId: track.albumId,
-              artistId: track.artistId,
-              artistName: track.artist,
+              artistId: track.artists?.[0]?.id,
+              artistName: track.artists?.[0]?.name || track.displayArtist,
+              displayArtist:
+                track.displayArtist || track.artists?.map((artist) => artist.name).join(", "),
               artworkId: track.coverArt || undefined,
               number: track.track && track.track > 0 ? track.track : undefined,
               disc: track.discNumber && track.discNumber > 0 ? track.discNumber : undefined,

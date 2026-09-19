@@ -130,6 +130,45 @@ describe("subsonic client", () => {
     await expect(client.search3(page)).rejects.toThrow("invalid Subsonic response");
   });
 
+  it("preserves structured artist credits and strips legacy artist fields", async () => {
+    const artists = [
+      { id: "lead", name: "Lead" },
+      { id: "guest", name: "Guest" },
+    ];
+    const credits = { artists, displayArtist: "Lead feat. Guest", artist: 123, artistId: 123 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          searchResult3: {
+            album: [{ id: "album", name: "Album", ...credits }],
+            song: [{ id: "song", title: "Song", ...credits }],
+          },
+        }),
+      ),
+    );
+    const client = new SubsonicClient(auth);
+    await expect(client.search3(page)).resolves.toEqual({
+      artists: [],
+      albums: [{ id: "album", name: "Album", artists, displayArtist: "Lead feat. Guest" }],
+      tracks: [{ id: "song", title: "Song", artists, displayArtist: "Lead feat. Guest" }],
+    });
+  });
+
+  it.each([
+    { artist: [{ name: "Missing ID" }] },
+    { album: [{ id: "album", name: "Album", artists: [{ name: "Missing ID" }] }] },
+    { song: [{ id: "song", title: "Song", artists: [{ id: "artist" }] }] },
+    { song: [{ id: "song", title: "Song", displayArtist: 123 }] },
+  ])("rejects malformed structured artist credits: %j", async (searchResult3) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response({ searchResult3 })),
+    );
+    const client = new SubsonicClient(auth);
+    await expect(client.search3(page)).rejects.toThrow("invalid Subsonic response");
+  });
+
   it("builds authenticated media URLs", () => {
     const client = new SubsonicClient(auth);
 

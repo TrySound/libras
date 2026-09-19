@@ -579,6 +579,39 @@ it("derives artist genres from albums and reacts to library updates", async () =
   expect(target.querySelector(".genre-list")).toBeNull();
 });
 
+it.each([
+  { displayArtist: "Lead feat. Guest", expected: "Lead feat. Guest" },
+  { displayArtist: undefined, expected: "Lead" },
+])("shows displayArtist=$displayArtist in both players", async ({ displayArtist, expected }) => {
+  installDisk();
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+  await cache.replaceLibrary({
+    ...library("Lead", 1),
+    albums: [{ id: "album", artistId: "artist", title: "Album", genres: [] }],
+    tracks: [
+      {
+        id: "track",
+        albumId: "album",
+        artistId: "artist",
+        title: "Track",
+        displayArtist,
+        genres: [],
+      },
+    ],
+  });
+  cache.setQueue({ tracks: ["track"], index: 0, position: 0 });
+  mocks.cache = cache;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  expect(target.querySelector(".mini-copy small")?.textContent?.trim()).toBe(expected);
+  const artistLink = target.querySelector("#player-dialog .player-content a");
+  expect(artistLink?.textContent?.trim()).toBe(expected);
+  expect(artistLink?.getAttribute("href")).toBe("#/library/artist/artist");
+});
+
 it("shows current track genres in the player without album fallbacks", async () => {
   installDisk();
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));

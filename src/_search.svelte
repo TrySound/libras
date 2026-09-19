@@ -75,7 +75,7 @@
         id: track.id,
         title: track.title,
         artworkId: track.artworkId,
-        artist: track.artistName ?? artists.get(track.artistId)?.name ?? "",
+        artist: track.displayArtist ?? artists.get(track.artistId)?.name ?? "",
         album: albums.get(track.albumId)?.title ?? "",
       })),
     };

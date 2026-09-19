@@ -338,7 +338,7 @@
         {currentTrack.title}
       </strong>
       <small class="type-small text-muted">
-        {currentTrack.artistName ?? cache.artists.get(currentTrack.artistId)?.name}
+        {currentTrack.displayArtist ?? cache.artists.get(currentTrack.artistId)?.name}
       </small>
     </span>
     <button
@@ -389,10 +389,10 @@
                 href={`#${artistPath(playerArtist)}`}
                 onclick={(event) => event.currentTarget.closest("dialog")?.close()}
               >
-                {currentTrack.artistName ?? playerArtist.name}
+                {currentTrack.displayArtist ?? playerArtist.name}
               </a>
             {:else}
-              {currentTrack.artistName}
+              {currentTrack.displayArtist}
             {/if}
             —
             {#if playerAlbum && playerAlbumArtist}

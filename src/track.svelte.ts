@@ -192,7 +192,7 @@ export class TrackEngine {
       id: trackId,
       title: record?.title ?? trackId,
       artist:
-        record?.artistName ??
+        record?.displayArtist ??
         (record && selected?.artists.get(record.artistId)?.name) ??
         "Unknown artist",
       album: (record && selected?.albums.get(record.albumId)?.title) ?? "Unknown album",
