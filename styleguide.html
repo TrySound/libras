@@ -62,21 +62,7 @@
         line-height: var(--type-caption-line);
       }
 
-      .control-row {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: var(--space-sm);
-      }
-
-      .button-row {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: var(--space-sm);
-      }
-
-      .control-row input {
+      .input-example {
         width: min(100%, 20rem);
       }
 
@@ -295,9 +281,14 @@
           <p class="type-small text-muted">
             Buttons and inputs consume their typography tokens through element selectors.
           </p>
-          <div class="control-row">
+          <div class="row-wrap-sm">
             <button class="button" data-size="md" data-variant="neutral">Connect server</button>
-            <input aria-label="Server address example" value="music.example.com" readonly />
+            <input
+              class="input-example"
+              aria-label="Server address example"
+              value="music.example.com"
+              readonly
+            />
           </div>
         </div>
       </section>
@@ -519,14 +510,14 @@
         <div class="example-grid">
           <article class="stack-md">
             <p class="type-title">Text variants</p>
-            <div class="button-row">
+            <div class="row-wrap-sm">
               <button class="button" data-size="md" data-variant="neutral">Neutral</button>
             </div>
           </article>
 
           <article class="stack-md">
             <p class="type-title">Text sizes</p>
-            <div class="button-row">
+            <div class="row-wrap-sm">
               <button class="button" data-size="sm" data-variant="neutral">Small</button>
               <button class="button" data-size="md" data-variant="neutral">Medium</button>
             </div>
@@ -534,7 +525,7 @@
 
           <article class="stack-md">
             <p class="type-title">Icon variants</p>
-            <div class="button-row">
+            <div class="row-wrap-sm">
               <button
                 class="icon-button"
                 data-size="md"
@@ -572,7 +563,7 @@
 
           <article class="stack-md">
             <p class="type-title">Icon sizes</p>
-            <div class="button-row">
+            <div class="row-wrap-sm">
               <button
                 class="icon-button"
                 data-size="sm"
@@ -602,7 +593,7 @@
 
           <article class="stack-md">
             <p class="type-title">States and links</p>
-            <div class="button-row">
+            <div class="row-wrap-sm">
               <button class="button" data-size="md" data-variant="neutral" disabled>
                 Disabled
               </button>
