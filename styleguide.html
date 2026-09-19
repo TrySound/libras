@@ -279,17 +279,72 @@
         <div class="stack-sm">
           <p class="type-title">Control typography</p>
           <p class="type-small text-muted">
-            Buttons and inputs consume their typography tokens through element selectors.
+            Buttons and inputs consume their typography tokens through <code>.button</code> and
+            <code>.input</code>.
           </p>
           <div class="row-wrap-sm">
             <button class="button" data-size="md" data-variant="neutral">Connect server</button>
             <input
-              class="input-example"
+              class="input input-example"
               aria-label="Server address example"
               value="music.example.com"
               readonly
             />
           </div>
+        </div>
+      </section>
+
+      <section class="card stack-lg" aria-labelledby="inputs-heading">
+        <header class="stack-xs">
+          <h2 class="type-heading" id="inputs-heading">Inputs</h2>
+          <p class="type-body text-muted">
+            Use <code>.input</code> to opt text controls into shared typography, surface, and focus
+            styles. Hover to highlight the border; use Tab to see the focus outline. Disabled inputs
+            are dimmed and ignore hover. Invalid borders use <code>:user-invalid</code> or
+            <code>aria-invalid="true"</code>, so untouched required fields are not marked as errors.
+            Switches and sliders keep their own styles.
+          </p>
+        </header>
+        <div class="example-grid">
+          <label class="stack-xs">
+            <span class="type-small">Server address</span>
+            <input class="input" type="text" placeholder="https://music.example.com" />
+          </label>
+          <label class="stack-xs">
+            <span class="type-small">Read-only server address</span>
+            <input class="input" type="text" value="music.example.com" readonly />
+          </label>
+          <label class="stack-xs">
+            <span class="type-small">Disabled username</span>
+            <input class="input" type="text" value="alex" disabled />
+          </label>
+          <div class="stack-xs">
+            <label class="type-small" for="invalid-server-example">Invalid server address</label>
+            <input
+              class="input"
+              id="invalid-server-example"
+              type="text"
+              value="not a server address"
+              aria-invalid="true"
+              aria-describedby="invalid-server-help"
+            />
+            <small id="invalid-server-help" class="type-small text-danger"
+              >Enter a valid server address.</small
+            >
+          </div>
+          <label class="stack-xs">
+            <span class="type-small">Native validation</span>
+            <input
+              class="input"
+              type="email"
+              placeholder="alex@example.com"
+              required
+              aria-describedby="native-validation-help"
+            />
+            <small id="native-validation-help" class="type-small text-muted"
+              >Type an invalid email address, then move focus away to see the error state.</small
+            >
+          </label>
         </div>
       </section>
 

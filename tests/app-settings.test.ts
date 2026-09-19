@@ -84,6 +84,10 @@ describe("app settings", () => {
       "Disconnected",
     );
     expect(server.querySelector(":scope > form")).not.toBeNull();
+    expect(server.querySelectorAll("form input.input")).toHaveLength(3);
+    expect(offline.querySelector('input[type="checkbox"]')?.classList.contains("input")).toBe(
+      false,
+    );
     expect(offline.classList.contains("row-md")).toBe(true);
     expect(offline.querySelector(":scope > .stack-xs")?.textContent).toContain("Offline library");
     expect(offline.querySelector('input[type="checkbox"]')).not.toBeNull();

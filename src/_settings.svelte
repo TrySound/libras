@@ -112,6 +112,7 @@
           <div class="stack-xs">
             <label for="server-host">Host</label>
             <input
+              class="input"
               id="server-host"
               type="text"
               bind:value={host}
@@ -124,6 +125,7 @@
           <div class="stack-xs">
             <label for="server-username">Username</label>
             <input
+              class="input"
               id="server-username"
               type="text"
               bind:value={username}
@@ -135,6 +137,7 @@
           <div class="stack-xs">
             <label for="server-password">Password</label>
             <input
+              class="input"
               id="server-password"
               type="password"
               bind:value={password}

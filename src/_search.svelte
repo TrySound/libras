@@ -225,7 +225,13 @@
     <div class="stack-sm" role="search">
       <label for="library-search">Search artists, albums, and tracks</label>
       <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
-      <input id="library-search" type="search" bind:value={searchState.query} autofocus />
+      <input
+        class="input"
+        id="library-search"
+        type="search"
+        bind:value={searchState.query}
+        autofocus
+      />
     </div>
   </div>
   {#if !session.localReady}
