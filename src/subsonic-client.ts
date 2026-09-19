@@ -56,9 +56,22 @@ const trackSchema = v.object({
   track: v.optional(v.number()),
 });
 
+const serverInfoSchema = v.object({
+  version: v.string(),
+  type: v.string(),
+  serverVersion: v.string(),
+  openSubsonic: v.literal(true),
+});
+
 const responseSchema = v.object({
   "subsonic-response": v.object({
     status: v.string(),
+    // Keep identity optional here so minimal failures retain their actual error.
+    // ping() validates the complete OpenSubsonic identity after request success.
+    version: v.optional(v.string()),
+    type: v.optional(v.string()),
+    serverVersion: v.optional(v.string()),
+    openSubsonic: v.optional(v.boolean()),
     error: v.optional(v.object({ message: v.optional(v.string()) })),
     indexes: v.optional(v.object({ lastModified: v.optional(v.union([v.number(), v.string()])) })),
     searchResult3: v.optional(
@@ -82,6 +95,7 @@ type SubsonicResponse = v.InferOutput<typeof responseSchema>["subsonic-response"
 export type SubsonicArtist = v.InferOutput<typeof artistSchema>;
 export type SubsonicAlbum = v.InferOutput<typeof albumSchema>;
 export type SubsonicTrack = v.InferOutput<typeof trackSchema>;
+export type OpenSubsonicServerInfo = v.InferOutput<typeof serverInfoSchema>;
 
 export interface SubsonicPlayQueue {
   current?: string;
@@ -175,8 +189,12 @@ export class SubsonicClient {
     return this.#parse(await this.#fetch(this.#url(path, query), { signal }), signal);
   }
 
-  async ping() {
-    await this.#get("ping");
+  async ping(): Promise<OpenSubsonicServerInfo> {
+    const result = await this.#get("ping");
+    const parsed = v.safeParse(serverInfoSchema, result);
+    if (!parsed.success)
+      throw new Error("The server did not return a valid OpenSubsonic identity.");
+    return parsed.output;
   }
 
   async getIndexes(ifModifiedSince?: number) {

@@ -3,7 +3,14 @@ import { Network, NetworkTransportError } from "../src/network.svelte";
 import { deferred } from "./session-test-helpers";
 
 const auth = { host: "https://music.example", username: "listener", token: "token", salt: "salt" };
-const success = () => new Response(JSON.stringify({ "subsonic-response": { status: "ok" } }));
+const identity = {
+  version: "1.16.1",
+  type: "navidrome",
+  serverVersion: "0.61.0",
+  openSubsonic: true,
+};
+const success = () =>
+  new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...identity } }));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -30,6 +37,23 @@ describe("explicit credential validation", () => {
     expect(network.mode).toBe("online");
     network.setMode("offline");
   });
+
+  it.each([{}, { ...identity, openSubsonic: false }, { ...identity, serverVersion: undefined }])(
+    "rejects an invalid server identity without accepting the connection: %j",
+    async (fields) => {
+      const network = new Network();
+      const connection = network.prepare(auth);
+      const fetcher = vi.fn(
+        async () =>
+          new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...fields } })),
+      );
+      vi.stubGlobal("fetch", fetcher);
+      await expect(network.validate(connection)).rejects.toThrow("valid OpenSubsonic identity");
+      expect(fetcher).toHaveBeenCalledOnce();
+      expect(network.mode).toBe("offline");
+      network.setMode("offline");
+    },
+  );
 
   it.each(["credentials", "http", "malformed", "transport"])(
     "rejects %s failures without accepting the connection",
