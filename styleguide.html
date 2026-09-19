@@ -181,6 +181,70 @@
         </p>
       </section>
 
+      <section class="card stack-lg" aria-labelledby="radius-heading">
+        <header class="stack-xs">
+          <h2 class="type-heading" id="radius-heading">Radius</h2>
+          <p class="type-body text-muted">Corner radii are independent of spacing.</p>
+        </header>
+        <div class="example-grid">
+          <div class="card stack-sm" style="border-radius: var(--radius-xs)">
+            <code>--radius-xs · 0.25rem</code>
+            <span class="type-small text-muted">Small artwork</span>
+          </div>
+          <div class="card stack-sm" style="border-radius: var(--radius-sm)">
+            <code>--radius-sm · 0.5rem</code>
+            <span class="type-small text-muted">Cards, tiles, and floating panels</span>
+          </div>
+          <div class="card stack-sm" style="border-radius: var(--radius-md)">
+            <code>--radius-md · 0.7rem</code>
+            <span class="type-small text-muted">Text inputs</span>
+          </div>
+          <div class="card stack-sm" style="border-radius: var(--radius-lg)">
+            <code>--radius-lg · 1.4rem</code>
+            <span class="type-small text-muted">Empty-state icons</span>
+          </div>
+          <div class="stack-sm">
+            <code>--radius-pill · 999px</code>
+            <div class="row-sm"><span class="chip type-caption">Pill</span></div>
+          </div>
+          <div class="stack-sm">
+            <code>--radius-circle · 50%</code>
+            <div class="row-sm">
+              <span class="status" data-variant="success" aria-hidden="true"></span> Circle
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card stack-lg" aria-labelledby="transitions-heading">
+        <header class="stack-xs">
+          <h2 class="type-heading" id="transitions-heading">Transitions</h2>
+          <p class="type-body text-muted">
+            Transition tokens combine duration and easing; reduced-motion behavior stays with the
+            component.
+          </p>
+        </header>
+        <div class="example-grid">
+          <div class="stack-sm">
+            <code>--transition-fast · 50ms ease-out</code>
+            <p class="type-small text-muted">Immediate hover and press feedback.</p>
+            <code>--transition-control · 160ms ease-out</code>
+            <p class="type-small text-muted">Control, link, and tile transitions.</p>
+            <code>--transition-switch · 160ms ease</code>
+            <p class="type-small text-muted">Switch background and thumb movement.</p>
+          </div>
+          <div class="stack-sm">
+            <code>--transition-overlay · 180ms ease</code>
+            <p class="type-small text-muted">Overlay opacity and discrete transitions.</p>
+            <code>--transition-slide · 180ms ease-out</code>
+            <p class="type-small text-muted">Dialog movement.</p>
+            <div class="row-sm">
+              <button class="button" data-size="md" data-variant="neutral">Hover or press</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="card stack-lg" aria-labelledby="typography-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="typography-heading">Typography</h2>
@@ -242,7 +306,9 @@
         <header class="stack-xs">
           <h2 class="type-heading" id="switches-heading">Switches</h2>
           <p class="type-body text-muted">
-            Native checkboxes styled with <code>.switch</code>. Click or press Space to toggle.
+            Native checkboxes styled with <code>.switch</code>. Click or press Space to toggle. Like
+            buttons, enabled switches brighten on hover and dim and shrink when pressed. Reduced
+            motion disables animation and scaling; disabled switches have no feedback.
           </p>
         </header>
         <div class="example-grid">
