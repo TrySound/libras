@@ -67,7 +67,6 @@
   --color-status-success: var(--palette-green-500);
   --color-status-warning: var(--palette-amber-500);
   --color-status-danger: var(--palette-red-500);
-  --color-status-offline-glow: rgb(from var(--palette-crimson-300) r g b / 45%);
   --color-status-success-glow: rgb(from var(--palette-green-500) r g b / 45%);
   --color-gradient-primary: var(--palette-crimson-500);
   --color-gradient-secondary: var(--palette-pink-500);
@@ -470,6 +469,28 @@
   background: var(--color-surface-accent);
 }
 
+.status {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-status-neutral);
+}
+
+.status[data-variant="success"] {
+  background: var(--color-status-success);
+  box-shadow: 0 0 0.7rem var(--color-status-success-glow);
+}
+
+.status[data-variant="warning"] {
+  background: var(--color-status-warning);
+}
+
+.status[data-variant="danger"] {
+  background: var(--color-status-danger);
+}
+
 body {
   margin: 0;
 }
@@ -560,32 +581,6 @@ input:not([type="range"]):not([type="checkbox"]):focus {
   gap: 0.75rem;
 }
 
-.connection-dot {
-  width: 0.7rem;
-  height: 0.7rem;
-  flex: none;
-  border-radius: 50%;
-  background: var(--color-status-neutral);
-}
-
-.connection-dot.offline {
-  background: var(--color-accent);
-  box-shadow: 0 0 0.7rem var(--color-status-offline-glow);
-}
-
-.connection-dot.connected {
-  background: var(--color-status-success);
-  box-shadow: 0 0 0.7rem var(--color-status-success-glow);
-}
-
-.connection-dot.connecting {
-  background: var(--color-status-warning);
-}
-
-.connection-dot.failed {
-  background: var(--color-status-danger);
-}
-
 .connection-summary {
   min-width: 0;
   flex: 1;
@@ -600,13 +595,6 @@ input:not([type="range"]):not([type="checkbox"]):focus {
 
 .connection-details {
   padding: 0 1rem 1rem;
-}
-
-.connection-actions {
-  flex-shrink: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
 }
 
 .settings-option {

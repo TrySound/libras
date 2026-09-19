@@ -75,6 +75,12 @@
         line-height: var(--type-caption-line);
       }
 
+      .connection-samples {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-md);
+      }
+
       .control-row {
         display: flex;
         align-items: center;
@@ -269,6 +275,121 @@
               <input type="checkbox" aria-label="Disabled on example" checked disabled />
             </label>
           </article>
+        </div>
+      </section>
+
+      <section class="styleguide-panel stack-lg" aria-labelledby="status-heading">
+        <header class="stack-xs">
+          <h2 class="type-heading" id="status-heading">Status</h2>
+          <p class="type-body text-muted">
+            Decorative <code>.status</code> indicators use <code>data-variant</code>. Hide them from
+            assistive technology with <code>aria-hidden="true"</code>
+            and provide accompanying text to convey meaning.
+          </p>
+        </header>
+        <div class="button-samples">
+          <div class="row-sm">
+            <span class="status" data-variant="neutral" aria-hidden="true"></span> Neutral
+          </div>
+          <div class="row-sm">
+            <span class="status" data-variant="success" aria-hidden="true"></span> Success
+          </div>
+          <div class="row-sm">
+            <span class="status" data-variant="warning" aria-hidden="true"></span> Warning
+          </div>
+          <div class="row-sm">
+            <span class="status" data-variant="danger" aria-hidden="true"></span> Danger
+          </div>
+        </div>
+      </section>
+
+      <section class="styleguide-panel stack-lg" aria-labelledby="connection-headers-heading">
+        <header class="stack-xs">
+          <h2 class="type-heading" id="connection-headers-heading">Connection headers</h2>
+          <p class="type-body text-muted">
+            Proposed layout: a shared dot-and-label status row above server details.
+          </p>
+        </header>
+        <div class="connection-samples">
+          <div>
+            <div class="connection-card">
+              <div class="connection-card-header">
+                <div class="connection-summary stack-xs">
+                  <div class="row-sm">
+                    <span class="status" data-variant="neutral" aria-hidden="true"></span>
+                    <span class="type-small text-muted">Disconnected</span>
+                  </div>
+                  <strong class="type-title">Add a server</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="connection-card">
+              <div class="connection-card-header">
+                <div class="connection-summary stack-xs">
+                  <div class="row-sm">
+                    <span class="status" data-variant="warning" aria-hidden="true"></span>
+                    <span class="type-small text-muted">Connecting…</span>
+                  </div>
+                  <strong class="type-title">Add a server</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="connection-card">
+              <div class="connection-card-header">
+                <div class="connection-summary stack-xs">
+                  <div class="row-sm">
+                    <span class="status" data-variant="success" aria-hidden="true"></span>
+                    <span class="type-small text-muted">Connected</span>
+                  </div>
+                  <strong class="type-title">alex · music.example.com</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="connection-card">
+              <div class="connection-card-header">
+                <div class="connection-summary stack-xs">
+                  <div class="row-sm">
+                    <span class="status" data-variant="neutral" aria-hidden="true"></span>
+                    <span class="type-small text-muted">Offline mode</span>
+                  </div>
+                  <strong class="type-title">alex · music.example.com</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="connection-card">
+              <div class="connection-card-header">
+                <div class="connection-summary stack-xs">
+                  <div class="row-sm">
+                    <span class="status" data-variant="danger" aria-hidden="true"></span>
+                    <span class="type-small text-muted">Connection failed</span>
+                  </div>
+                  <strong class="type-title">alex · music.example.com</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="connection-card">
+              <div class="connection-card-header">
+                <div class="connection-summary stack-xs">
+                  <div class="row-sm">
+                    <span class="status" data-variant="warning" aria-hidden="true"></span>
+                    <span class="type-small text-muted">Refreshing…</span>
+                  </div>
+                  <strong class="type-title">alex · music.example.com</strong>
+                  <small class="type-small text-muted">500 albums · 1,000 tracks</small>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

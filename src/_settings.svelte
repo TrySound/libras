@@ -11,19 +11,6 @@
   let host = $state("");
   let username = $state("");
   let password = $state("");
-  const statusLabel = $derived(
-    session.busy
-      ? "Connecting…"
-      : !session.auth
-        ? "Disconnected"
-        : session.offlineMode
-          ? "Offline mode"
-          : session.status === "error"
-            ? "Connection failed"
-            : session.syncing
-              ? "Refreshing…"
-              : "Connected",
-  );
 
   async function submitConnection(event: SubmitEvent) {
     event.preventDefault();
@@ -38,6 +25,13 @@
     host = username = password = "";
   }
 </script>
+
+{#snippet status(variant: string, label: string)}
+  <div class="row-sm">
+    <span class="status" data-variant={variant} aria-hidden="true"></span>
+    <span class="type-small text-muted">{label}</span>
+  </div>
+{/snippet}
 
 <section class="view settings-view stack-md">
   <div class="stack-sm">
@@ -54,31 +48,36 @@
 
   <section class="connection-card" aria-label="Music server">
     <div class="connection-card-header">
-      <span
-        class="connection-dot"
-        class:offline={session.offlineMode}
-        class:connected={!session.offlineMode && session.status === "connected" && !session.syncing}
-        class:connecting={session.busy || session.syncing}
-        class:failed={session.status === "error"}
-      ></span>
-      <span class="connection-summary stack-xs">
-        <strong class="type-title">
-          {session.auth?.host ?? "Add a server"}
-        </strong>
-        {#if session.auth || session.busy}
-          <small class="type-small text-muted">
-            {session.auth ? `${session.auth.username} · ${statusLabel}` : statusLabel}
-          </small>
+      <div class="connection-summary stack-xs">
+        {#if session.busy}
+          {@render status("warning", "Connecting…")}
+        {:else if !session.auth}
+          {@render status("neutral", "Disconnected")}
+        {:else if session.offlineMode}
+          {@render status("neutral", "Offline mode")}
+        {:else if session.status === "error"}
+          {@render status("danger", "Connection failed")}
+        {:else if session.syncing}
+          {@render status("warning", "Refreshing…")}
+        {:else}
+          {@render status("success", "Connected")}
         {/if}
+        <strong class="type-title">
+          {#if session.auth}
+            {session.auth.username} · {session.auth.host.replace(/^https?:\/\//i, "")}
+          {:else}
+            Add a server
+          {/if}
+        </strong>
         {#if (session.busy || session.syncing) && session.libraryProgress}
           <small class="type-small text-muted" role="status">
             {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
             tracks
           </small>
         {/if}
-      </span>
+      </div>
       {#if session.auth}
-        <div class="connection-actions">
+        <div class="row-sm">
           <button
             class="icon-button"
             data-size="md"
