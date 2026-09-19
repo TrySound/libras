@@ -238,10 +238,10 @@
           {@render icon("error", 20, "text-danger")}
         </button>
         <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
-          <div class="stack-sm text-danger">
+          <div class="stack-sm grow">
             {#each alerts as alert (alert.id)}
               {#if alert.message}
-                <p class="type-small" role="alert">{alert.message}</p>
+                <p class="card type-small" data-variant="danger" role="alert">{alert.message}</p>
               {/if}
             {/each}
           </div>

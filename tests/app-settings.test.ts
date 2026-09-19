@@ -164,6 +164,10 @@ describe("app settings", () => {
     const popover = target.querySelector("#error-popover")!;
     expect(popover.getAttribute("popover")).toBe("auto");
     expect(popover.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    const notice = popover.querySelector('[role="alert"]')!;
+    expect(notice.classList.contains("card")).toBe(true);
+    expect(notice.getAttribute("data-variant")).toBe("danger");
+    expect(notice.parentElement?.classList.contains("stack-sm")).toBe(true);
     expect(popover.textContent).toContain("Connection failed");
     expect(button("Close errors").getAttribute("commandfor")).toBe("error-popover");
     expect(button("Close errors").getAttribute("command")).toBe("hide-popover");

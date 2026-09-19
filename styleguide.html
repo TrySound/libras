@@ -304,7 +304,9 @@
           <p class="type-body text-muted">
             Use <code>.card</code> for a padded surface. Compose its contents with stack and row
             utilities; add <code>.grow</code> beside actions and <code>.truncate</code>
-            only to text that should stay on one line.
+            only to text that should stay on one line. Cards are neutral by default;
+            <code>data-variant="danger"</code> adds error colors. Add <code>role="alert"</code>
+            only for dynamic messages requiring immediate announcement, not static examples.
           </p>
         </header>
         <div class="example-grid">
@@ -326,6 +328,12 @@
             </div>
             <p class="type-body">Optional content shares the card's padding.</p>
           </div>
+          <p class="card type-small">
+            Downloaded music stays available when you switch to offline mode.
+          </p>
+          <p class="card type-small" data-variant="danger">
+            Could not connect to the server. Check your connection and try again.
+          </p>
         </div>
       </section>
 
