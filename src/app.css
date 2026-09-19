@@ -374,20 +374,21 @@
 /* layout */
 
 .row-sm,
-.row-wrap-sm,
 .row-md,
 .row-lg {
   display: flex;
   align-items: center;
 }
 
+.row-wrap-sm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .row-sm,
 .row-wrap-sm {
   gap: var(--space-sm);
-}
-
-.row-wrap-sm {
-  flex-wrap: wrap;
 }
 
 .row-md {
