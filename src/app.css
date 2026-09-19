@@ -96,6 +96,7 @@
   --space-md: 1rem;
   --space-lg: 1.5rem;
   --space-xl: 2rem;
+  --radius-pill: 999px;
   --type-heading-size: var(--text-lg);
   --type-heading-line: 1.5rem;
   --type-heading-weight: var(--weight-bold);
@@ -462,8 +463,8 @@
 /* decorative */
 
 .chip {
-  padding: 0.25rem 0.5rem;
-  border-radius: 999px;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-pill);
   color: var(--color-accent-text);
   background: var(--color-surface-accent);
 }
