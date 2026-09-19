@@ -28,6 +28,63 @@ afterEach(() => {
 });
 
 describe("subsonic client", () => {
+  const identity = {
+    version: "1.16.1",
+    type: "navidrome",
+    serverVersion: "0.61.0",
+    openSubsonic: true,
+  };
+
+  it.each(["navidrome", "gonic", "custom-server"])(
+    "returns the identity from a single explicit ping to %s",
+    async (type) => {
+      const fetcher = vi.fn(async () => response({ ...identity, type, extra: "ignored" }));
+      vi.stubGlobal("fetch", fetcher);
+      const client = new SubsonicClient(auth);
+      expect(fetcher).not.toHaveBeenCalled();
+      await expect(client.ping()).resolves.toEqual({ ...identity, type });
+      expect(fetcher).toHaveBeenCalledOnce();
+      expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain("/rest/ping.view?");
+    },
+  );
+
+  it.each(["version", "type", "serverVersion", "openSubsonic"])(
+    "rejects ping identity without %s",
+    async (field) => {
+      const fields: Record<string, unknown> = { ...identity };
+      delete fields[field];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => response(fields)),
+      );
+      await expect(new SubsonicClient(auth).ping()).rejects.toThrow("valid OpenSubsonic identity");
+    },
+  );
+
+  it.each([
+    { openSubsonic: false },
+    { openSubsonic: "true" },
+    { version: 1161 },
+    { type: null },
+    { serverVersion: 61 },
+  ])("rejects malformed or non-OpenSubsonic identity: %j", async (fields) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response({ ...identity, ...fields })),
+    );
+    await expect(new SubsonicClient(auth).ping()).rejects.toThrow();
+  });
+
+  it("preserves credential failures without requiring server identity", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({ status: "failed", error: { message: "Wrong username or password" } }),
+      ),
+    );
+    await expect(new SubsonicClient(auth).ping()).rejects.toThrow("Wrong username or password");
+  });
+
   it("creates salted token credentials without retaining or altering the password", () => {
     const input = { host: auth.host, username: auth.username, password: " secret 音 " };
     const first = createSubsonicAuth(input);

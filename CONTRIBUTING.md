@@ -49,6 +49,10 @@ Keep these boundaries in mind:
 
 For implementation details, consult the owning module and its tests rather than adding a second state store or synchronization layer.
 
+### Server identity
+
+Explicit login validation uses its existing authenticated `ping()` request to verify OpenSubsonic identity: `version` is the Subsonic API version, `type` is the server name, `serverVersion` is the server release, and `openSubsonic` must be `true`. Unknown server names are accepted. Failed requests retain their server error even without identity fields. Identity is returned by the protocol client but is not persisted; no discovery requests or authentication changes are introduced.
+
 ### Genre metadata
 
 Library synchronization reads OpenSubsonic structured `genres` on albums and tracks. Names and their order are preserved as supplied, including duplicates; delimiters such as `|` remain part of a name. Missing genres become empty arrays, without falling back to legacy `genre` strings. ArtistID3 has no genre fields, so artist records do not store genres. The artist page derives its genres from the artist's albums.
