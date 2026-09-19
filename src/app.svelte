@@ -21,6 +21,19 @@
   import { TrackEngine } from "./track.svelte";
   import { installSwipeToDismiss } from "./swipe-to-dismiss";
 
+  const durationFormatter = new Intl.DurationFormat("en", {
+    minutes: "numeric",
+    seconds: "2-digit",
+  });
+
+  function formatTime(value: number) {
+    const seconds = Number.isFinite(value) ? Math.floor(value) : 0;
+    return durationFormatter.format({
+      minutes: Math.floor(seconds / 60),
+      seconds: seconds % 60,
+    });
+  }
+
   type Album = Immutable<AlbumRecord>;
   type Artist = Immutable<ArtistRecord>;
 
@@ -134,13 +147,6 @@
   function playbackPercent() {
     if (!Number.isFinite(playbackDuration) || playbackDuration <= 0) return 0;
     return Math.min(100, Math.max(0, (cache.queue.position / playbackDuration) * 100));
-  }
-
-  function formatTime(value: number) {
-    if (!Number.isFinite(value)) return "0:00";
-    const minutes = Math.floor(value / 60);
-    const seconds = Math.floor(value % 60);
-    return `${minutes}:${String(seconds).padStart(2, "0")}`;
   }
 </script>
 
@@ -494,6 +500,12 @@
         <div class="wings">
           {#each queue as { track, index }, visibleIndex}
             {@const downloadStatus = trackEngine.getStatus(track.id)}
+            {@const credit =
+              track.displayArtist?.trim() ||
+              track.artistIds
+                .map((id) => cache.artists.get(id)?.name)
+                .filter(Boolean)
+                .join(", ")}
             <div class="wings-item row-button">
               <button
                 class="linkarea"
@@ -522,10 +534,18 @@
                     {@render icon("clock")}
                   </span>
                 {:else}
-                  {visibleIndex + 1}
+                  {String(visibleIndex + 1).padStart(2, "0")}
                 {/if}
               </span>
-              <span>{track.title}</span>
+              <span class="stack-xs grow">
+                <span class="truncate">{track.title}</span>
+                {#if credit}
+                  <small class="type-small text-muted truncate">{credit}</small>
+                {/if}
+              </span>
+              {#if track.duration !== undefined}
+                <span class="type-small text-muted text-right">{formatTime(track.duration)}</span>
+              {/if}
             </div>
           {/each}
         </div>

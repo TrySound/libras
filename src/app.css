@@ -228,6 +228,10 @@
   color: var(--color-text-danger);
 }
 
+.text-right {
+  text-align: right;
+}
+
 .truncate {
   overflow: hidden;
   text-overflow: ellipsis;

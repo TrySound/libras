@@ -8,6 +8,11 @@
   import type { RouteParams } from "./router.svelte";
   import type { Session } from "./session.svelte";
 
+  const durationFormatter = new Intl.DurationFormat("en", {
+    minutes: "numeric",
+    seconds: "2-digit",
+  });
+
   interface Props {
     params: RouteParams;
     cache: Cache;
@@ -98,6 +103,12 @@
       {#each visibleTracks as track, index}
         {@const trackMenuId = `album-track-menu-${index}`}
         {@const downloadStatus = trackEngine.getStatus(track.id)}
+        {@const credit =
+          track.displayArtist?.trim() ||
+          track.artistIds
+            .map((id) => cache.artists.get(id)?.name)
+            .filter(Boolean)
+            .join(", ")}
         <div class="wings-item row-button">
           <button
             class="linkarea"
@@ -133,20 +144,35 @@
                 <svg aria-hidden="true" width="20" height="20"><use href="#icon-clock"></use></svg>
               </span>
             {:else}
-              {track.number ?? index + 1}
+              {String(track.number ?? index + 1).padStart(2, "0")}
             {/if}
           </span>
-          <span>{track.title}</span>
-          <button
-            class="icon-button"
-            data-size="sm"
-            data-variant="ghost"
-            commandfor={trackMenuId}
-            command="show-modal"
-            title={`Open menu for ${track.title}`}
-          >
-            <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
-          </button>
+          <span class="stack-xs grow">
+            <span class="truncate">{track.title}</span>
+            {#if credit && credit !== (album.displayArtist ?? artist.name).trim()}
+              <small class="type-small text-muted truncate">{credit}</small>
+            {/if}
+          </span>
+          <span class="row-sm">
+            <span class="type-small text-muted text-right grow">
+              {#if track.duration !== undefined}
+                {durationFormatter.format({
+                  minutes: Math.floor(track.duration / 60),
+                  seconds: Math.floor(track.duration % 60),
+                })}
+              {/if}
+            </span>
+            <button
+              class="icon-button"
+              data-size="sm"
+              data-variant="ghost"
+              commandfor={trackMenuId}
+              command="show-modal"
+              title={`Open menu for ${track.title}`}
+            >
+              <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
+            </button>
+          </span>
         </div>
       {:else}
         {#if !loading}

@@ -760,6 +760,9 @@
           <p class="type-body text-muted">
             Albums, tracks, and queue items share synchronized columns. Empty overlay links or
             buttons make each row clickable; secondary links and controls remain above the overlay.
+            Track numbers are padded to at least two digits. Album tracks show an artist credit only
+            when it differs from the album artist; queue rows show the artist without an album name.
+            Durations are right-aligned and omitted when unknown.
           </p>
         </header>
 
@@ -797,11 +800,13 @@
               class="linkarea"
               aria-label="Play a track with a longer title that truncates"
             ></button>
-            <span class="track-leading">1</span>
-            <span class="track-content">
-              <span>A track with a longer title that truncates</span>
+            <span class="track-leading">01</span>
+            <span class="stack-xs grow">
+              <span class="truncate">A track with a longer title that truncates</span>
+              <small class="type-small text-muted truncate">Guest artist</small>
             </span>
             <span class="row-sm">
+              <span class="type-small text-muted text-right">4:32</span>
               <button
                 class="icon-button"
                 data-size="sm"
@@ -821,17 +826,58 @@
             </span>
           </article>
           <article class="wings-item row-button">
+            <button class="linkarea" aria-label="Play another album track"></button>
+            <span class="track-leading">02</span>
+            <span class="truncate">Another album track</span>
+            <span class="row-sm">
+              <span class="type-small text-muted text-right">3:08</span>
+              <button
+                class="icon-button"
+                data-size="sm"
+                data-variant="ghost"
+                aria-label="Download another album track"
+              >
+                <svg width="20" height="20"><use href="#guide-plus" /></svg>
+              </button>
+              <button
+                class="icon-button"
+                data-size="sm"
+                data-variant="ghost"
+                aria-label="Add another album track"
+              >
+                <svg width="20" height="20"><use href="#guide-plus" /></svg>
+              </button>
+            </span>
+          </article>
+        </div>
+
+        <h3 class="type-title">Queue</h3>
+        <div class="wings track-demo">
+          <article class="wings-item row-button">
             <button class="linkarea" aria-label="Play queue item"></button>
-            <span class="track-leading">12</span>
-            <span class="track-content"><span>Queue item</span></span>
-            <button
-              class="icon-button"
-              data-size="sm"
-              data-variant="ghost"
-              aria-label="Download queue item"
-            >
-              <svg width="20" height="20"><use href="#guide-plus" /></svg>
-            </button>
+            <span class="track-leading">01</span>
+            <span class="stack-xs grow">
+              <span class="truncate">Queue item</span>
+              <small class="type-small text-muted truncate">Artist name</small>
+            </span>
+            <span class="type-small text-muted text-right">4:32</span>
+          </article>
+          <article class="wings-item row-button">
+            <button class="linkarea" aria-label="Play the next queue item"></button>
+            <span class="track-leading">02</span>
+            <span class="stack-xs grow">
+              <span class="truncate">The next queue item</span>
+              <small class="type-small text-muted truncate">Another artist featuring a guest</small>
+            </span>
+            <span class="type-small text-muted text-right">12:06</span>
+          </article>
+          <article class="wings-item row-button">
+            <button class="linkarea" aria-label="Play a track with unknown duration"></button>
+            <span class="track-leading">03</span>
+            <span class="stack-xs grow">
+              <span class="truncate">A track with unknown duration</span>
+              <small class="type-small text-muted truncate">Artist name</small>
+            </span>
           </article>
         </div>
       </section>

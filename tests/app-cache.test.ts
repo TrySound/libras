@@ -70,6 +70,90 @@ function library(name: string, savedAt: number): LibrarySnapshot {
   };
 }
 
+it("shows compact track credits, durations, and padded numbers in albums and queues", async () => {
+  installDisk();
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+  await cache.replaceLibrary({
+    ...library("Main artist", 1),
+    artists: [
+      { id: "artist", name: "Main artist" },
+      { id: "guest", name: "Guest artist" },
+    ],
+    albums: [
+      {
+        id: "album",
+        artistIds: ["artist"],
+        title: "Album title",
+        displayArtist: "Album credit",
+        genres: [],
+      },
+    ],
+    tracks: [
+      {
+        id: "one",
+        albumId: "album",
+        artistIds: ["artist"],
+        title: "First track",
+        displayArtist: "Album credit",
+        number: 1,
+        duration: 272,
+        genres: [],
+      },
+      {
+        id: "two",
+        albumId: "album",
+        artistIds: ["artist"],
+        title: "Second track",
+        displayArtist: "Guest credit",
+        number: 7,
+        duration: 0,
+        genres: [],
+      },
+      {
+        id: "three",
+        albumId: "album",
+        artistIds: ["guest", "artist"],
+        title: "Third track",
+        number: 100,
+        genres: [],
+      },
+    ],
+  });
+  cache.setQueue({ tracks: ["one", "two", "three"], index: 0, position: 0 });
+  mocks.cache = cache;
+  installNavigation("/library/artist/artist/album/album", mocks.navigate);
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const albumRows = [...target.querySelectorAll(".container.wings > .wings-item")];
+  const queueRows = [...target.querySelectorAll(".player-queue .wings > .wings-item")];
+  expect(albumRows).toHaveLength(3);
+  expect(queueRows).toHaveLength(3);
+  const subtitle = (row: Element) => row.querySelector(".stack-xs small")?.textContent?.trim();
+  const duration = (row: Element) => row.querySelector(".text-right")?.textContent?.trim() ?? "";
+  const number = (row: Element) => row.querySelector(".track-leading")?.textContent?.trim();
+  expect(subtitle(albumRows[0])).toBeUndefined();
+  expect(subtitle(albumRows[1])).toBe("Guest credit");
+  expect(subtitle(albumRows[2])).toBe("Guest artist, Main artist");
+  expect(number(albumRows[1])).toBe("07");
+  expect(number(albumRows[2])).toBe("100");
+  expect(queueRows.map(subtitle)).toEqual([
+    "Album credit",
+    "Guest credit",
+    "Guest artist, Main artist",
+  ]);
+  expect(number(queueRows[1])).toBe("02");
+  expect(number(queueRows[2])).toBe("03");
+  for (const rows of [albumRows, queueRows]) {
+    expect(rows.map(duration)).toEqual(["4:32", "0:00", ""]);
+    expect(rows[0].querySelector('[aria-label="Current track, not playing"]')).not.toBeNull();
+  }
+  for (const row of queueRows) expect(row.textContent).not.toContain("Album title");
+  expect(albumRows[1].querySelector('[title="Open menu for Second track"]')).not.toBeNull();
+});
+
 it("uses session restoration state on the downloads page", () => {
   mocks.localReady = false;
   installNavigation("/downloads", mocks.navigate);
