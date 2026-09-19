@@ -228,6 +228,7 @@ describe("network library", () => {
       id: "album",
       title: "Album",
       artistIds: ["artist"],
+      displayArtist: "Artist",
       artworkId: "cover",
       year: 2024,
       genres: [],
@@ -329,6 +330,7 @@ describe("network library", () => {
       const connection = createConnection();
       const library = await connection.readLibrary(connection.signal);
       expect(library.albums[0].artistIds).toEqual(["owner", "other"]);
+      expect(library.albums[0].displayArtist).toBe("Owner & Other");
       expect(library.tracks[0]).toMatchObject({
         artistIds: ["lead", "guest"],
         displayArtist: expected,

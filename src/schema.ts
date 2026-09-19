@@ -18,6 +18,7 @@ export const albumSchema = v.strictObject({
   id,
   title: v.string(),
   artistIds: v.pipe(v.array(id), v.minLength(1)),
+  displayArtist: v.optional(v.string()),
   // Effective artwork: explicit album image, otherwise its artist's image.
   artworkId: v.optional(id),
   year: ordinal,

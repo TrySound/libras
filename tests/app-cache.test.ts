@@ -668,6 +668,37 @@ it("shows current track genres in the player without album fallbacks", async () 
   expect(target.querySelector("#player-dialog .genre-list")).toBeNull();
 });
 
+it("shows the album display credit without changing its artist link", async () => {
+  installDisk();
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+  await cache.replaceLibrary({
+    ...library("Lead", 1),
+    artists: [
+      { id: "artist", name: "Lead" },
+      { id: "guest", name: "Guest" },
+    ],
+    albums: [
+      {
+        id: "album",
+        artistIds: ["artist", "guest"],
+        displayArtist: "Lead & Guest",
+        title: "Album",
+        genres: [],
+      },
+    ],
+  });
+  mocks.cache = cache;
+  installNavigation("/library/artist/artist/album/album", mocks.navigate);
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const credit = target.querySelector(".collection-heading a");
+  expect(credit?.textContent?.trim()).toBe("Lead & Guest");
+  expect(credit?.getAttribute("href")).toBe("#/library/artist/artist");
+});
+
 it("shows only album genres on the album route", async () => {
   installDisk();
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
