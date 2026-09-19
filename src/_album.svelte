@@ -44,14 +44,16 @@
 
 <section>
   {#if libraryAvailable && artist && album}
-    <div class="view collection-view">
-      <Artwork
-        {covers}
-        id={album.artworkId}
-        size="stretch"
-        loading="eager"
-        viewTransitionName={`album-cover-${album.id}`}
-      />
+    <div class="view container collection-view">
+      <div class="collection-artwork">
+        <Artwork
+          {covers}
+          id={album.artworkId}
+          size="stretch"
+          loading="eager"
+          viewTransitionName={`album-cover-${album.id}`}
+        />
+      </div>
       <div class="row-md collection-heading">
         <div class="stack-xs grow">
           <a
@@ -101,7 +103,7 @@
         </div>
       {/if}
     </div>
-    <div class="wings">
+    <div class="container wings">
       {#each visibleTracks as track, index}
         {@const trackMenuId = `album-track-menu-${index}`}
         {@const downloadStatus = trackEngine.getStatus(track.id)}

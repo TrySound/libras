@@ -45,14 +45,16 @@
 
 <section>
   {#if libraryAvailable && artist}
-    <div class="view collection-view">
-      <Artwork
-        {covers}
-        id={artist.artworkId}
-        size="stretch"
-        loading="eager"
-        viewTransitionName={`artist-cover-${artist.id}`}
-      />
+    <div class="view container collection-view">
+      <div class="collection-artwork">
+        <Artwork
+          {covers}
+          id={artist.artworkId}
+          size="stretch"
+          loading="eager"
+          viewTransitionName={`artist-cover-${artist.id}`}
+        />
+      </div>
       <div class="row-md collection-heading">
         <div class="stack-xs grow">
           <h2
@@ -93,7 +95,7 @@
         </div>
       {/if}
     </div>
-    <div class="wings">
+    <div class="container wings">
       {#each visibleAlbums as album, index}
         {@const albumMenuId = `album-menu-${index}`}
         {@const visibleTrackIds = availableTrackIds(cache.albumTracks.get(album.id) ?? [])}

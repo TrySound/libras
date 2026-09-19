@@ -378,6 +378,12 @@
 
 /* layout */
 
+.container {
+  box-sizing: border-box;
+  max-width: 40rem;
+  margin-inline: auto;
+}
+
 .grow {
   min-width: 0;
   flex: 1;
@@ -730,13 +736,6 @@ a {
   outline-offset: var(--focus-outline-offset);
 }
 
-.collection-view,
-.settings-view {
-  box-sizing: border-box;
-  max-width: 40rem;
-  margin-inline: auto;
-}
-
 .collection-heading {
   align-items: start;
   margin-bottom: var(--space-xl);
@@ -798,7 +797,7 @@ a {
   padding-top: 0;
 }
 
-.collection-view > .artwork {
+.collection-artwork {
   max-width: 20rem;
   margin: 0 auto var(--space-lg);
   box-shadow: var(--elevation-md);

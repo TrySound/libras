@@ -76,6 +76,7 @@ async function setup(saved = false) {
 describe("app settings", () => {
   it("uses shared cards for server and offline settings", async () => {
     const { target } = await setup();
+    expect(target.querySelector(".settings-view")?.classList.contains("container")).toBe(true);
     const server = target.querySelector('.card[aria-label="Music server"]')!;
     const offline = target.querySelector('.card[aria-label="Offline library"]')!;
     expect(server.classList.contains("stack-md")).toBe(true);

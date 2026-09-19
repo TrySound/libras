@@ -474,7 +474,9 @@ it.each([
     expect(target.querySelector(selector)).not.toBeNull();
     if (route !== "/library") {
       expect(target.querySelector(selector)!.closest(".view")).toBeNull();
-      expect(target.querySelector(".collection-heading")?.closest(".view")).not.toBeNull();
+      expect(
+        target.querySelector(".collection-heading")?.closest(".view.container"),
+      ).not.toBeNull();
     }
     target.querySelector<HTMLElement>(selector)!.focus();
     flushSync();
