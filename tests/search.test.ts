@@ -26,6 +26,17 @@ describe("local library search", () => {
     expect(search("frmtn")[2].total).toBe(12);
     expect(search("lemonade beyonce")[1].total).toBe(1);
   });
+  it("preserves and searches the album display credit", () => {
+    const { artists, albums, tracks } = fixture();
+    albums.set("b", { ...albums.get("b")!, displayArtist: "Beyoncé & Guests" });
+    const result = searchLibrary(createSearchIndex(artists, albums, tracks), "guests").groups[1];
+    expect(result.records[0]).toMatchObject({
+      id: "b",
+      artist: "Beyoncé & Guests",
+      href: "#/library/artist/a/album/b",
+    });
+  });
+
   it("explicitly handles empty and unmatched queries", () => {
     for (const query of ["", " \n\t ", "zzzzzzzz"]) {
       expect(search(query).every((group) => group.total === 0)).toBe(true);

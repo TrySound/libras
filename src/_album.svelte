@@ -58,7 +58,7 @@
             class="text-link type-eyebrow text-muted"
             href={`#/library/artist/${encodeURIComponent(artist.id)}`}
           >
-            {artist.name}
+            {album.displayArtist ?? artist.name}
           </a>
           <h2
             class="type-heading"

@@ -67,7 +67,9 @@
         id: album.id,
         title: album.title,
         artworkId: album.artworkId,
-        artist: album.artistIds.map((id) => artists.get(id)?.name ?? "").join(", "),
+        artist:
+          album.displayArtist ??
+          album.artistIds.map((id) => artists.get(id)?.name ?? "").join(", "),
         album: "",
         href: `${artistPath(album.artistIds[0])}/album/${encodeURIComponent(album.id)}`,
       })),

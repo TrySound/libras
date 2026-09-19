@@ -161,6 +161,7 @@ function normalizeLibrary(
       id: source.id,
       title: source.title,
       artistIds: owners.map((artist) => artist.id),
+      displayArtist: source.displayArtist || owners.map((artist) => artist.name).join(", "),
       artworkId,
       year: source.year,
       genres: source.genres,
