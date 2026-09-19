@@ -271,11 +271,16 @@ it("preserves artist pagination when offline eligibility changes", async () => {
   await cache.replaceLibrary({
     ...library("Artist", 1),
     artists: [...downloaded].map((id) => ({ id, name: `Artist ${id}` })),
-    albums: [...downloaded].map((id) => ({ id, title: `Album ${id}`, artistId: id, genres: [] })),
+    albums: [...downloaded].map((id) => ({
+      id,
+      title: `Album ${id}`,
+      artistIds: [id],
+      genres: [],
+    })),
     tracks: [...downloaded].map((id) => ({
       id,
       title: `Track ${id}`,
-      artistId: id,
+      artistIds: [id],
       albumId: id,
       genres: [],
     })),
@@ -378,7 +383,7 @@ it("restores the large player slider when queue hydration finishes before metada
       {
         id: "track",
         title: "Track",
-        artistId: "artist",
+        artistIds: ["artist"],
         albumId: "album",
         duration: 120,
         genres: [],
@@ -442,12 +447,12 @@ it.each([
     const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
     await cache.replaceLibrary({
       ...library("Artist", 1),
-      albums: [{ id: "album", artistId: "artist", title: "Album", genres: [] }],
+      albums: [{ id: "album", artistIds: ["artist"], title: "Album", genres: [] }],
       tracks: [
         {
           id: "track",
           albumId: "album",
-          artistId: "artist",
+          artistIds: ["artist"],
           title: "Track",
           mimeType: "audio/mpeg",
           genres: [],
@@ -499,8 +504,14 @@ it("reuses one library menu for the long-pressed artist", async () => {
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
     artists: ["one", "two"].map((id) => ({ id, name: `Artist ${id}` })),
-    albums: ["one", "two"].map((id) => ({ id, artistId: id, title: id, genres: [] })),
-    tracks: ["one", "two"].map((id) => ({ id, artistId: id, albumId: id, title: id, genres: [] })),
+    albums: ["one", "two"].map((id) => ({ id, artistIds: [id], title: id, genres: [] })),
+    tracks: ["one", "two"].map((id) => ({
+      id,
+      artistIds: [id],
+      albumId: id,
+      title: id,
+      genres: [],
+    })),
     lastModified: 1,
     savedAt: 1,
   });
@@ -541,14 +552,14 @@ it("derives artist genres from albums and reacts to library updates", async () =
   const snapshot = {
     ...library("Artist", 1),
     albums: [
-      { id: "album", artistId: "artist", title: "Album", genres: ["Rock", "Jazz"] },
-      { id: "second", artistId: "artist", title: "Second", genres: ["Jazz", "Soul"] },
+      { id: "album", artistIds: ["artist"], title: "Album", genres: ["Rock", "Jazz"] },
+      { id: "second", artistIds: ["artist"], title: "Second", genres: ["Jazz", "Soul"] },
     ],
     tracks: [
       {
         id: "track",
         albumId: "album",
-        artistId: "artist",
+        artistIds: ["artist"],
         title: "Track",
         genres: ["Track-only genre"],
       },
@@ -579,22 +590,55 @@ it("derives artist genres from albums and reacts to library updates", async () =
   expect(target.querySelector(".genre-list")).toBeNull();
 });
 
+it.each([
+  { displayArtist: "Lead feat. Guest", expected: "Lead feat. Guest" },
+  { displayArtist: undefined, expected: "Lead" },
+])("shows displayArtist=$displayArtist in both players", async ({ displayArtist, expected }) => {
+  installDisk();
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+  await cache.replaceLibrary({
+    ...library("Lead", 1),
+    albums: [{ id: "album", artistIds: ["artist"], title: "Album", genres: [] }],
+    tracks: [
+      {
+        id: "track",
+        albumId: "album",
+        artistIds: ["artist"],
+        title: "Track",
+        displayArtist,
+        genres: [],
+      },
+    ],
+  });
+  cache.setQueue({ tracks: ["track"], index: 0, position: 0 });
+  mocks.cache = cache;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  expect(target.querySelector(".mini-copy small")?.textContent?.trim()).toBe(expected);
+  const artistLink = target.querySelector("#player-dialog .player-content a");
+  expect(artistLink?.textContent?.trim()).toBe(expected);
+  expect(artistLink?.getAttribute("href")).toBe("#/library/artist/artist");
+});
+
 it("shows current track genres in the player without album fallbacks", async () => {
   installDisk();
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
     ...library("Artist", 1),
-    albums: [{ id: "album", artistId: "artist", title: "Album", genres: ["Album-only genre"] }],
+    albums: [{ id: "album", artistIds: ["artist"], title: "Album", genres: ["Album-only genre"] }],
     tracks: [
       {
         id: "first",
         albumId: "album",
-        artistId: "artist",
+        artistIds: ["artist"],
         title: "First",
         genres: ["Soul", "Jazz|Fusion"],
       },
-      { id: "second", albumId: "album", artistId: "artist", title: "Second", genres: ["Rock"] },
-      { id: "third", albumId: "album", artistId: "artist", title: "Third", genres: [] },
+      { id: "second", albumId: "album", artistIds: ["artist"], title: "Second", genres: ["Rock"] },
+      { id: "third", albumId: "album", artistIds: ["artist"], title: "Third", genres: [] },
     ],
   });
   const tracks = ["first", "second", "third"];
@@ -629,12 +673,12 @@ it("shows only album genres on the album route", async () => {
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
     ...library("Artist", 1),
-    albums: [{ id: "album", artistId: "artist", title: "Album", genres: ["Jazz"] }],
+    albums: [{ id: "album", artistIds: ["artist"], title: "Album", genres: ["Jazz"] }],
     tracks: [
       {
         id: "track",
         albumId: "album",
-        artistId: "artist",
+        artistIds: ["artist"],
         title: "Track",
         genres: ["Track-only genre"],
       },
@@ -766,13 +810,13 @@ it.each([
   await cache.replaceLibrary({
     ...library("Artist", 1),
     albums: [
-      { id: "album", artistId: "artist", title: "Album", genres: [] },
-      { id: "other", artistId: "artist", title: "Other", genres: [] },
+      { id: "album", artistIds: ["artist"], title: "Album", genres: [] },
+      { id: "other", artistIds: ["artist"], title: "Other", genres: [] },
     ],
     tracks: ["one", "two", "three"].map((id, index) => ({
       id,
       title: id,
-      artistId: "artist",
+      artistIds: ["artist"],
       albumId: index < 2 ? "album" : "other",
       number: index + 1,
       mimeType: "audio/mpeg",
@@ -843,9 +887,9 @@ it.each([
   await cache.replaceLibrary({
     ...library("Artist", 1),
     albums: [
-      { id: "album", artistId: "artist", title: "Album", artworkId: "album-cover", genres: [] },
+      { id: "album", artistIds: ["artist"], title: "Album", artworkId: "album-cover", genres: [] },
     ],
-    tracks: [{ id: "track", albumId: "album", artistId: "artist", title: "Track", genres: [] }],
+    tracks: [{ id: "track", albumId: "album", artistIds: ["artist"], title: "Track", genres: [] }],
   });
   mocks.cache = cache;
   window.history.replaceState(null, "", `#${route}`);
@@ -958,7 +1002,7 @@ it("follows normalized album artwork IDs without publishing a late old image", a
     ...library("Artist", 1),
     artists: [{ id: "artist", name: "Artist", artworkId: "artist-cover" }],
     albums: [
-      { id: "album", artistId: "artist", title: "Album", artworkId: "old-cover", genres: [] },
+      { id: "album", artistIds: ["artist"], title: "Album", artworkId: "old-cover", genres: [] },
     ],
   };
   await cache.replaceLibrary(data);

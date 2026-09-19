@@ -53,6 +53,12 @@ For implementation details, consult the owning module and its tests rather than 
 
 Library synchronization reads OpenSubsonic structured `genres` on albums and tracks. Names and their order are preserved as supplied, including duplicates; delimiters such as `|` remain part of a name. Missing genres become empty arrays, without falling back to legacy `genre` strings. ArtistID3 has no genre fields, so artist records do not store genres. The artist page derives its genres from the artist's albums.
 
+### Artist credits
+
+Library synchronization reads OpenSubsonic `artists` and `displayArtist` on albums and tracks, without falling back to legacy `artist` or `artistId` response fields. Artist records and structured credits require IDs and names. Albums and tracks store ordered `artistIds` arrays. Every referenced artist, including track-only contributors, is retained once in the artist collection. Albums are indexed under each credited album artist; primary navigation links still use the first credit.
+
+Tracks store `displayArtist`: the supplied display credit, otherwise the resolved artist names joined with commas. Missing track credits inherit all album artists; display-only credits get stable local IDs, and albums without credits use an unknown-artist placeholder. Embedded credit names and artwork are not duplicated in stored album/track relationships. This replaces the stored `artistId` and track `artistName` fields without a cache compatibility layer; old cached libraries need to be fetched again.
+
 ## Testing browser behavior
 
 For playback or synchronization changes, check refresh, disconnect/reload, offline playback, failed reconnects, and switching accounts with overlapping track IDs. Test seeking, duplicate queue entries, and cancellation during in-flight work.

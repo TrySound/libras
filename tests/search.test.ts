@@ -5,12 +5,12 @@ import type { Album, Artist, Track } from "../src/schema";
 function fixture(count = 12) {
   const artists = new Map<string, Artist>([["a", { id: "a", name: "Beyoncé" }]]);
   const albums = new Map<string, Album>([
-    ["b", { id: "b", title: "Lemonade", artistId: "a", genres: [] }],
+    ["b", { id: "b", title: "Lemonade", artistIds: ["a"], genres: [] }],
   ]);
   const tracks = new Map<string, Track>(
     Array.from({ length: count }, (_, i) => {
       const id = String(i).padStart(2, "0");
-      return [id, { id, title: "Formation", albumId: "b", artistId: "a", genres: [] }];
+      return [id, { id, title: "Formation", albumId: "b", artistIds: ["a"], genres: [] }];
     }),
   );
   return { artists, albums, tracks };
@@ -41,7 +41,13 @@ describe("local library search", () => {
   });
   it("prefers title matches to secondary matches", () => {
     const extra = new Map(tracks);
-    extra.set("other", { id: "other", title: "Beyoncé", artistId: "a", albumId: "b", genres: [] });
+    extra.set("other", {
+      id: "other",
+      title: "Beyoncé",
+      artistIds: ["a"],
+      albumId: "b",
+      genres: [],
+    });
     expect(
       searchLibrary(createSearchIndex(artists, albums, extra), "beyonce").groups[2].records[0].id,
     ).toBe("other");

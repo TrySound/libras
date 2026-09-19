@@ -22,19 +22,19 @@ function snapshot(): LibrarySnapshot {
     savedAt: 100,
     artists: [{ id: "artist", name: "Artist", artworkId: "artist-cover" }],
     albums: [
-      { id: "album", title: "Album", artistId: "artist", artworkId: "album-cover", genres: [] },
+      { id: "album", title: "Album", artistIds: ["artist"], artworkId: "album-cover", genres: [] },
     ],
     tracks: [
       {
         id: "one",
         title: "One",
-        artistId: "artist",
+        artistIds: ["artist"],
         albumId: "album",
         artworkId: "track-cover",
         number: 1,
         genres: [],
       },
-      { id: "two", title: "Two", artistId: "artist", albumId: "album", number: 2, genres: [] },
+      { id: "two", title: "Two", artistIds: ["artist"], albumId: "album", number: 2, genres: [] },
     ],
   };
 }
@@ -829,7 +829,7 @@ describe("cover engine using Cache", () => {
     library.albums.push({
       id: "remote",
       title: "Remote",
-      artistId: "artist",
+      artistIds: ["artist"],
       artworkId: "remote",
       genres: [],
     });

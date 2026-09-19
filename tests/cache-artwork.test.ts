@@ -23,13 +23,15 @@ it.each([
         { id: "artist", name: "Artist", artworkId: "artist-art" },
         { id: "guest", name: "Guest", artworkId: "guest-art" },
       ],
-      albums: [{ id: "album", title: "Album", artistId: "artist", artworkId: album, genres: [] }],
+      albums: [
+        { id: "album", title: "Album", artistIds: ["artist"], artworkId: album, genres: [] },
+      ],
       tracks: [
         {
           id: "track",
           title: "Track",
           albumId: "album",
-          artistId: "guest",
+          artistIds: ["guest"],
           artworkId: track,
           genres: [],
         },
@@ -68,7 +70,9 @@ it("does not borrow artwork from a track artist when its album is missing", asyn
     lastModified: 90,
     artists: [{ id: "artist", name: "Artist", artworkId: "artist-art" }],
     albums: [],
-    tracks: [{ id: "track", title: "Track", albumId: "missing", artistId: "artist", genres: [] }],
+    tracks: [
+      { id: "track", title: "Track", albumId: "missing", artistIds: ["artist"], genres: [] },
+    ],
   });
   const cache = new Cache(getAccountKey(account));
   await cache.load();

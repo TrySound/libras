@@ -185,7 +185,7 @@ export class Playback {
     return {
       metadata: {
         title: track.title,
-        artist: track.artistName ?? cache.artists.get(track.artistId)?.name,
+        artist: track.displayArtist ?? cache.artists.get(track.artistIds[0])?.name,
         album: cache.albums.get(track.albumId)?.title,
         duration: track.duration,
         get artwork() {

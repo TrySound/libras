@@ -11,7 +11,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     id: String(i),
     title: "Song",
     albumId: "album",
-    artistId: "artist",
+    artistIds: ["artist"],
     genres: [],
   }));
   const match = vi.spyOn(fuzzysort, "go");
@@ -21,7 +21,9 @@ it("focuses the input, expands results, retains route state, and uses album play
   const props = {
     cache: {
       artists: new Map([["artist", { id: "artist", name: "Artist" }]]),
-      albums: new Map([["album", { id: "album", title: "Album", artistId: "artist", genres: [] }]]),
+      albums: new Map([
+        ["album", { id: "album", title: "Album", artistIds: ["artist"], genres: [] }],
+      ]),
       tracks: new Map(tracks.map((t) => [t.id, t])),
       albumTracks: new Map([["album", tracks]]),
       artistAlbums: new Map([["artist", [{ id: "album" }]]]),

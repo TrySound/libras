@@ -19,7 +19,7 @@ import { AudioStub } from "./audio-test-helpers";
 const song = (id: string): Track => ({
   id,
   title: id,
-  artistId: "artist",
+  artistIds: ["artist"],
   albumId: "album",
   artworkId: id,
   genres: [],
@@ -50,7 +50,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
   library.tracks = new Map(["a", "b", "c"].map((id) => [id, song(id)]));
   library.artists = new Map([["artist", { id: "artist", name: "Artist" }]]);
   library.albums = new Map([
-    ["album", { id: "album", title: "Album", artistId: "artist", genres: [] }],
+    ["album", { id: "album", title: "Album", artistIds: ["artist"], genres: [] }],
   ]);
   const updateTrack = (id: string, patch: Partial<Track>) => {
     library.tracks = new Map(library.tracks).set(id, {
@@ -763,7 +763,7 @@ describe("playback", () => {
     const { player, updateTrack, tracks, selection, session, library } = setup();
     library.artists = new Map([["artist", { id: "artist", name: "New artist" }]]);
     library.albums = new Map([
-      ["album", { id: "album", artistId: "artist", title: "New album", genres: [] }],
+      ["album", { id: "album", artistIds: ["artist"], title: "New album", genres: [] }],
     ]);
     updateTrack("a", { mimeType: "audio/flac" });
     await player.play();

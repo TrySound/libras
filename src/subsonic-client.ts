@@ -26,7 +26,7 @@ export function createSubsonicAuth(input: {
 
 const genreSchema = v.object({ name: v.string() });
 const artistSchema = v.object({
-  id: v.optional(v.string()),
+  id: v.string(),
   name: v.string(),
   coverArt: v.optional(v.string()),
 });
@@ -34,8 +34,8 @@ const artistSchema = v.object({
 const albumSchema = v.object({
   id: v.string(),
   name: v.string(),
-  artist: v.optional(v.string()),
-  artistId: v.optional(v.string()),
+  artists: v.optional(v.array(artistSchema)),
+  displayArtist: v.optional(v.string()),
   coverArt: v.optional(v.string()),
   genres: v.optional(v.array(genreSchema)),
   year: v.optional(v.number()),
@@ -46,8 +46,8 @@ const trackSchema = v.object({
   title: v.string(),
   album: v.optional(v.string()),
   albumId: v.optional(v.string()),
-  artist: v.optional(v.string()),
-  artistId: v.optional(v.string()),
+  artists: v.optional(v.array(artistSchema)),
+  displayArtist: v.optional(v.string()),
   duration: v.optional(v.number()),
   contentType: v.optional(v.string()),
   coverArt: v.optional(v.string()),

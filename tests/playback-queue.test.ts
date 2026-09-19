@@ -23,7 +23,7 @@ function createPlayback(selection: TestSelection) {
   if (selection.cache) {
     playbackLibrary(selection.cache).tracks = new Map(
       ["a", "b", "remote", "online", "local", "first", "second", "other", "new-local", "new"].map(
-        (id) => [id, { id, title: id, artistId: "artist", albumId: "album", genres: [] }],
+        (id) => [id, { id, title: id, artistIds: ["artist"], albumId: "album", genres: [] }],
       ),
     );
   }
