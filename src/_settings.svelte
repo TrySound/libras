@@ -46,9 +46,9 @@
     </p>
   </div>
 
-  <section class="connection-card" aria-label="Music server">
-    <div class="connection-card-header">
-      <div class="connection-summary stack-xs">
+  <section class="card stack-md" aria-label="Music server">
+    <div class="row-md">
+      <div class="stack-xs grow">
         {#if session.busy}
           {@render status("warning", "Connecting…")}
         {:else if !session.auth}
@@ -62,7 +62,7 @@
         {:else}
           {@render status("success", "Connected")}
         {/if}
-        <strong class="type-title">
+        <strong class="type-title truncate">
           {#if session.auth}
             {session.auth.username} · {session.auth.host.replace(/^https?:\/\//i, "")}
           {:else}
@@ -70,7 +70,7 @@
           {/if}
         </strong>
         {#if (session.busy || session.syncing) && session.libraryProgress}
-          <small class="type-small text-muted" role="status">
+          <small class="type-small text-muted truncate" role="status">
             {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
             tracks
           </small>
@@ -107,63 +107,59 @@
       {/if}
     </div>
     {#if !session.auth}
-      <div class="connection-details">
-        {#if !session.auth}
-          <form class="stack-md" onsubmit={submitConnection}>
-            <div class="stack-sm">
-              <div class="stack-xs">
-                <label for="server-host">Host</label>
-                <input
-                  id="server-host"
-                  type="text"
-                  bind:value={host}
-                  placeholder="https://music.example.com"
-                  autocomplete="url"
-                  required
-                  disabled={session.busy}
-                />
-              </div>
-              <div class="stack-xs">
-                <label for="server-username">Username</label>
-                <input
-                  id="server-username"
-                  type="text"
-                  bind:value={username}
-                  autocomplete="username"
-                  required
-                  disabled={session.busy}
-                />
-              </div>
-              <div class="stack-xs">
-                <label for="server-password">Password</label>
-                <input
-                  id="server-password"
-                  type="password"
-                  bind:value={password}
-                  autocomplete="current-password"
-                  required
-                  disabled={session.busy}
-                />
-              </div>
-            </div>
-            <button
-              class="button"
-              type="submit"
-              data-size="md"
-              data-variant="neutral"
+      <form class="stack-md" onsubmit={submitConnection}>
+        <div class="stack-sm">
+          <div class="stack-xs">
+            <label for="server-host">Host</label>
+            <input
+              id="server-host"
+              type="text"
+              bind:value={host}
+              placeholder="https://music.example.com"
+              autocomplete="url"
+              required
               disabled={session.busy}
-            >
-              {session.busy ? "Connecting…" : "Connect"}
-            </button>
-            <small>Authentication is saved in this browser after a successful login.</small>
-          </form>
-        {/if}
-      </div>
+            />
+          </div>
+          <div class="stack-xs">
+            <label for="server-username">Username</label>
+            <input
+              id="server-username"
+              type="text"
+              bind:value={username}
+              autocomplete="username"
+              required
+              disabled={session.busy}
+            />
+          </div>
+          <div class="stack-xs">
+            <label for="server-password">Password</label>
+            <input
+              id="server-password"
+              type="password"
+              bind:value={password}
+              autocomplete="current-password"
+              required
+              disabled={session.busy}
+            />
+          </div>
+        </div>
+        <button
+          class="button"
+          type="submit"
+          data-size="md"
+          data-variant="neutral"
+          disabled={session.busy}
+        >
+          {session.busy ? "Connecting…" : "Connect"}
+        </button>
+        <small>Authentication is saved in this browser after a successful login.</small>
+      </form>
     {/if}
   </section>
 
-  <div class="settings-option">
-    <div class="stack-xs">
+  <section class="card row-md" aria-label="Offline library">
+    <div class="stack-xs grow">
       <strong class="type-title">Offline library</strong>
       <small class="type-small text-muted">
         {#if !session.auth}
@@ -185,5 +181,5 @@
         onchange={(event) => void session.setOfflineMode(event.currentTarget.checked)}
       />
     </label>
-  </div>
+  </section>
 </section>

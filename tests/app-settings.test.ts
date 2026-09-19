@@ -74,13 +74,29 @@ async function setup(saved = false) {
 }
 
 describe("app settings", () => {
+  it("uses shared cards for server and offline settings", async () => {
+    const { target } = await setup();
+    const server = target.querySelector('.card[aria-label="Music server"]')!;
+    const offline = target.querySelector('.card[aria-label="Offline library"]')!;
+    expect(server.classList.contains("stack-md")).toBe(true);
+    expect(server.querySelector(":scope > .row-md > .stack-xs")?.textContent).toContain(
+      "Disconnected",
+    );
+    expect(server.querySelector(":scope > form")).not.toBeNull();
+    expect(offline.classList.contains("row-md")).toBe(true);
+    expect(offline.querySelector(":scope > .stack-xs")?.textContent).toContain("Offline library");
+    expect(offline.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(offline.querySelector("small")?.classList.contains("truncate")).toBe(false);
+  });
+
   it("keeps the decorative status variant aligned with the connection label", async () => {
     const { target, session } = await setup(true);
     const indicator = target.querySelector(".status")!;
     const expectStatus = (variant: string, label?: string) => {
       flushSync();
       expect(target.querySelector(".status")?.getAttribute("data-variant")).toBe(variant);
-      if (label) expect(target.querySelector(".connection-summary")?.textContent).toContain(label);
+      if (label)
+        expect(target.querySelector('[aria-label="Music server"]')?.textContent).toContain(label);
     };
     expect(indicator.getAttribute("aria-hidden")).toBe("true");
     expect(indicator.hasAttribute("role")).toBe(false);
@@ -180,20 +196,24 @@ describe("app settings", () => {
         target.querySelector('[role="status"]')?.textContent?.replace(/\s+/g, " ").trim(),
       ).toBe(counter);
       expect(target.textContent).not.toContain("songs");
-      expect(target.querySelector(".connection-summary")?.textContent).toContain("Refreshing…");
+      expect(target.querySelector('[aria-label="Music server"]')?.textContent).toContain(
+        "Refreshing…",
+      );
       expect(target.querySelector(".status")?.getAttribute("data-variant")).toBe("warning");
       pending.resolve();
       await loading;
       await session.refresh();
       flushSync();
       expect(target.textContent?.replace(/\s+/g, " ")).not.toContain(counter);
-      expect(target.querySelector(".connection-summary")?.textContent).toContain("Connected");
+      expect(target.querySelector('[aria-label="Music server"]')?.textContent).toContain(
+        "Connected",
+      );
       expect(target.querySelector(".status")?.getAttribute("data-variant")).toBe("success");
     },
   );
   it("shows read-only connection information and allows disconnect during refresh", async () => {
     const { target, session, auth, metadata, button, offline } = await setup(true);
-    const summary = target.querySelector(".connection-summary")!;
+    const summary = target.querySelector('[aria-label="Music server"] > .row-md > .stack-xs')!;
     expect(summary.querySelector("strong")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
       `${credentials.username} · ${credentials.host.replace(/^https?:\/\//i, "")}`,
     );
@@ -201,7 +221,7 @@ describe("app settings", () => {
     expect(summary.firstElementChild?.classList.contains("row-sm")).toBe(true);
     expect(summary.firstElementChild?.textContent).toContain("Connected");
     const actions = summary.nextElementSibling!;
-    expect(actions.parentElement?.classList.contains("connection-card-header")).toBe(true);
+    expect(actions.parentElement?.classList.contains("row-md")).toBe(true);
     expect(actions.querySelectorAll("button")).toHaveLength(2);
     expect(actions.querySelector('[aria-label="Refresh library"]')).not.toBeNull();
     expect(actions.querySelector('[aria-label="Disconnect"]')).not.toBeNull();
@@ -240,7 +260,7 @@ describe("app settings", () => {
     await vi.waitFor(() =>
       expect(target.querySelector('[role="alert"]')?.textContent).toBe("Unauthorized"),
     );
-    expect(target.querySelector(".connection-details [role='alert']")).toBeNull();
+    expect(target.querySelector('[aria-label="Music server"] [role="alert"]')).toBeNull();
     expect(target.querySelectorAll('[role="alert"]')).toHaveLength(1);
     expect(button("Show errors").getAttribute("commandfor")).toBe("error-popover");
     expect(session.error).toBe("Unauthorized");

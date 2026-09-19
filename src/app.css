@@ -202,6 +202,12 @@
   color: var(--color-text-danger);
 }
 
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* controls */
 
 .linkarea {
@@ -372,6 +378,11 @@
 
 /* layout */
 
+.grow {
+  min-width: 0;
+  flex: 1;
+}
+
 .row-sm,
 .row-md,
 .row-lg {
@@ -458,6 +469,14 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(9rem, 100%), 1fr));
   gap: var(--space-md);
+}
+
+.card {
+  padding: 1rem;
+  overflow: hidden;
+  border: var(--surface-base-border);
+  border-radius: var(--space-sm);
+  background: var(--color-surface);
 }
 
 /* decorative */
@@ -565,51 +584,6 @@ input:not([type="range"]):not([type="checkbox"]) {
 
 input:not([type="range"]):not([type="checkbox"]):focus {
   border-color: var(--color-accent);
-}
-
-.connection-card {
-  overflow: hidden;
-  border: var(--surface-base-border);
-  border-radius: var(--space-sm);
-  background: var(--color-surface);
-}
-
-.connection-card-header {
-  display: flex;
-  padding: 1rem;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.connection-summary {
-  min-width: 0;
-  flex: 1;
-}
-
-.connection-summary strong,
-.connection-summary small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.connection-details {
-  padding: 0 1rem 1rem;
-}
-
-.settings-option {
-  display: flex;
-  padding: 1rem;
-  align-items: center;
-  gap: 1rem;
-  border: var(--surface-base-border);
-  border-radius: var(--space-sm);
-  background: var(--color-surface);
-}
-
-.settings-option > div {
-  min-width: 0;
-  flex: 1;
 }
 
 a {

@@ -27,18 +27,7 @@
         max-width: 38rem;
       }
 
-      .styleguide-panel {
-        padding: clamp(var(--space-md), 4vw, var(--space-xl));
-        border: 1px solid #2c3240;
-        border-radius: 1rem;
-        background: rgb(23 27 35 / 88%);
-        box-shadow: var(--elevation-md);
-      }
-
-      .surface-example {
-        padding: var(--space-lg);
-        border: var(--surface-base-border);
-        border-radius: var(--space-sm);
+      .surface-example-base {
         background: var(--surface-base-background);
       }
 
@@ -56,12 +45,10 @@
         backdrop-filter: blur(var(--surface-floating-blur));
       }
 
-      .type-samples,
-      .stack-samples,
-      .button-samples {
+      .example-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
-        gap: var(--space-xl);
+        gap: var(--space-md);
       }
 
       code {
@@ -73,12 +60,6 @@
         font-family: ui-monospace, monospace;
         font-size: var(--type-caption-size);
         line-height: var(--type-caption-line);
-      }
-
-      .connection-samples {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--space-md);
       }
 
       .control-row {
@@ -101,12 +82,6 @@
 
       .track-demo {
         max-width: 32rem;
-      }
-
-      .stack-example {
-        padding: var(--space-md);
-        border-radius: 0.6rem;
-        background: #191d27;
       }
 
       .stack-example span {
@@ -146,7 +121,7 @@
         </p>
       </header>
 
-      <section class="styleguide-panel stack-lg" aria-labelledby="surfaces-heading">
+      <section class="card stack-lg" aria-labelledby="surfaces-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="surfaces-heading">Surfaces and elevation</h2>
           <p class="type-body text-muted">
@@ -155,34 +130,43 @@
             directly.
           </p>
         </header>
-        <div class="button-samples">
-          <article class="surface-example stack-sm">
+        <div class="example-grid">
+          <article class="card surface-example-base stack-sm">
             <p class="type-title">Base</p>
             <p class="type-small text-muted">Opaque page surface; no default shadow.</p>
           </article>
-          <article class="surface-example surface-example-raised stack-sm">
+          <article class="card surface-example-raised stack-sm">
             <p class="type-title">Raised</p>
             <p class="type-small text-muted">
               The sticky topbar uses medium elevation with its own background, border, and blur
               tokens, initially sharing the floating material.
             </p>
           </article>
-          <article class="surface-example surface-example-floating stack-sm">
+          <article class="card surface-example-floating stack-sm">
             <p class="type-title">Floating</p>
             <p class="type-small text-muted">
               Shared translucent background, border, blur, and large elevation for the mini-player,
               notifications, action sheets, and desktop player dialog.
             </p>
           </article>
-          <article class="surface-example stack-sm" style="box-shadow: var(--elevation-sm)">
+          <article
+            class="card surface-example-base stack-sm"
+            style="box-shadow: var(--elevation-sm)"
+          >
             <code>--elevation-sm</code>
             <p class="type-small text-muted">Shallow depth: hovered and pressed tiles.</p>
           </article>
-          <article class="surface-example stack-sm" style="box-shadow: var(--elevation-md)">
+          <article
+            class="card surface-example-base stack-sm"
+            style="box-shadow: var(--elevation-md)"
+          >
             <code>--elevation-md</code>
-            <p class="type-small text-muted">Resting tiles, artwork, and these demo panels.</p>
+            <p class="type-small text-muted">Resting tiles and artwork.</p>
           </article>
-          <article class="surface-example stack-sm" style="box-shadow: var(--elevation-lg)">
+          <article
+            class="card surface-example-base stack-sm"
+            style="box-shadow: var(--elevation-lg)"
+          >
             <code>--elevation-lg</code>
             <p class="type-small text-muted">
               Floating depth, also usable independently of material.
@@ -197,12 +181,12 @@
         </p>
       </section>
 
-      <section class="styleguide-panel stack-lg" aria-labelledby="typography-heading">
+      <section class="card stack-lg" aria-labelledby="typography-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="typography-heading">Typography</h2>
         </header>
 
-        <div class="type-samples">
+        <div class="example-grid">
           <article class="stack-sm">
             <code>.type-title</code>
             <p class="type-title">A compact prominent title</p>
@@ -243,14 +227,14 @@
         </div>
       </section>
 
-      <section class="styleguide-panel stack-lg" aria-labelledby="switches-heading">
+      <section class="card stack-lg" aria-labelledby="switches-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="switches-heading">Switches</h2>
           <p class="type-body text-muted">
             Native checkboxes styled with <code>.switch</code>. Click or press Space to toggle.
           </p>
         </header>
-        <div class="button-samples">
+        <div class="example-grid">
           <article class="stack-sm">
             <p class="type-title">Off</p>
             <label class="switch">
@@ -278,7 +262,7 @@
         </div>
       </section>
 
-      <section class="styleguide-panel stack-lg" aria-labelledby="status-heading">
+      <section class="card stack-lg" aria-labelledby="status-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="status-heading">Status</h2>
           <p class="type-body text-muted">
@@ -287,7 +271,7 @@
             and provide accompanying text to convey meaning.
           </p>
         </header>
-        <div class="button-samples">
+        <div class="example-grid">
           <div class="row-sm">
             <span class="status" data-variant="neutral" aria-hidden="true"></span> Neutral
           </div>
@@ -303,97 +287,92 @@
         </div>
       </section>
 
-      <section class="styleguide-panel stack-lg" aria-labelledby="connection-headers-heading">
+      <section class="card stack-lg" aria-labelledby="cards-heading">
+        <header class="stack-xs">
+          <h2 class="type-heading" id="cards-heading">Cards</h2>
+          <p class="type-body text-muted">
+            Use <code>.card</code> for a padded surface. Compose its contents with stack and row
+            utilities; add <code>.grow</code> beside actions and <code>.truncate</code>
+            only to text that should stay on one line.
+          </p>
+        </header>
+        <div class="example-grid">
+          <div class="card row-md">
+            <div class="stack-xs grow">
+              <strong class="type-title">Offline library</strong>
+              <small class="type-small text-muted"
+                >Show only music downloaded to this device.</small
+              >
+            </div>
+            <label class="switch">
+              <input type="checkbox" aria-label="Offline library example" />
+            </label>
+          </div>
+          <div class="card stack-md">
+            <div class="stack-xs">
+              <strong class="type-title">Card with content</strong>
+              <small class="type-small text-muted">Supporting information</small>
+            </div>
+            <p class="type-body">Optional content shares the card's padding.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card stack-lg" aria-labelledby="connection-headers-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="connection-headers-heading">Connection headers</h2>
           <p class="type-body text-muted">
             Proposed layout: a shared dot-and-label status row above server details.
           </p>
         </header>
-        <div class="connection-samples">
-          <div>
-            <div class="connection-card">
-              <div class="connection-card-header">
-                <div class="connection-summary stack-xs">
-                  <div class="row-sm">
-                    <span class="status" data-variant="neutral" aria-hidden="true"></span>
-                    <span class="type-small text-muted">Disconnected</span>
-                  </div>
-                  <strong class="type-title">Add a server</strong>
-                </div>
-              </div>
+        <div class="example-grid">
+          <div class="card stack-xs">
+            <div class="row-sm">
+              <span class="status" data-variant="neutral" aria-hidden="true"></span>
+              <span class="type-small text-muted">Disconnected</span>
             </div>
+            <strong class="type-title">Add a server</strong>
           </div>
-          <div>
-            <div class="connection-card">
-              <div class="connection-card-header">
-                <div class="connection-summary stack-xs">
-                  <div class="row-sm">
-                    <span class="status" data-variant="warning" aria-hidden="true"></span>
-                    <span class="type-small text-muted">Connecting…</span>
-                  </div>
-                  <strong class="type-title">Add a server</strong>
-                </div>
-              </div>
+          <div class="card stack-xs">
+            <div class="row-sm">
+              <span class="status" data-variant="warning" aria-hidden="true"></span>
+              <span class="type-small text-muted">Connecting…</span>
             </div>
+            <strong class="type-title">Add a server</strong>
           </div>
-          <div>
-            <div class="connection-card">
-              <div class="connection-card-header">
-                <div class="connection-summary stack-xs">
-                  <div class="row-sm">
-                    <span class="status" data-variant="success" aria-hidden="true"></span>
-                    <span class="type-small text-muted">Connected</span>
-                  </div>
-                  <strong class="type-title">alex · music.example.com</strong>
-                </div>
-              </div>
+          <div class="card stack-xs">
+            <div class="row-sm">
+              <span class="status" data-variant="success" aria-hidden="true"></span>
+              <span class="type-small text-muted">Connected</span>
             </div>
+            <strong class="type-title truncate">alex · music.example.com</strong>
           </div>
-          <div>
-            <div class="connection-card">
-              <div class="connection-card-header">
-                <div class="connection-summary stack-xs">
-                  <div class="row-sm">
-                    <span class="status" data-variant="neutral" aria-hidden="true"></span>
-                    <span class="type-small text-muted">Offline mode</span>
-                  </div>
-                  <strong class="type-title">alex · music.example.com</strong>
-                </div>
-              </div>
+          <div class="card stack-xs">
+            <div class="row-sm">
+              <span class="status" data-variant="neutral" aria-hidden="true"></span>
+              <span class="type-small text-muted">Offline mode</span>
             </div>
+            <strong class="type-title truncate">alex · music.example.com</strong>
           </div>
-          <div>
-            <div class="connection-card">
-              <div class="connection-card-header">
-                <div class="connection-summary stack-xs">
-                  <div class="row-sm">
-                    <span class="status" data-variant="danger" aria-hidden="true"></span>
-                    <span class="type-small text-muted">Connection failed</span>
-                  </div>
-                  <strong class="type-title">alex · music.example.com</strong>
-                </div>
-              </div>
+          <div class="card stack-xs">
+            <div class="row-sm">
+              <span class="status" data-variant="danger" aria-hidden="true"></span>
+              <span class="type-small text-muted">Connection failed</span>
             </div>
+            <strong class="type-title truncate">alex · music.example.com</strong>
           </div>
-          <div>
-            <div class="connection-card">
-              <div class="connection-card-header">
-                <div class="connection-summary stack-xs">
-                  <div class="row-sm">
-                    <span class="status" data-variant="warning" aria-hidden="true"></span>
-                    <span class="type-small text-muted">Refreshing…</span>
-                  </div>
-                  <strong class="type-title">alex · music.example.com</strong>
-                  <small class="type-small text-muted">500 albums · 1,000 tracks</small>
-                </div>
-              </div>
+          <div class="card stack-xs">
+            <div class="row-sm">
+              <span class="status" data-variant="warning" aria-hidden="true"></span>
+              <span class="type-small text-muted">Refreshing…</span>
             </div>
+            <strong class="type-title truncate">alex · music.example.com</strong>
+            <small class="type-small text-muted">500 albums · 1,000 tracks</small>
           </div>
         </div>
       </section>
 
-      <section class="styleguide-panel stack-lg" aria-labelledby="buttons-heading">
+      <section class="card stack-lg" aria-labelledby="buttons-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="buttons-heading">Buttons</h2>
           <p class="type-body text-muted">
@@ -401,7 +380,7 @@
           </p>
         </header>
 
-        <div class="button-samples">
+        <div class="example-grid">
           <article class="stack-md">
             <p class="type-title">Text variants</p>
             <div class="button-row">
@@ -508,7 +487,7 @@
         </div>
       </section>
 
-      <section class="styleguide-panel stack-lg" aria-labelledby="focus-heading">
+      <section class="card stack-lg" aria-labelledby="focus-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="focus-heading">Keyboard focus</h2>
           <p class="type-body text-muted">
@@ -530,7 +509,7 @@
         </label>
       </section>
 
-      <section class="styleguide-panel stack-lg" aria-labelledby="tracks-heading">
+      <section class="card stack-lg" aria-labelledby="tracks-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="tracks-heading">Track lists</h2>
           <p class="type-body text-muted">
@@ -612,7 +591,7 @@
         </div>
       </section>
 
-      <section class="styleguide-panel stack-lg" aria-labelledby="stacks-heading">
+      <section class="card stack-lg" aria-labelledby="stacks-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="stacks-heading">Vertical stacks</h2>
           <p class="type-body text-muted">
@@ -620,26 +599,26 @@
           </p>
         </header>
 
-        <div class="stack-samples">
+        <div class="example-grid">
           <article class="stack-sm">
             <code>.stack-xs · 0.25rem</code>
-            <div class="stack-example stack-xs"><span></span><span></span><span></span></div>
+            <div class="card stack-example stack-xs"><span></span><span></span><span></span></div>
           </article>
           <article class="stack-sm">
             <code>.stack-sm · 0.5rem</code>
-            <div class="stack-example stack-sm"><span></span><span></span><span></span></div>
+            <div class="card stack-example stack-sm"><span></span><span></span><span></span></div>
           </article>
           <article class="stack-sm">
             <code>.stack-md · 1rem</code>
-            <div class="stack-example stack-md"><span></span><span></span><span></span></div>
+            <div class="card stack-example stack-md"><span></span><span></span><span></span></div>
           </article>
           <article class="stack-sm">
             <code>.stack-lg · 1.5rem</code>
-            <div class="stack-example stack-lg"><span></span><span></span><span></span></div>
+            <div class="card stack-example stack-lg"><span></span><span></span><span></span></div>
           </article>
           <article class="stack-sm">
             <code>.stack-xl · 2rem</code>
-            <div class="stack-example stack-xl"><span></span><span></span><span></span></div>
+            <div class="card stack-example stack-xl"><span></span><span></span><span></span></div>
           </article>
         </div>
       </section>
