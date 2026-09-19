@@ -16,65 +16,43 @@
 }
 
 :root {
+  /* Foundations: palette */
   --palette-transparent: transparent;
   --palette-black: #000;
   --palette-white: #fff;
   --palette-gray-100: #f5f6f8;
   --palette-gray-300: #979ead;
-  --palette-gray-400: #737b8b;
   --palette-gray-500: #343a48;
   --palette-gray-600: #292f3c;
   --palette-gray-700: #1c212b;
   --palette-gray-800: #171b23;
   --palette-gray-900: #10131a;
-  --palette-crimson-100: #f0a5ad;
   --palette-crimson-300: #c94d60;
   --palette-crimson-500: #9f2940;
   --palette-crimson-700: #341c24;
-  --palette-pink-500: #d35b91;
   --palette-pink-900: #44293d;
   --palette-green-500: #53d58b;
   --palette-amber-500: #e8b44d;
   --palette-red-300: #ff9aa9;
   --palette-red-500: #ff667d;
   --palette-red-900: #351c25;
-  --color-text-primary: var(--palette-gray-100);
-  --color-text-muted: var(--palette-gray-300);
-  --color-text-subtle: var(--palette-gray-300);
-  --color-text-quiet: var(--palette-gray-400);
-  --color-text-on-image: var(--palette-white);
-  --color-text-danger: var(--palette-red-300);
-  --color-background: var(--palette-gray-900);
-  --color-surface: var(--palette-gray-800);
-  --color-surface-input: var(--palette-gray-700);
-  --color-surface-raised: var(--palette-gray-700);
-  --color-surface-accent: var(--palette-crimson-700);
-  --color-surface-danger: var(--palette-red-900);
-  --color-border-subtle: var(--palette-gray-600);
-  --color-border: var(--palette-gray-500);
-  --color-border-strong: var(--palette-gray-500);
-  --color-control-neutral: var(--palette-gray-600);
-  --color-primary: var(--palette-crimson-500);
-  --color-accent: var(--palette-crimson-300);
-  --color-accent-text: var(--palette-crimson-300);
-  --color-status-neutral: var(--palette-gray-400);
-  --color-status-success: var(--palette-green-500);
-  --color-status-warning: var(--palette-amber-500);
-  --color-status-danger: var(--palette-red-500);
-  --color-status-success-glow: rgb(from var(--palette-green-500) r g b / 45%);
-  --color-gradient-primary: var(--palette-crimson-500);
-  --color-gradient-secondary: var(--palette-pink-500);
-  --color-gradient-cover-start: var(--palette-crimson-700);
-  --color-gradient-cover-end: var(--palette-pink-900);
-  --color-overlay-control: rgb(from var(--palette-black) r g b / 72%);
-  --color-overlay-border: rgb(from var(--palette-white) r g b / 25%);
-  --color-artwork-foreground: rgb(from var(--palette-white) r g b / 85%);
-  --color-image-scrim: rgb(from var(--palette-black) r g b / 92%);
-  --color-backdrop: rgb(from var(--palette-black) r g b / 72%);
-  /* Physical depth, independent of surface material. */
-  --elevation-sm: 0 0 0.5rem rgb(from var(--palette-black) r g b / 50%);
-  --elevation-md: 0 0 1rem rgb(from var(--palette-black) r g b / 50%);
-  --elevation-lg: 0 0 2rem rgb(from var(--palette-black) r g b / 50%);
+
+  /* Foundations: spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+
+  /* Foundations: radius (independent of spacing) */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.7rem;
+  --radius-lg: 1.4rem;
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+
+  /* Foundations: typography */
   --font-sans: system-ui, sans-serif;
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
@@ -84,22 +62,40 @@
   --weight-semibold: 600;
   --weight-bold: 700;
   --tracking-label: 0.1em;
-  --space-xs: 0.25rem;
-  --space-sm: 0.5rem;
-  --space-md: 1rem;
-  --space-lg: 1.5rem;
-  --space-xl: 2rem;
-  --radius-xs: 0.25rem;
-  --radius-sm: 0.5rem;
-  --radius-md: 0.7rem;
-  --radius-lg: 1.4rem;
-  --radius-pill: 999px;
-  --radius-circle: 50%;
-  --transition-fast: 50ms ease-out;
-  --transition-control: 160ms ease-out;
-  --transition-switch: 160ms ease;
-  --transition-overlay: 180ms ease;
-  --transition-slide: 180ms ease-out;
+
+  /* Semantic colors: text */
+  --color-text-primary: var(--palette-gray-100);
+  --color-text-muted: var(--palette-gray-300);
+  --color-text-accent: var(--palette-crimson-300);
+  --color-text-on-image: var(--palette-white);
+  --color-text-danger: var(--palette-red-300);
+
+  /* Semantic colors: separators */
+  --color-border-subtle: var(--palette-gray-600);
+
+  /* Semantic colors: controls and emphasis */
+  --color-control-neutral: var(--palette-gray-600);
+  --color-control-primary: var(--palette-crimson-500);
+  --color-control-overlay: rgb(from var(--palette-black) r g b / 72%);
+  --color-track: var(--palette-gray-500);
+  --color-accent: var(--palette-crimson-300);
+
+  /* Semantic colors: status */
+  --color-status-neutral: var(--palette-gray-300);
+  --color-status-success: var(--palette-green-500);
+  --color-status-warning: var(--palette-amber-500);
+  --color-status-danger: var(--palette-red-500);
+
+  /* Semantic colors: artwork and overlays */
+  --color-artwork-start: var(--palette-crimson-700);
+  --color-artwork-end: var(--palette-pink-900);
+  --color-overlay-border: rgb(from var(--palette-white) r g b / 25%);
+  --color-artwork-icon: rgb(from var(--palette-white) r g b / 85%);
+  --color-image-scrim: rgb(from var(--palette-black) r g b / 92%);
+  --color-backdrop: rgb(from var(--palette-black) r g b / 72%);
+
+  /* Typography roles
+     Titles intentionally compose body size/line height with bold weight. */
   --type-heading-size: var(--text-lg);
   --type-heading-line: 1.5rem;
   --type-heading-weight: var(--weight-bold);
@@ -119,27 +115,53 @@
   --type-eyebrow-line: 1rem;
   --type-eyebrow-weight: var(--weight-bold);
 
-  --focus-outline: 2px solid var(--color-accent-text);
+  /* Effects: elevation, independent of surface material */
+  --elevation-sm: 0 0 0.5rem rgb(from var(--palette-black) r g b / 50%);
+  --elevation-md: 0 0 1rem rgb(from var(--palette-black) r g b / 50%);
+  --elevation-lg: 0 0 2rem rgb(from var(--palette-black) r g b / 50%);
+
+  /* Effects: transitions (duration + easing); reduced motion is handled by consumers */
+  --transition-fast: 50ms ease-out;
+  --transition-control: 160ms ease-out;
+  --transition-switch: 160ms ease;
+  --transition-overlay: 180ms ease;
+  --transition-slide: 180ms ease-out;
+
+  /* Effects: status indicator glow */
+  --status-success-glow-color: rgb(from var(--palette-green-500) r g b / 45%);
+
+  /* Effects: keyboard focus */
+  --focus-outline: 2px solid var(--color-text-accent);
   --focus-outline-offset: 2px;
 
-  /* Surface materials do not determine layout, radius, or stacking order. */
-  --surface-base-background: var(--color-background);
-  --surface-base-border: 1px solid var(--color-border);
-  --surface-floating-background: rgb(from var(--color-background) r g b / 75%);
-  --surface-floating-border: 1px solid var(--color-border-subtle);
+  /* Semantic surfaces: palette directly to material; no intermediate color aliases.
+     Components own layout, radius, and stacking order. Define only needed properties. */
+  --surface-page-background: var(--palette-gray-900);
+  --surface-card-background: var(--palette-gray-800);
+  --surface-card-border: 1px solid var(--palette-gray-500);
+  --surface-input-background: var(--palette-gray-700);
+  --surface-input-border: 1px solid var(--palette-gray-500);
+  --surface-accent-background: var(--palette-crimson-700);
+  --surface-danger-background: var(--palette-red-900);
+  --surface-danger-border: 1px solid var(--palette-red-900);
+
+  /* Raised and floating currently match in material, but remain independently tunable. */
+  --surface-raised-background: rgb(from var(--palette-gray-900) r g b / 75%);
+  --surface-raised-border: 1px solid var(--palette-gray-600);
+  --surface-raised-shadow: var(--elevation-md);
+  --surface-raised-blur: 14px;
+  --surface-floating-background: rgb(from var(--palette-gray-900) r g b / 75%);
+  --surface-floating-border: 1px solid var(--palette-gray-600);
   --surface-floating-shadow: var(--elevation-lg);
   --surface-floating-blur: 14px;
-  --surface-raised-background: var(--surface-floating-background);
-  --surface-raised-border: var(--surface-floating-border);
-  --surface-raised-shadow: var(--elevation-md);
-  --surface-raised-blur: var(--surface-floating-blur);
 
+  /* Root defaults consume the semantic roles above. */
   font-family: var(--font-sans);
   font-size: var(--type-body-size);
   font-weight: var(--type-body-weight);
   line-height: var(--type-body-line);
   color: var(--color-text-primary);
-  background: var(--surface-base-background);
+  background: var(--surface-page-background);
 }
 
 * {
@@ -216,14 +238,14 @@
 
 .input {
   font-family: inherit;
-  font-size: var(--text-md);
-  font-weight: var(--weight-regular);
-  line-height: 1.5rem;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-body-weight);
+  line-height: var(--type-body-line);
   padding: 0.8rem 0.9rem;
-  border: 1px solid var(--color-border-strong);
+  border: var(--surface-input-border);
   border-radius: var(--radius-md);
   color: var(--color-text-primary);
-  background: var(--color-surface-input);
+  background: var(--surface-input-background);
 
   @media (prefers-reduced-motion: no-preference) {
     transition: border-color var(--transition-control);
@@ -351,7 +373,7 @@
   width: 3rem;
   height: 1.7rem;
   border-radius: var(--radius-pill);
-  background: var(--color-border-strong);
+  background: var(--color-track);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 
@@ -401,7 +423,7 @@
   }
 
   &:has(input:checked) {
-    background: var(--color-primary);
+    background: var(--color-control-primary);
 
     &::after {
       transform: translateX(1.3rem);
@@ -430,7 +452,7 @@
 
   @media (hover: hover) {
     &:hover {
-      color: var(--color-accent-text);
+      color: var(--color-text-accent);
       filter: brightness(1.2);
       text-underline-offset: 0.4em;
     }
@@ -549,8 +571,8 @@
 .chip {
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-pill);
-  color: var(--color-accent-text);
-  background: var(--color-surface-accent);
+  color: var(--color-text-accent);
+  background: var(--surface-accent-background);
 }
 
 .status {
@@ -563,7 +585,7 @@
 
   &[data-variant="success"] {
     background: var(--color-status-success);
-    box-shadow: 0 0 0.7rem var(--color-status-success-glow);
+    box-shadow: 0 0 0.7rem var(--status-success-glow-color);
   }
 
   &[data-variant="warning"] {
@@ -578,14 +600,14 @@
 .card {
   padding: var(--space-md);
   overflow: hidden;
-  border: var(--surface-base-border);
+  border: var(--surface-card-border);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--surface-card-background);
 
   &[data-variant="danger"] {
-    border-color: var(--color-surface-danger);
+    border: var(--surface-danger-border);
     color: var(--color-text-danger);
-    background: var(--color-surface-danger);
+    background: var(--surface-danger-background);
   }
 }
 
@@ -640,7 +662,7 @@ a {
 .button,
 .icon-button {
   --control-size: 2.75rem;
-  --control-padding: 1rem;
+  --control-padding: var(--space-md);
   --control-icon-size: 1.2rem;
   --control-color: var(--color-text-primary);
   --control-background: var(--color-control-neutral);
@@ -749,7 +771,7 @@ a {
 }
 
 .icon-button[data-variant="primary"] {
-  --control-background: var(--color-primary);
+  --control-background: var(--color-control-primary);
 }
 
 .icon-button[data-variant="ghost"] {
@@ -757,7 +779,7 @@ a {
 }
 
 .icon-button[data-variant="overlay"] {
-  --control-background: var(--color-overlay-control);
+  --control-background: var(--color-control-overlay);
   --control-border: var(--color-overlay-border);
   backdrop-filter: blur(8px);
 }
@@ -795,7 +817,7 @@ a {
   overflow-y: auto;
   border: 0;
   color: var(--color-text-primary);
-  background: var(--surface-base-background);
+  background: var(--surface-page-background);
   @media (width >= 800px) {
     width: min(calc(100dvw - 2rem), 80rem);
     height: min(calc(100dvh - 2rem), 52rem);
@@ -851,10 +873,10 @@ a {
     inset: 0;
     background: linear-gradient(
       to bottom,
-      rgb(from var(--color-background) r g b / 0) 0%,
-      rgb(from var(--color-background) r g b / 15%) 30%,
-      rgb(from var(--color-background) r g b / 55%) 65%,
-      var(--color-background) 100%
+      rgb(from var(--surface-page-background) r g b / 0) 0%,
+      rgb(from var(--surface-page-background) r g b / 15%) 30%,
+      rgb(from var(--surface-page-background) r g b / 55%) 65%,
+      var(--surface-page-background) 100%
     );
     content: "";
   }
@@ -868,7 +890,7 @@ a {
 
 .playback-progress {
   flex: none;
-  margin: 1.5rem 0 1.25rem;
+  margin: var(--space-lg) 0 1.25rem;
 }
 
 .playback-slider {
@@ -892,7 +914,7 @@ a {
   display: flex;
   justify-content: space-between;
   margin-top: 0.45rem;
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -913,7 +935,7 @@ a {
   overflow: hidden;
   border: 0;
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--surface-card-background);
   color: inherit;
   text-align: left;
   -webkit-tap-highlight-color: transparent;
@@ -964,12 +986,8 @@ a {
   flex: none;
   min-height: 0;
   place-items: center;
-  color: var(--color-artwork-foreground);
-  background: linear-gradient(
-    145deg,
-    var(--color-gradient-cover-start),
-    var(--color-gradient-cover-end)
-  );
+  color: var(--color-artwork-icon);
+  background: linear-gradient(145deg, var(--color-artwork-start), var(--color-artwork-end));
 
   &[data-size="sm"] {
     width: 3rem;
@@ -1096,7 +1114,7 @@ a {
   display: grid;
   align-self: stretch;
   place-items: center;
-  color: var(--color-text-quiet);
+  color: var(--color-text-muted);
   text-align: right;
 }
 
@@ -1176,7 +1194,7 @@ a {
   overflow: hidden;
   height: 0.18rem;
   border-radius: var(--radius-pill);
-  background: var(--color-border-strong);
+  background: var(--color-track);
 }
 
 .mini-progress span {

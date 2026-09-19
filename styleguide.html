@@ -11,10 +11,10 @@
         background:
           radial-gradient(
             circle at top,
-            rgb(from var(--color-primary) r g b / 16%),
+            rgb(from var(--color-control-primary) r g b / 16%),
             transparent 26rem
           ),
-          var(--color-background);
+          var(--surface-page-background);
       }
 
       .styleguide {
@@ -28,7 +28,7 @@
       }
 
       .surface-example-base {
-        background: var(--surface-base-background);
+        background: var(--surface-page-background);
       }
 
       .surface-example-raised {
@@ -55,8 +55,8 @@
         width: fit-content;
         padding: 0.15rem 0.4rem;
         border-radius: 0.3rem;
-        color: var(--color-accent-text);
-        background: var(--color-surface-accent);
+        color: var(--color-text-accent);
+        background: var(--surface-accent-background);
         font-family: ui-monospace, monospace;
         font-size: var(--type-caption-size);
         line-height: var(--type-caption-line);
@@ -74,7 +74,7 @@
         display: block;
         min-height: 1.25rem;
         border-radius: 0.3rem;
-        background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+        background: linear-gradient(90deg, var(--color-control-primary), var(--color-accent));
       }
 
       .stack-example span:nth-child(2) {
@@ -120,25 +120,75 @@
         </p>
       </header>
 
+      <section class="card stack-lg" aria-labelledby="tokens-heading">
+        <header class="stack-xs">
+          <h2 class="type-heading" id="tokens-heading">Token structure</h2>
+          <p class="type-body text-muted">
+            Foundations define raw values; semantic roles describe their purpose. Components consume
+            semantic colors, typography, and surfaces directly, while keeping local configuration
+            scoped.
+          </p>
+        </header>
+        <div class="example-grid">
+          <div class="stack-sm">
+            <strong class="type-title">Foundations</strong>
+            <p class="type-small text-muted">Palette, spacing, radius, and font scales.</p>
+            <code>--palette-* · --space-* · --radius-*</code>
+          </div>
+          <div class="stack-sm">
+            <strong class="type-title">Semantic roles</strong>
+            <p class="type-small text-muted">
+              Text, surfaces, borders, controls, status colors, and typography.
+            </p>
+            <code>--color-text-accent · --type-body-size</code>
+            <p class="type-small text-muted">
+              Page and card surfaces use <code>--surface-page-background</code> and
+              <code>--surface-card-background</code>. Control fills use
+              <code>--color-control-*</code>; inactive switch and progress tracks use
+              <code>--color-track</code>, independently of borders. Artwork colors share the
+              <code>--color-artwork-*</code> prefix.
+            </p>
+          </div>
+          <div class="stack-sm">
+            <strong class="type-title">Effects and semantic surfaces</strong>
+            <p class="type-small text-muted">
+              Surface backgrounds and borders reference the palette directly, without intermediate
+              color aliases. Shadows reuse elevation tokens. Raised and floating surfaces currently
+              match in material but remain independently tunable and differ in depth.
+            </p>
+            <code>--elevation-* · --surface-*</code>
+          </div>
+          <div class="stack-sm">
+            <strong class="type-title">Component configuration</strong>
+            <p class="type-small text-muted">
+              Control sizes and colors stay local. Dialog offsets are local, and swipe offsets are
+              supplied at runtime.
+            </p>
+            <code>--control-* · --swipe-offset</code>
+          </div>
+        </div>
+      </section>
+
       <section class="card stack-lg" aria-labelledby="surfaces-heading">
         <header class="stack-xs">
           <h2 class="type-heading" id="surfaces-heading">Surfaces and elevation</h2>
           <p class="type-body text-muted">
-            Base, raised, and floating surfaces describe material. Elevation describes depth,
-            independently of layout, radius, and stacking order. Components consume variables
-            directly.
+            Page, card, input, accent, danger, raised, and floating surfaces describe material. Each
+            defines only the background, border, or effects it needs. Elevation describes depth,
+            independently of layout, radius, and stacking order. These are tokens, not surface
+            classes.
           </p>
         </header>
         <div class="example-grid">
           <article class="card surface-example-base stack-sm">
-            <p class="type-title">Base</p>
+            <p class="type-title">Page</p>
             <p class="type-small text-muted">Opaque page surface; no default shadow.</p>
           </article>
           <article class="card surface-example-raised stack-sm">
             <p class="type-title">Raised</p>
             <p class="type-small text-muted">
               The sticky topbar uses medium elevation with its own background, border, and blur
-              tokens, initially sharing the floating material.
+              tokens, currently matching the floating material.
             </p>
           </article>
           <article class="card surface-example-floating stack-sm">
