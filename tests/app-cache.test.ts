@@ -574,7 +574,7 @@ it("derives artist genres from albums and reacts to library updates", async () =
   cleanups.push(() => unmount(component));
   flushSync();
   const labels = () =>
-    [...target.querySelectorAll(".genre-list > *")].map((node) => node.textContent?.trim());
+    [...target.querySelectorAll(".row-wrap-sm > .chip")].map((node) => node.textContent?.trim());
   expect(labels()).toEqual(["Rock", "Jazz", "Soul"]);
   expect(cache.artists.get("artist")).not.toHaveProperty("genres");
 
@@ -587,7 +587,7 @@ it("derives artist genres from albums and reacts to library updates", async () =
 
   await cache.replaceLibrary({ ...snapshot, albums: [{ ...snapshot.albums[0], genres: [] }] });
   flushSync();
-  expect(target.querySelector(".genre-list")).toBeNull();
+  expect(target.querySelector(".chip")).toBeNull();
 });
 
 it.each([
@@ -650,7 +650,7 @@ it("shows current track genres in the player without album fallbacks", async () 
   cleanups.push(() => unmount(component));
   flushSync();
   const labels = () =>
-    [...target.querySelectorAll("#player-dialog .genre-list span")].map((node) =>
+    [...target.querySelectorAll("#player-dialog .row-wrap-sm > .chip")].map((node) =>
       node.textContent?.trim(),
     );
   expect(labels()).toEqual(["Soul", "Jazz|Fusion"]);
@@ -661,11 +661,11 @@ it("shows current track genres in the player without album fallbacks", async () 
 
   cache.setQueue({ tracks, index: 2, position: 0 });
   flushSync();
-  expect(target.querySelector("#player-dialog .genre-list")).toBeNull();
+  expect(target.querySelector("#player-dialog .chip")).toBeNull();
 
   cache.setQueue({ tracks: [], index: 0, position: 0 });
   flushSync();
-  expect(target.querySelector("#player-dialog .genre-list")).toBeNull();
+  expect(target.querySelector("#player-dialog .chip")).toBeNull();
 });
 
 it("shows the album display credit without changing its artist link", async () => {
@@ -722,7 +722,7 @@ it("shows only album genres on the album route", async () => {
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  expect(target.querySelector(".genre-list")?.textContent?.trim()).toBe("Jazz");
+  expect(target.querySelector(".row-wrap-sm > .chip")?.textContent?.trim()).toBe("Jazz");
   expect(target.querySelector(".collection-heading a")?.getAttribute("href")).toBe(
     "#/library/artist/artist",
   );
