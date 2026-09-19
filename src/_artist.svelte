@@ -65,9 +65,9 @@
             {visibleAlbums.length} album{visibleAlbums.length === 1 ? "" : "s"}
           </p>
           {#if genres.length > 0}
-            <div class="genre-list">
+            <div class="row-wrap-sm">
               {#each genres as genre}
-                <span class="type-caption">{genre}</span>
+                <span class="chip type-caption">{genre}</span>
               {/each}
             </div>
           {/if}

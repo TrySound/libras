@@ -408,9 +408,9 @@
             {/if}
           </p>
           {#if currentTrack.genres.length > 0}
-            <div class="genre-list">
+            <div class="row-wrap-sm">
               {#each currentTrack.genres as genre}
-                <span class="type-caption">{genre}</span>
+                <span class="chip type-caption">{genre}</span>
               {/each}
             </div>
           {/if}

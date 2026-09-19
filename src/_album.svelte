@@ -71,9 +71,9 @@
             track{visibleTracks.length === 1 ? "" : "s"}
           </p>
           {#if album.genres.length > 0}
-            <div class="genre-list">
+            <div class="row-wrap-sm">
               {#each album.genres as genre}
-                <span class="type-caption">
+                <span class="chip type-caption">
                   {genre}
                 </span>
               {/each}
