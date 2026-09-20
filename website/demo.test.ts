@@ -49,6 +49,49 @@ it("opens the shared app preconnected, with isolated settings and no PWA registr
   expect(fetcher.mock.calls.every(([url]) => !String(url).includes("/rest/"))).toBe(true);
 });
 
+it("keeps shared settings but rejects switching the demo into a real account", async () => {
+  installDisk();
+  installNavigation("/settings", vi.fn());
+  vi.stubEnv("BASE_URL", "/libras/demo/");
+  localStorage.setItem("navidrome-auth", "regular credentials");
+  const fetcher = vi.fn<typeof fetch>(async (input) => {
+    if (String(input).endsWith("search3.json")) return new Response(JSON.stringify(searchFixture));
+    if (String(input).endsWith("assets.json")) return new Response(JSON.stringify(assetsFixture));
+    return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', {
+      headers: { "Content-Type": "image/svg+xml" },
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  component = mount(Demo, { target: document.body });
+  flushSync();
+  await vi.waitFor(() =>
+    expect(document.querySelector('[aria-label="Disconnect"]')).not.toBeNull(),
+  );
+  document.querySelector<HTMLButtonElement>('[aria-label="Disconnect"]')!.click();
+  flushSync();
+  for (const [id, value] of [
+    ["server-host", "https://regular.example.test"],
+    ["server-username", "listener"],
+    ["server-password", "not-a-real-secret"],
+  ]) {
+    const input = document.getElementById(id) as HTMLInputElement;
+    input.value = value;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  document
+    .querySelector("form")!
+    .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  flushSync();
+  await vi.waitFor(() => expect(document.body.textContent).toContain("fixed to its local library"));
+  expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
+  const account = JSON.parse(localStorage.getItem("libras-demo:/libras/demo/:navidrome-account")!);
+  expect(account.username).toBe("static-demo");
+  expect(account.host).not.toContain("regular.example.test");
+  expect(fetcher.mock.calls.every(([url]) => !String(url).includes("regular.example.test"))).toBe(
+    true,
+  );
+});
+
 it("shows a retryable boot error instead of connecting to a real server", async () => {
   vi.stubEnv("BASE_URL", "/libras/demo/");
   vi.stubGlobal(

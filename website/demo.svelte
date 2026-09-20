@@ -3,16 +3,14 @@
   import App from "../src/app.svelte";
   import { AuthStore } from "../src/auth";
   import { Network } from "../src/network.svelte";
-  import type { Session } from "../src/session.svelte";
   import { loadCatalog } from "./catalog";
   import { StaticSubsonicClient } from "./client";
   import { NamespacedStorage } from "./storage";
-  import Settings from "./settings.svelte";
 
   const base = new URL(import.meta.env.BASE_URL, location.origin);
   const catalogBase = new URL("catalog/", base);
   const creditsUrl = new URL("credits.html", catalogBase).href;
-  let runtime = $state.raw<{ network: Network; auth: AuthStore; preferences: Storage }>();
+  let runtime = $state.raw<{ network: Network; auth: AuthStore }>();
   let error = $state("");
   let controller: AbortController | undefined;
 
@@ -33,10 +31,14 @@
         token: "local-demo",
         salt: "local-demo",
       });
-      const network = new Network(
-        (identity) => new StaticSubsonicClient(identity, catalog, preferences),
-      );
-      runtime = { network, auth, preferences };
+      const network = new Network((identity) => {
+        // Shared Settings remains unchanged, but this entry cannot switch to a real account.
+        if (identity.host !== base.href.replace(/\/$/, "") || identity.username !== "static-demo") {
+          throw new Error("This demo is fixed to its local library. Reload the demo to reconnect.");
+        }
+        return new StaticSubsonicClient(identity, catalog, preferences);
+      });
+      runtime = { network, auth };
     } catch (cause) {
       if (!attempt.signal.aborted)
         error = cause instanceof Error ? cause.message : "Could not load the demo.";
@@ -49,16 +51,13 @@
   });
 </script>
 
-{#snippet settingsView(session: Session)}
-  <Settings {session} {creditsUrl} />
-{/snippet}
-
-{#snippet headerContent()}
-  <a class="text-link type-small" href={creditsUrl} target="_blank" rel="noopener">Demo credits</a>
-{/snippet}
-
 {#if runtime}
-  <App {...runtime} {settingsView} {headerContent} title="Libras demo" />
+  <aside class="view container row-sm" aria-label="Demo information">
+    <span class="type-small text-muted">Demo library · online launch required</span>
+    <a class="text-link type-small" href={creditsUrl} target="_blank" rel="noopener">Demo credits</a
+    >
+  </aside>
+  <App network={runtime.network} auth={runtime.auth} updaterComponent={undefined} />
 {:else}
   <main class="view container stack-md">
     <h1 class="type-heading">Libras demo</h1>
