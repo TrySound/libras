@@ -96,7 +96,7 @@
         covers,
         tracks: trackEngine,
         playback,
-        preferences: localStorage,
+        preferences: auth.storage,
       }),
   );
   const offlineMode = $derived(session.offlineMode);

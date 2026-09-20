@@ -63,7 +63,7 @@ const serverInfoSchema = v.object({
   openSubsonic: v.literal(true),
 });
 
-const responseSchema = v.object({
+export const responseSchema = v.object({
   "subsonic-response": v.object({
     status: v.string(),
     // Keep identity optional here so minimal failures retain their actual error.

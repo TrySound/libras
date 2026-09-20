@@ -10,7 +10,7 @@
     "build": "vite build",
     "stress-build": "VITE_STRESS_ARTISTS=1 vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-check --tsconfig ./tsconfig.json && pnpm --filter @libras/website check",
     "test": "vitest run",
     "format": "oxfmt .",
     "prepare": "simple-git-hooks"

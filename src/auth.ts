@@ -24,6 +24,11 @@ export class AuthStore {
     this.#key = key;
   }
 
+  /** Preferences for an application entry point share its auth storage scope. */
+  get storage(): Storage {
+    return this.#storage;
+  }
+
   load(): Auth | null {
     const value = this.#storage.getItem(this.#key);
     if (!value) return null;

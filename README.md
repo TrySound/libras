@@ -53,6 +53,8 @@ An app-update button beside Settings appears when an update is ready. Open it an
 
 ## Development
 
+This is a pnpm workspace: the root `libras` package contains the app, and [`@libras/website`](website/README.md) contains the static demo that imports it. Run the demo with `pnpm --filter @libras/website dev`.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, checks, deployment, and storage architecture.
 
 ## License

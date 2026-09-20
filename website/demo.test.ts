@@ -1,0 +1,115 @@
+// @vitest-environment happy-dom
+import { flushSync, mount, unmount } from "svelte";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import Demo from "./demo.svelte";
+import { assetsFixture, searchFixture } from "./fixtures";
+import { installDisk } from "../tests/cache-test-helpers";
+import { installNavigation } from "../tests/router-test-helpers";
+
+let component: ReturnType<typeof Demo> | undefined;
+const fetcher = vi.fn<typeof fetch>();
+async function catalogResponse(input: Parameters<typeof fetch>[0]) {
+  const url = String(input);
+  if (url.endsWith("search3.json")) return new Response(JSON.stringify(searchFixture));
+  if (url.endsWith("assets.json")) return new Response(JSON.stringify(assetsFixture));
+  if (url.endsWith(".svg"))
+    return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', {
+      headers: { "Content-Type": "image/svg+xml" },
+    });
+  throw new Error("Unexpected request");
+}
+function render() {
+  component = mount(Demo, { target: document.body });
+  flushSync();
+}
+beforeEach(() => {
+  installDisk();
+  installNavigation("/settings");
+  vi.stubEnv("BASE_URL", "/libras/demo/");
+  fetcher.mockReset().mockImplementation(catalogResponse);
+  vi.stubGlobal("fetch", fetcher);
+});
+afterEach(async () => {
+  if (component) await unmount(component);
+  component = undefined;
+  localStorage.clear();
+  document.body.innerHTML = "";
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+it("opens preconnected without touching regular settings or registering a PWA", async () => {
+  installNavigation("/library");
+  const register = vi.fn();
+  Object.assign(navigator, { serviceWorker: { register } });
+  localStorage.setItem("navidrome-auth", "regular credentials");
+  localStorage.setItem("navidrome-account", "regular account");
+  localStorage.setItem("navidrome-offline-mode", "true");
+  render();
+  await vi.waitFor(() => expect(document.body.textContent).toContain("Demo artist"));
+  expect(document.querySelector("form")).toBeNull();
+  expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
+  expect(localStorage.getItem("navidrome-account")).toBe("regular account");
+  expect(localStorage.getItem("navidrome-offline-mode")).toBe("true");
+  expect(localStorage.length).toBe(3);
+  expect(register).not.toHaveBeenCalled();
+});
+
+it("rejects switching the demo into a real account", async () => {
+  localStorage.setItem("navidrome-auth", "regular credentials");
+  render();
+  await vi.waitFor(() =>
+    expect(document.querySelector('[aria-label="Disconnect"]')).not.toBeNull(),
+  );
+  document.querySelector<HTMLButtonElement>('[aria-label="Disconnect"]')!.click();
+  flushSync();
+  for (const [id, value] of [
+    ["server-host", "https://regular.example.test"],
+    ["server-username", "listener"],
+    ["server-password", "not-a-real-secret"],
+  ]) {
+    const input = document.getElementById(id) as HTMLInputElement;
+    input.value = value;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  document
+    .querySelector("form")!
+    .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  flushSync();
+  await vi.waitFor(() => expect(document.body.textContent).toContain("fixed to its local library"));
+  expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
+  expect(localStorage.length).toBe(1);
+  expect(fetcher.mock.calls.every(([url]) => !String(url).includes("regular.example.test"))).toBe(
+    true,
+  );
+});
+
+it("resets preferences on a new mount without writing to localStorage", async () => {
+  const toggle = () =>
+    document.querySelector<HTMLInputElement>('input[aria-label="Offline library"]');
+  render();
+  await vi.waitFor(() => expect(toggle()?.disabled).toBe(false));
+  expect(toggle()!.checked).toBe(false);
+  toggle()!.click();
+  await vi.waitFor(() => expect(toggle()!.checked).toBe(true));
+  await unmount(component!);
+  component = undefined;
+  render();
+  await vi.waitFor(() => expect(toggle()?.disabled).toBe(false));
+  expect(toggle()!.checked).toBe(false);
+  expect(localStorage.length).toBe(0);
+});
+
+it("uses shared app errors and Refresh library to retry catalog loading", async () => {
+  fetcher.mockImplementation(async () => new Response("missing", { status: 404 }));
+  render();
+  await vi.waitFor(() => expect(document.body.textContent).toContain("HTTP 404"));
+  expect(document.querySelector("form")).toBeNull();
+  fetcher.mockImplementation(catalogResponse);
+  document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
+  await vi.waitFor(() => expect(document.body.textContent).not.toContain("HTTP 404"));
+  expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("search3.json"))).toHaveLength(
+    2,
+  );
+});

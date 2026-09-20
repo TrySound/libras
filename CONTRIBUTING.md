@@ -21,7 +21,7 @@ pnpm test
 pnpm build
 ```
 
-`pnpm format` formats the project; the pre-commit hook formats staged HTML, CSS, Svelte, and TypeScript files. Production code lives in `src/`, tests and test-only helpers in `tests/`.
+`pnpm format` formats the project; the pre-commit hook formats staged HTML, CSS, Svelte, and TypeScript files. The pnpm workspace contains the root `libras` application (`src/`, `tests/`) and `@libras/website` (`website/`), which imports the shared app. Each package builds to its own `dist/`. Use `pnpm --filter @libras/website dev` or `build` for the static demo. Root `pnpm check` checks both packages, and root `pnpm test` runs both test suites.
 
 ## Architecture at a glance
 
