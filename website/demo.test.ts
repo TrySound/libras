@@ -121,17 +121,25 @@ it("resets demo preferences on a new mount without writing to localStorage", asy
   expect(localStorage.length).toBe(0);
 });
 
-it("shows a retryable boot error instead of connecting to a real server", async () => {
+it("uses shared app errors and Refresh library to retry catalog loading", async () => {
+  installDisk();
+  installNavigation("/settings", vi.fn());
   vi.stubEnv("BASE_URL", "/libras/demo/");
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => new Response("missing", { status: 404 })),
-  );
+  const fetcher = vi.fn<typeof fetch>(async () => new Response("missing", { status: 404 }));
+  vi.stubGlobal("fetch", fetcher);
   component = mount(Demo, { target: document.body });
   flushSync();
-  await vi.waitFor(() =>
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain("HTTP 404"),
-  );
-  expect(document.querySelector("button")?.textContent).toBe("Retry");
+  await vi.waitFor(() => expect(document.body.textContent).toContain("HTTP 404"));
   expect(document.querySelector("form")).toBeNull();
+  fetcher.mockImplementation(
+    async (url) =>
+      new Response(
+        JSON.stringify(String(url).endsWith("search3.json") ? searchFixture : assetsFixture),
+      ),
+  );
+  document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
+  await vi.waitFor(() => expect(document.body.textContent).not.toContain("HTTP 404"));
+  expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("search3.json"))).toHaveLength(
+    2,
+  );
 });

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseCatalog, loadCatalog, StaticSubsonicClient } from "./client";
+import { describe, expect, it, vi } from "vitest";
+import { parseCatalog, StaticSubsonicClient } from "./client";
 import { assetsFixture, searchFixture } from "./fixtures";
 import { Network } from "../src/network.svelte";
 
@@ -19,33 +19,46 @@ const all = {
   songCount: 500,
   songOffset: 0,
 };
-function setup() {
-  const catalog = parseCatalog(searchFixture, assetsFixture, base);
-  return { catalog, client: new StaticSubsonicClient(auth, catalog) };
+function setup(assets: unknown = assetsFixture) {
+  const fetcher = vi.fn<typeof fetch>(
+    async (url) =>
+      new Response(JSON.stringify(String(url).endsWith("search3.json") ? searchFixture : assets)),
+  );
+  const createClient = StaticSubsonicClient.createFactory(base, fetcher);
+  return { fetcher, createClient, client: createClient(auth) };
 }
-afterEach(() => {
-  localStorage.clear();
-  vi.restoreAllMocks();
-});
 
 describe("static client", () => {
-  it("reads exporter-supplied credits and paginates independently", async () => {
-    const { client } = setup();
-    const page = await client.search3({ ...all, artistCount: 0, songCount: 1, songOffset: 1 });
+  it("loads lazily, shares concurrent requests, paginates and reuses metadata on reconnect", async () => {
+    const { client, createClient, fetcher } = setup();
+    expect(fetcher).not.toHaveBeenCalled();
+    const [, page] = await Promise.all([
+      client.ping(),
+      client.search3({ ...all, artistCount: 0, songCount: 1, songOffset: 1 }),
+    ]);
     expect(page.artists).toEqual([]);
     expect(page.tracks.map((t) => t.id)).toEqual(["song-2"]);
     expect(page.albums[0].artists?.map((a) => a.name)).toEqual(["Demo artist"]);
     expect(page.albums[0].year).toBe(2015);
     expect((await client.search3({ ...all, songOffset: 3 })).tracks).toEqual([]);
     await expect(client.search3({ ...all, albumOffset: -1 })).rejects.toThrow("pagination");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    client.abort();
+    const next = createClient(auth);
+    expect(next.getStreamUrl("song-1")).toBe(new URL("audio/song-1.mp3", base).href);
+    await next.getIndexes();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const fresh = setup();
+    await fresh.client.ping();
+    expect(fresh.fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it("works with the real Network pipeline without any /rest requests", async () => {
-    const { catalog } = setup();
-    const network = new Network((identity) => new StaticSubsonicClient(identity, catalog));
-    const connection = network.prepare(auth);
-    await network.validate(connection);
-    const active = network.accept(connection);
+  it("works with the real Network startup pipeline without a preceding ping", async () => {
+    const { createClient, fetcher } = setup();
+    const network = new Network(createClient);
+    network.setMode("online");
+    const active = network.open(auth);
+    expect(await active.metadata.getModifiedAt()).toBeNull();
     const library = await active.metadata.readLibrary(new AbortController().signal);
     expect(library.artists[0].artworkId).toBe("artist-cover");
     expect(library.albums[0].artistIds).toEqual(["artist"]);
@@ -54,22 +67,26 @@ describe("static client", () => {
       new URL("audio/song-1.mp3", base).href,
     );
     expect(active.artwork.url("cover", 200)).toBe(new URL("covers/album.svg", base).href);
+    expect(fetcher.mock.calls.every(([url]) => !String(url).includes("/rest/"))).toBe(true);
     network.setMode("offline");
     expect(active.signal.aborted).toBe(true);
+    network.setMode("online");
+    const resumed = network.open(auth);
+    expect(resumed.artwork.url("cover", 200)).toBe(new URL("covers/album.svg", base).href);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it("returns original asset URLs, honors cancellation, and never invents transcoding", async () => {
-    const { client, catalog } = setup();
+  it("serves original formats and honors cancellation", async () => {
+    const { client } = setup({
+      ...assetsFixture,
+      ogg: { path: "audio/original.ogg", contentType: "audio/ogg" },
+    });
+    await client.ping();
     expect(client.getStreamUrl("song-1", { format: "mp3", timeOffset: 20 })).not.toContain("?");
+    expect(client.getStreamUrl("ogg", { format: "raw" })).toMatch(/\.ogg$/);
+    expect(() => client.getStreamUrl("ogg", { format: "mp3" })).toThrow("cannot transcode");
     expect(() => client.getStreamUrl("missing")).toThrow("not found");
     expect(() => client.getCoverArtUrl("song-1")).toThrow("not found");
-    const oggCatalog = {
-      ...catalog,
-      assets: { ogg: { path: "audio/original.ogg", contentType: "audio/ogg" } },
-    };
-    const ogg = new StaticSubsonicClient(auth, oggCatalog);
-    expect(ogg.getStreamUrl("ogg", { format: "raw" })).toMatch(/\.ogg$/);
-    expect(() => ogg.getStreamUrl("ogg", { format: "mp3" })).toThrow("cannot transcode");
     const controller = new AbortController();
     controller.abort();
     await expect(client.search3(all, controller.signal)).rejects.toMatchObject({
@@ -83,97 +100,102 @@ describe("static client", () => {
     });
   });
 
-  it("ignores server queue writes and always returns a fresh empty queue", async () => {
-    const { client, catalog } = setup();
-    const empty = { tracks: [], position: 0 };
-    expect(await client.getPlayQueue()).toEqual(empty);
+  it("ignores server queue writes and returns fresh empty queues without loading metadata", async () => {
+    const { client, fetcher } = setup();
     await client.savePlayQueue({ tracks: ["song-1"], current: "song-1", position: 12.5 });
-    expect(await client.getPlayQueue()).toEqual(empty);
     Object.assign(await client.getPlayQueue(), { tracks: ["song-2"], position: 10 });
-    expect(await client.getPlayQueue()).toEqual(empty);
-    expect(await new StaticSubsonicClient(auth, catalog).getPlayQueue()).toEqual(empty);
+    expect(await client.getPlayQueue()).toEqual({ tracks: [], position: 0 });
+    expect(fetcher).not.toHaveBeenCalled();
     client.abort();
     await expect(client.getPlayQueue()).rejects.toMatchObject({ name: "AbortError" });
   });
-});
 
-describe("catalog loading", () => {
-  it("fetches only same-origin static JSON without authentication", async () => {
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response(JSON.stringify(searchFixture)))
-      .mockResolvedValueOnce(new Response(JSON.stringify(assetsFixture)));
-    const result = await loadCatalog(base, new AbortController().signal, fetcher);
-    expect(result.tracks).toHaveLength(3);
+  it("fetches same-origin JSON without authentication", async () => {
+    const { client, fetcher } = setup();
+    await client.search3(all);
     expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
       new URL("search3.json", base).href,
       new URL("assets.json", base).href,
     ]);
     for (const [, init] of fetcher.mock.calls)
       expect(init).toMatchObject({ credentials: "omit", redirect: "error", cache: "no-cache" });
-    await expect(
-      loadCatalog(new URL("https://elsewhere.invalid/"), new AbortController().signal, fetcher),
-    ).rejects.toThrow("alongside");
+    expect(fetcher.mock.contexts).toEqual([undefined, undefined]);
+    expect(() => StaticSubsonicClient.createFactory(new URL("https://elsewhere.invalid/"))).toThrow(
+      "alongside",
+    );
   });
 
-  it("keeps resolved media URLs within the public catalog", () => {
+  it("retries failed metadata loads instead of caching rejected promises", async () => {
+    const { client, fetcher } = setup();
+    fetcher.mockResolvedValueOnce(new Response("missing", { status: 404 }));
+    await expect(client.getIndexes()).rejects.toThrow("HTTP 404");
+    expect((await client.search3(all)).tracks).toHaveLength(3);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it("cancels metadata requests on disconnect without poisoning the next client", async () => {
+    const { client, createClient, fetcher } = setup();
+    const pendingFetch: typeof fetch = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason), { once: true });
+      });
+    fetcher.mockImplementationOnce(pendingFetch).mockImplementationOnce(pendingFetch);
+    const pending = client.search3(all);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    client.abort();
+    await rejected;
+    const next = createClient(auth);
+    expect((await next.search3(all)).tracks).toHaveLength(3);
+  });
+
+  it("honors caller cancellation while metadata is loading", async () => {
+    const { client, fetcher } = setup();
+    let finish!: () => void;
+    fetcher.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve(new Response(JSON.stringify(searchFixture)));
+        }),
+    );
+    const controller = new AbortController();
+    const pending = client.search3(all, controller.signal);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    controller.abort();
+    finish();
+    await rejected;
+    expect((await client.search3(all)).tracks).toHaveLength(3);
+  });
+
+  it("keeps media URLs within the catalog", async () => {
     for (const path of [
       "https://elsewhere.invalid/song.mp3",
       "../song.mp3",
       "//elsewhere.invalid/song.mp3",
     ]) {
-      const catalog = parseCatalog(
-        searchFixture,
-        { cover: { path, contentType: "image/svg+xml" } },
-        base,
-      );
-      const client = new StaticSubsonicClient(auth, catalog);
+      const { client } = setup({ cover: { path, contentType: "image/svg+xml" } });
+      await client.ping();
       expect(() => client.getCoverArtUrl("cover")).toThrow("Invalid demo asset URL");
     }
   });
+});
 
-  it("preserves shared protocol fields and exporter-supplied structured credits", () => {
-    const search = structuredClone(searchFixture);
-    const data = search["subsonic-response"].searchResult3;
-    const credits = {
-      artists: [{ id: "guest", name: "Guest artist" }],
-      displayArtist: "Guest artist feat. Demo artist",
-      genres: [{ name: "Electronic" }],
-    };
-    Object.assign(data.album[0], credits);
-    Object.assign(data.song[0], credits, { discNumber: 2 });
-    const catalog = parseCatalog(search, assetsFixture, base);
-    expect(catalog.albums[0]).toMatchObject({ ...credits, year: 2015 });
-    expect(catalog.tracks[0]).toMatchObject({ ...credits, discNumber: 2, duration: 30, track: 1 });
+it("preserves exporter-supplied protocol fields", () => {
+  const catalog = parseCatalog(searchFixture, assetsFixture);
+  expect(catalog.albums[0]).toMatchObject({
+    year: 2015,
+    displayArtist: "Demo artist",
+    artists: [{ id: "artist", name: "Demo artist" }],
   });
+  expect(catalog.tracks[0]).toMatchObject({ duration: 30, track: 1, displayArtist: "Demo artist" });
+});
 
-  it("uses the shared response schema and handles omitted empty collections", () => {
-    const catalog = parseCatalog(
-      { "subsonic-response": { status: "ok", searchResult3: {} } },
-      {},
-      base,
-    );
-    expect(catalog.artists).toEqual([]);
-    expect(catalog.albums).toEqual([]);
-    expect(catalog.tracks).toEqual([]);
-    expect(catalog.assets).toEqual({});
-    expect(() => parseCatalog({}, {}, base)).toThrow();
-    for (const response of [{ status: "failed" }, { status: "ok" }]) {
-      expect(() => parseCatalog({ "subsonic-response": response }, {}, base)).toThrow("search3");
-    }
-  });
-
-  it("rejects failed downloads and cancellation instead of returning an empty library", async () => {
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(new Response("unavailable", { status: 503 }));
-    await expect(loadCatalog(base, new AbortController().signal, fetcher)).rejects.toThrow(
-      "HTTP 503",
-    );
-    const controller = new AbortController();
-    controller.abort();
-    await expect(loadCatalog(base, controller.signal, fetcher)).rejects.toMatchObject({
-      name: "AbortError",
-    });
-  });
+it("uses the shared response schema including omitted empty collections", () => {
+  const catalog = parseCatalog({ "subsonic-response": { status: "ok", searchResult3: {} } }, {});
+  expect(catalog.artists).toEqual([]);
+  expect(catalog.albums).toEqual([]);
+  expect(catalog.tracks).toEqual([]);
+  expect(() => parseCatalog({}, {})).toThrow();
+  for (const response of [{ status: "failed" }, { status: "ok" }]) {
+    expect(() => parseCatalog({ "subsonic-response": response }, {})).toThrow("search3");
+  }
 });
