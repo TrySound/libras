@@ -37,16 +37,16 @@ Configure these **GitHub Actions repository secrets**:
 - `DEMO_EXPORT_URL`: the private HTTPS export-directory URL (the directory containing `latest.json`). Do not commit the URL, place it in a repository variable, or prefix it with `VITE_`.
 - `DEMO_MEDIA_PASSWORD`: the private export password. HTTP Basic username defaults to `demo`.
 
-The Pages workflow builds both workspaces, downloads the catalog into `website/dist/catalog/`, copies the website output under `dist/demo/`, and uploads one combined artifact. Secrets are scoped to the Python download step only—not the frontend build. It resolves `latest.json` once and uses that immutable release for the rest of the build; future deployments automatically pick up a new latest release. There is no cross-build pin.
+The Pages workflow builds both workspaces, downloads the catalog into `website/dist/catalog/`, copies the website output under `dist/demo/`, and uploads one combined artifact. Secrets are scoped to the Node.js download step only—not the frontend build. It resolves `latest.json` once and uses that immutable release for the rest of the build; future deployments automatically pick up a new latest release. There is no cross-build pin.
 
-`download-catalog.py` verifies the manifest fingerprint, archive SHA-256 and every extracted file. It disallows redirects, symlinks, hard links, path traversal, unexpected files, mixed releases and oversized archives. Missing secrets or download/verification failures fail deployment without replacing the live Pages site. Errors are sanitized to avoid logging the private URL/password. It also rejects exports containing the private source URL/hostname or credentials before publishing any files.
+`download-catalog.mjs` uses Node.js and `tar-stream` to verify the manifest fingerprint, archive SHA-256 and every extracted file. It disallows redirects, symlinks, hard links, path traversal, unexpected files, mixed releases and oversized archives. Missing secrets or download/verification failures fail deployment without replacing the live Pages site. Errors are sanitized to avoid logging the private URL/password. It also rejects exports containing the private source URL/hostname or credentials before publishing any files.
 
 The browser receives no export manifest URL or credential. It reads only public same-origin catalog paths. Public artist/license source links in credits are deliberately retained—they are attribution, not the private export source. Full music files, artwork, date provenance and credits become publicly downloadable once Pages deploys.
 
 For local development, set the same environment variables privately (not in `website/public`), then run:
 
 ```sh
-python3 website/download-catalog.py --output website/public/catalog
+node website/download-catalog.mjs --output website/public/catalog
 pnpm --filter @libras/website dev
 ```
 
@@ -55,19 +55,15 @@ To reproduce a release artifact locally, start without `website/public/catalog` 
 ```sh
 pnpm build
 pnpm --filter @libras/website build
-python3 website/download-catalog.py --output website/dist/catalog
+node website/download-catalog.mjs --output website/dist/catalog
 mkdir -p dist/demo
 cp -a website/dist/. dist/demo/
-python3 website/verify-build.py
+node website/verify-build.mjs
 ```
 
-`verify-build.py` checks the regular PWA is retained, the demo has no PWA artifacts, catalog assets and credits exist, and the combined site stays within 1 GiB. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Keep `catalog/credits.html`, machine-readable credits and licensing evidence with the published assets.
+`verify-build.mjs` checks the regular PWA is retained, the demo has no PWA artifacts, catalog assets and credits exist, and the combined site stays within 1 GiB. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Keep `catalog/credits.html`, machine-readable credits and licensing evidence with the published assets.
 
-There are no secrets or source downloads on PR CI. Downloader tests use an in-memory synthetic export:
-
-```sh
-python3 -m unittest discover -s website -p 'test_*.py'
-```
+PR CI builds both workspaces without accessing the private export source.
 
 ## Tests
 
