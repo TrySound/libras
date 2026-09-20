@@ -9,12 +9,11 @@ import {
 } from "../src/subsonic-client";
 
 const id = v.pipe(v.string(), v.nonEmpty());
-// Reuse the protocol shapes, adding only export-specific constraints and legacy credits.
+// Reuse protocol shapes; the exporter supplies complete structured credits.
 const artist = v.object({ ...artistSchema.entries, id, coverArt: v.optional(id) });
 const credits = {
-  artists: v.optional(v.array(artist)),
-  artist: v.optional(v.string()),
-  artistId: v.optional(id),
+  artists: v.pipe(v.array(artist), v.nonEmpty()),
+  displayArtist: id,
 };
 const album = v.object({
   ...albumSchema.entries,
@@ -72,7 +71,6 @@ export function parseCatalog(search: unknown, assetData: unknown, base: URL): St
     new Set(items.map((item) => item.id)).size === items.length;
   if (![data.artist, data.album, data.song].every(unique))
     throw new Error("Duplicate demo catalog IDs.");
-  const artists = new Map(data.artist.map((a) => [a.id, a]));
   const albums = new Set(data.album.map((a) => a.id));
   for (const item of [...data.artist, ...data.album, ...data.song]) {
     if (item.coverArt && !assets.get(item.coverArt)?.contentType.startsWith("image/")) {
@@ -84,27 +82,10 @@ export function parseCatalog(search: unknown, assetData: unknown, base: URL): St
       throw new Error("The demo catalog is missing an album or audio asset.");
     }
   }
-  // The source export includes legacy album credits; adapt only here, not in the main app.
-  const structured = <
-    T extends {
-      artists?: SubsonicArtist[];
-      artistId?: string;
-      artist?: string;
-      displayArtist?: string;
-    },
-  >(
-    item: T,
-  ) => ({
-    ...item,
-    artists:
-      item.artists ??
-      (item.artistId && artists.has(item.artistId) ? [artists.get(item.artistId)!] : undefined),
-    displayArtist: item.displayArtist ?? item.artist,
-  });
   return {
     artists: data.artist,
-    albums: data.album.map(structured),
-    tracks: data.song.map(structured),
+    albums: data.album,
+    tracks: data.song,
     assets,
   };
 }

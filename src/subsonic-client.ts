@@ -97,11 +97,14 @@ export type SubsonicAlbum = v.InferOutput<typeof albumSchema>;
 export type SubsonicTrack = v.InferOutput<typeof trackSchema>;
 export type OpenSubsonicServerInfo = v.InferOutput<typeof serverInfoSchema>;
 
-export interface SubsonicPlayQueue {
-  current?: string;
-  position: number;
-  tracks: readonly string[];
-}
+/** Normalized queue: position in seconds and track IDs, not the wire-format entries. */
+export const playQueueSchema = v.object({
+  current: v.optional(v.string()),
+  position: v.pipe(v.number(), v.finite(), v.minValue(0)),
+  tracks: v.pipe(v.array(v.string()), v.readonly()),
+});
+
+export type SubsonicPlayQueue = v.InferOutput<typeof playQueueSchema>;
 
 export interface SubsonicStreamOptions {
   estimateContentLength?: boolean;

@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 describe("static client", () => {
-  it("normalizes legacy export credits at the boundary and paginates independently", async () => {
+  it("reads exporter-supplied credits and paginates independently", async () => {
     const { client } = setup();
     const page = await client.search3({ ...all, artistCount: 0, songCount: 1, songOffset: 1 });
     expect(page.artists).toEqual([]);
@@ -92,9 +92,12 @@ describe("static client", () => {
     const { client, catalog, storage } = setup();
     const queue = { tracks: ["song-1", "song-1", "song-2"], current: "song-1", position: 12.5 };
     await client.savePlayQueue(queue);
+    for (const position of [-1, NaN, Infinity]) {
+      await expect(client.savePlayQueue({ ...queue, position })).rejects.toThrow();
+    }
     const next = new StaticSubsonicClient(auth, catalog, storage);
     expect(await next.getPlayQueue()).toEqual(queue);
-    (await next.getPlayQueue()).tracks = [];
+    Object.assign(await next.getPlayQueue(), { tracks: [] });
     expect(await next.getPlayQueue()).toEqual(queue);
     const fresh = new StaticSubsonicClient(auth, catalog, new MemoryStorage());
     expect(await fresh.getPlayQueue()).toEqual({ tracks: [], position: 0 });
@@ -140,7 +143,7 @@ describe("catalog loading", () => {
     expect(() => parseCatalog(searchFixture, {}, base)).toThrow("artwork");
   });
 
-  it("preserves shared protocol fields and prefers structured credits over legacy credits", () => {
+  it("preserves shared protocol fields and exporter-supplied structured credits", () => {
     const search = structuredClone(searchFixture);
     const data = search["subsonic-response"].searchResult3;
     const credits = {
@@ -155,14 +158,30 @@ describe("catalog loading", () => {
     expect(catalog.tracks[0]).toMatchObject({ ...credits, discNumber: 2, duration: 30, track: 1 });
   });
 
-  it.each([{ id: "" }, { albumId: undefined }, { duration: -1 }, { coverArt: "" }])(
-    "retains export-specific constraints for %j",
-    (patch) => {
-      const search = structuredClone(searchFixture);
-      Object.assign(search["subsonic-response"].searchResult3.song[0], patch);
-      expect(() => parseCatalog(search, assetsFixture, base)).toThrow("invalid");
-    },
-  );
+  it.each([
+    { id: "" },
+    { albumId: undefined },
+    { duration: -1 },
+    { coverArt: "" },
+    { artists: undefined },
+    { artists: [] },
+    { displayArtist: undefined },
+  ])("retains export-specific constraints for %j", (patch) => {
+    const search = structuredClone(searchFixture);
+    Object.assign(search["subsonic-response"].searchResult3.song[0], patch);
+    expect(() => parseCatalog(search, assetsFixture, base)).toThrow("invalid");
+  });
+
+  it("rejects legacy-only album credits instead of converting them in the browser", () => {
+    const search = structuredClone(searchFixture);
+    Object.assign(search["subsonic-response"].searchResult3.album[0], {
+      artists: undefined,
+      displayArtist: undefined,
+      artistId: "artist",
+      artist: "Demo artist",
+    });
+    expect(() => parseCatalog(search, assetsFixture, base)).toThrow("invalid");
+  });
 
   it("rejects failed downloads and cancellation instead of returning an empty library", async () => {
     const fetcher = vi

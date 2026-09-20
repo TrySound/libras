@@ -1,18 +1,13 @@
 import * as v from "valibot";
-import type {
-  SubsonicApi,
-  SubsonicAuth,
-  SubsonicClient,
-  SubsonicPlayQueue,
-  SubsonicStreamOptions,
+import {
+  playQueueSchema,
+  type SubsonicApi,
+  type SubsonicAuth,
+  type SubsonicClient,
+  type SubsonicPlayQueue,
+  type SubsonicStreamOptions,
 } from "../src/subsonic-client";
 import type { StaticCatalog } from "./catalog";
-
-const queueSchema = v.object({
-  current: v.optional(v.string()),
-  position: v.pipe(v.number(), v.finite(), v.minValue(0)),
-  tracks: v.array(v.string()),
-});
 
 /** Local protocol simulation. Media URLs point directly to Pages, never /rest endpoints. */
 export class StaticSubsonicClient implements SubsonicApi {
@@ -95,7 +90,7 @@ export class StaticSubsonicClient implements SubsonicApi {
     this.signal.throwIfAborted();
     const saved = this.storage.getItem("remote-queue");
     if (saved === null) return { tracks: [], position: 0 };
-    const parsed = v.safeParse(queueSchema, JSON.parse(saved));
+    const parsed = v.safeParse(playQueueSchema, JSON.parse(saved));
     if (!parsed.success) throw new Error("The saved demo queue is invalid.");
     return parsed.output;
   }
@@ -104,7 +99,7 @@ export class StaticSubsonicClient implements SubsonicApi {
     this.signal.throwIfAborted();
     this.storage.setItem(
       "remote-queue",
-      JSON.stringify(v.parse(queueSchema, { ...queue, tracks: [...queue.tracks] })),
+      JSON.stringify(v.parse(playQueueSchema, { ...queue, tracks: [...queue.tracks] })),
     );
   }
 }
