@@ -25,8 +25,6 @@
 </script>
 
 <script lang="ts">
-  import spriteUrl from "./sprite.svg?url&no-inline";
-
   interface Props {
     name: IconName;
     size?: "md" | "lg" | "xl";
@@ -39,5 +37,5 @@
 </script>
 
 <svg class={className} aria-hidden="true" width={sizes[size]} height={sizes[size]}>
-  <use href={`${spriteUrl}#${name}`}></use>
+  <use href={`#icon-${name}`}></use>
 </svg>
