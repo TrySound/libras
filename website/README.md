@@ -4,7 +4,7 @@ This pnpm workspace (`@libras/website`) imports the existing application from `.
 
 ## Architecture
 
-- `catalog.ts` reuses the shared Subsonic artist/album/track schemas to validate `search3.json`, checks export-specific constraints and exporter-supplied structured credits without conversion, and validates `assets.json` with relative same-origin media paths.
+- `catalog.ts` loads plain `search3.json` using the shared Subsonic response schema and reads the `assets.json` path map. The exporter checks IDs, relationships, credits, durations and asset integrity before publishing; the browser does not repeat those catalog-wide checks.
 - `client.ts` implements the shared OpenSubsonic client surface: independent library pagination, original audio/artwork URLs, cancellation and an in-memory simulated server queue. It does not intercept global fetch or emulate `/rest` HTTP endpoints.
 - `demo.svelte` supplies the required network, auth and updater dependencies to the real application, explicitly passing `undefined` for the updater. Cache/OPFS isolation comes from the separate demo account identity; preferences, auth and the simulated remote queue share a per-runtime `MemoryStorage` instance and never read or write localStorage. App's inline preference setup uses the injected auth store's storage scope, not a separate prop.
 - `vite.config.ts` is a separate build **without the PWA plugin**. There is no manifest, install prompt or demo service worker. Do not unregister the regular app's worker: its broader scope may control this URL, but its navigation fallback excludes the demo and does not cache demo assets.
@@ -35,4 +35,4 @@ A separate CI build step supplies the export via secrets before publishing. A co
 
 ## Tests
 
-The tests here cover client pagination, the real Network integration, aborts, artwork/audio URLs, original-format behavior, structured-credit validation, unsafe asset rejection, in-runtime queue sharing, memory-storage isolation and preference reset and preconnected app bootstrap without service-worker registration. They use tiny synthetic metadata rather than contacting the export source.
+The tests here cover client pagination, the real Network integration, aborts, artwork/audio URLs, original-format behavior, shared response parsing, same-origin media URL enforcement, in-runtime queue sharing, memory-storage isolation and preference reset and preconnected app bootstrap without service-worker registration. They use tiny synthetic metadata rather than contacting the export source.

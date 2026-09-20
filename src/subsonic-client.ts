@@ -25,13 +25,13 @@ export function createSubsonicAuth(input: {
 }
 
 const genreSchema = v.object({ name: v.string() });
-export const artistSchema = v.object({
+const artistSchema = v.object({
   id: v.string(),
   name: v.string(),
   coverArt: v.optional(v.string()),
 });
 
-export const albumSchema = v.object({
+const albumSchema = v.object({
   id: v.string(),
   name: v.string(),
   artists: v.optional(v.array(artistSchema)),
@@ -41,7 +41,7 @@ export const albumSchema = v.object({
   year: v.optional(v.number()),
 });
 
-export const trackSchema = v.object({
+const trackSchema = v.object({
   id: v.string(),
   title: v.string(),
   album: v.optional(v.string()),
@@ -63,7 +63,7 @@ const serverInfoSchema = v.object({
   openSubsonic: v.literal(true),
 });
 
-const responseSchema = v.object({
+export const responseSchema = v.object({
   "subsonic-response": v.object({
     status: v.string(),
     // Keep identity optional here so minimal failures retain their actual error.

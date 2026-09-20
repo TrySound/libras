@@ -66,16 +66,22 @@ export class StaticSubsonicClient implements SubsonicApi {
     };
   }
 
+  private assetUrl(path: string) {
+    const url = new URL(path, this.catalog.base);
+    if (!url.href.startsWith(this.catalog.base.href)) throw new Error("Invalid demo asset URL.");
+    return url.href;
+  }
+
   getCoverArtUrl(id: string, _size?: number) {
     this.signal.throwIfAborted();
-    const asset = this.catalog.assets.get(id);
+    const asset = this.catalog.assets[id];
     if (!asset?.contentType.startsWith("image/")) throw new Error("Demo artwork not found.");
-    return asset.url;
+    return this.assetUrl(asset.path);
   }
 
   getStreamUrl(id: string, options: SubsonicStreamOptions = {}) {
     this.signal.throwIfAborted();
-    const asset = this.catalog.assets.get(id);
+    const asset = this.catalog.assets[id];
     if (!asset?.contentType.startsWith("audio/")) throw new Error("Demo audio not found.");
     if (options.format === "mp3" && asset.contentType !== "audio/mpeg") {
       throw new Error(
@@ -83,7 +89,7 @@ export class StaticSubsonicClient implements SubsonicApi {
       );
     }
     // Original full files support native seeking. No fake transcodes or timeOffset slicing.
-    return asset.url;
+    return this.assetUrl(asset.path);
   }
 
   async getPlayQueue(): Promise<SubsonicPlayQueue> {

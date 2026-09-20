@@ -68,9 +68,7 @@ describe("static client", () => {
     expect(() => client.getCoverArtUrl("song-1")).toThrow("not found");
     const oggCatalog = {
       ...catalog,
-      assets: new Map([
-        ["ogg", { url: new URL("audio/original.ogg", base).href, contentType: "audio/ogg" }],
-      ]),
+      assets: { ogg: { path: "audio/original.ogg", contentType: "audio/ogg" } },
     };
     const ogg = new StaticSubsonicClient(auth, oggCatalog, storage);
     expect(ogg.getStreamUrl("ogg", { format: "raw" })).toMatch(/\.ogg$/);
@@ -123,24 +121,20 @@ describe("catalog loading", () => {
     ).rejects.toThrow("alongside");
   });
 
-  it("rejects path traversal, external URLs, missing assets and malformed metadata", () => {
+  it("keeps resolved media URLs within the public catalog", () => {
     for (const path of [
       "https://elsewhere.invalid/song.mp3",
-      "audio/../song.mp3",
-      "audio/%2e%2e/song.mp3",
+      "../song.mp3",
       "//elsewhere.invalid/song.mp3",
-      "audio/song.mp3?token=secret",
     ]) {
-      expect(() =>
-        parseCatalog(
-          searchFixture,
-          { ...assetsFixture, cover: { path, contentType: "image/svg+xml" } },
-          base,
-        ),
-      ).toThrow();
+      const catalog = parseCatalog(
+        searchFixture,
+        { cover: { path, contentType: "image/svg+xml" } },
+        base,
+      );
+      const client = new StaticSubsonicClient(auth, catalog, new MemoryStorage());
+      expect(() => client.getCoverArtUrl("cover")).toThrow("Invalid demo asset URL");
     }
-    expect(() => parseCatalog({}, assetsFixture, base)).toThrow("invalid");
-    expect(() => parseCatalog(searchFixture, {}, base)).toThrow("artwork");
   });
 
   it("preserves shared protocol fields and exporter-supplied structured credits", () => {
@@ -158,29 +152,20 @@ describe("catalog loading", () => {
     expect(catalog.tracks[0]).toMatchObject({ ...credits, discNumber: 2, duration: 30, track: 1 });
   });
 
-  it.each([
-    { id: "" },
-    { albumId: undefined },
-    { duration: -1 },
-    { coverArt: "" },
-    { artists: undefined },
-    { artists: [] },
-    { displayArtist: undefined },
-  ])("retains export-specific constraints for %j", (patch) => {
-    const search = structuredClone(searchFixture);
-    Object.assign(search["subsonic-response"].searchResult3.song[0], patch);
-    expect(() => parseCatalog(search, assetsFixture, base)).toThrow("invalid");
-  });
-
-  it("rejects legacy-only album credits instead of converting them in the browser", () => {
-    const search = structuredClone(searchFixture);
-    Object.assign(search["subsonic-response"].searchResult3.album[0], {
-      artists: undefined,
-      displayArtist: undefined,
-      artistId: "artist",
-      artist: "Demo artist",
-    });
-    expect(() => parseCatalog(search, assetsFixture, base)).toThrow("invalid");
+  it("uses the shared response schema and handles omitted empty collections", () => {
+    const catalog = parseCatalog(
+      { "subsonic-response": { status: "ok", searchResult3: {} } },
+      {},
+      base,
+    );
+    expect(catalog.artists).toEqual([]);
+    expect(catalog.albums).toEqual([]);
+    expect(catalog.tracks).toEqual([]);
+    expect(catalog.assets).toEqual({});
+    expect(() => parseCatalog({}, {}, base)).toThrow();
+    for (const response of [{ status: "failed" }, { status: "ok" }]) {
+      expect(() => parseCatalog({ "subsonic-response": response }, {}, base)).toThrow("search3");
+    }
   });
 
   it("rejects failed downloads and cancellation instead of returning an empty library", async () => {
