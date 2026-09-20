@@ -6,7 +6,7 @@ import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { parseArgs } from "node:util";
 import { createGunzip } from "node:zlib";
-import { extract } from "tar-stream";
+import { createTarDecoder } from "modern-tar";
 
 const MAX_BYTES = 2 * 1024 ** 3;
 const METADATA = new Set([
@@ -170,18 +170,18 @@ async function download(output) {
     );
     const stage = join(temporary, "catalog");
     await mkdir(stage);
-    const unpack = extract();
+    const unpack = createTarDecoder({ strict: true });
     const seen = new Set();
     await Promise.all([
       pipeline(
         createReadStream(archive),
         createGunzip(),
         verifyBytes(MAX_BYTES + 64 * 1024 ** 2),
-        unpack,
+        unpack.writable,
       ),
       (async () => {
-        for await (const stream of unpack) {
-          const { name, size, type } = stream.header;
+        for await (const { header, body } of unpack.readable) {
+          const { name, size, type } = header;
           const entry = files.get(name);
           requireValid(
             type === "file" && entry && !seen.has(name) && size === entry.size,
@@ -190,7 +190,7 @@ async function download(output) {
           const target = join(stage, name);
           await mkdir(dirname(target), { recursive: true });
           await pipeline(
-            stream,
+            body,
             verifyBytes(size, entry.sha256, forbidden),
             createWriteStream(target, { flags: "wx" }),
           );
