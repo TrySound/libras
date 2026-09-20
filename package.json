@@ -8,6 +8,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "dev:demo": "vite --config website/vite.config.ts",
+    "build:demo": "vite build --config website/vite.config.ts",
+    "preview:demo": "vite preview --config website/vite.config.ts",
     "stress-build": "VITE_STRESS_ARTISTS=1 vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",

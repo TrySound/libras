@@ -16,7 +16,7 @@ export default defineConfig({
   resolve: { conditions: ["browser"] },
   ssr: { resolve: { conditions: ["browser"] }, noExternal: ["svelte"] },
   test: {
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.ts", "website/**/*.test.ts"],
     server: { deps: { inline: ["svelte"] } },
   },
 });
