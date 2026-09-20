@@ -1,8 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseCatalog, loadCatalog } from "./catalog";
-import { StaticSubsonicClient } from "./client";
-import { MemoryStorage } from "./storage";
+import { parseCatalog, loadCatalog, StaticSubsonicClient } from "./client";
 import { assetsFixture, searchFixture } from "./fixtures";
 import { Network } from "../src/network.svelte";
 
@@ -22,9 +20,8 @@ const all = {
   songOffset: 0,
 };
 function setup() {
-  const storage = new MemoryStorage();
   const catalog = parseCatalog(searchFixture, assetsFixture, base);
-  return { storage, catalog, client: new StaticSubsonicClient(auth, catalog, storage) };
+  return { catalog, client: new StaticSubsonicClient(auth, catalog) };
 }
 afterEach(() => {
   localStorage.clear();
@@ -44,8 +41,8 @@ describe("static client", () => {
   });
 
   it("works with the real Network pipeline without any /rest requests", async () => {
-    const { storage, catalog } = setup();
-    const network = new Network((identity) => new StaticSubsonicClient(identity, catalog, storage));
+    const { catalog } = setup();
+    const network = new Network((identity) => new StaticSubsonicClient(identity, catalog));
     const connection = network.prepare(auth);
     await network.validate(connection);
     const active = network.accept(connection);
@@ -62,7 +59,7 @@ describe("static client", () => {
   });
 
   it("returns original asset URLs, honors cancellation, and never invents transcoding", async () => {
-    const { client, catalog, storage } = setup();
+    const { client, catalog } = setup();
     expect(client.getStreamUrl("song-1", { format: "mp3", timeOffset: 20 })).not.toContain("?");
     expect(() => client.getStreamUrl("missing")).toThrow("not found");
     expect(() => client.getCoverArtUrl("song-1")).toThrow("not found");
@@ -70,7 +67,7 @@ describe("static client", () => {
       ...catalog,
       assets: { ogg: { path: "audio/original.ogg", contentType: "audio/ogg" } },
     };
-    const ogg = new StaticSubsonicClient(auth, oggCatalog, storage);
+    const ogg = new StaticSubsonicClient(auth, oggCatalog);
     expect(ogg.getStreamUrl("ogg", { format: "raw" })).toMatch(/\.ogg$/);
     expect(() => ogg.getStreamUrl("ogg", { format: "mp3" })).toThrow("cannot transcode");
     const controller = new AbortController();
@@ -86,19 +83,17 @@ describe("static client", () => {
     });
   });
 
-  it("shares the simulated queue within a runtime but resets for a new runtime", async () => {
-    const { client, catalog, storage } = setup();
-    const queue = { tracks: ["song-1", "song-1", "song-2"], current: "song-1", position: 12.5 };
-    await client.savePlayQueue(queue);
-    for (const position of [-1, NaN, Infinity]) {
-      await expect(client.savePlayQueue({ ...queue, position })).rejects.toThrow();
-    }
-    const next = new StaticSubsonicClient(auth, catalog, storage);
-    expect(await next.getPlayQueue()).toEqual(queue);
-    Object.assign(await next.getPlayQueue(), { tracks: [] });
-    expect(await next.getPlayQueue()).toEqual(queue);
-    const fresh = new StaticSubsonicClient(auth, catalog, new MemoryStorage());
-    expect(await fresh.getPlayQueue()).toEqual({ tracks: [], position: 0 });
+  it("ignores server queue writes and always returns a fresh empty queue", async () => {
+    const { client, catalog } = setup();
+    const empty = { tracks: [], position: 0 };
+    expect(await client.getPlayQueue()).toEqual(empty);
+    await client.savePlayQueue({ tracks: ["song-1"], current: "song-1", position: 12.5 });
+    expect(await client.getPlayQueue()).toEqual(empty);
+    Object.assign(await client.getPlayQueue(), { tracks: ["song-2"], position: 10 });
+    expect(await client.getPlayQueue()).toEqual(empty);
+    expect(await new StaticSubsonicClient(auth, catalog).getPlayQueue()).toEqual(empty);
+    client.abort();
+    await expect(client.getPlayQueue()).rejects.toMatchObject({ name: "AbortError" });
   });
 });
 
@@ -132,7 +127,7 @@ describe("catalog loading", () => {
         { cover: { path, contentType: "image/svg+xml" } },
         base,
       );
-      const client = new StaticSubsonicClient(auth, catalog, new MemoryStorage());
+      const client = new StaticSubsonicClient(auth, catalog);
       expect(() => client.getCoverArtUrl("cover")).toThrow("Invalid demo asset URL");
     }
   });
@@ -181,32 +176,4 @@ describe("catalog loading", () => {
       name: "AbortError",
     });
   });
-});
-
-it("stores values in memory without touching localStorage or other instances", () => {
-  localStorage.setItem("navidrome-auth", "regular");
-  localStorage.setItem("navidrome-account", "regular-account");
-  const { storage } = setup();
-  storage.setItem("navidrome-auth", "demo");
-  storage.setItem("navidrome-account", "demo-account");
-  expect(storage.length).toBe(2);
-  expect(storage.key(0)).toBe("navidrome-auth");
-  expect(storage.getItem("navidrome-auth")).toBe("demo");
-  storage.setItem("navidrome-auth", "updated");
-  expect(storage.length).toBe(2);
-  expect(storage.getItem("navidrome-auth")).toBe("updated");
-  expect(storage.key(2)).toBeNull();
-  expect(storage.getItem("missing")).toBeNull();
-  storage.setItem("empty", "");
-  expect(storage.getItem("empty")).toBe("");
-  storage.removeItem("empty");
-  expect(storage.getItem("empty")).toBeNull();
-  expect(new MemoryStorage().length).toBe(0);
-  storage.clear();
-  expect(storage.length).toBe(0);
-  expect(storage.key(0)).toBeNull();
-  expect(storage.getItem("navidrome-auth")).toBeNull();
-  expect(localStorage.length).toBe(2);
-  expect(localStorage.getItem("navidrome-auth")).toBe("regular");
-  expect(localStorage.getItem("navidrome-account")).toBe("regular-account");
 });

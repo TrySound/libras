@@ -3,9 +3,7 @@
   import App from "../src/app.svelte";
   import { AuthStore } from "../src/auth";
   import { Network } from "../src/network.svelte";
-  import { loadCatalog } from "./catalog";
-  import { StaticSubsonicClient } from "./client";
-  import { MemoryStorage } from "./storage";
+  import { loadCatalog, StaticSubsonicClient } from "./client";
 
   const base = new URL(import.meta.env.BASE_URL, location.origin);
   const catalogBase = new URL("catalog/", base);
@@ -22,7 +20,21 @@
     try {
       const catalog = await loadCatalog(catalogBase, attempt.signal);
       attempt.signal.throwIfAborted();
-      const preferences = new MemoryStorage();
+      const items = new Map<string, string>();
+      const preferences: Storage = {
+        get length() {
+          return items.size;
+        },
+        key: (index) => [...items.keys()][index] ?? null,
+        getItem: (key) => items.get(String(key)) ?? null,
+        setItem: (key, value) => {
+          items.set(String(key), String(value));
+        },
+        removeItem: (key) => {
+          items.delete(String(key));
+        },
+        clear: () => items.clear(),
+      };
       const auth = new AuthStore(preferences);
       // Public synthetic identity, not a server credential. Its URL isolates the OPFS account.
       auth.save({
@@ -36,7 +48,7 @@
         if (identity.host !== base.href.replace(/\/$/, "") || identity.username !== "static-demo") {
           throw new Error("This demo is fixed to its local library. Reload the demo to reconnect.");
         }
-        return new StaticSubsonicClient(identity, catalog, preferences);
+        return new StaticSubsonicClient(identity, catalog);
       });
       runtime = { network, auth };
     } catch (cause) {

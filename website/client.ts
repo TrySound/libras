@@ -1,13 +1,51 @@
 import * as v from "valibot";
 import {
-  playQueueSchema,
+  responseSchema,
   type SubsonicApi,
   type SubsonicAuth,
   type SubsonicClient,
   type SubsonicPlayQueue,
   type SubsonicStreamOptions,
 } from "../src/subsonic-client";
-import type { StaticCatalog } from "./catalog";
+
+const assetsSchema = v.record(v.string(), v.object({ path: v.string(), contentType: v.string() }));
+
+export type StaticCatalog = ReturnType<typeof parseCatalog>;
+
+export function parseCatalog(search: unknown, assetData: unknown, base: URL) {
+  const response = v.parse(responseSchema, search)["subsonic-response"];
+  if (response.status !== "ok" || !response.searchResult3) {
+    throw new Error("The demo catalog is not a successful search3 response.");
+  }
+  return {
+    artists: response.searchResult3.artist ?? [],
+    albums: response.searchResult3.album ?? [],
+    tracks: response.searchResult3.song ?? [],
+    assets: v.parse(assetsSchema, assetData),
+    base,
+  };
+}
+
+export async function loadCatalog(base: URL, signal: AbortSignal, fetcher: typeof fetch = fetch) {
+  if (base.origin !== location.origin || !base.pathname.endsWith("/") || base.search || base.hash) {
+    throw new Error("The demo catalog must be hosted alongside this website.");
+  }
+  const read = async (name: string) => {
+    signal.throwIfAborted();
+    const response = await fetcher(new URL(name, base), {
+      signal,
+      cache: "no-cache",
+      credentials: "omit",
+      redirect: "error",
+    });
+    if (!response.ok) throw new Error(`Could not load demo metadata (HTTP ${response.status}).`);
+    const value: unknown = await response.json();
+    signal.throwIfAborted();
+    return value;
+  };
+  const [search, assets] = await Promise.all([read("search3.json"), read("assets.json")]);
+  return parseCatalog(search, assets, base);
+}
 
 /** Local protocol simulation. Media URLs point directly to Pages, never /rest endpoints. */
 export class StaticSubsonicClient implements SubsonicApi {
@@ -18,7 +56,6 @@ export class StaticSubsonicClient implements SubsonicApi {
   constructor(
     auth: SubsonicAuth,
     private catalog: StaticCatalog,
-    private storage: Storage,
   ) {
     this.host = auth.host;
     this.username = auth.username;
@@ -94,18 +131,11 @@ export class StaticSubsonicClient implements SubsonicApi {
 
   async getPlayQueue(): Promise<SubsonicPlayQueue> {
     this.signal.throwIfAborted();
-    const saved = this.storage.getItem("remote-queue");
-    if (saved === null) return { tracks: [], position: 0 };
-    const parsed = v.safeParse(playQueueSchema, JSON.parse(saved));
-    if (!parsed.success) throw new Error("The saved demo queue is invalid.");
-    return parsed.output;
+    return { tracks: [], position: 0 };
   }
 
-  async savePlayQueue(queue: SubsonicPlayQueue) {
+  async savePlayQueue(_queue: SubsonicPlayQueue) {
     this.signal.throwIfAborted();
-    this.storage.setItem(
-      "remote-queue",
-      JSON.stringify(v.parse(playQueueSchema, { ...queue, tracks: [...queue.tracks] })),
-    );
+    // The app's local playback queue is authoritative; the demo has no server queue.
   }
 }
