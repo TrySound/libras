@@ -1,6 +1,7 @@
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { inlineSvgSprite } from "./build/inline-svg-sprite.ts";
 
 const base = process.env.BASE_PATH ?? "/";
 const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -8,6 +9,7 @@ const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export default defineConfig({
   base,
   plugins: [
+    inlineSvgSprite(),
     svelte(),
     VitePWA({
       registerType: "prompt",

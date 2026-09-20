@@ -3,9 +3,8 @@ import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { flushSync, mount, unmount } from "svelte";
 import Icon from "../src/icon.svelte";
-import spriteUrl from "../src/sprite.svg?url&no-inline";
 
-it("renders a decorative icon using the external sprite URL", async () => {
+it("renders a decorative icon using the inline sprite", async () => {
   const target = document.createElement("div");
   const component = mount(Icon, {
     target,
@@ -18,7 +17,7 @@ it("renders a decorative icon using the external sprite URL", async () => {
     expect(svg.getAttribute("height")).toBe("32");
     expect(svg.getAttribute("class")).toBe("text-danger");
     expect(svg.getAttribute("aria-hidden")).toBe("true");
-    expect(svg.querySelector("use")?.getAttribute("href")).toBe(`${spriteUrl}#play`);
+    expect(svg.querySelector("use")?.getAttribute("href")).toBe("#icon-play");
     expect(svg.querySelector("path, symbol")).toBeNull();
   } finally {
     await unmount(component);
@@ -49,5 +48,5 @@ it("keeps the typed icon names in sync with the sprite symbols", () => {
   const symbols = [...sprite.matchAll(/<symbol\s+id="([^"]+)"/g)].map((match) => match[1]);
   const nameType = component.match(/export type IconName =([^;]+);/)![1];
   const names = [...nameType.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
-  expect(names.sort()).toEqual(symbols.sort());
+  expect(names.map((name) => `icon-${name}`).sort()).toEqual(symbols.sort());
 });

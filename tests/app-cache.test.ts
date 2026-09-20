@@ -5,7 +5,6 @@ import { flushSync, mount as mountComponent, unmount } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
-import spriteUrl from "../src/sprite.svg?url&no-inline";
 import { installNavigation } from "./router-test-helpers";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
@@ -189,7 +188,7 @@ it("uses the empty fallback before account selection and when selection is clear
   expect(brand?.getAttribute("width")).toBe("32");
   expect(brand?.getAttribute("height")).toBe("32");
   expect(brand?.querySelectorAll("path")).toHaveLength(0);
-  expect(brand?.querySelector("use")?.getAttribute("href")).toBe(`${spriteUrl}#brand`);
+  expect(brand?.querySelector("use")?.getAttribute("href")).toBe("#icon-brand");
   expect(target.querySelector(".topbar-brand")?.textContent?.trim()).toBe("");
   for (const link of target.querySelectorAll(".topbar-brand a")) {
     expect(link.getAttribute("href")).toBe("#/library");
@@ -227,7 +226,7 @@ it("uses the empty fallback before account selection and when selection is clear
   expect(artwork.getAttribute("aria-hidden")).toBe("true");
   expect(artwork.getAttribute("data-size")).toBe("md");
   expect(artwork.querySelector("img")).toBeNull();
-  expect(artwork.querySelector("use")?.getAttribute("href")).toBe(`${spriteUrl}#music`);
+  expect(artwork.querySelector("use")?.getAttribute("href")).toBe("#icon-music");
   expect(empty.querySelector("p")?.classList.contains("text-muted")).toBe(true);
   expect(empty.querySelector('a[href="#/settings"]')).not.toBeNull();
 });
@@ -590,7 +589,7 @@ it.each([
       expect(close.hasAttribute("command")).toBe(false);
       expect(close.getAttribute("title")).toBe("Close menu");
       expect(close.getAttribute("data-variant")).toBe("ghost");
-      expect(close.querySelector("use")?.getAttribute("href")).toBe(`${spriteUrl}#chevron-down`);
+      expect(close.querySelector("use")?.getAttribute("href")).toBe("#icon-chevron-down");
       expect(menu.querySelector(".topbar .type-title")?.id).toBe(
         menu.getAttribute("aria-labelledby"),
       );
