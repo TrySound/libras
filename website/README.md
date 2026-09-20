@@ -1,6 +1,6 @@
 # Static Libras demo
 
-This entry point imports the existing application from `../src` and serves a preconnected demo at `/libras/demo/`. All demo-specific code lives here. No real server, API token, password or export-source URL is used by the browser.
+This pnpm workspace (`@libras/website`) imports the existing application from `../src` and serves a preconnected demo at `/libras/demo/`. All demo-specific code lives here. No real server, API token, password or export-source URL is used by the browser.
 
 ## Architecture
 
@@ -17,18 +17,21 @@ The demo loads its catalog online on every launch. Local state/downloads survive
 Place a verified complete export in `website/public/catalog/` (ignored by Git), including audio, covers, `search3.json`, `assets.json`, credits and provenance. Never commit music or build-source credentials.
 
 ```sh
-pnpm dev:demo
+pnpm install
+pnpm --filter @libras/website dev
 # Open the URL printed by Vite, followed by /libras/demo/.
 pnpm check
 pnpm test
 pnpm build
-pnpm build:demo
-pnpm preview:demo
+pnpm --filter @libras/website build
+pnpm --filter @libras/website preview
 ```
 
-`build:demo` writes only `dist/demo/`, preserving the regular build in `dist/`. Run the regular build first because it clears `dist/`. The demo base defaults to `/libras/demo/`; `DEMO_BASE_PATH` can change it. Public catalog URLs are always resolved against that base, never against a secret build-source location. Icon symbols are reused from the regular app's HTML at build time.
+Each workspace uses Vite's normal defaults: the regular application builds to root `dist/`, while the website builds to `website/dist/`. The builds are independent and do not clear each other's output. Commands run in the website package directory, so its Vite config only sets the base URL and Svelte plugin—no custom root, public directory, output path, or HTML transformation. The demo base defaults to `/libras/demo/`; `DEMO_BASE_PATH` can change it. Public catalog URLs are resolved against that base, never against a secret build-source location. Both entries render `src/icons.svelte` through the shared App.
 
-A separate CI build step supplies the export via secrets before publishing. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Credits are linked from the demo header and settings; keep credits and licensing evidence with the published assets.
+The Pages workflow assembles the website output under `dist/demo/` after both packages build.
+
+A separate CI build step supplies the export via secrets before publishing. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Credits are linked from the website's demo notice; keep credits and licensing evidence with the published assets.
 
 ## Tests
 

@@ -41,6 +41,10 @@ it("opens the shared app preconnected, with isolated settings and no PWA registr
   flushSync();
   await vi.waitFor(() => expect(document.body.textContent).toContain("Demo artist"));
   expect(document.querySelector("form")).toBeNull();
+  expect(document.querySelectorAll("#icon-brand")).toHaveLength(1);
+  for (const use of document.querySelectorAll('use[href^="#icon-"]')) {
+    expect(document.querySelector(use.getAttribute("href")!)).not.toBeNull();
+  }
   expect(document.querySelector('a[href$="/catalog/credits.html"]')).not.toBeNull();
   expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
   expect(localStorage.getItem("navidrome-account")).toBe("regular account");
