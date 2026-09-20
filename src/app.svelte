@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, untrack, type Snippet } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import Player from "./player.svelte";
@@ -10,37 +10,25 @@
   import LibraryRoute from "./_library.svelte";
   import SearchRoute, { createSearchState } from "./_search.svelte";
   import type WebappUpdater from "./webapp-updater.svelte";
-  import { AuthStore } from "./auth";
+  import type { AuthStore } from "./auth";
   import { Covers } from "./covers.svelte";
   import Artwork from "./artwork.svelte";
   import type { Album as AlbumRecord, Artist as ArtistRecord } from "./schema";
   import { Cache, type Immutable } from "./cache.svelte";
   import { Session } from "./session.svelte";
-  import { Network } from "./network.svelte";
+  import type { Network } from "./network.svelte";
   import Router, { navigate, type RouteParams } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { installSwipeToDismiss } from "./swipe-to-dismiss";
 
   interface Props {
-    network?: Network;
-    auth?: AuthStore;
-    preferences?: Storage;
-    updaterComponent?: typeof WebappUpdater;
-    settingsView?: Snippet<[Session]>;
-    headerContent?: Snippet;
-    title?: string;
+    network: Network;
+    auth: AuthStore;
+    updaterComponent: typeof WebappUpdater | undefined;
   }
 
-  // Entry points supply infrastructure; domain engines and state still belong to App.
-  let {
-    network = new Network(),
-    auth = new AuthStore(),
-    preferences = localStorage,
-    updaterComponent: Updater,
-    settingsView,
-    headerContent,
-    title = "Libras",
-  }: Props = $props();
+  // Entry points explicitly supply infrastructure; UI and domain state belong to App.
+  let { network, auth, updaterComponent: Updater }: Props = $props();
 
   const durationFormatter = new Intl.DurationFormat("en", {
     minutes: "numeric",
@@ -107,7 +95,7 @@
         covers,
         tracks: trackEngine,
         playback,
-        preferences,
+        preferences: localStorage,
       }),
   );
   const offlineMode = $derived(session.offlineMode);
@@ -185,7 +173,7 @@
 />
 
 <svelte:head>
-  <title>{title}</title>
+  <title>Libras</title>
 </svelte:head>
 
 {#snippet icon(name: string, size = 20, className = "")}
@@ -218,11 +206,7 @@
 {/snippet}
 
 {#snippet settingsRoute()}
-  {#if settingsView}
-    {@render settingsView(session)}
-  {:else}
-    <Settings {session} />
-  {/if}
+  <Settings {session} />
 {/snippet}
 
 {#snippet downloadsRoute()}
@@ -258,7 +242,6 @@
     {@render brand()}
     <div></div>
     <div class="row-sm">
-      {@render headerContent?.()}
       {#if hasErrors}
         <button
           class="icon-button"

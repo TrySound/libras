@@ -1,6 +1,7 @@
-import { getAccountKey } from "../src/auth";
+import { AuthStore, getAccountKey } from "../src/auth";
+import { Network } from "../src/network.svelte";
 // @vitest-environment happy-dom
-import { flushSync, mount, unmount } from "svelte";
+import { flushSync, mount as mountComponent, unmount } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
@@ -9,6 +10,13 @@ import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { TrackEngine } from "../src/track.svelte";
 import { Covers } from "../src/covers.svelte";
+
+function mount(component: typeof App, { target }: { target: HTMLElement }) {
+  return mountComponent(component, {
+    target,
+    props: { network: new Network(), auth: new AuthStore(), updaterComponent: undefined },
+  });
+}
 
 const mocks = vi.hoisted(() => ({
   localReady: true,

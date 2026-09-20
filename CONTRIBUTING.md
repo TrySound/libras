@@ -51,7 +51,7 @@ For implementation details, consult the owning module and its tests rather than 
 
 ### Application entry points
 
-`Network` accepts an optional `SubsonicClientFactory`; the default remains the authenticated HTTP client. Alternate clients implement the public `SubsonicApi` surface while Network retains cancellation and connection ownership. App accepts optional network/auth/preference dependencies plus settings/header snippets. These dependencies are fixed for a mounted application's lifetime. The normal entry point supplies `WebappUpdater`; entries without it do not import or register PWA support.
+`Network` accepts an optional `SubsonicClientFactory`; the default remains the authenticated HTTP client. Alternate clients implement the public `SubsonicApi` surface while Network retains cancellation and connection ownership. App requires `network`, `auth`, and `updaterComponent` from its entry point; these dependencies are fixed for a mounted application's lifetime. Its preferences, settings UI, header and title remain inline. The normal entry point supplies `WebappUpdater`; entries explicitly passing `undefined` do not import or register PWA support.
 
 ### Server identity
 

@@ -3,6 +3,8 @@ import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
 import WebappUpdater from "../src/webapp-updater.svelte";
+import { Network } from "../src/network.svelte";
+import { AuthStore } from "../src/auth";
 import { registerSW } from "virtual:pwa-register";
 import { installNavigation } from "./router-test-helpers";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
@@ -50,7 +52,11 @@ async function setup(saved = false, pwa = true) {
   const navigate = mocks.navigate;
   const component = mount(App, {
     target,
-    props: { updaterComponent: pwa ? WebappUpdater : undefined },
+    props: {
+      network: new Network(),
+      auth: new AuthStore(),
+      updaterComponent: pwa ? WebappUpdater : undefined,
+    },
   });
   flushSync();
   mocks.navigate.mockClear();
