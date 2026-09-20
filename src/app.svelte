@@ -2,7 +2,6 @@
   import Icon from "./icon.svelte";
   import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
-  import Icons from "./icons.svelte";
   import { Playback } from "./playback.svelte";
   import Player from "./player.svelte";
   import Downloads from "./_downloads.svelte";
@@ -162,8 +161,6 @@
     return Math.min(100, Math.max(0, (cache.queue.position / playbackDuration) * 100));
   }
 </script>
-
-<Icons />
 
 <Player
   bind:this={player}

@@ -27,7 +27,7 @@ pnpm --filter @libras/website build
 pnpm --filter @libras/website preview
 ```
 
-Each workspace uses Vite's normal defaults: the regular application builds to root `dist/`, while the website builds to `website/dist/`. The builds are independent and do not clear each other's output. Commands run in the website package directory, so its Vite config only sets the base URL and Svelte plugin—no custom root, public directory, output path, or HTML transformation. The demo base defaults to `/libras/demo/`; `DEMO_BASE_PATH` can change it. Public catalog URLs are resolved against that base, never against a secret build-source location. Both entries render `src/icons.svelte` through the shared App.
+Each workspace uses Vite's normal defaults: the regular application builds to root `dist/`, while the website builds to `website/dist/`. The builds are independent and do not clear each other's output. Commands run in the website package directory, so its Vite config only sets the base URL and Svelte plugin—no custom root, public directory, output path, or HTML transformation. The demo base defaults to `/libras/demo/`; `DEMO_BASE_PATH` can change it. Public catalog URLs are resolved against that base, never against a secret build-source location. The shared app's typed `Icon` component imports `src/sprite.svg?url&no-inline`. Vite emits the SVG as a separate hashed asset using each workspace's base URL. There is no copied HTML sprite, icon geometry in JavaScript, or custom Vite transformation.
 
 The Pages workflow assembles the website output under `dist/demo/` after both packages build.
 
