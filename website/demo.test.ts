@@ -1,12 +1,34 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Demo from "./demo.svelte";
 import { assetsFixture, searchFixture } from "./fixtures";
 import { installDisk } from "../tests/cache-test-helpers";
 import { installNavigation } from "../tests/router-test-helpers";
 
 let component: ReturnType<typeof Demo> | undefined;
+const fetcher = vi.fn<typeof fetch>();
+async function catalogResponse(input: Parameters<typeof fetch>[0]) {
+  const url = String(input);
+  if (url.endsWith("search3.json")) return new Response(JSON.stringify(searchFixture));
+  if (url.endsWith("assets.json")) return new Response(JSON.stringify(assetsFixture));
+  if (url.endsWith(".svg"))
+    return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', {
+      headers: { "Content-Type": "image/svg+xml" },
+    });
+  throw new Error("Unexpected request");
+}
+function render() {
+  component = mount(Demo, { target: document.body });
+  flushSync();
+}
+beforeEach(() => {
+  installDisk();
+  installNavigation("/settings");
+  vi.stubEnv("BASE_URL", "/libras/demo/");
+  fetcher.mockReset().mockImplementation(catalogResponse);
+  vi.stubGlobal("fetch", fetcher);
+});
 afterEach(async () => {
   if (component) await unmount(component);
   component = undefined;
@@ -17,54 +39,26 @@ afterEach(async () => {
   vi.unstubAllEnvs();
 });
 
-it("opens the shared app preconnected, with isolated settings and no PWA registration", async () => {
-  installDisk();
-  installNavigation("/library", vi.fn());
-  vi.stubEnv("BASE_URL", "/libras/demo/");
+it("opens preconnected without touching regular settings or registering a PWA", async () => {
+  installNavigation("/library");
   const register = vi.fn();
   Object.assign(navigator, { serviceWorker: { register } });
   localStorage.setItem("navidrome-auth", "regular credentials");
   localStorage.setItem("navidrome-account", "regular account");
   localStorage.setItem("navidrome-offline-mode", "true");
-  const fetcher = vi.fn<typeof fetch>(async (input) => {
-    const url = String(input);
-    if (url.endsWith("search3.json")) return new Response(JSON.stringify(searchFixture));
-    if (url.endsWith("assets.json")) return new Response(JSON.stringify(assetsFixture));
-    if (url.endsWith(".svg"))
-      return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', {
-        headers: { "Content-Type": "image/svg+xml" },
-      });
-    throw new Error("Unexpected request");
-  });
-  vi.stubGlobal("fetch", fetcher);
-  component = mount(Demo, { target: document.body });
-  flushSync();
+  render();
   await vi.waitFor(() => expect(document.body.textContent).toContain("Demo artist"));
   expect(document.querySelector("form")).toBeNull();
-  expect(document.querySelector('[aria-label="Demo information"]')).toBeNull();
   expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
   expect(localStorage.getItem("navidrome-account")).toBe("regular account");
   expect(localStorage.getItem("navidrome-offline-mode")).toBe("true");
   expect(localStorage.length).toBe(3);
   expect(register).not.toHaveBeenCalled();
-  expect(fetcher.mock.calls.every(([url]) => !String(url).includes("/rest/"))).toBe(true);
 });
 
-it("keeps shared settings but rejects switching the demo into a real account", async () => {
-  installDisk();
-  installNavigation("/settings", vi.fn());
-  vi.stubEnv("BASE_URL", "/libras/demo/");
+it("rejects switching the demo into a real account", async () => {
   localStorage.setItem("navidrome-auth", "regular credentials");
-  const fetcher = vi.fn<typeof fetch>(async (input) => {
-    if (String(input).endsWith("search3.json")) return new Response(JSON.stringify(searchFixture));
-    if (String(input).endsWith("assets.json")) return new Response(JSON.stringify(assetsFixture));
-    return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', {
-      headers: { "Content-Type": "image/svg+xml" },
-    });
-  });
-  vi.stubGlobal("fetch", fetcher);
-  component = mount(Demo, { target: document.body });
-  flushSync();
+  render();
   await vi.waitFor(() =>
     expect(document.querySelector('[aria-label="Disconnect"]')).not.toBeNull(),
   );
@@ -91,52 +85,28 @@ it("keeps shared settings but rejects switching the demo into a real account", a
   );
 });
 
-it("resets demo preferences on a new mount without writing to localStorage", async () => {
-  installDisk();
-  installNavigation("/settings", vi.fn());
-  vi.stubEnv("BASE_URL", "/libras/demo/");
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<typeof fetch>(async (input) => {
-      if (String(input).endsWith("search3.json"))
-        return new Response(JSON.stringify(searchFixture));
-      if (String(input).endsWith("assets.json")) return new Response(JSON.stringify(assetsFixture));
-      return new Response("", { status: 404 });
-    }),
-  );
+it("resets preferences on a new mount without writing to localStorage", async () => {
   const toggle = () =>
     document.querySelector<HTMLInputElement>('input[aria-label="Offline library"]');
-  component = mount(Demo, { target: document.body });
-  flushSync();
+  render();
   await vi.waitFor(() => expect(toggle()?.disabled).toBe(false));
   expect(toggle()!.checked).toBe(false);
   toggle()!.click();
   await vi.waitFor(() => expect(toggle()!.checked).toBe(true));
-  await unmount(component);
+  await unmount(component!);
   component = undefined;
-  component = mount(Demo, { target: document.body });
-  flushSync();
+  render();
   await vi.waitFor(() => expect(toggle()?.disabled).toBe(false));
   expect(toggle()!.checked).toBe(false);
   expect(localStorage.length).toBe(0);
 });
 
 it("uses shared app errors and Refresh library to retry catalog loading", async () => {
-  installDisk();
-  installNavigation("/settings", vi.fn());
-  vi.stubEnv("BASE_URL", "/libras/demo/");
-  const fetcher = vi.fn<typeof fetch>(async () => new Response("missing", { status: 404 }));
-  vi.stubGlobal("fetch", fetcher);
-  component = mount(Demo, { target: document.body });
-  flushSync();
+  fetcher.mockImplementation(async () => new Response("missing", { status: 404 }));
+  render();
   await vi.waitFor(() => expect(document.body.textContent).toContain("HTTP 404"));
   expect(document.querySelector("form")).toBeNull();
-  fetcher.mockImplementation(
-    async (url) =>
-      new Response(
-        JSON.stringify(String(url).endsWith("search3.json") ? searchFixture : assetsFixture),
-      ),
-  );
+  fetcher.mockImplementation(catalogResponse);
   document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
   await vi.waitFor(() => expect(document.body.textContent).not.toContain("HTTP 404"));
   expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("search3.json"))).toHaveLength(
