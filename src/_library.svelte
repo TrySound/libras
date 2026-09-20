@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./icon.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./artwork.svelte";
@@ -71,14 +72,14 @@
         aria-label="Search"
         title="Search"
       >
-        <svg aria-hidden="true" width="20" height="20"><use href="#icon-search"></use></svg>
+        <Icon name="search" />
       </a>
     </div>
 
     {#if loading}
       <div class="empty-state stack-md">
         <div class="scan-spinner">
-          <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg>
+          <Icon name="loading" />
         </div>
         <p class="type-body text-muted">Restoring local library…</p>
       </div>
@@ -137,9 +138,7 @@
   <div class="wings">
     <header class="topbar wings-item">
       <button class="icon-button" data-size="sm" data-variant="ghost" title="Close menu">
-        <svg class="self-center" aria-hidden="true" width="20" height="20"
-          ><use href="#icon-chevron-down"></use></svg
-        >
+        <Icon name="chevron-down" class="self-center" />
       </button>
       <span id="artist-menu-title" class="type-title">{menuArtist?.name}</span>
     </header>
@@ -147,36 +146,28 @@
       class="wings-item row-button"
       onclick={() => void playback.replaceQueueAndPlay(availableTrackIds)}
     >
-      <svg class="self-center" aria-hidden="true" width="20" height="20">
-        <use href="#icon-play"></use>
-      </svg>
+      <Icon name="play" class="self-center" />
       <span>Play</span>
     </button>
     <button
       class="wings-item row-button"
       onclick={() => void playback.enqueue(availableTrackIds, "next")}
     >
-      <svg class="self-center" aria-hidden="true" width="20" height="20">
-        <use href="#icon-next"></use>
-      </svg>
+      <Icon name="next" class="self-center" />
       <span>Play next</span>
     </button>
     <button
       class="wings-item row-button"
       onclick={() => void playback.enqueue(availableTrackIds, "last")}
     >
-      <svg class="self-center" aria-hidden="true" width="20" height="20">
-        <use href="#icon-plus"></use>
-      </svg>
+      <Icon name="plus" class="self-center" />
       <span>Play last</span>
     </button>
     <button
       class="wings-item row-button"
       onclick={() => trackEngine.downloadMany(tracks.map((track) => track.id))}
     >
-      <svg class="self-center" aria-hidden="true" width="20" height="20">
-        <use href="#icon-download"></use>
-      </svg>
+      <Icon name="download" class="self-center" />
       <span>Download</span>
     </button>
   </div>

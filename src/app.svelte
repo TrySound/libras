@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./icon.svelte";
   import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
@@ -176,12 +177,6 @@
   <title>Libras</title>
 </svelte:head>
 
-{#snippet icon(name: string, size = 20, className = "")}
-  <svg class={className} aria-hidden="true" width={size} height={size}>
-    <use href={`#icon-${name}`}></use>
-  </svg>
-{/snippet}
-
 {#snippet brand()}
   <div class="topbar-brand">
     <a
@@ -191,16 +186,7 @@
       aria-label="Libras home"
       title="Home"
     >
-      <svg
-        role="img"
-        aria-label="Libras"
-        width="32"
-        height="32"
-        viewBox="0 0 256 256"
-        fill="currentColor"
-      >
-        <use href="#icon-brand"></use>
-      </svg>
+      <Icon name="brand" size="lg" />
     </a>
   </div>
 {/snippet}
@@ -252,7 +238,7 @@
           aria-label="Show errors"
           title="Show errors"
         >
-          {@render icon("error", 20, "text-danger")}
+          <Icon name="error" class="text-danger" />
         </button>
         <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
           <div class="stack-sm grow">
@@ -268,7 +254,7 @@
             data-variant="ghost"
             aria-label="Close errors"
             commandfor="error-popover"
-            command="hide-popover">{@render icon("cross")}</button
+            command="hide-popover"><Icon name="cross" /></button
           >
         </div>
       {/if}
@@ -282,7 +268,7 @@
           aria-label="App update"
           title="App update"
         >
-          {@render icon(appUpdate.busy ? "loading" : "refresh")}
+          <Icon name={appUpdate.busy ? "loading" : "refresh"} />
         </button>
         <div
           id="update-popover"
@@ -310,7 +296,7 @@
             data-variant="ghost"
             aria-label="Close app update"
             commandfor="update-popover"
-            command="hide-popover">{@render icon("cross")}</button
+            command="hide-popover"><Icon name="cross" /></button
           >
         </div>
       {/if}
@@ -322,7 +308,7 @@
         aria-label="Settings"
         title="Settings"
       >
-        {@render icon("settings")}
+        <Icon name="settings" />
       </a>
     </div>
   </header>
@@ -366,11 +352,11 @@
       title={player?.playing ? "Pause" : "Play"}
     >
       {#if playbackLoading}
-        {@render icon("loading")}
+        <Icon name="loading" />
       {:else if player?.playing}
-        {@render icon("pause")}
+        <Icon name="pause" />
       {:else}
-        {@render icon("play")}
+        <Icon name="play" />
       {/if}
     </button>
     <span class="mini-progress">
@@ -387,7 +373,7 @@
       data-variant="ghost"
       commandfor="player-dialog"
       command="close"
-      title="Close player">{@render icon("chevron-down")}</button
+      title="Close player"><Icon name="chevron-down" /></button
     >
   </header>
 
@@ -460,7 +446,7 @@
             data-variant="neutral"
             onclick={() => playback.previous()}
             disabled={!hasPreviousTrack && cache.queue.position <= 0}
-            title="Previous">{@render icon("previous")}</button
+            title="Previous"><Icon name="previous" /></button
           >
           <button
             class="icon-button"
@@ -471,11 +457,11 @@
             title={player?.playing ? "Pause" : "Play"}
           >
             {#if playbackLoading}
-              {@render icon("loading", 32)}
+              <Icon name="loading" size="lg" />
             {:else if player?.playing}
-              {@render icon("pause", 32)}
+              <Icon name="pause" size="lg" />
             {:else}
-              {@render icon("play", 32)}
+              <Icon name="play" size="lg" />
             {/if}
           </button>
           <button
@@ -484,7 +470,7 @@
             data-variant="neutral"
             onclick={() => playback.next()}
             disabled={!hasNextTrack}
-            title="Next">{@render icon("next")}</button
+            title="Next"><Icon name="next" /></button
           >
         </div>
       </div>
@@ -526,23 +512,23 @@
               <span class="track-leading">
                 {#if index === cache.queue.index && playbackLoading}
                   <span role="img" aria-label="Loading playback">
-                    {@render icon("loading")}
+                    <Icon name="loading" />
                   </span>
                 {:else if index === cache.queue.index && player?.playing}
                   <span role="img" aria-label="Playing">
-                    {@render icon("sound-bars")}
+                    <Icon name="sound-bars" />
                   </span>
                 {:else if index === cache.queue.index}
                   <span role="img" aria-label="Current track, not playing">
-                    {@render icon("pause")}
+                    <Icon name="pause" />
                   </span>
                 {:else if downloadStatus === "downloading"}
                   <span role="img" aria-label="Downloading">
-                    {@render icon("loading")}
+                    <Icon name="loading" />
                   </span>
                 {:else if downloadStatus === "queued"}
                   <span role="img" aria-label="Queued for download">
-                    {@render icon("clock")}
+                    <Icon name="clock" />
                   </span>
                 {:else}
                   {String(visibleIndex + 1).padStart(2, "0")}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./icon.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./artwork.svelte";
@@ -86,14 +87,14 @@
           command="show-modal"
           title={`Open menu for ${album.title}`}
         >
-          <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
+          <Icon name="menu" />
         </button>
       </div>
 
       {#if loading}
         <div class="empty-state stack-md">
           <div class="scan-spinner">
-            <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg>
+            <Icon name="loading" />
           </div>
           <p class="type-body text-muted">Restoring local library…</p>
         </div>
@@ -121,27 +122,23 @@
           <span class="track-leading">
             {#if currentTrack?.id === track.id && playbackState === "loading"}
               <span role="img" aria-label="Loading playback">
-                <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg
-                >
+                <Icon name="loading" />
               </span>
             {:else if currentTrack?.id === track.id && playbackState === "playing"}
               <span role="img" aria-label="Playing">
-                <svg aria-hidden="true" width="20" height="20"
-                  ><use href="#icon-sound-bars"></use></svg
-                >
+                <Icon name="sound-bars" />
               </span>
             {:else if currentTrack?.id === track.id}
               <span role="img" aria-label="Current track, not playing">
-                <svg aria-hidden="true" width="20" height="20"><use href="#icon-pause"></use></svg>
+                <Icon name="pause" />
               </span>
             {:else if downloadStatus === "downloading"}
               <span role="img" aria-label="Downloading">
-                <svg aria-hidden="true" width="20" height="20"><use href="#icon-loading"></use></svg
-                >
+                <Icon name="loading" />
               </span>
             {:else if downloadStatus === "queued"}
               <span role="img" aria-label="Queued for download">
-                <svg aria-hidden="true" width="20" height="20"><use href="#icon-clock"></use></svg>
+                <Icon name="clock" />
               </span>
             {:else}
               {String(track.number ?? index + 1).padStart(2, "0")}
@@ -170,7 +167,7 @@
               command="show-modal"
               title={`Open menu for ${track.title}`}
             >
-              <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
+              <Icon name="menu" />
             </button>
           </span>
         </div>
@@ -214,9 +211,7 @@
     <div class="wings">
       <header class="topbar wings-item">
         <button class="icon-button" data-size="sm" data-variant="ghost" title="Close menu">
-          <svg class="self-center" aria-hidden="true" width="20" height="20"
-            ><use href="#icon-chevron-down"></use></svg
-          >
+          <Icon name="chevron-down" class="self-center" />
         </button>
         <span id="album-page-menu-title" class="type-title">{album.title}</span>
       </header>
@@ -224,27 +219,21 @@
         class="wings-item row-button"
         onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
       >
-        <svg class="self-center" aria-hidden="true" width="20" height="20"
-          ><use href="#icon-play"></use></svg
-        >
+        <Icon name="play" class="self-center" />
         <span>Play</span>
       </button>
       <button
         class="wings-item row-button"
         onclick={() => void playback.enqueue(visibleTrackIds, "next")}
       >
-        <svg class="self-center" aria-hidden="true" width="20" height="20"
-          ><use href="#icon-next"></use></svg
-        >
+        <Icon name="next" class="self-center" />
         <span>Play next</span>
       </button>
       <button
         class="wings-item row-button"
         onclick={() => void playback.enqueue(visibleTrackIds, "last")}
       >
-        <svg class="self-center" aria-hidden="true" width="20" height="20"
-          ><use href="#icon-plus"></use></svg
-        >
+        <Icon name="plus" class="self-center" />
         <span>Play last</span>
       </button>
       <button
@@ -254,9 +243,7 @@
             (cache.albumTracks.get(album.id) ?? []).map((track) => track.id),
           )}
       >
-        <svg class="self-center" aria-hidden="true" width="20" height="20"
-          ><use href="#icon-download"></use></svg
-        >
+        <Icon name="download" class="self-center" />
         <span>Download</span>
       </button>
     </div>
@@ -275,34 +262,26 @@
       <div class="wings">
         <header class="topbar wings-item">
           <button class="icon-button" data-size="sm" data-variant="ghost" title="Close menu">
-            <svg class="self-center" aria-hidden="true" width="20" height="20"
-              ><use href="#icon-chevron-down"></use></svg
-            >
+            <Icon name="chevron-down" class="self-center" />
           </button>
           <span id={`${trackMenuId}-title`} class="type-title">{track.title}</span>
         </header>
         <button class="wings-item row-button" onclick={() => playTrack(track)}>
-          <svg class="self-center" aria-hidden="true" width="20" height="20"
-            ><use href="#icon-play"></use></svg
-          >
+          <Icon name="play" class="self-center" />
           <span>Play</span>
         </button>
         <button
           class="wings-item row-button"
           onclick={() => void playback.enqueue([track.id], "next")}
         >
-          <svg class="self-center" aria-hidden="true" width="20" height="20"
-            ><use href="#icon-next"></use></svg
-          >
+          <Icon name="next" class="self-center" />
           <span>Play next</span>
         </button>
         <button
           class="wings-item row-button"
           onclick={() => void playback.enqueue([track.id], "last")}
         >
-          <svg class="self-center" aria-hidden="true" width="20" height="20"
-            ><use href="#icon-plus"></use></svg
-          >
+          <Icon name="plus" class="self-center" />
           <span>Play last</span>
         </button>
         <button
@@ -311,24 +290,16 @@
           onclick={() => void trackEngine.download(track.id)}
         >
           {#if downloadStatus === "downloaded"}
-            <svg class="self-center" aria-hidden="true" width="20" height="20"
-              ><use href="#icon-check"></use></svg
-            >
+            <Icon name="check" class="self-center" />
             <span>Downloaded</span>
           {:else if downloadStatus === "queued"}
-            <svg class="self-center" aria-hidden="true" width="20" height="20"
-              ><use href="#icon-clock"></use></svg
-            >
+            <Icon name="clock" class="self-center" />
             <span>Queued</span>
           {:else if downloadStatus === "downloading"}
-            <svg class="self-center" aria-hidden="true" width="20" height="20"
-              ><use href="#icon-loading"></use></svg
-            >
+            <Icon name="loading" class="self-center" />
             <span>Downloading…</span>
           {:else}
-            <svg class="self-center" aria-hidden="true" width="20" height="20"
-              ><use href="#icon-download"></use></svg
-            >
+            <Icon name="download" class="self-center" />
             <span>Download</span>
           {/if}
         </button>
