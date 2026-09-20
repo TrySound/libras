@@ -32,8 +32,14 @@ export class StaticSubsonicClient implements SubsonicApi {
   readonly username: string;
 
   private pending?: Promise<StaticCatalog>;
+  // The demo reuses one base URL object across reconnects; separate mounts stay isolated.
+  private static catalogs = new WeakMap<URL, StaticCatalog>();
 
-  static createFactory(base: URL, fetcher: typeof fetch = fetch) {
+  constructor(
+    auth: SubsonicAuth,
+    private base: URL,
+    private fetcher: typeof fetch = fetch,
+  ) {
     if (
       base.origin !== location.origin ||
       !base.pathname.endsWith("/") ||
@@ -42,30 +48,20 @@ export class StaticSubsonicClient implements SubsonicApi {
     ) {
       throw new Error("The demo catalog must be hosted alongside this website.");
     }
-    // Successful metadata survives reconnects, but not a new demo runtime/page load.
-    const state: { catalog?: StaticCatalog } = {};
-    return (auth: SubsonicAuth) => new StaticSubsonicClient(auth, base, state, fetcher);
-  }
-
-  private constructor(
-    auth: SubsonicAuth,
-    private base: URL,
-    private state: { catalog?: StaticCatalog },
-    private fetcher: typeof fetch,
-  ) {
     this.host = auth.host;
     this.username = auth.username;
   }
 
   private get catalog() {
-    if (!this.state.catalog) throw new Error("The demo catalog is still loading.");
-    return this.state.catalog;
+    const catalog = StaticSubsonicClient.catalogs.get(this.base);
+    if (!catalog) throw new Error("The demo catalog is still loading.");
+    return catalog;
   }
 
   private async loadCatalog(signal = this.signal) {
     this.signal.throwIfAborted();
     signal.throwIfAborted();
-    if (!this.state.catalog) {
+    if (!StaticSubsonicClient.catalogs.has(this.base)) {
       const combined = AbortSignal.any([this.signal, signal]);
       this.pending ??= (async () => {
         const fetcher = this.fetcher;
@@ -82,7 +78,9 @@ export class StaticSubsonicClient implements SubsonicApi {
         };
         const [search, assets] = await Promise.all([read("search3.json"), read("assets.json")]);
         combined.throwIfAborted();
-        return (this.state.catalog = parseCatalog(search, assets));
+        const catalog = parseCatalog(search, assets);
+        StaticSubsonicClient.catalogs.set(this.base, catalog);
+        return catalog;
       })().finally(() => {
         this.pending = undefined;
       });

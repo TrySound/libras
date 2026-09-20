@@ -24,7 +24,9 @@ function setup(assets: unknown = assetsFixture) {
     async (url) =>
       new Response(JSON.stringify(String(url).endsWith("search3.json") ? searchFixture : assets)),
   );
-  const createClient = StaticSubsonicClient.createFactory(base, fetcher);
+  const catalogBase = new URL(base);
+  const createClient = (identity: typeof auth) =>
+    new StaticSubsonicClient(identity, catalogBase, fetcher);
   return { fetcher, createClient, client: createClient(auth) };
 }
 
@@ -120,7 +122,7 @@ describe("static client", () => {
     for (const [, init] of fetcher.mock.calls)
       expect(init).toMatchObject({ credentials: "omit", redirect: "error", cache: "no-cache" });
     expect(fetcher.mock.contexts).toEqual([undefined, undefined]);
-    expect(() => StaticSubsonicClient.createFactory(new URL("https://elsewhere.invalid/"))).toThrow(
+    expect(() => new StaticSubsonicClient(auth, new URL("https://elsewhere.invalid/"))).toThrow(
       "alongside",
     );
   });

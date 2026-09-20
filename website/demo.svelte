@@ -37,12 +37,11 @@
     token: "local-demo",
     salt: "local-demo",
   });
-  const createClient = StaticSubsonicClient.createFactory(catalogBase);
   const network = new Network((identity) => {
     if (identity.host !== base.href.replace(/\/$/, "") || identity.username !== "static-demo") {
       throw new Error("This demo is fixed to its local library. Reload the demo to reconnect.");
     }
-    return createClient(identity);
+    return new StaticSubsonicClient(identity, catalogBase);
   });
 </script>
 
