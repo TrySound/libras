@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import Player from "./player.svelte";
@@ -9,17 +9,26 @@
   import ArtistRoute from "./_artist.svelte";
   import LibraryRoute from "./_library.svelte";
   import SearchRoute, { createSearchState } from "./_search.svelte";
-  import WebappUpdater from "./webapp-updater.svelte";
-  import { AuthStore } from "./auth";
+  import type WebappUpdater from "./webapp-updater.svelte";
+  import type { AuthStore } from "./auth";
   import { Covers } from "./covers.svelte";
   import Artwork from "./artwork.svelte";
   import type { Album as AlbumRecord, Artist as ArtistRecord } from "./schema";
   import { Cache, type Immutable } from "./cache.svelte";
   import { Session } from "./session.svelte";
-  import { Network } from "./network.svelte";
+  import type { Network } from "./network.svelte";
   import Router, { navigate, type RouteParams } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { installSwipeToDismiss } from "./swipe-to-dismiss";
+
+  interface Props {
+    network: Network;
+    auth: AuthStore;
+    updaterComponent: typeof WebappUpdater | undefined;
+  }
+
+  // Entry points explicitly supply infrastructure; UI and domain state belong to App.
+  let { network, auth, updaterComponent: Updater }: Props = $props();
 
   const durationFormatter = new Intl.DurationFormat("en", {
     minutes: "numeric",
@@ -77,16 +86,18 @@
     covers,
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
   });
-  const network = new Network();
-  const session = new Session({
-    selection,
-    network,
-    auth: new AuthStore(),
-    covers,
-    tracks: trackEngine,
-    playback,
-    preferences: localStorage,
-  });
+  const session = untrack(
+    () =>
+      new Session({
+        selection,
+        network,
+        auth,
+        covers,
+        tracks: trackEngine,
+        playback,
+        preferences: localStorage,
+      }),
+  );
   const offlineMode = $derived(session.offlineMode);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);
@@ -558,4 +569,6 @@
   </section>
 </dialog>
 
-<WebappUpdater bind:this={updater} />
+{#if Updater}
+  <Updater bind:this={updater} />
+{/if}

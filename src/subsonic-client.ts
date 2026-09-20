@@ -115,6 +115,13 @@ export interface SubsonicClientOptions {
   fetch?: typeof fetch;
 }
 
+/** Public protocol surface; alternate transports need not inherit private client state. */
+export type SubsonicApi = Pick<SubsonicClient, keyof SubsonicClient>;
+export type SubsonicClientFactory = (
+  auth: SubsonicAuth,
+  options: SubsonicClientOptions,
+) => SubsonicApi;
+
 export class SubsonicClient {
   #apiVersion: string;
   #auth: SubsonicAuth;
