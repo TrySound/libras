@@ -30,7 +30,6 @@
 
   const base = new URL(import.meta.env.BASE_URL, location.origin);
   const catalogBase = new URL("catalog/", base);
-  const creditsUrl = new URL("credits.html", catalogBase).href;
   let runtime = $state.raw<{ network: Network; auth: AuthStore }>();
   let error = $state("");
   let controller: AbortController | undefined;
@@ -72,11 +71,6 @@
 </script>
 
 {#if runtime}
-  <aside class="view container row-sm" aria-label="Demo information">
-    <span class="type-small text-muted">Demo library · online launch required</span>
-    <a class="text-link type-small" href={creditsUrl} target="_blank" rel="noopener">Demo credits</a
-    >
-  </aside>
   <App network={runtime.network} auth={runtime.auth} updaterComponent={undefined} />
 {:else}
   <main class="view container stack-md">

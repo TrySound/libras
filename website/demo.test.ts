@@ -41,7 +41,7 @@ it("opens the shared app preconnected, with isolated settings and no PWA registr
   flushSync();
   await vi.waitFor(() => expect(document.body.textContent).toContain("Demo artist"));
   expect(document.querySelector("form")).toBeNull();
-  expect(document.querySelector('a[href$="/catalog/credits.html"]')).not.toBeNull();
+  expect(document.querySelector('[aria-label="Demo information"]')).toBeNull();
   expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
   expect(localStorage.getItem("navidrome-account")).toBe("regular account");
   expect(localStorage.getItem("navidrome-offline-mode")).toBe("true");

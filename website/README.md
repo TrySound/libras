@@ -7,7 +7,7 @@ This pnpm workspace (`@libras/website`) imports the existing application from `.
 - `client.ts` loads plain `search3.json` using the shared Subsonic response schema and reads the `assets.json` path map. It implements independent library pagination, original audio/artwork URLs and cancellation without intercepting global fetch or emulating `/rest` endpoints. Server-queue reads return empty and writes are ignored; the app's local playback queue is sufficient. The exporter checks IDs, relationships, credits, durations and asset integrity before publishing.
 - `demo.svelte` supplies the required network, auth and updater dependencies to the real application, explicitly passing `undefined` for the updater. Cache/OPFS isolation comes from the separate demo account identity; preferences and auth share a per-runtime `MemoryStorage` instance, with the class defined in this component and never read or write localStorage. App's inline preference setup uses the injected auth store's storage scope, not a separate prop.
 - `vite.config.ts` is a separate build **without the PWA plugin**. There is no manifest, install prompt or demo service worker. Do not unregister the regular app's worker: its broader scope may control this URL, but its navigation fallback excludes the demo and does not cache demo assets.
-- Settings, header, title, playback, explicit downloads and library UI stay inline in the shared app. A small website-owned notice outside App links music credits. Shared Settings still allows disconnect, but the static client factory rejects any different account before a cache can be selected; it cannot connect to real servers or touch their OPFS data. Reload the demo to restore its synthetic login and default preferences after disconnecting.
+- Settings, header, title, playback, explicit downloads and library UI stay inline in the shared app. There is no demo-specific wrapper UI around App; music credits remain available at `catalog/credits.html`. Shared Settings still allows disconnect, but the static client factory rejects any different account before a cache can be selected; it cannot connect to real servers or touch their OPFS data. Reload the demo to restore its synthetic login and default preferences after disconnecting.
 
 The demo loads its catalog online on every launch. Auth and preferences reset on reload. OPFS-backed downloads and the app's local playback queue remain persistent; opening/reloading the demo offline is not supported. Catalog failures present a retry screen rather than a login screen or empty library. All full-length tracks are served unchanged; there is no transcoding. Unsupported formats report an error instead of pretending that OGG bytes are an MP3.
 
@@ -30,7 +30,7 @@ Each workspace uses Vite's normal defaults: the regular application builds to ro
 
 The Pages workflow assembles the website output under `dist/demo/` after both packages build.
 
-A separate CI build step supplies the export via secrets before publishing. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Credits are linked from the website's demo notice; keep credits and licensing evidence with the published assets.
+A separate CI build step supplies the export via secrets before publishing. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Keep `catalog/credits.html`, machine-readable credits and licensing evidence with the published assets.
 
 ## Tests
 
