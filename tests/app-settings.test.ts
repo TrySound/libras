@@ -2,6 +2,7 @@
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
+import WebappUpdater from "../src/webapp-updater.svelte";
 import { registerSW } from "virtual:pwa-register";
 import { installNavigation } from "./router-test-helpers";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
@@ -39,7 +40,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function setup(saved = false) {
+async function setup(saved = false, pwa = true) {
   const fixture = createSession(saved);
   fixture.session.start();
   if (saved) await vi.waitFor(() => expect(fixture.session.status).toBe("connected"));
@@ -47,7 +48,10 @@ async function setup(saved = false) {
   document.body.append(target);
   mocks.session = fixture.session;
   const navigate = mocks.navigate;
-  const component = mount(App, { target });
+  const component = mount(App, {
+    target,
+    props: { updaterComponent: pwa ? WebappUpdater : undefined },
+  });
   flushSync();
   mocks.navigate.mockClear();
   cleanups.push(async () => {
@@ -74,6 +78,11 @@ async function setup(saved = false) {
 }
 
 describe("app settings", () => {
+  it("does not register a service worker without an updater component", async () => {
+    await setup(false, false);
+    expect(registerSW).not.toHaveBeenCalled();
+  });
+
   it("uses shared cards for server and offline settings", async () => {
     const { target } = await setup();
     expect(target.querySelector(".settings-view")?.classList.contains("container")).toBe(true);

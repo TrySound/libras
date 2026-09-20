@@ -1,4 +1,9 @@
-import { SubsonicClient, createSubsonicAuth } from "./subsonic-client";
+import {
+  SubsonicClient,
+  createSubsonicAuth,
+  type SubsonicApi,
+  type SubsonicClientFactory,
+} from "./subsonic-client";
 import { authSchema, type Auth } from "./auth";
 import * as v from "valibot";
 import type { Album, Artist, Track, Account, ImageMetadata } from "./schema";
@@ -203,7 +208,7 @@ async function networkFetch(input: RequestInfo | URL, init?: RequestInit) {
   }
 }
 
-function metadataAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+function metadataAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
   return Object.freeze({
     account,
     signal: client.signal,
@@ -319,7 +324,7 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicClient, requ
   });
 }
 
-function queueAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+function queueAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
   return Object.freeze({
     account,
     signal: client.signal,
@@ -342,7 +347,7 @@ function queueAccess(account: Readonly<Account>, client: SubsonicClient, request
   });
 }
 
-function artworkAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+function artworkAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
   const signal = client.signal;
   return Object.freeze({
     account,
@@ -393,7 +398,7 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicClient, reque
   });
 }
 
-function audioAccess(account: Readonly<Account>, client: SubsonicClient, request: Request) {
+function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
   const url = (id: string, options: { format: AudioFormat; position?: number }) => {
     client.signal.throwIfAborted();
     return client.getStreamUrl(id, {
@@ -425,13 +430,20 @@ function audioAccess(account: Readonly<Account>, client: SubsonicClient, request
   });
 }
 
-type CandidateConnection = { handle: NetworkConnection; client: SubsonicClient };
+type CandidateConnection = { handle: NetworkConnection; client: SubsonicApi };
 
 /** Application server access, connection ownership, and cancellation policy. */
 export class Network {
   #mode = $state<"online" | "offline">("offline");
-  #active?: SubsonicClient;
+  #active?: SubsonicApi;
   #candidate?: CandidateConnection;
+  #createClient: SubsonicClientFactory;
+
+  constructor(
+    createClient: SubsonicClientFactory = (auth, options) => new SubsonicClient(auth, options),
+  ) {
+    this.#createClient = createClient;
+  }
 
   get mode() {
     return this.#mode;
@@ -462,7 +474,7 @@ export class Network {
 
   /** Explicit login validation is allowed while normal access remains offline. */
   prepare(auth: Auth): NetworkConnection {
-    const client = new SubsonicClient(auth, { fetch: networkFetch });
+    const client = this.#createClient(auth, { fetch: networkFetch });
     this.#candidate?.client.abort();
     const account = Object.freeze({ host: client.host, username: client.username });
     const request: Request = (run) => this.#request(client, run);
@@ -501,7 +513,7 @@ export class Network {
     return active;
   }
 
-  async #request<T>(client: SubsonicClient, run: () => Promise<T>) {
+  async #request<T>(client: SubsonicApi, run: () => Promise<T>) {
     client.signal.throwIfAborted();
     const result = await run();
     client.signal.throwIfAborted();

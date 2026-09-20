@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, untrack, type Snippet } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import Player from "./player.svelte";
@@ -9,7 +9,7 @@
   import ArtistRoute from "./_artist.svelte";
   import LibraryRoute from "./_library.svelte";
   import SearchRoute, { createSearchState } from "./_search.svelte";
-  import WebappUpdater from "./webapp-updater.svelte";
+  import type WebappUpdater from "./webapp-updater.svelte";
   import { AuthStore } from "./auth";
   import { Covers } from "./covers.svelte";
   import Artwork from "./artwork.svelte";
@@ -20,6 +20,27 @@
   import Router, { navigate, type RouteParams } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { installSwipeToDismiss } from "./swipe-to-dismiss";
+
+  interface Props {
+    network?: Network;
+    auth?: AuthStore;
+    preferences?: Storage;
+    updaterComponent?: typeof WebappUpdater;
+    settingsView?: Snippet<[Session]>;
+    headerContent?: Snippet;
+    title?: string;
+  }
+
+  // Entry points supply infrastructure; domain engines and state still belong to App.
+  let {
+    network = new Network(),
+    auth = new AuthStore(),
+    preferences = localStorage,
+    updaterComponent: Updater,
+    settingsView,
+    headerContent,
+    title = "Libras",
+  }: Props = $props();
 
   const durationFormatter = new Intl.DurationFormat("en", {
     minutes: "numeric",
@@ -77,16 +98,18 @@
     covers,
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
   });
-  const network = new Network();
-  const session = new Session({
-    selection,
-    network,
-    auth: new AuthStore(),
-    covers,
-    tracks: trackEngine,
-    playback,
-    preferences: localStorage,
-  });
+  const session = untrack(
+    () =>
+      new Session({
+        selection,
+        network,
+        auth,
+        covers,
+        tracks: trackEngine,
+        playback,
+        preferences,
+      }),
+  );
   const offlineMode = $derived(session.offlineMode);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);
@@ -162,7 +185,7 @@
 />
 
 <svelte:head>
-  <title>Libras</title>
+  <title>{title}</title>
 </svelte:head>
 
 {#snippet icon(name: string, size = 20, className = "")}
@@ -195,7 +218,11 @@
 {/snippet}
 
 {#snippet settingsRoute()}
-  <Settings {session} />
+  {#if settingsView}
+    {@render settingsView(session)}
+  {:else}
+    <Settings {session} />
+  {/if}
 {/snippet}
 
 {#snippet downloadsRoute()}
@@ -231,6 +258,7 @@
     {@render brand()}
     <div></div>
     <div class="row-sm">
+      {@render headerContent?.()}
       {#if hasErrors}
         <button
           class="icon-button"
@@ -558,4 +586,6 @@
   </section>
 </dialog>
 
-<WebappUpdater bind:this={updater} />
+{#if Updater}
+  <Updater bind:this={updater} />
+{/if}

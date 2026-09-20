@@ -49,6 +49,10 @@ Keep these boundaries in mind:
 
 For implementation details, consult the owning module and its tests rather than adding a second state store or synchronization layer.
 
+### Application entry points
+
+`Network` accepts an optional `SubsonicClientFactory`; the default remains the authenticated HTTP client. Alternate clients implement the public `SubsonicApi` surface while Network retains cancellation and connection ownership. App accepts optional network/auth/preference dependencies plus settings/header snippets. These dependencies are fixed for a mounted application's lifetime. The normal entry point supplies `WebappUpdater`; entries without it do not import or register PWA support.
+
 ### Server identity
 
 Explicit login validation uses its existing authenticated `ping()` request to verify OpenSubsonic identity: `version` is the Subsonic API version, `type` is the server name, `serverVersion` is the server release, and `openSubsonic` must be `true`. Unknown server names are accepted. Failed requests retain their server error even without identity fields. Identity is returned by the protocol client but is not persisted; no discovery requests or authentication changes are introduced.
