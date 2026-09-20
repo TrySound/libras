@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { flushSync, mount, unmount } from "svelte";
 import Icon from "../src/icon.svelte";
-import spriteUrl from "../src/icon.svg?url&no-inline";
+import spriteUrl from "../src/sprite.svg?url&no-inline";
 
 it("renders a decorative icon using the external sprite URL", async () => {
   const target = document.createElement("div");
@@ -44,7 +44,7 @@ it.each([
 });
 
 it("keeps the typed icon names in sync with the sprite symbols", () => {
-  const sprite = readFileSync("src/icon.svg", "utf8");
+  const sprite = readFileSync("src/sprite.svg", "utf8");
   const component = readFileSync("src/icon.svelte", "utf8");
   const symbols = [...sprite.matchAll(/<symbol\s+id="([^"]+)"/g)].map((match) => match[1]);
   const nameType = component.match(/export type IconName =([^;]+);/)![1];

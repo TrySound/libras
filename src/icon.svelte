@@ -25,7 +25,7 @@
 </script>
 
 <script lang="ts">
-  import spriteUrl from "./icon.svg?url&no-inline";
+  import spriteUrl from "./sprite.svg?url&no-inline";
 
   interface Props {
     name: IconName;

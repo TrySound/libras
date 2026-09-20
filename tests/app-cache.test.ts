@@ -5,7 +5,7 @@ import { flushSync, mount as mountComponent, unmount } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
-import spriteUrl from "../src/icon.svg?url&no-inline";
+import spriteUrl from "../src/sprite.svg?url&no-inline";
 import { installNavigation } from "./router-test-helpers";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
