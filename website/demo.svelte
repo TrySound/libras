@@ -5,6 +5,29 @@
   import { Network } from "../src/network.svelte";
   import { loadCatalog, StaticSubsonicClient } from "./client";
 
+  class MemoryStorage implements Storage {
+    private items = new Map<string, string>();
+
+    get length() {
+      return this.items.size;
+    }
+    key(index: number) {
+      return [...this.items.keys()][index] ?? null;
+    }
+    getItem(key: string) {
+      return this.items.get(String(key)) ?? null;
+    }
+    setItem(key: string, value: string) {
+      this.items.set(String(key), String(value));
+    }
+    removeItem(key: string) {
+      this.items.delete(String(key));
+    }
+    clear() {
+      this.items.clear();
+    }
+  }
+
   const base = new URL(import.meta.env.BASE_URL, location.origin);
   const catalogBase = new URL("catalog/", base);
   const creditsUrl = new URL("credits.html", catalogBase).href;
@@ -20,22 +43,7 @@
     try {
       const catalog = await loadCatalog(catalogBase, attempt.signal);
       attempt.signal.throwIfAborted();
-      const items = new Map<string, string>();
-      const preferences: Storage = {
-        get length() {
-          return items.size;
-        },
-        key: (index) => [...items.keys()][index] ?? null,
-        getItem: (key) => items.get(String(key)) ?? null,
-        setItem: (key, value) => {
-          items.set(String(key), String(value));
-        },
-        removeItem: (key) => {
-          items.delete(String(key));
-        },
-        clear: () => items.clear(),
-      };
-      const auth = new AuthStore(preferences);
+      const auth = new AuthStore(new MemoryStorage());
       // Public synthetic identity, not a server credential. Its URL isolates the OPFS account.
       auth.save({
         host: base.href.replace(/\/$/, ""),
