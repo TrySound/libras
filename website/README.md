@@ -30,7 +30,40 @@ Each workspace uses Vite's normal defaults: the regular application builds to ro
 
 The Pages workflow assembles the website output under `dist/demo/` after both packages build.
 
-A separate CI build step supplies the export via secrets before publishing. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Keep `catalog/credits.html`, machine-readable credits and licensing evidence with the published assets.
+## Pages deployment and secrets
+
+Configure these **GitHub Actions repository secrets**:
+
+- `DEMO_EXPORT_URL`: the private HTTPS export-directory URL (the directory containing `latest.json`). Do not commit the URL, place it in a repository variable, or prefix it with `VITE_`.
+- `DEMO_MEDIA_PASSWORD`: the private export password. HTTP Basic username defaults to `demo`.
+
+The Pages workflow builds both workspaces, downloads the catalog into `website/dist/catalog/`, copies the website output under `dist/demo/`, and uploads one combined artifact. Secrets are scoped to the Node.js download step only—not the frontend build. It resolves `latest.json` once and uses that immutable release for the rest of the build; future deployments automatically pick up a new latest release. There is no cross-build pin.
+
+`download-catalog.mjs` uses Node.js and `modern-tar` to verify the manifest fingerprint, archive SHA-256 and every extracted file. It disallows redirects, symlinks, hard links, path traversal, unexpected files, mixed releases and oversized archives. Missing secrets or download/verification failures fail deployment without replacing the live Pages site. Errors are sanitized to avoid logging the private URL/password. It also rejects exports containing the private source URL/hostname or credentials before publishing any files.
+
+The browser receives no export manifest URL or credential. It reads only public same-origin catalog paths. Public artist/license source links in credits are deliberately retained—they are attribution, not the private export source. Full music files, artwork, date provenance and credits become publicly downloadable once Pages deploys.
+
+For local development, set the same environment variables privately (not in `website/public`), then run:
+
+```sh
+node website/download-catalog.mjs --output website/public/catalog
+pnpm --filter @libras/website dev
+```
+
+To reproduce a release artifact locally, start without `website/public/catalog` (otherwise Vite copies it into the build and the downloader refuses to overwrite it):
+
+```sh
+pnpm build
+pnpm --filter @libras/website build
+node website/download-catalog.mjs --output website/dist/catalog
+mkdir -p dist/demo
+cp -a website/dist/. dist/demo/
+node website/verify-build.mjs
+```
+
+`verify-build.mjs` checks the combined site structure, required catalog metadata and credits, PWA separation, and the 1 GiB size limit. Catalog schema and asset relationships are validated by the exporter, not repeated in these deployment scripts. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Keep `catalog/credits.html`, machine-readable credits and licensing evidence with the published assets.
+
+PR CI builds both workspaces without accessing the private export source.
 
 ## Tests
 
