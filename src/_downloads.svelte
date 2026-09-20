@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./icon.svelte";
   import type { Cache } from "./cache.svelte";
   import type { TrackEngine } from "./track.svelte";
 
@@ -42,15 +43,13 @@
                 ? "Queued"
                 : "Downloaded"}
           >
-            <svg aria-hidden="true" width="20" height="20">
-              <use
-                href={entry.status === "downloading"
-                  ? "#icon-loading"
-                  : entry.status === "queued"
-                    ? "#icon-clock"
-                    : "#icon-check"}
-              ></use>
-            </svg>
+            <Icon
+              name={entry.status === "downloading"
+                ? "loading"
+                : entry.status === "queued"
+                  ? "clock"
+                  : "check"}
+            />
           </span>
           <div class="track-details stack-xs">
             <strong class="type-small">{entry.track.title}</strong>

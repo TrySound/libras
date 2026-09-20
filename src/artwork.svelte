@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./icon.svelte";
   import type { Covers } from "./covers.svelte";
   import { onVisible } from "./viewport";
 
@@ -11,7 +12,7 @@
 
   let { covers, id, size = "md", loading = "lazy" }: Props = $props();
   const cover = $derived(id === undefined ? undefined : covers.ensureCover(id));
-  const placeholderSize = $derived(size === "stretch" ? 64 : 20);
+  const placeholderSize = $derived(size === "stretch" ? "xl" : "md");
 
   function acquire(node: Element) {
     if (!cover) return;
@@ -27,8 +28,6 @@
   {#if cover?.source}
     <img src={cover.source} alt="" />
   {:else}
-    <svg aria-hidden="true" width={placeholderSize} height={placeholderSize}
-      ><use href="#icon-music"></use></svg
-    >
+    <Icon name="music" size={placeholderSize} />
   {/if}
 </span>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./icon.svelte";
   import type { Session } from "./session.svelte";
   import { navigate } from "./router.svelte";
 
@@ -87,9 +88,7 @@
             disabled={session.offlineMode || session.busy || session.syncing}
             onclick={() => void session.refresh()}
           >
-            <svg aria-hidden="true" width="20" height="20">
-              <use href={session.syncing ? "#icon-loading" : "#icon-refresh"}></use>
-            </svg>
+            <Icon name={session.syncing ? "loading" : "refresh"} />
           </button>
           <button
             class="icon-button"
@@ -99,9 +98,7 @@
             title="Disconnect"
             onclick={disconnectServer}
           >
-            <svg aria-hidden="true" width="20" height="20">
-              <use href="#icon-disconnect"></use>
-            </svg>
+            <Icon name="disconnect" />
           </button>
         </div>
       {/if}

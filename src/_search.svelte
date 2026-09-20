@@ -34,7 +34,7 @@
     downloaded: { icon: "check", label: "Downloaded" },
     queued: { icon: "clock", label: "Queued" },
     downloading: { icon: "loading", label: "Downloading…" },
-  };
+  } as const;
 
   /** Pure, ephemeral snapshots. Eligibility is applied before matching or limiting. */
   export function createSearchIndex(
@@ -121,6 +121,7 @@
 </script>
 
 <script lang="ts">
+  import Icon from "./icon.svelte";
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./artwork.svelte";
@@ -293,7 +294,7 @@
                   title={`Open menu for ${record.title}`}
                   onclick={() => selectMenu(group, record.id)}
                 >
-                  <svg aria-hidden="true" width="20" height="20"><use href="#icon-menu"></use></svg>
+                  <Icon name="menu" />
                 </button>
               </div>
             {/each}
@@ -326,16 +327,12 @@
   <div class="wings">
     <header class="topbar wings-item">
       <button class="icon-button" data-size="sm" data-variant="ghost" title="Close menu">
-        <svg class="self-center" aria-hidden="true" width="20" height="20">
-          <use href="#icon-chevron-down"></use>
-        </svg>
+        <Icon name="chevron-down" class="self-center" />
       </button>
       <span id="search-menu-title" class="type-title">{menuItem?.title ?? ""}</span>
     </header>
     <button class="wings-item row-button" disabled={!menuTrackIds.length} onclick={playMenu}>
-      <svg class="self-center" aria-hidden="true" width="20" height="20">
-        <use href="#icon-play"></use>
-      </svg>
+      <Icon name="play" class="self-center" />
       <span>Play</span>
     </button>
     <button
@@ -343,9 +340,7 @@
       disabled={!menuTrackIds.length}
       onclick={() => void playback.enqueue(menuTrackIds, "next")}
     >
-      <svg class="self-center" aria-hidden="true" width="20" height="20">
-        <use href="#icon-next"></use>
-      </svg>
+      <Icon name="next" class="self-center" />
       <span>Play next</span>
     </button>
     <button
@@ -353,9 +348,7 @@
       disabled={!menuTrackIds.length}
       onclick={() => void playback.enqueue(menuTrackIds, "last")}
     >
-      <svg class="self-center" aria-hidden="true" width="20" height="20">
-        <use href="#icon-plus"></use>
-      </svg>
+      <Icon name="plus" class="self-center" />
       <span>Play last</span>
     </button>
     <button
@@ -363,9 +356,7 @@
       disabled={!menuTracks.length || menuDownloadStatus !== "idle"}
       onclick={() => trackEngine.downloadMany(menuTracks.map((track) => track.id))}
     >
-      <svg class="self-center" aria-hidden="true" width="20" height="20">
-        <use href={`#icon-${downloadPresentation[menuDownloadStatus].icon}`}></use>
-      </svg>
+      <Icon name={downloadPresentation[menuDownloadStatus].icon} class="self-center" />
       <span>{downloadPresentation[menuDownloadStatus].label}</span>
     </button>
   </div>

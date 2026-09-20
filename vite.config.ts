@@ -36,7 +36,7 @@ export default defineConfig({
       workbox: {
         globPatterns: [
           "index.html",
-          "assets/*.{js,css}",
+          "assets/*.{js,css,svg}",
           "favicon.ico",
           "icon.svg",
           "apple-touch-icon.png",
