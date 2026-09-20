@@ -4,7 +4,7 @@ This pnpm workspace (`@libras/website`) imports the existing application from `.
 
 ## Architecture
 
-- `catalog.ts` validates the static `search3.json` / `assets.json` export, normalizes its legacy credits and restricts media to relative same-origin paths.
+- `catalog.ts` reuses the shared Subsonic artist/album/track schemas to validate `search3.json`, adds export-specific constraints and legacy-credit adaptation, and validates `assets.json` with relative same-origin media paths.
 - `client.ts` implements the shared OpenSubsonic client surface: independent library pagination, original audio/artwork URLs, cancellation and an in-memory simulated server queue. It does not intercept global fetch or emulate `/rest` HTTP endpoints.
 - `demo.svelte` supplies the required network, auth and updater dependencies to the real application, explicitly passing `undefined` for the updater. Cache/OPFS isolation comes from the separate demo account identity; preferences, auth and the simulated remote queue share a per-runtime `MemoryStorage` instance and never read or write localStorage. App's inline preference setup uses the injected auth store's storage scope, not a separate prop.
 - `vite.config.ts` is a separate build **without the PWA plugin**. There is no manifest, install prompt or demo service worker. Do not unregister the regular app's worker: its broader scope may control this URL, but its navigation fallback excludes the demo and does not cache demo assets.

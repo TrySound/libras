@@ -140,6 +140,30 @@ describe("catalog loading", () => {
     expect(() => parseCatalog(searchFixture, {}, base)).toThrow("artwork");
   });
 
+  it("preserves shared protocol fields and prefers structured credits over legacy credits", () => {
+    const search = structuredClone(searchFixture);
+    const data = search["subsonic-response"].searchResult3;
+    const credits = {
+      artists: [{ id: "guest", name: "Guest artist" }],
+      displayArtist: "Guest artist feat. Demo artist",
+      genres: [{ name: "Electronic" }],
+    };
+    Object.assign(data.album[0], credits);
+    Object.assign(data.song[0], credits, { discNumber: 2 });
+    const catalog = parseCatalog(search, assetsFixture, base);
+    expect(catalog.albums[0]).toMatchObject({ ...credits, year: 2015 });
+    expect(catalog.tracks[0]).toMatchObject({ ...credits, discNumber: 2, duration: 30, track: 1 });
+  });
+
+  it.each([{ id: "" }, { albumId: undefined }, { duration: -1 }, { coverArt: "" }])(
+    "retains export-specific constraints for %j",
+    (patch) => {
+      const search = structuredClone(searchFixture);
+      Object.assign(search["subsonic-response"].searchResult3.song[0], patch);
+      expect(() => parseCatalog(search, assetsFixture, base)).toThrow("invalid");
+    },
+  );
+
   it("rejects failed downloads and cancellation instead of returning an empty library", async () => {
     const fetcher = vi
       .fn<typeof fetch>()

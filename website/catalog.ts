@@ -1,35 +1,34 @@
 import * as v from "valibot";
-import type { SubsonicAlbum, SubsonicArtist, SubsonicTrack } from "../src/subsonic-client";
+import {
+  albumSchema,
+  artistSchema,
+  trackSchema,
+  type SubsonicAlbum,
+  type SubsonicArtist,
+  type SubsonicTrack,
+} from "../src/subsonic-client";
 
 const id = v.pipe(v.string(), v.nonEmpty());
-const artist = v.object({ id, name: v.string(), coverArt: v.optional(id) });
-const genre = v.object({ name: v.string() });
+// Reuse the protocol shapes, adding only export-specific constraints and legacy credits.
+const artist = v.object({ ...artistSchema.entries, id, coverArt: v.optional(id) });
 const credits = {
   artists: v.optional(v.array(artist)),
-  displayArtist: v.optional(v.string()),
   artist: v.optional(v.string()),
   artistId: v.optional(id),
 };
 const album = v.object({
-  id,
-  name: v.string(),
+  ...albumSchema.entries,
   ...credits,
+  id,
   coverArt: v.optional(id),
-  genres: v.optional(v.array(genre)),
-  year: v.optional(v.number()),
 });
 const track = v.object({
-  id,
-  title: v.string(),
-  album: v.optional(v.string()),
-  albumId: id,
+  ...trackSchema.entries,
   ...credits,
+  id,
+  albumId: id,
   duration: v.optional(v.pipe(v.number(), v.finite(), v.minValue(0))),
-  contentType: v.optional(v.string()),
   coverArt: v.optional(id),
-  discNumber: v.optional(v.number()),
-  track: v.optional(v.number()),
-  genres: v.optional(v.array(genre)),
 });
 const snapshot = v.object({
   "subsonic-response": v.object({
