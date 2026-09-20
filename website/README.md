@@ -5,12 +5,12 @@ This pnpm workspace (`@libras/website`) imports the existing application from `.
 ## Architecture
 
 - `catalog.ts` validates the static `search3.json` / `assets.json` export, normalizes its legacy credits and restricts media to relative same-origin paths.
-- `client.ts` implements the shared OpenSubsonic client surface: independent library pagination, original audio/artwork URLs, cancellation and a locally persisted simulated server queue. It does not intercept global fetch or emulate `/rest` HTTP endpoints.
-- `demo.svelte` supplies the required network, auth and updater dependencies to the real application, explicitly passing `undefined` for the updater. Cache/OPFS isolation comes from the separate demo account identity; preferences, auth and the simulated remote queue use a demo-prefixed localStorage adapter. App's inline preference setup uses the injected auth store's storage scope, not a separate prop.
+- `client.ts` implements the shared OpenSubsonic client surface: independent library pagination, original audio/artwork URLs, cancellation and an in-memory simulated server queue. It does not intercept global fetch or emulate `/rest` HTTP endpoints.
+- `demo.svelte` supplies the required network, auth and updater dependencies to the real application, explicitly passing `undefined` for the updater. Cache/OPFS isolation comes from the separate demo account identity; preferences, auth and the simulated remote queue share a per-runtime `MemoryStorage` instance and never read or write localStorage. App's inline preference setup uses the injected auth store's storage scope, not a separate prop.
 - `vite.config.ts` is a separate build **without the PWA plugin**. There is no manifest, install prompt or demo service worker. Do not unregister the regular app's worker: its broader scope may control this URL, but its navigation fallback excludes the demo and does not cache demo assets.
-- Settings, header, title, playback, explicit downloads and library UI stay inline in the shared app. A small website-owned notice outside App links music credits. Shared Settings still allows disconnect, but the static client factory rejects any different account before a cache can be selected; it cannot connect to real servers or touch their OPFS data. Reload the demo to restore its synthetic login after disconnecting, then turn off Offline library if needed.
+- Settings, header, title, playback, explicit downloads and library UI stay inline in the shared app. A small website-owned notice outside App links music credits. Shared Settings still allows disconnect, but the static client factory rejects any different account before a cache can be selected; it cannot connect to real servers or touch their OPFS data. Reload the demo to restore its synthetic login and default preferences after disconnecting.
 
-The demo loads its catalog online on every launch. Local state/downloads survive reloads, but opening/reloading the demo offline is not supported. Catalog failures present a retry screen rather than a login screen or empty library. All full-length tracks are served unchanged; there is no transcoding. Unsupported formats report an error instead of pretending that OGG bytes are an MP3.
+The demo loads its catalog online on every launch. Auth, preferences and the simulated server queue reset on reload. OPFS-backed downloads and the app's local playback queue remain persistent; opening/reloading the demo offline is not supported. Catalog failures present a retry screen rather than a login screen or empty library. All full-length tracks are served unchanged; there is no transcoding. Unsupported formats report an error instead of pretending that OGG bytes are an MP3.
 
 ## Local development
 
@@ -35,4 +35,4 @@ A separate CI build step supplies the export via secrets before publishing. A co
 
 ## Tests
 
-The tests here cover client pagination, the real Network integration, aborts, artwork/audio URLs, original-format behavior, credit normalization, unsafe asset rejection, queue persistence, storage isolation and preconnected app bootstrap without service-worker registration. They use tiny synthetic metadata rather than contacting the export source.
+The tests here cover client pagination, the real Network integration, aborts, artwork/audio URLs, original-format behavior, credit normalization, unsafe asset rejection, in-runtime queue sharing, memory-storage isolation and preference reset and preconnected app bootstrap without service-worker registration. They use tiny synthetic metadata rather than contacting the export source.

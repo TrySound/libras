@@ -5,7 +5,7 @@
   import { Network } from "../src/network.svelte";
   import { loadCatalog } from "./catalog";
   import { StaticSubsonicClient } from "./client";
-  import { NamespacedStorage } from "./storage";
+  import { MemoryStorage } from "./storage";
 
   const base = new URL(import.meta.env.BASE_URL, location.origin);
   const catalogBase = new URL("catalog/", base);
@@ -22,7 +22,7 @@
     try {
       const catalog = await loadCatalog(catalogBase, attempt.signal);
       attempt.signal.throwIfAborted();
-      const preferences = new NamespacedStorage(localStorage, `libras-demo:${base.pathname}:`);
+      const preferences = new MemoryStorage();
       const auth = new AuthStore(preferences);
       // Public synthetic identity, not a server credential. Its URL isolates the OPFS account.
       auth.save({

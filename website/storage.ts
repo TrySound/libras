@@ -1,37 +1,23 @@
-/** Isolate demo preferences/auth/queue without changing the regular app's storage. */
-export class NamespacedStorage implements Storage {
-  constructor(
-    private storage: Storage,
-    private prefix: string,
-  ) {
-    if (!prefix) throw new Error("A storage namespace is required.");
-  }
-
-  private keys() {
-    const keys: string[] = [];
-    for (let index = 0; index < this.storage.length; index++) {
-      const key = this.storage.key(index);
-      if (key?.startsWith(this.prefix)) keys.push(key.slice(this.prefix.length));
-    }
-    return keys;
-  }
+/** Demo auth, preferences and simulated server queue live only for this runtime. */
+export class MemoryStorage implements Storage {
+  private items = new Map<string, string>();
 
   get length() {
-    return this.keys().length;
+    return this.items.size;
   }
   key(index: number) {
-    return this.keys()[index] ?? null;
+    return [...this.items.keys()][index] ?? null;
   }
   getItem(key: string) {
-    return this.storage.getItem(this.prefix + key);
+    return this.items.get(String(key)) ?? null;
   }
   setItem(key: string, value: string) {
-    this.storage.setItem(this.prefix + key, value);
+    this.items.set(String(key), String(value));
   }
   removeItem(key: string) {
-    this.storage.removeItem(this.prefix + key);
+    this.items.delete(String(key));
   }
   clear() {
-    for (const key of this.keys()) this.removeItem(key);
+    this.items.clear();
   }
 }

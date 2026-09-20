@@ -45,6 +45,7 @@ it("opens the shared app preconnected, with isolated settings and no PWA registr
   expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
   expect(localStorage.getItem("navidrome-account")).toBe("regular account");
   expect(localStorage.getItem("navidrome-offline-mode")).toBe("true");
+  expect(localStorage.length).toBe(3);
   expect(register).not.toHaveBeenCalled();
   expect(fetcher.mock.calls.every(([url]) => !String(url).includes("/rest/"))).toBe(true);
 });
@@ -84,12 +85,40 @@ it("keeps shared settings but rejects switching the demo into a real account", a
   flushSync();
   await vi.waitFor(() => expect(document.body.textContent).toContain("fixed to its local library"));
   expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
-  const account = JSON.parse(localStorage.getItem("libras-demo:/libras/demo/:navidrome-account")!);
-  expect(account.username).toBe("static-demo");
-  expect(account.host).not.toContain("regular.example.test");
+  expect(localStorage.length).toBe(1);
   expect(fetcher.mock.calls.every(([url]) => !String(url).includes("regular.example.test"))).toBe(
     true,
   );
+});
+
+it("resets demo preferences on a new mount without writing to localStorage", async () => {
+  installDisk();
+  installNavigation("/settings", vi.fn());
+  vi.stubEnv("BASE_URL", "/libras/demo/");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn<typeof fetch>(async (input) => {
+      if (String(input).endsWith("search3.json"))
+        return new Response(JSON.stringify(searchFixture));
+      if (String(input).endsWith("assets.json")) return new Response(JSON.stringify(assetsFixture));
+      return new Response("", { status: 404 });
+    }),
+  );
+  const toggle = () =>
+    document.querySelector<HTMLInputElement>('input[aria-label="Offline library"]');
+  component = mount(Demo, { target: document.body });
+  flushSync();
+  await vi.waitFor(() => expect(toggle()?.disabled).toBe(false));
+  expect(toggle()!.checked).toBe(false);
+  toggle()!.click();
+  await vi.waitFor(() => expect(toggle()!.checked).toBe(true));
+  await unmount(component);
+  component = undefined;
+  component = mount(Demo, { target: document.body });
+  flushSync();
+  await vi.waitFor(() => expect(toggle()?.disabled).toBe(false));
+  expect(toggle()!.checked).toBe(false);
+  expect(localStorage.length).toBe(0);
 });
 
 it("shows a retryable boot error instead of connecting to a real server", async () => {

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseCatalog, loadCatalog } from "./catalog";
 import { StaticSubsonicClient } from "./client";
-import { NamespacedStorage } from "./storage";
+import { MemoryStorage } from "./storage";
 import { assetsFixture, searchFixture } from "./fixtures";
 import { Network } from "../src/network.svelte";
 
@@ -22,7 +22,7 @@ const all = {
   songOffset: 0,
 };
 function setup() {
-  const storage = new NamespacedStorage(localStorage, "demo-test:");
+  const storage = new MemoryStorage();
   const catalog = parseCatalog(searchFixture, assetsFixture, base);
   return { storage, catalog, client: new StaticSubsonicClient(auth, catalog, storage) };
 }
@@ -88,7 +88,7 @@ describe("static client", () => {
     });
   });
 
-  it("persists the simulated queue across clients, retaining duplicates and seconds", async () => {
+  it("shares the simulated queue within a runtime but resets for a new runtime", async () => {
     const { client, catalog, storage } = setup();
     const queue = { tracks: ["song-1", "song-1", "song-2"], current: "song-1", position: 12.5 };
     await client.savePlayQueue(queue);
@@ -96,6 +96,8 @@ describe("static client", () => {
     expect(await next.getPlayQueue()).toEqual(queue);
     (await next.getPlayQueue()).tracks = [];
     expect(await next.getPlayQueue()).toEqual(queue);
+    const fresh = new StaticSubsonicClient(auth, catalog, new MemoryStorage());
+    expect(await fresh.getPlayQueue()).toEqual({ tracks: [], position: 0 });
   });
 });
 
@@ -153,7 +155,7 @@ describe("catalog loading", () => {
   });
 });
 
-it("namespaces all local storage operations without touching regular accounts", () => {
+it("stores values in memory without touching localStorage or other instances", () => {
   localStorage.setItem("navidrome-auth", "regular");
   localStorage.setItem("navidrome-account", "regular-account");
   const { storage } = setup();
@@ -162,8 +164,21 @@ it("namespaces all local storage operations without touching regular accounts", 
   expect(storage.length).toBe(2);
   expect(storage.key(0)).toBe("navidrome-auth");
   expect(storage.getItem("navidrome-auth")).toBe("demo");
+  storage.setItem("navidrome-auth", "updated");
+  expect(storage.length).toBe(2);
+  expect(storage.getItem("navidrome-auth")).toBe("updated");
+  expect(storage.key(2)).toBeNull();
+  expect(storage.getItem("missing")).toBeNull();
+  storage.setItem("empty", "");
+  expect(storage.getItem("empty")).toBe("");
+  storage.removeItem("empty");
+  expect(storage.getItem("empty")).toBeNull();
+  expect(new MemoryStorage().length).toBe(0);
   storage.clear();
   expect(storage.length).toBe(0);
+  expect(storage.key(0)).toBeNull();
+  expect(storage.getItem("navidrome-auth")).toBeNull();
+  expect(localStorage.length).toBe(2);
   expect(localStorage.getItem("navidrome-auth")).toBe("regular");
   expect(localStorage.getItem("navidrome-account")).toBe("regular-account");
 });
