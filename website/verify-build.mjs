@@ -5,7 +5,8 @@ import { parseArgs } from "node:util";
 class ArtifactError extends Error {}
 
 async function verify(root) {
-  const files = new Map();
+  const files = new Set();
+  let size = 0;
   async function walk(directory, prefix = "") {
     for (const name of await readdir(directory)) {
       const path = prefix + name;
@@ -13,8 +14,10 @@ async function verify(root) {
       if (info.isSymbolicLink())
         throw new ArtifactError("Pages artifact must not contain symlinks.");
       if (info.isDirectory()) await walk(join(directory, name), path + "/");
-      else if (info.isFile()) files.set(path, info.size);
-      else throw new ArtifactError("Unexpected Pages artifact entry.");
+      else if (info.isFile()) {
+        files.add(path);
+        size += info.size;
+      } else throw new ArtifactError("Unexpected Pages artifact entry.");
     }
   }
   await walk(root);
@@ -22,7 +25,7 @@ async function verify(root) {
     if (!files.has(path))
       throw new ArtifactError("Regular application/PWA or demo build is missing.");
   }
-  for (const path of files.keys()) {
+  for (const path of files) {
     const name = path.split("/").at(-1);
     if (
       path.startsWith("demo/") &&
@@ -46,25 +49,8 @@ async function verify(root) {
     if (!files.has("demo/catalog/" + name))
       throw new ArtifactError("Demo catalog metadata is incomplete.");
   }
-  const assets = JSON.parse(await read("demo/catalog/assets.json"));
-  for (const { path } of Object.values(assets)) {
-    if (
-      typeof path !== "string" ||
-      !/^(audio|covers)\/[A-Za-z0-9._/-]+$/.test(path) ||
-      path.split("/").some((part) => !part || part === "." || part === "..") ||
-      !files.has("demo/catalog/" + path)
-    )
-      throw new ArtifactError("Unsafe or missing demo asset.");
-  }
-  const search = JSON.parse(await read("demo/catalog/search3.json"))["subsonic-response"]
-    .searchResult3;
-  if (!search.song.length || search.song.some((song) => !Object.hasOwn(assets, song.id)))
-    throw new ArtifactError("Missing demo tracks.");
-  const size = [...files.values()].reduce((total, bytes) => total + bytes, 0);
   if (size > 1024 ** 3) throw new ArtifactError("Combined Pages site exceeds 1 GiB.");
-  console.log(
-    `Pages artifact verified: ${search.song.length} demo tracks; ${(size / 1024 ** 2).toFixed(1)} MiB total`,
-  );
+  console.log(`Pages artifact verified: ${(size / 1024 ** 2).toFixed(1)} MiB total`);
 }
 
 try {

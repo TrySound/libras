@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
-import { lstat, mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { chmod, lstat, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { parseArgs } from "node:util";
 import { createGunzip } from "node:zlib";
-import { createTarDecoder } from "modern-tar";
+import { unpackTar } from "modern-tar/fs";
 
 const MAX_BYTES = 2 * 1024 ** 3;
 const METADATA = new Set([
@@ -162,59 +162,37 @@ async function download(output) {
   await mkdir(dirname(output), { recursive: true });
   const temporary = await mkdtemp(join(dirname(output), ".demo-download-"));
   try {
-    const archive = join(temporary, "catalog.tar.gz");
+    const seen = new Set();
     await pipeline(
       await get(`${release}/catalog.tar.gz`),
       verifyBytes(item.size, item.sha256),
-      createWriteStream(archive, { flags: "wx" }),
-    );
-    const stage = join(temporary, "catalog");
-    await mkdir(stage);
-    const unpack = createTarDecoder({ strict: true });
-    const seen = new Set();
-    await Promise.all([
-      pipeline(
-        createReadStream(archive),
-        createGunzip(),
-        verifyBytes(MAX_BYTES + 64 * 1024 ** 2),
-        unpack.writable,
-      ),
-      (async () => {
-        for await (const { header, body } of unpack.readable) {
-          const { name, size, type } = header;
+      createGunzip(),
+      verifyBytes(MAX_BYTES + 64 * 1024 ** 2),
+      unpackTar(temporary, {
+        strict: true,
+        fmode: 0o644,
+        dmode: 0o755,
+        filter({ name, size, type }) {
           const entry = files.get(name);
           requireValid(
             type === "file" && entry && !seen.has(name) && size === entry.size,
             "Unexpected archive entry.",
           );
-          const target = join(stage, name);
-          await mkdir(dirname(target), { recursive: true });
-          await pipeline(
-            body,
-            verifyBytes(size, entry.sha256, forbidden),
-            createWriteStream(target, { flags: "wx" }),
-          );
           seen.add(name);
-        }
-      })(),
-    ]);
-    requireValid(seen.size === files.size, "Archive is incomplete.");
-    const search = JSON.parse(await readFile(join(stage, "search3.json"), "utf8"))[
-      "subsonic-response"
-    ];
-    requireValid(
-      search.status === "ok" && search.searchResult3.song.length > 0,
-      "Export has no usable music catalog.",
+          return true;
+        },
+      }),
     );
-    const assets = JSON.parse(await readFile(join(stage, "assets.json"), "utf8"));
-    for (const asset of Object.values(assets)) {
-      const entry = files.get(asset.path);
-      requireValid(
-        entry && (!asset.sha256 || entry.sha256 === asset.sha256),
-        "Export references a missing or corrupt asset.",
+    requireValid(seen.size === files.size, "Archive is incomplete.");
+    for (const { path, size, sha256 } of files.values()) {
+      await pipeline(
+        createReadStream(join(temporary, path)),
+        verifyBytes(size, sha256, forbidden),
+        new WritableStream(),
       );
     }
-    await rename(stage, output);
+    await chmod(temporary, 0o755);
+    await rename(temporary, output);
     console.log("Verified demo export:", release);
   } finally {
     await rm(temporary, { recursive: true, force: true });

@@ -61,7 +61,7 @@ cp -a website/dist/. dist/demo/
 node website/verify-build.mjs
 ```
 
-`verify-build.mjs` checks the regular PWA is retained, the demo has no PWA artifacts, catalog assets and credits exist, and the combined site stays within 1 GiB. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Keep `catalog/credits.html`, machine-readable credits and licensing evidence with the published assets.
+`verify-build.mjs` checks the combined site structure, required catalog metadata and credits, PWA separation, and the 1 GiB size limit. Catalog schema and asset relationships are validated by the exporter, not repeated in these deployment scripts. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Keep `catalog/credits.html`, machine-readable credits and licensing evidence with the published assets.
 
 PR CI builds both workspaces without accessing the private export source.
 
