@@ -223,110 +223,108 @@
   />
 {/snippet}
 
-<div class="app-root">
-  <main class="app-shell">
-    <header class="topbar wings">
-      {@render brand()}
-      <div></div>
-      <div class="row-sm">
-        {#if hasErrors}
-          <button
-            class="icon-button"
-            data-size="md"
-            data-variant="ghost"
-            commandfor="error-popover"
-            command="toggle-popover"
-            aria-label="Show errors"
-            title="Show errors"
-          >
-            <Icon name="error" class="text-danger" />
-          </button>
-          <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
-            <div class="stack-sm grow">
-              {#each alerts as alert (alert.id)}
-                {#if alert.message}
-                  <p class="card type-small" data-variant="danger" role="alert">{alert.message}</p>
-                {/if}
-              {/each}
-            </div>
-            <button
-              class="icon-button"
-              data-size="sm"
-              data-variant="ghost"
-              aria-label="Close errors"
-              commandfor="error-popover"
-              command="hide-popover"><Icon name="cross" /></button
-            >
-          </div>
-        {/if}
-        {#if appUpdate?.message}
-          <button
-            class="icon-button"
-            data-size="md"
-            data-variant="ghost"
-            commandfor="update-popover"
-            command="toggle-popover"
-            aria-label="App update"
-            title="App update"
-          >
-            <Icon name={appUpdate.busy ? "loading" : "refresh"} />
-          </button>
-          <div
-            id="update-popover"
-            class="notification-popover"
-            popover="auto"
-            aria-label="App update"
-          >
-            <div class="stack-sm">
-              <strong class="type-title">App update</strong>
-              <p class="type-small">{appUpdate.message}</p>
-              {#if appUpdate.hasUpdate}
-                <button
-                  class="button"
-                  data-size="sm"
-                  disabled={appUpdate.busy}
-                  onclick={() => void updater?.update()}
-                >
-                  {appUpdate.busy ? "Updating…" : "Update now"}
-                </button>
-              {/if}
-            </div>
-            <button
-              class="icon-button"
-              data-size="sm"
-              data-variant="ghost"
-              aria-label="Close app update"
-              commandfor="update-popover"
-              command="hide-popover"><Icon name="cross" /></button
-            >
-          </div>
-        {/if}
-        <a
+<main class="app-shell">
+  <header class="topbar wings">
+    {@render brand()}
+    <div></div>
+    <div class="row-sm">
+      {#if hasErrors}
+        <button
           class="icon-button"
           data-size="md"
           data-variant="ghost"
-          href="#/settings"
-          aria-label="Settings"
-          title="Settings"
+          commandfor="error-popover"
+          command="toggle-popover"
+          aria-label="Show errors"
+          title="Show errors"
         >
-          <Icon name="settings" />
-        </a>
-      </div>
-    </header>
-    <Router
-      routes={[
-        { pattern: "/library", render: libraryRoute },
-        { pattern: "/search", render: searchRoute },
-        {
-          pattern: "/library/artist/:artistId/album/:albumId",
-          render: albumRoute,
-        },
-        { pattern: "/library/artist/:artistId", render: artistRoute },
-        { pattern: "/settings", render: settingsRoute },
-        { pattern: "/downloads", render: downloadsRoute },
-      ]}
-    />
-  </main>
+          <Icon name="error" class="text-danger" />
+        </button>
+        <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
+          <div class="stack-sm grow">
+            {#each alerts as alert (alert.id)}
+              {#if alert.message}
+                <p class="card type-small" data-variant="danger" role="alert">{alert.message}</p>
+              {/if}
+            {/each}
+          </div>
+          <button
+            class="icon-button"
+            data-size="sm"
+            data-variant="ghost"
+            aria-label="Close errors"
+            commandfor="error-popover"
+            command="hide-popover"><Icon name="cross" /></button
+          >
+        </div>
+      {/if}
+      {#if appUpdate?.message}
+        <button
+          class="icon-button"
+          data-size="md"
+          data-variant="ghost"
+          commandfor="update-popover"
+          command="toggle-popover"
+          aria-label="App update"
+          title="App update"
+        >
+          <Icon name={appUpdate.busy ? "loading" : "refresh"} />
+        </button>
+        <div
+          id="update-popover"
+          class="notification-popover"
+          popover="auto"
+          aria-label="App update"
+        >
+          <div class="stack-sm">
+            <strong class="type-title">App update</strong>
+            <p class="type-small">{appUpdate.message}</p>
+            {#if appUpdate.hasUpdate}
+              <button
+                class="button"
+                data-size="sm"
+                disabled={appUpdate.busy}
+                onclick={() => void updater?.update()}
+              >
+                {appUpdate.busy ? "Updating…" : "Update now"}
+              </button>
+            {/if}
+          </div>
+          <button
+            class="icon-button"
+            data-size="sm"
+            data-variant="ghost"
+            aria-label="Close app update"
+            commandfor="update-popover"
+            command="hide-popover"><Icon name="cross" /></button
+          >
+        </div>
+      {/if}
+      <a
+        class="icon-button"
+        data-size="md"
+        data-variant="ghost"
+        href="#/settings"
+        aria-label="Settings"
+        title="Settings"
+      >
+        <Icon name="settings" />
+      </a>
+    </div>
+  </header>
+  <Router
+    routes={[
+      { pattern: "/library", render: libraryRoute },
+      { pattern: "/search", render: searchRoute },
+      {
+        pattern: "/library/artist/:artistId/album/:albumId",
+        render: albumRoute,
+      },
+      { pattern: "/library/artist/:artistId", render: artistRoute },
+      { pattern: "/settings", render: settingsRoute },
+      { pattern: "/downloads", render: downloadsRoute },
+    ]}
+  />
 
   {#if currentTrack}
     <div class="mini-player wings">
@@ -559,4 +557,4 @@
   {#if Updater}
     <Updater bind:this={updater} />
   {/if}
-</div>
+</main>
