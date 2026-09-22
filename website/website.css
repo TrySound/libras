@@ -176,21 +176,6 @@
   position: relative;
 }
 
-.site-eyebrow {
-  display: block;
-  margin-bottom: 1.4rem;
-  color: var(--site-muted);
-  font-family: var(--site-font-mono);
-  font-size: 0.65rem;
-  line-height: 1.5;
-  letter-spacing: 0.1em;
-}
-
-.site-eyebrow > span {
-  margin-right: 0.4rem;
-  color: var(--site-accent);
-}
-
 .site-showcase-copy h2,
 .site-section-heading h2,
 .site-faq h2,
@@ -212,44 +197,6 @@
   color: var(--site-muted);
   line-height: 1.8;
   text-wrap: pretty;
-}
-
-.site-demo-invitation {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  margin-top: 2.5rem;
-  font-size: var(--text-sm);
-}
-
-.site-demo-invitation p {
-  margin-top: 0.15rem;
-  color: var(--site-muted);
-  font-size: var(--text-xs);
-}
-
-.site-demo-play {
-  display: grid;
-  place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  flex: none;
-  border: 1px solid var(--site-border);
-  border-radius: 50%;
-  color: var(--site-accent);
-}
-
-.site-fine-print {
-  margin-top: 1.5rem;
-  color: var(--site-faint);
-  font-size: 0.7rem;
-  line-height: 1.8;
-}
-
-.site-fine-print a {
-  color: var(--site-muted);
-  text-underline-offset: 4px;
-  text-decoration: underline;
 }
 
 .site-demo-window {
@@ -575,40 +522,6 @@ body:has(.site-demo-dialog:modal) {
   border-top: 1px solid var(--site-border);
 }
 
-.site-step-number {
-  display: inline-block;
-  margin-bottom: 1.5rem;
-  color: var(--site-accent);
-  font-family: var(--site-font-mono);
-  font-size: 0.7rem;
-}
-
-.site-server-note {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 2.5rem;
-  padding: 1rem;
-  border: 1px solid var(--site-border);
-  border-radius: var(--radius-sm);
-  color: var(--site-faint);
-  font-size: 0.7rem;
-  line-height: 1.6;
-}
-
-.site-server-note > svg {
-  flex: none;
-  width: 14px;
-  height: 14px;
-}
-
-.site-server-note a {
-  color: var(--site-muted);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .site-faq {
   display: grid;
   grid-template-columns: 1fr 1.5fr;
@@ -697,12 +610,6 @@ body:has(.site-demo-dialog:modal) {
   margin-top: 2rem;
 }
 
-.site-final-cta > p {
-  margin-top: 1.25rem;
-  color: var(--site-faint);
-  font-size: var(--text-xs);
-}
-
 .site-footer {
   display: flex;
   flex-wrap: wrap;
@@ -717,22 +624,9 @@ body:has(.site-demo-dialog:modal) {
   font-size: 1.25rem;
 }
 
-.site-footer p {
-  margin-top: 0.5rem;
-  color: var(--site-faint);
-  font-size: var(--text-xs);
-}
-
 .site-footer nav {
   font-size: var(--text-xs);
   gap: 1.5rem;
-}
-
-.site-footer-note {
-  width: 100%;
-  color: var(--site-faint);
-  font-family: var(--site-font-mono);
-  font-size: 0.6rem;
 }
 
 @media (hover: hover) {
@@ -787,12 +681,6 @@ body:has(.site-demo-dialog:modal) {
 
   .site-showcase-copy {
     text-align: center;
-  }
-
-  .site-demo-invitation {
-    justify-content: center;
-    text-align: left;
-    margin-top: 1.5rem;
   }
 
   .site-demo-launch {

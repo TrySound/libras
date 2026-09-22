@@ -78,32 +78,18 @@
 
   <section class="site-showcase site-container" id="live-demo" aria-labelledby="demo-title">
     <div class="site-showcase-copy">
-      <span class="site-eyebrow"><span>01 /</span> THE EXPERIENCE</span>
-      <h2 id="demo-title">Less interface.<br />More music.</h2>
+      <h2 id="demo-title">A minimal interface.</h2>
       <p class="site-description">
-        No feed to scroll. No algorithm to please. Just your artists, your albums, and the next
-        track.
+        Choose an artist or album and start listening. Try it out in the live demo.
       </p>
-      <div class="site-demo-invitation">
-        <span class="site-demo-play"><Icon name="play" /></span>
-        <div>
-          <strong>This is the real thing.</strong>
-          <p>Pick an artist. Open an album. Press play.</p>
-        </div>
-      </div>
       <button
         class="button site-demo-launch"
         commandfor="live-demo-dialog"
         command="show-modal"
         aria-haspopup="dialog"
       >
-        <Icon name="play" /> Open full-screen demo
+        Open full-screen demo
       </button>
-      <p class="site-fine-print">
-        A live, preconnected library. No account needed.<br /><a href={creditsUrl}
-          >Demo music & credits <span aria-hidden="true">↗</span></a
-        >
-      </p>
     </div>
     <dialog
       id="live-demo-dialog"
@@ -131,7 +117,6 @@
 
   <section class="site-section site-container" id="features" aria-labelledby="features-title">
     <div class="site-section-heading">
-      <span class="site-eyebrow"><span>02 /</span> INTENTIONALLY SIMPLE</span>
       <h2 id="features-title">
         Everything you need.<br /><span>Nothing between you and play.</span>
       </h2>
@@ -219,12 +204,10 @@
 
   <section class="site-section site-container" id="how-it-works" aria-labelledby="steps-title">
     <div class="site-section-heading">
-      <span class="site-eyebrow"><span>03 /</span> BRING YOUR OWN MUSIC</span>
       <h2 id="steps-title">From your server.<br /><span>Straight to your speakers.</span></h2>
     </div>
     <div class="site-steps">
       <article>
-        <span class="site-step-number">01</span>
         <h3>Bring your library</h3>
         <p>
           Run Navidrome or a compatible Subsonic server. Your music stays hosted where you choose.
@@ -234,7 +217,6 @@
         >
       </article>
       <article>
-        <span class="site-step-number">02</span>
         <h3>Make the connection</h3>
         <p>
           Open Libras and enter your HTTPS server address and credentials. Your library is ready to
@@ -242,7 +224,6 @@
         </p>
       </article>
       <article>
-        <span class="site-step-number">03</span>
         <h3>Find your rhythm</h3>
         <p>
           Queue an album, save tracks for offline, or install the app. Build a listening habit
@@ -250,18 +231,10 @@
         </p>
       </article>
     </div>
-    <p class="site-server-note">
-      <Icon name="settings" /> Your server needs browser access (CORS) and OpenSubsonic empty-query search
-      support.
-      <a href={`${repository}#get-started`}
-        >Connection requirements <span aria-hidden="true">↗</span></a
-      >
-    </p>
   </section>
 
   <section class="site-section site-faq site-container" aria-labelledby="faq-title">
     <div>
-      <span class="site-eyebrow"><span>04 /</span> A FEW GOOD QUESTIONS</span>
       <h2 id="faq-title">Before you<br /><span>press play.</span></h2>
       <p class="site-description">Small app. No big mysteries.</p>
     </div>
@@ -310,10 +283,8 @@
 
   <section class="site-final-cta site-container" aria-labelledby="cta-title">
     <div class="site-cta-emblem" aria-hidden="true"><Icon name="brand" size="xl" /></div>
-    <span class="site-eyebrow">LESS NOISE. MORE YOU.</span>
     <h2 id="cta-title">Your next good listen<br />is already in your library.</h2>
     <a class="button" href={appUrl}>Make yourself at home {@render arrow()}</a>
-    <p>Free. Open source. Yours to play.</p>
   </section>
 
   <footer class="site-footer site-container">
@@ -321,13 +292,11 @@
       <a class="site-brand" href={import.meta.env.BASE_URL}
         ><Icon name="brand" /><span>Libras</span></a
       >
-      <p>A little less software. A little more music.</p>
     </div>
     <nav aria-label="Footer navigation">
       <a href={repository}>GitHub ↗</a><a href={`${repository}/blob/main/LICENSE`}>MIT License</a><a
         href={creditsUrl}>Music credits</a
       >
     </nav>
-    <span class="site-footer-note">Made for the love of listening.</span>
   </footer>
 </div>
