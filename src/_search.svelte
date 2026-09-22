@@ -220,7 +220,7 @@
   }
 </script>
 
-<section class="stack-md">
+<section class="app-page stack-md">
   <div class="view stack-md">
     <h1 class="type-heading">Search</h1>
     <div class="stack-sm" role="search">

@@ -652,18 +652,16 @@ body {
   overflow: auto;
   overscroll-behavior: contain;
   background: var(--surface-page-background);
+}
 
-  > * {
-    flex-shrink: 0;
-  }
-
-  > section {
-    box-sizing: border-box;
-    width: 100%;
-  }
+.app-page {
+  box-sizing: border-box;
+  width: 100%;
+  flex-shrink: 0;
 }
 
 .topbar {
+  flex-shrink: 0;
   position: sticky;
   z-index: 30;
   top: 0;
@@ -1177,6 +1175,7 @@ a {
 }
 
 .mini-player {
+  flex-shrink: 0;
   view-transition-name: mini-player;
   position: sticky;
   z-index: 20;

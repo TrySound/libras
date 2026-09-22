@@ -22,7 +22,7 @@
   });
 </script>
 
-<section class="view stack-md">
+<section class="app-page view stack-md">
   <h2 class="type-heading">Downloads</h2>
   <p class="type-small text-muted">
     Downloading first, then queued tracks and saved files, newest first.

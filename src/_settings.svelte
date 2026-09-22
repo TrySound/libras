@@ -34,7 +34,7 @@
   </div>
 {/snippet}
 
-<section class="view container settings-view stack-md">
+<section class="app-page view container settings-view stack-md">
   <div class="stack-sm">
     <span class="type-eyebrow text-muted">Settings</span>
     <h2 class="type-heading">

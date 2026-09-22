@@ -48,7 +48,7 @@
   }
 </script>
 
-<section>
+<section class="app-page">
   {#if libraryAvailable && artist && album}
     <div class="view container collection-view">
       <div class="collection-artwork">
