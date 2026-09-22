@@ -20,9 +20,11 @@
   interface Props {
     routes: readonly RenderRoute[];
     fallback?: RenderRoute;
+    /** Leave the host page's scroll, focus, and view transitions alone. */
+    embedded?: boolean;
   }
 
-  let { routes, fallback = routes[0] }: Props = $props();
+  let { routes, fallback = routes[0], embedded = false }: Props = $props();
 
   const initial = untrack(() => {
     if (!fallback) throw new Error("Router requires at least one route.");
@@ -68,6 +70,8 @@
         return;
 
       event.intercept({
+        scroll: embedded ? "manual" : undefined,
+        focusReset: embedded ? "manual" : undefined,
         handler: async () => {
           const update = async () => {
             if (event.signal?.aborted) return;
@@ -75,6 +79,7 @@
             await tick();
           };
           if (
+            embedded ||
             !document.startViewTransition ||
             window.matchMedia("(prefers-reduced-motion: reduce)").matches
           ) {
@@ -98,7 +103,7 @@
     window.navigation.addEventListener("navigate", handleNavigation);
     if (window.location.hash.startsWith("#/")) {
       match = resolve(new URL(window.location.href));
-    } else {
+    } else if (!embedded) {
       navigate(initial.fallback.pattern, "replace");
     }
     return () => window.navigation.removeEventListener("navigate", handleNavigation);

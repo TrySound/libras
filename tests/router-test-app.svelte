@@ -1,5 +1,7 @@
 <script lang="ts">
   import Router, { type RouteParams } from "../src/router.svelte";
+
+  let { embedded = false }: { embedded?: boolean } = $props();
 </script>
 
 {#snippet page(name: string, params: RouteParams)}
@@ -19,6 +21,7 @@
 {/snippet}
 
 <Router
+  {embedded}
   routes={[
     { pattern: "/library/artist/:artistId/album/:albumId", render: album },
     { pattern: "/library/artist/:artistId", render: artist },
