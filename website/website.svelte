@@ -113,9 +113,7 @@
       aria-label="Libras live demo"
     >
       <div class="site-demo-toolbar">
-        <div class="site-window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
-        <span>your library, anywhere</span>
-        <span class="site-demo-status"><span class="site-live-dot"></span> LIVE</span>
+        <span>Libras</span>
         <button
           class="site-demo-close icon-button"
           data-size="sm"
@@ -127,9 +125,6 @@
       </div>
       <div class="site-demo-frame" aria-label="Interactive Libras demo">
         <Demo />
-      </div>
-      <div class="site-demo-caption">
-        <Icon name="music" /> A small window into your next favorite listen.
       </div>
     </dialog>
   </section>

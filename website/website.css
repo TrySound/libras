@@ -110,16 +110,6 @@
   pointer-events: none;
 }
 
-.site-live-dot {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--color-status-success);
-  box-shadow: 0 0 8px var(--status-success-glow-color);
-}
-
 .site-hero .site-brand {
   gap: 0.75rem;
   font-size: clamp(2.5rem, 5vw, 3.5rem);
@@ -263,6 +253,7 @@
 }
 
 .site-demo-window {
+  overflow: clip;
   box-sizing: border-box;
   width: min(100%, 390px);
   max-width: none;
@@ -280,35 +271,18 @@
 }
 
 .site-demo-toolbar {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 2.5rem;
   gap: 0.5rem;
-  padding: 0.8rem 1rem;
+  padding: 0.4rem 1rem;
   border-bottom: 1px solid var(--site-border);
-  font-family: var(--site-font-mono);
-  font-size: 0.6rem;
-  color: var(--site-faint);
-}
-
-.site-window-dots {
-  display: flex;
-  gap: 5px;
-}
-
-.site-window-dots i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--palette-gray-500);
-}
-
-.site-demo-status {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.55rem;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--site-text);
 }
 
 .site-demo-frame {
@@ -332,22 +306,6 @@
 
 body:has(.site-demo-dialog:modal) {
   overflow: hidden;
-}
-
-.site-demo-caption {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1rem;
-  border-top: 1px solid var(--site-border);
-  color: var(--site-faint);
-  font-size: 0.65rem;
-}
-
-.site-demo-caption svg {
-  width: 12px;
-  height: 12px;
 }
 
 .site-section {
@@ -868,17 +826,14 @@ body:has(.site-demo-dialog:modal) {
 
   .site-demo-toolbar {
     flex: none;
-    padding-top: max(0.5rem, env(safe-area-inset-top));
-    padding-bottom: 0.5rem;
+    padding-top: max(0.125rem, env(safe-area-inset-top));
+    padding-bottom: 0.125rem;
   }
 
   .site-demo-close {
+    position: absolute;
+    right: 1rem;
     display: inline-grid;
-  }
-
-  .site-window-dots,
-  .site-demo-caption {
-    display: none;
   }
 
   .site-demo-frame {
