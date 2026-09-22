@@ -615,16 +615,6 @@
   }
 }
 
-html,
-body,
-#app {
-  height: 100%;
-}
-
-body {
-  margin: 0;
-}
-
 /* The host supplies the size (e.g. a square demo); descendants use this viewport. */
 .app-root {
   container: app / size;
