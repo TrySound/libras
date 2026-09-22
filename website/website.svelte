@@ -45,23 +45,6 @@
 
 <div class="website">
   <a class="site-skip-link" href="#main-content">Skip to content</a>
-  <header class="site-header">
-    <nav class="site-container site-nav" aria-label="Main navigation">
-      <a class="site-brand" href={import.meta.env.BASE_URL} aria-label="Libras home">
-        <Icon name="brand" size="lg" />
-        <span>libras<span class="site-brand-period">.</span></span>
-      </a>
-      <div class="site-nav-links">
-        <a href="#features">Features</a>
-        <a href="#how-it-works">How it works</a>
-        <a href={repository}>GitHub <span aria-hidden="true">↗</span></a>
-      </div>
-      <a class="button" data-size="sm" href={appUrl}>
-        Open app {@render arrow()}
-      </a>
-    </nav>
-  </header>
-
   <section
     class="site-hero site-container"
     id="main-content"
@@ -69,35 +52,27 @@
     aria-labelledby="hero-title"
   >
     <div class="site-grid-decoration" aria-hidden="true"></div>
-    <a class="site-announcement" href={repository}>
-      <span class="site-live-dot"></span>
-      Independent by design. Open source by default.
-      {@render arrow()}
+    <a class="site-brand" href={import.meta.env.BASE_URL} aria-label="Libras home">
+      <Icon name="brand" size="lg" />
+      <span>Libras</span>
     </a>
-    <h1 id="hero-title">All your music.<br /><span>None of the noise.</span></h1>
+    <h1 id="hero-title">Your own music library.<br /><span>Listen anywhere.</span></h1>
     <p class="site-hero-description">
-      A quieter home for the music you love. Connect your own server, find an old favorite, and get
-      lost in an album. Libras takes care of the rest.
+      A music player for Navidrome and OpenSubsonic-compatible servers. Stream your library or
+      download music for offline listening.
     </p>
     <div class="site-actions">
-      <a class="button" href={appUrl}>Start listening {@render arrow()}</a>
+      <a class="button" href={appUrl}>Connect your server</a>
       {#if mobile}
         <button
           class="button"
           commandfor="live-demo-dialog"
           command="show-modal"
-          aria-haspopup="dialog"><Icon name="play" /> Try the live demo</button
+          aria-haspopup="dialog">Try live demo</button
         >
       {:else}
-        <a class="button" href="#live-demo"><Icon name="play" /> Try the live demo</a>
+        <a class="button" href="#live-demo">Try live demo</a>
       {/if}
-    </div>
-    <p class="site-hero-footnote">Your server. Your collection. No Libras subscription.</p>
-    <div class="site-compatibility" aria-label="Compatibility">
-      <span>MADE FOR YOUR STACK</span>
-      <a href="https://www.navidrome.org/">Navidrome</a>
-      <span class="site-compatibility-plus" aria-hidden="true">+</span>
-      <a href="https://opensubsonic.net/">Subsonic-compatible servers</a>
     </div>
   </section>
 
@@ -349,7 +324,7 @@
   <footer class="site-footer site-container">
     <div>
       <a class="site-brand" href={import.meta.env.BASE_URL}
-        ><Icon name="brand" /><span>libras.</span></a
+        ><Icon name="brand" /><span>Libras</span></a
       >
       <p>A little less software. A little more music.</p>
     </div>

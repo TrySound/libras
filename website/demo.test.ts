@@ -71,7 +71,10 @@ it("renders the website around a live demo without replacing the host title or a
     expect(document.title).toBe("Libras website");
     expect(navigation.navigate).not.toHaveBeenCalled();
     expect(document.querySelectorAll("h1")).toHaveLength(1);
-    expect(document.querySelector("h1")?.textContent).toContain("All your music.");
+    expect(document.querySelector("h1")?.textContent).toContain("Your own music library.");
+    expect(document.querySelector("h1")?.textContent).toContain("Listen anywhere.");
+    expect(document.querySelector(".site-hero .site-brand")?.textContent?.trim()).toBe("Libras");
+    expect(document.querySelector(".site-header")).toBeNull();
     expect(document.querySelector<HTMLAnchorElement>(".site-actions a.button")?.pathname).toBe(
       "/libras/",
     );
