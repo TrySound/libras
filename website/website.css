@@ -30,6 +30,11 @@
   margin-inline: auto;
 }
 
+.container-md {
+  width: 100%;
+  max-width: 25ch;
+}
+
 .site-skip-link {
   position: fixed;
   top: 0.5rem;
@@ -57,6 +62,7 @@
   font-weight: 650;
   letter-spacing: -0.075em;
   line-height: 1.04;
+  text-wrap: balance;
 }
 
 .display-lg {
@@ -72,6 +78,7 @@
   font-weight: 550;
   letter-spacing: -0.025em;
   line-height: 1.4;
+  text-wrap: balance;
 }
 
 .site-hero {
@@ -128,6 +135,10 @@
 }
 
 .site-hero h1 > span {
+  display: block;
+}
+
+.site-hero h1 > span:last-child {
   background: linear-gradient(120deg, #faf0f1 10%, #a49ba7 65%, #626779);
   background-clip: text;
   -webkit-text-fill-color: transparent;

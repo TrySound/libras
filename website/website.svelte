@@ -56,8 +56,9 @@
       <Icon name="brand" size="lg" />
       <span>Libras</span>
     </a>
-    <h1 class="display-xl" id="hero-title">
-      Your own music library.<br /><span>Listen anywhere.</span>
+    <h1 class="display-xl container-md" id="hero-title">
+      <span>Your own music library.</span>
+      <span>Listen anywhere.</span>
     </h1>
     <p class="site-hero-description">
       A music player for Navidrome and OpenSubsonic-compatible servers. Stream your library or
@@ -248,7 +249,9 @@
 
   <section class="site-final-cta site-container stack-xl" aria-labelledby="cta-title">
     <div class="site-cta-emblem" aria-hidden="true"><Icon name="brand" size="xl" /></div>
-    <h2 class="display-lg" id="cta-title">Your favorite songs<br />are already in your library.</h2>
+    <h2 class="display-lg container-md" id="cta-title">
+      Your favorite songs are already in your library.
+    </h2>
     <a class="button" href={appUrl}>Start listening</a>
   </section>
 
