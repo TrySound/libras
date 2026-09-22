@@ -56,7 +56,7 @@
         <a href="#how-it-works">How it works</a>
         <a href={repository}>GitHub <span aria-hidden="true">↗</span></a>
       </div>
-      <a class="site-button site-button-small site-button-outline" href={appUrl}>
+      <a class="button" data-size="sm" href={appUrl}>
         Open app {@render arrow()}
       </a>
     </nav>
@@ -80,18 +80,16 @@
       lost in an album. Libras takes care of the rest.
     </p>
     <div class="site-actions">
-      <a class="site-button site-button-primary" href={appUrl}>Start listening {@render arrow()}</a>
+      <a class="button" href={appUrl}>Start listening {@render arrow()}</a>
       {#if mobile}
         <button
-          class="site-button site-button-secondary"
+          class="button"
           commandfor="live-demo-dialog"
           command="show-modal"
           aria-haspopup="dialog"><Icon name="play" /> Try the live demo</button
         >
       {:else}
-        <a class="site-button site-button-secondary" href="#live-demo"
-          ><Icon name="play" /> Try the live demo</a
-        >
+        <a class="button" href="#live-demo"><Icon name="play" /> Try the live demo</a>
       {/if}
     </div>
     <p class="site-hero-footnote">Your server. Your collection. No Libras subscription.</p>
@@ -119,7 +117,7 @@
         </div>
       </div>
       <button
-        class="site-button site-button-primary site-demo-launch"
+        class="button site-demo-launch"
         commandfor="live-demo-dialog"
         command="show-modal"
         aria-haspopup="dialog"
@@ -344,9 +342,7 @@
     <div class="site-cta-emblem" aria-hidden="true"><Icon name="brand" size="xl" /></div>
     <span class="site-eyebrow">LESS NOISE. MORE YOU.</span>
     <h2 id="cta-title">Your next good listen<br />is already in your library.</h2>
-    <a class="site-button site-button-primary" href={appUrl}
-      >Make yourself at home {@render arrow()}</a
-    >
+    <a class="button" href={appUrl}>Make yourself at home {@render arrow()}</a>
     <p>Free. Open source. Yours to play.</p>
   </section>
 
