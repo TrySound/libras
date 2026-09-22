@@ -187,11 +187,6 @@
   text-wrap: balance;
 }
 
-.site-section-heading h2 > span,
-.site-faq h2 > span {
-  color: var(--site-muted);
-}
-
 .site-description {
   margin-top: 1.25rem;
   color: var(--site-muted);
@@ -283,10 +278,10 @@ body:has(.site-demo-dialog:modal) {
 
 .site-feature-library {
   display: grid;
-  grid-template-columns: 1fr 0.9fr;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
   align-items: center;
   grid-column: span 4;
-  min-height: 19rem;
+  min-height: 21rem;
   padding-right: 0;
 }
 
@@ -295,26 +290,24 @@ body:has(.site-demo-dialog:modal) {
   place-items: center;
   width: 2.3rem;
   height: 2.3rem;
-  margin-bottom: 1.25rem;
+  flex: none;
   border: 1px solid var(--site-border);
   border-radius: 0.65rem;
   color: var(--site-muted);
   background: #ffffff03;
 }
 
-.site-feature h3,
-.site-steps h3 {
+.site-feature h3 {
   font-size: 1.1rem;
   font-weight: 550;
   letter-spacing: -0.025em;
   line-height: 1.4;
 }
 
-.site-feature p,
-.site-steps p {
+.site-feature p {
   margin-top: 0.75rem;
   color: var(--site-muted);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   line-height: 1.8;
   text-wrap: pretty;
 }
@@ -329,12 +322,11 @@ body:has(.site-demo-dialog:modal) {
 .site-record-sleeve {
   position: absolute;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  display: grid;
+  place-items: center;
   box-sizing: border-box;
-  width: 12rem;
-  height: 14rem;
+  width: 14rem;
+  aspect-ratio: 1;
   padding: 1rem;
   border: 1px solid #ffffff30;
   background: linear-gradient(155deg, #c17b83, #74313e 50%, #311e2a);
@@ -342,29 +334,15 @@ body:has(.site-demo-dialog:modal) {
 }
 
 .site-record-sleeve > svg {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 4rem;
+  height: 4rem;
   opacity: 0.8;
-}
-
-.site-record-sleeve > span {
-  font-size: 1.15rem;
-  line-height: 1.1;
-  font-weight: 650;
-  letter-spacing: -0.04em;
-}
-
-.site-record-sleeve > small {
-  font-family: var(--site-font-mono);
-  font-size: 0.45rem;
-  letter-spacing: 0.1em;
-  opacity: 0.6;
 }
 
 .site-vinyl {
   position: absolute;
   top: 0.5rem;
-  left: 4.5rem;
+  left: 7rem;
   display: grid;
   place-items: center;
   width: 13rem;
@@ -514,33 +492,19 @@ body:has(.site-demo-dialog:modal) {
   color: #ffffff03;
 }
 
-.site-steps {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 3rem;
-  padding-top: 2rem;
-  border-top: 1px solid var(--site-border);
-}
-
 .site-faq {
-  display: grid;
-  grid-template-columns: 1fr 1.5fr;
-  gap: 4rem;
+  max-width: 48rem;
 }
 
-.site-faq-list details {
-  border-bottom: 1px solid var(--site-border);
+.site-faq h2 {
+  margin-bottom: 2rem;
 }
 
-.site-faq-list details:first-child {
+.site-faq-list details + details {
   border-top: 1px solid var(--site-border);
 }
 
 .site-faq-list summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
   padding-block: 1.25rem;
   list-style: none;
   cursor: pointer;
@@ -549,15 +513,6 @@ body:has(.site-demo-dialog:modal) {
 
 .site-faq-list summary::-webkit-details-marker {
   display: none;
-}
-
-.site-faq-list summary > span {
-  color: var(--site-faint);
-  font-size: 1.1rem;
-}
-
-.site-faq-list details[open] summary > span {
-  rotate: 45deg;
 }
 
 .site-faq-list details p {
@@ -570,6 +525,24 @@ body:has(.site-demo-dialog:modal) {
 .site-faq-list details a {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .site-faq-list {
+    interpolate-size: allow-keywords;
+  }
+
+  .site-faq-list details::details-content {
+    height: 0;
+    overflow: hidden;
+    transition:
+      height var(--transition-overlay),
+      content-visibility var(--transition-overlay) allow-discrete;
+  }
+
+  .site-faq-list details[open]::details-content {
+    height: auto;
+  }
 }
 
 .site-final-cta {
@@ -730,9 +703,7 @@ body:has(.site-demo-dialog:modal) {
     aspect-ratio: auto;
   }
 
-  .site-feature-grid,
-  .site-steps,
-  .site-faq {
+  .site-feature-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -748,14 +719,11 @@ body:has(.site-demo-dialog:modal) {
   .site-feature-library {
     grid-template-columns: 1fr;
     gap: 1.5rem;
+    padding-bottom: 3rem;
   }
 
   .site-record-scene {
     margin-left: calc(50% - 8rem);
-  }
-
-  .site-faq {
-    gap: 2rem;
   }
 
   .site-footer {

@@ -78,7 +78,17 @@ it("renders the website around a live demo without replacing the host title or a
     expect(document.querySelector<HTMLAnchorElement>(".site-actions a.button")?.pathname).toBe(
       "/libras/",
     );
-    expect(document.querySelectorAll(".site-faq-list details")).toHaveLength(5);
+    const questions = document.querySelectorAll<HTMLDetailsElement>(".site-faq-list details");
+    expect(questions).toHaveLength(5);
+    for (const question of questions) {
+      expect(question.getAttribute("name")).toBe("faq");
+      expect(question.querySelector("summary")?.querySelector("span")).toBeNull();
+    }
+    for (const link of document.querySelectorAll<HTMLAnchorElement>(
+      '.website a[href^="https://"]',
+    )) {
+      expect(link.target).toBe("_blank");
+    }
     for (const link of document.querySelectorAll<HTMLAnchorElement>('.website a[href^="#"]')) {
       if (link.closest(".site-demo-frame")) continue;
       expect(document.getElementById(link.hash.slice(1))).not.toBeNull();

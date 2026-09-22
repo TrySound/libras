@@ -117,35 +117,29 @@
 
   <section class="site-section site-container" id="features" aria-labelledby="features-title">
     <div class="site-section-heading">
-      <h2 id="features-title">
-        Everything you need.<br /><span>Nothing between you and play.</span>
-      </h2>
-      <p class="site-description">
-        A thoughtfully small player for a collection that’s entirely yours.
-      </p>
+      <h2 id="features-title">Everything you need.</h2>
     </div>
     <div class="site-feature-grid">
       <article class="site-feature site-feature-library">
         <div class="site-feature-copy">
-          <span class="site-feature-icon"><Icon name="music" /></span>
-          <h3>Your collection. Front and center.</h3>
-          <p>
-            Browse artists, explore albums, and search for the track stuck in your head. Your music
-            is the main event.
-          </p>
+          <div class="row-sm">
+            <span class="site-feature-icon"><Icon name="music" /></span>
+            <h3>Your collection.</h3>
+          </div>
+          <p>Browse artists, explore albums, and search for the track stuck in your head.</p>
         </div>
         <div class="site-record-scene" aria-hidden="true">
           <div class="site-record-sleeve">
-            <Icon name="brand" size="xl" /><span>THE ART OF<br />JUST LISTENING.</span><small
-              >LIBRAS / VOL. 001</small
-            >
+            <Icon name="brand" size="xl" />
           </div>
           <div class="site-vinyl"><div><Icon name="brand" /></div></div>
         </div>
       </article>
       <article class="site-feature site-feature-offline">
-        <span class="site-feature-icon"><Icon name="download" /></span>
-        <h3>Take the long way home.</h3>
+        <div class="row-sm">
+          <span class="site-feature-icon"><Icon name="download" /></span>
+          <h3>Take the long way home.</h3>
+        </div>
         <p>
           Download your favorites, switch to Offline Library, and keep listening when the connection
           doesn’t come along.
@@ -161,12 +155,11 @@
         </div>
       </article>
       <article class="site-feature">
-        <span class="site-feature-icon"><Icon name="clock" /></span>
-        <h3>Right where you left off.</h3>
-        <p>
-          Your queue and playback position are saved between sessions. Come back to the music, not
-          the setup.
-        </p>
+        <div class="row-sm">
+          <span class="site-feature-icon"><Icon name="clock" /></span>
+          <h3>Right where you left off.</h3>
+        </div>
+        <p>Your queue and playback position are saved between sessions.</p>
         <div class="site-waveform" aria-hidden="true">
           {#each waveform as height, index}
             <span class:site-waveform-played={index < 14} style:height={`${height}%`}></span>
@@ -177,8 +170,10 @@
         </div>
       </article>
       <article class="site-feature">
-        <span class="site-feature-icon"><Icon name="home" /></span>
-        <h3>A browser tab. Or a home.</h3>
+        <div class="row-sm">
+          <span class="site-feature-icon"><Icon name="home" /></span>
+          <h3>Browser or app.</h3>
+        </div>
         <p>
           Listen right in your browser, or install Libras as a standalone web app. No app store
           required.
@@ -190,92 +185,63 @@
         </div>
       </article>
       <article class="site-feature site-feature-open">
-        <span class="site-feature-icon site-code-icon" aria-hidden="true">&lt;/&gt;</span>
-        <h3>Open, in every sense.</h3>
+        <div class="row-sm">
+          <span class="site-feature-icon site-code-icon" aria-hidden="true">&lt;/&gt;</span>
+          <h3>Open, in every sense.</h3>
+        </div>
         <p>
           Your server holds the music. You hold the keys. Libras is free, MIT-licensed, and open for
           you to explore or make your own.
         </p>
-        <a class="site-text-link" href={repository}>Look under the hood {@render arrow()}</a>
+        <a class="site-text-link" href={repository} target="_blank"
+          >Look under the hood {@render arrow()}</a
+        >
         <span class="site-open-watermark" aria-hidden="true">{`{ }`}</span>
       </article>
     </div>
   </section>
 
-  <section class="site-section site-container" id="how-it-works" aria-labelledby="steps-title">
-    <div class="site-section-heading">
-      <h2 id="steps-title">From your server.<br /><span>Straight to your speakers.</span></h2>
-    </div>
-    <div class="site-steps">
-      <article>
-        <h3>Bring your library</h3>
-        <p>
-          Run Navidrome or a compatible Subsonic server. Your music stays hosted where you choose.
-        </p>
-        <a class="site-text-link" href="https://www.navidrome.org/docs/"
-          >New to self-hosting? {@render arrow()}</a
-        >
-      </article>
-      <article>
-        <h3>Make the connection</h3>
-        <p>
-          Open Libras and enter your HTTPS server address and credentials. Your library is ready to
-          explore.
-        </p>
-      </article>
-      <article>
-        <h3>Find your rhythm</h3>
-        <p>
-          Queue an album, save tracks for offline, or install the app. Build a listening habit
-          that’s yours.
-        </p>
-      </article>
-    </div>
-  </section>
-
   <section class="site-section site-faq site-container" aria-labelledby="faq-title">
-    <div>
-      <h2 id="faq-title">Before you<br /><span>press play.</span></h2>
-      <p class="site-description">Small app. No big mysteries.</p>
-    </div>
+    <h2 id="faq-title">Before you press play.</h2>
     <div class="site-faq-list">
-      <details>
-        <summary>Is Libras a music streaming service?<span aria-hidden="true">+</span></summary>
+      <details name="faq">
+        <summary>Is Libras a music streaming service?</summary>
         <p>
           Libras is a player, not a music hosting service. Bring your own music library on a
           compatible server. The live demo lets you try it with a small, openly licensed collection
           before connecting your own.
         </p>
       </details>
-      <details>
-        <summary>Is it really free?<span aria-hidden="true">+</span></summary>
+      <details name="faq">
+        <summary>Is it really free?</summary>
         <p>
           Yes. Libras is free and open source under the MIT license, with no Libras subscription.
           You’re responsible for your own music server and any hosting costs.
         </p>
       </details>
-      <details>
-        <summary>How does offline listening work?<span aria-hidden="true">+</span></summary>
+      <details name="faq">
+        <summary>How does offline listening work?</summary>
         <p>
-          Download tracks while online, then turn on Offline Library. Downloads are stored in this
-          browser on this device, separately for each server and account. Clearing site data deletes
-          your saved music.
+          Download tracks while online, then turn on Offline Library. Downloads are stored on your
+          device. Clearing site data deletes your saved music.
         </p>
       </details>
-      <details>
-        <summary>Can I use it on my phone?<span aria-hidden="true">+</span></summary>
+      <details name="faq">
+        <summary>Can I use it on my phone?</summary>
         <p>
           Yes, use it in your browser or add it to your home screen. On iPhone and iPad, use
           Safari’s Share → Add to Home Screen. Installation varies by browser; offline storage and
           background playback have not yet been verified on iOS.
         </p>
       </details>
-      <details>
-        <summary>Which servers are supported?<span aria-hidden="true">+</span></summary>
+      <details name="faq">
+        <summary>Which servers are supported?</summary>
         <p>
           Use a reachable HTTPS server with a Subsonic-compatible API, such as Navidrome. It needs
           OpenSubsonic empty-query search3 support and CORS configured to allow requests from the
-          Libras origin. <a href={`${repository}#get-started`}>Read the setup requirements.</a>
+          Libras origin. <a href={`${repository}#get-started`} target="_blank"
+            >Read the setup requirements.</a
+          >
         </p>
       </details>
     </div>
@@ -283,8 +249,8 @@
 
   <section class="site-final-cta site-container" aria-labelledby="cta-title">
     <div class="site-cta-emblem" aria-hidden="true"><Icon name="brand" size="xl" /></div>
-    <h2 id="cta-title">Your next good listen<br />is already in your library.</h2>
-    <a class="button" href={appUrl}>Make yourself at home {@render arrow()}</a>
+    <h2 id="cta-title">Your favorite songs<br />are already in your library.</h2>
+    <a class="button" href={appUrl}>Start listening</a>
   </section>
 
   <footer class="site-footer site-container">
@@ -294,9 +260,10 @@
       >
     </div>
     <nav aria-label="Footer navigation">
-      <a href={repository}>GitHub ↗</a><a href={`${repository}/blob/main/LICENSE`}>MIT License</a><a
-        href={creditsUrl}>Music credits</a
-      >
+      <a href={repository} target="_blank">GitHub ↗</a><a
+        href={`${repository}/blob/main/LICENSE`}
+        target="_blank">MIT License</a
+      ><a href={creditsUrl}>Music credits</a>
     </nav>
   </footer>
 </div>
