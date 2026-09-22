@@ -264,7 +264,7 @@
 
 .site-demo-window {
   box-sizing: border-box;
-  width: min(100%, 422px);
+  width: min(100%, 390px);
   max-width: none;
   max-height: none;
   min-width: 0;
@@ -312,9 +312,13 @@
 }
 
 .site-demo-frame {
-  width: calc(100% - 32px);
-  margin: 16px;
+  width: 100%;
   aspect-ratio: 390 / 720;
+}
+
+/* At the inline demo's scroll boundaries, continue scrolling the website. */
+.site-demo-dialog:not(:modal) .app-shell {
+  overscroll-behavior: auto;
 }
 
 .site-demo-launch,
@@ -880,8 +884,6 @@ body:has(.site-demo-dialog:modal) {
   .site-demo-frame {
     flex: 1;
     min-height: 0;
-    width: 100%;
-    margin: 0;
     aspect-ratio: auto;
   }
 
