@@ -11,6 +11,25 @@ This pnpm workspace (`@libras/website`) imports the existing application from `.
 
 The demo loads its catalog online on every launch. Auth and preferences reset on reload. OPFS-backed downloads and the app's local playback queue remain persistent; opening/reloading the demo offline is not supported. Catalog loading and failures use the shared app's synchronization UI; Settings → Refresh library retries failed loads without losing the local library. All full-length tracks are served unchanged; there is no transcoding. Unsupported formats report an error instead of pretending that OGG bytes are an MP3.
 
+## Embedding layout
+
+App fills its host's width and height. Give the host an explicit size; for a square landing-page demo:
+
+```svelte
+<div class="demo-frame">
+  <Demo />
+</div>
+
+<style>
+  .demo-frame {
+    width: min(100%, 36rem);
+    aspect-ratio: 1;
+  }
+</style>
+```
+
+The shared `.app-root` is a size-query container. Content scrolls inside it, the mini-player stays at its bottom, and the player breakpoint follows the container width rather than the page viewport. Top-layer dialogs, backdrops and notifications use CSS anchor positioning to stay aligned with the frame (requires browser support for anchor positioning and `anchor-scope`). Native modal dialogs still make the rest of the document inert while open.
+
 ## Local development
 
 Place a verified complete export in `website/public/catalog/` (ignored by Git), including audio, covers, `search3.json`, `assets.json`, credits and provenance. Never commit music or build-source credentials.

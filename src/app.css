@@ -615,8 +615,17 @@
   }
 }
 
-body {
-  margin: 0;
+/* The host supplies the size (e.g. a square demo); descendants use this viewport. */
+.app-root {
+  container: app / size;
+  anchor-name: --libras-app;
+  anchor-scope: --libras-app;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 100%;
+  overflow: clip;
+  background: var(--surface-page-background);
 }
 
 .visually-hidden {
@@ -633,8 +642,11 @@ body {
 
 .app-shell {
   position: relative;
+  box-sizing: border-box;
   width: 100%;
-  min-height: 100dvh;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding-bottom: 5.5rem;
 }
 
@@ -811,10 +823,10 @@ a {
 
 .player-dialog {
   container: player / size;
-  --dialog-dismiss-offset: calc(50dvh + 50%);
+  --dialog-dismiss-offset: calc(50cqh + 50%);
   box-sizing: border-box;
-  width: 100dvw;
-  height: 100dvh;
+  width: 100cqw;
+  height: 100cqh;
   max-width: none;
   max-height: none;
   padding: 0;
@@ -822,15 +834,26 @@ a {
   border: 0;
   color: var(--color-text-primary);
   background: var(--surface-page-background);
-  @media (width >= 800px) {
-    width: min(calc(100dvw - 2rem), 80rem);
-    height: min(calc(100dvh - 2rem), 52rem);
+  @container app (width >= 800px) {
+    width: min(calc(100cqw - 2rem), 80rem);
+    height: min(calc(100cqh - 2rem), 52rem);
     border: var(--surface-floating-border);
     border-radius: var(--radius-sm);
     background: var(--surface-floating-background);
     backdrop-filter: blur(var(--surface-floating-blur));
     box-shadow: var(--surface-floating-shadow);
   }
+}
+
+/* Top-layer elements escape containment, so anchor their bounds to the app. */
+.player-dialog,
+.action-menu,
+.notification-popover,
+.player-dialog::backdrop,
+.action-menu::backdrop {
+  position: fixed;
+  position-anchor: --libras-app;
+  inset: anchor(top) anchor(right) anchor(bottom) anchor(left);
 }
 
 .player-dialog::backdrop {
@@ -1035,14 +1058,13 @@ a {
 }
 
 .action-menu {
-  position: fixed;
-  inset: auto 0 0;
-  width: 100dvw;
+  top: auto;
+  width: 100cqw;
   height: auto;
   max-width: none;
   margin: 0;
   padding: 0;
-  max-height: calc(100dvh - 2rem);
+  max-height: calc(100cqh - 2rem);
   overflow-y: auto;
   box-sizing: border-box;
   border: 0;
@@ -1134,7 +1156,7 @@ a {
 }
 
 .empty-state {
-  min-height: 55dvh;
+  min-height: 55cqh;
   padding: var(--space-xl);
   place-items: center;
   align-content: center;
@@ -1143,7 +1165,7 @@ a {
 
 .mini-player {
   view-transition-name: mini-player;
-  position: fixed;
+  position: absolute;
   z-index: 20;
   right: var(--space-sm);
   bottom: max(var(--space-sm), env(safe-area-inset-bottom));
@@ -1213,13 +1235,11 @@ a {
 
 .notification-popover {
   color: var(--color-text-primary);
-  position: fixed;
-  inset: 4rem 1rem auto auto;
-  top: anchor(bottom, 4rem);
+  inset: calc(anchor(top) + 4rem) calc(anchor(right) + 1rem) auto auto;
   margin: var(--space-sm) 0 0;
   box-sizing: border-box;
-  width: min(26rem, calc(100vw - 2rem));
-  max-height: calc(100dvh - 6rem);
+  width: min(26rem, calc(100cqw - 2rem));
+  max-height: calc(100cqh - 6rem);
   overflow: auto;
   padding: var(--space-md);
   border: var(--surface-floating-border);
