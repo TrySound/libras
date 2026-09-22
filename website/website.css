@@ -498,6 +498,7 @@ body:has(.site-demo-dialog:modal) {
 
 .site-faq h2 {
   margin-bottom: 2rem;
+  text-align: center;
 }
 
 .site-faq-list details + details {
