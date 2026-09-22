@@ -55,7 +55,7 @@
   }
 </script>
 
-<section class="app-page view library-view stack-md">
+<section class="view library-view stack-md">
   {#if libraryAvailable}
     <div class="row-md">
       <div class="stack-xs grow">
