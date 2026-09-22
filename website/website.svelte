@@ -77,7 +77,7 @@
   </section>
 
   <section class="site-showcase site-container" id="live-demo" aria-labelledby="demo-title">
-    <div class="site-showcase-copy">
+    <div class="site-showcase-copy stack-lg">
       <h2 id="demo-title">A minimal interface.</h2>
       <p class="site-description">
         Choose an artist or album and start listening. Try it out in the live demo.
@@ -121,7 +121,7 @@
     </div>
     <div class="site-feature-grid">
       <article class="site-feature site-feature-library">
-        <div class="site-feature-copy">
+        <div class="site-feature-copy stack-md">
           <div class="row-sm">
             <span class="site-feature-icon"><Icon name="music" /></span>
             <h3>Your collection.</h3>
@@ -193,7 +193,7 @@
           Your server holds the music. You hold the keys. Libras is free, MIT-licensed, and open for
           you to explore or make your own.
         </p>
-        <a class="site-text-link" href={repository} target="_blank"
+        <a class="site-text-link text-link" href={repository} target="_blank"
           >Look under the hood {@render arrow()}</a
         >
         <span class="site-open-watermark" aria-hidden="true">{`{ }`}</span>
@@ -239,7 +239,7 @@
         <p>
           Use a reachable HTTPS server with a Subsonic-compatible API, such as Navidrome. It needs
           OpenSubsonic empty-query search3 support and CORS configured to allow requests from the
-          Libras origin. <a href={`${repository}#get-started`} target="_blank"
+          Libras origin. <a class="text-link" href={`${repository}#get-started`} target="_blank"
             >Read the setup requirements.</a
           >
         </p>
@@ -247,7 +247,7 @@
     </div>
   </section>
 
-  <section class="site-final-cta site-container" aria-labelledby="cta-title">
+  <section class="site-final-cta site-container stack-xl" aria-labelledby="cta-title">
     <div class="site-cta-emblem" aria-hidden="true"><Icon name="brand" size="xl" /></div>
     <h2 id="cta-title">Your favorite songs<br />are already in your library.</h2>
     <a class="button" href={appUrl}>Start listening</a>
@@ -260,10 +260,11 @@
       >
     </div>
     <nav aria-label="Footer navigation">
-      <a href={repository} target="_blank">GitHub ↗</a><a
+      <a class="text-link" href={repository} target="_blank">GitHub</a><a
+        class="text-link"
         href={`${repository}/blob/main/LICENSE`}
         target="_blank">MIT License</a
-      ><a href={creditsUrl}>Music credits</a>
+      ><a class="text-link" href={creditsUrl}>Music credits</a>
     </nav>
   </footer>
 </div>
