@@ -50,17 +50,28 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 1.6rem;
-  font-weight: 650;
-  letter-spacing: -0.06em;
 }
 
-.site-footer nav {
-  display: flex;
-  align-items: center;
-  gap: 2rem;
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
+.display-xl {
+  font-size: clamp(3rem, 7.6vw, 6.4rem);
+  font-weight: 650;
+  letter-spacing: -0.075em;
+  line-height: 1.04;
+}
+
+.display-lg {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 550;
+  letter-spacing: -0.055em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.display-md {
+  font-size: 1.1rem;
+  font-weight: 550;
+  letter-spacing: -0.025em;
+  line-height: 1.4;
 }
 
 .site-hero {
@@ -104,8 +115,6 @@
 
 .site-hero .site-brand {
   gap: 0.75rem;
-  font-size: clamp(2.5rem, 5vw, 3.5rem);
-  line-height: 1;
 }
 
 .site-hero .site-brand svg {
@@ -116,10 +125,6 @@
 
 .site-hero h1 {
   margin-top: 1.8rem;
-  font-size: clamp(3rem, 7.6vw, 6.4rem);
-  font-weight: 650;
-  letter-spacing: -0.075em;
-  line-height: 1.04;
 }
 
 .site-hero h1 > span {
@@ -168,21 +173,8 @@
   position: relative;
 }
 
-.site-showcase-copy h2,
-.site-section-heading h2,
-.site-faq h2,
-.site-final-cta h2 {
-  font-size: clamp(2rem, 4vw, 3rem);
-  font-weight: 550;
-  letter-spacing: -0.055em;
-  line-height: 1.15;
-  text-wrap: balance;
-}
-
 .site-description {
   color: var(--color-text-muted);
-  line-height: 1.8;
-  text-wrap: pretty;
 }
 
 .site-demo-window {
@@ -284,19 +276,9 @@ body:has(.site-demo-dialog:modal) {
   background: #ffffff03;
 }
 
-.site-feature h3 {
-  font-size: 1.1rem;
-  font-weight: 550;
-  letter-spacing: -0.025em;
-  line-height: 1.4;
-}
-
 .site-feature p {
   margin-top: 0.75rem;
   color: var(--color-text-muted);
-  font-size: var(--text-md);
-  line-height: 1.8;
-  text-wrap: pretty;
 }
 
 .site-feature-copy p {
@@ -375,7 +357,6 @@ body:has(.site-demo-dialog:modal) {
   background: linear-gradient(135deg, #48695f, #1f3238);
 }
 
-.site-download-visual small,
 .site-install-visual small {
   display: block;
   color: var(--site-faint);
@@ -392,13 +373,6 @@ body:has(.site-demo-dialog:modal) {
   margin-top: 1rem;
   border-radius: var(--radius-pill);
   background: linear-gradient(90deg, #52776d, #83b39f);
-}
-
-.site-mono {
-  font-family: var(--site-font-mono);
-  font-size: 0.45rem;
-  letter-spacing: 0.05em;
-  color: var(--site-faint);
 }
 
 .site-waveform {
@@ -419,15 +393,6 @@ body:has(.site-demo-dialog:modal) {
 .site-waveform > .site-waveform-played {
   background: var(--site-accent);
   opacity: 0.65;
-}
-
-.site-progress-labels {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 0.6rem;
-  color: var(--site-faint);
-  font-family: var(--site-font-mono);
-  font-size: 0.5rem;
 }
 
 .site-install-visual {
@@ -451,11 +416,6 @@ body:has(.site-demo-dialog:modal) {
   border: 1px solid var(--site-border);
   border-radius: 0.5rem;
   background: linear-gradient(150deg, #2b2b35, #12141b);
-}
-
-.site-install-plus {
-  margin-left: auto;
-  color: var(--site-faint);
 }
 
 .site-code-icon {
@@ -510,8 +470,6 @@ body:has(.site-demo-dialog:modal) {
 .site-faq-list details p {
   padding-bottom: 1.25rem;
   color: var(--color-text-muted);
-  font-size: var(--text-sm);
-  line-height: 1.8;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -577,15 +535,6 @@ body:has(.site-demo-dialog:modal) {
   border-top: 1px solid var(--site-border);
 }
 
-.site-footer .site-brand {
-  font-size: 1.25rem;
-}
-
-.site-footer nav {
-  font-size: var(--text-xs);
-  gap: 1.5rem;
-}
-
 @media (hover: hover) {
   .site-faq-list summary:hover {
     color: var(--site-accent);
@@ -616,11 +565,7 @@ body:has(.site-demo-dialog:modal) {
 }
 
 @media (width < 700px) {
-  .site-brand {
-    font-size: 1.4rem;
-  }
-
-  .site-hero h1 {
+  .display-xl {
     font-size: clamp(2.15rem, 9.2vw, 4.3rem);
   }
 
@@ -631,6 +576,7 @@ body:has(.site-demo-dialog:modal) {
   }
 
   .site-showcase-copy {
+    justify-items: center;
     text-align: center;
   }
 
