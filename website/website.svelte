@@ -60,7 +60,7 @@
       <span>Your own music library.</span>
       <span>Listen anywhere.</span>
     </h1>
-    <p class="site-hero-description">
+    <p class="site-hero-description text-muted">
       A music player for Navidrome and OpenSubsonic-compatible servers. Stream your library or
       download music for offline listening.
     </p>
@@ -82,7 +82,7 @@
   <section class="site-showcase site-container" id="live-demo" aria-labelledby="demo-title">
     <div class="site-showcase-copy stack-lg">
       <h2 class="display-lg" id="demo-title">Try live demo</h2>
-      <p class="site-description type-body">
+      <p class="type-body text-muted">
         A minimal interface. Choose an artist or album and start listening.
       </p>
       <button
@@ -129,7 +129,7 @@
             <span class="site-feature-icon"><Icon name="music" /></span>
             <h3 class="display-md">Your collection.</h3>
           </div>
-          <p class="type-body">
+          <p class="type-body text-muted">
             Browse artists, explore albums, and search for the track stuck in your head.
           </p>
         </div>
@@ -140,12 +140,12 @@
           <div class="site-vinyl"><div><Icon name="brand" /></div></div>
         </div>
       </article>
-      <article class="site-feature site-feature-offline">
+      <article class="site-feature site-feature-offline stack-md">
         <div class="row-sm">
           <span class="site-feature-icon"><Icon name="download" /></span>
           <h3 class="display-md">Take the long way home.</h3>
         </div>
-        <p class="type-body">
+        <p class="type-body text-muted">
           Download your favorites, switch to Offline Library, and keep listening when the connection
           doesn’t come along.
         </p>
@@ -158,24 +158,26 @@
           <div class="site-download-line"></div>
         </div>
       </article>
-      <article class="site-feature">
+      <article class="site-feature stack-md">
         <div class="row-sm">
           <span class="site-feature-icon"><Icon name="clock" /></span>
           <h3 class="display-md">Right where you left off.</h3>
         </div>
-        <p class="type-body">Your queue and playback position are saved between sessions.</p>
+        <p class="type-body text-muted">
+          Your queue and playback position are saved between sessions.
+        </p>
         <div class="site-waveform" aria-hidden="true">
           {#each waveform as height, index}
             <span class:site-waveform-played={index < 14} style:height={`${height}%`}></span>
           {/each}
         </div>
       </article>
-      <article class="site-feature">
+      <article class="site-feature stack-md">
         <div class="row-sm">
           <span class="site-feature-icon"><Icon name="home" /></span>
           <h3 class="display-md">Browser or app.</h3>
         </div>
-        <p class="type-body">
+        <p class="type-body text-muted">
           Listen right in your browser, or install Libras as a standalone web app. No app store
           required.
         </p>
@@ -184,12 +186,12 @@
           <span>Libras<small>Make room for your music.</small></span>
         </div>
       </article>
-      <article class="site-feature site-feature-open">
+      <article class="site-feature site-feature-open stack-md">
         <div class="row-sm">
           <span class="site-feature-icon site-code-icon" aria-hidden="true">&lt;/&gt;</span>
           <h3 class="display-md">Open, in every sense.</h3>
         </div>
-        <p class="type-body">
+        <p class="type-body text-muted">
           Your server holds the music. You hold the keys. Libras is free, MIT-licensed, and open for
           you to explore or make your own.
         </p>
@@ -206,7 +208,7 @@
     <div class="site-faq-list">
       <details name="faq">
         <summary>Is Libras a music streaming service?</summary>
-        <p class="type-body">
+        <p class="type-body text-muted">
           Libras is a player, not a music hosting service. Bring your own music library on a
           compatible server. The live demo lets you try it with a small, openly licensed collection
           before connecting your own.
@@ -214,21 +216,21 @@
       </details>
       <details name="faq">
         <summary>Is it really free?</summary>
-        <p class="type-body">
+        <p class="type-body text-muted">
           Yes. Libras is free and open source under the MIT license, with no Libras subscription.
           You’re responsible for your own music server and any hosting costs.
         </p>
       </details>
       <details name="faq">
         <summary>How does offline listening work?</summary>
-        <p class="type-body">
+        <p class="type-body text-muted">
           Download tracks while online, then turn on Offline Library. Downloads are stored on your
           device. Clearing site data deletes your saved music.
         </p>
       </details>
       <details name="faq">
         <summary>Can I use it on my phone?</summary>
-        <p class="type-body">
+        <p class="type-body text-muted">
           Yes, use it in your browser or add it to your home screen. On iPhone and iPad, use
           Safari’s Share → Add to Home Screen. Installation varies by browser; offline storage and
           background playback have not yet been verified on iOS.
@@ -236,7 +238,7 @@
       </details>
       <details name="faq">
         <summary>Which servers are supported?</summary>
-        <p class="type-body">
+        <p class="type-body text-muted">
           Use a reachable HTTPS server with a Subsonic-compatible API, such as Navidrome. It needs
           OpenSubsonic empty-query search3 support and CORS configured to allow requests from the
           Libras origin. <a class="text-link" href={`${repository}#get-started`} target="_blank"

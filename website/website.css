@@ -147,7 +147,6 @@
 .site-hero-description {
   max-width: 35rem;
   margin: 1.8rem auto 0;
-  color: var(--color-text-muted);
   font-size: clamp(1rem, 2vw, 1.125rem);
   line-height: 1.8;
   text-wrap: pretty;
@@ -182,10 +181,6 @@
 .site-showcase-copy,
 .site-demo-window {
   position: relative;
-}
-
-.site-description {
-  color: var(--color-text-muted);
 }
 
 .site-demo-window {
@@ -287,15 +282,6 @@ body:has(.site-demo-dialog:modal) {
   background: #ffffff03;
 }
 
-.site-feature p {
-  margin-top: 0.75rem;
-  color: var(--color-text-muted);
-}
-
-.site-feature-copy p {
-  margin-top: 0;
-}
-
 .site-record-scene {
   position: relative;
   height: 15rem;
@@ -348,7 +334,7 @@ body:has(.site-demo-dialog:modal) {
 }
 
 .site-download-visual {
-  margin-top: 2rem;
+  margin-top: var(--space-md);
 }
 
 .site-download-visual > div:first-child {
@@ -392,7 +378,7 @@ body:has(.site-demo-dialog:modal) {
   justify-content: space-between;
   gap: 4px;
   height: 3rem;
-  margin-top: 2rem;
+  margin-top: var(--space-md);
 }
 
 .site-waveform > span {
@@ -410,7 +396,7 @@ body:has(.site-demo-dialog:modal) {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-top: 2rem;
+  margin-top: var(--space-md);
   padding: 0.75rem;
   border: 1px solid var(--site-border);
   border-radius: 0.75rem;
@@ -438,7 +424,7 @@ body:has(.site-demo-dialog:modal) {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 1.5rem;
+  margin-top: var(--space-sm);
   font-size: var(--text-sm);
 }
 
@@ -480,7 +466,6 @@ body:has(.site-demo-dialog:modal) {
 
 .site-faq-list details p {
   padding-bottom: 1.25rem;
-  color: var(--color-text-muted);
 }
 
 @media (prefers-reduced-motion: no-preference) {
