@@ -42,12 +42,6 @@
   translate: 0;
 }
 
-.site-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 .display-xl {
   margin: 0;
   font-size: clamp(3rem, 7.6vw, 6.4rem);
@@ -114,11 +108,7 @@
   pointer-events: none;
 }
 
-.site-hero .site-brand {
-  gap: 0.75rem;
-}
-
-.site-hero .site-brand svg {
+.site-hero .row-sm svg {
   color: var(--site-accent);
   width: 1em;
   height: 1em;

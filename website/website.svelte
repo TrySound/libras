@@ -52,7 +52,7 @@
     aria-labelledby="hero-title"
   >
     <div class="site-grid-decoration" aria-hidden="true"></div>
-    <a class="site-brand display-lg" href={import.meta.env.BASE_URL} aria-label="Libras home">
+    <a class="row-sm display-lg" href={import.meta.env.BASE_URL} aria-label="Libras home">
       <Icon name="brand" size="lg" />
       <span>Libras</span>
     </a>
@@ -259,7 +259,7 @@
 
   <footer class="site-footer site-container">
     <div>
-      <a class="site-brand display-md" href={import.meta.env.BASE_URL}
+      <a class="row-sm display-md" href={import.meta.env.BASE_URL}
         ><Icon name="brand" /><span>Libras</span></a
       >
     </div>
