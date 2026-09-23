@@ -7,7 +7,7 @@
   let demoDialog: HTMLDialogElement;
 
   onMount(() => {
-    const viewport = window.matchMedia("(width < 700px)");
+    const viewport = window.matchMedia("(width < 800px)");
     const syncViewport = () => {
       if (mobile === viewport.matches) return;
       // Close transient overlays, but keep the same player and playback session.
@@ -46,12 +46,11 @@
 <div class="website">
   <a class="site-skip-link" href="#main-content">Skip to content</a>
   <section
-    class="site-hero site-container"
+    class="site-hero site-container stack-lg"
     id="main-content"
     tabindex="-1"
     aria-labelledby="hero-title"
   >
-    <div class="site-grid-decoration" aria-hidden="true"></div>
     <a class="row-sm display-lg" href={import.meta.env.BASE_URL} aria-label="Libras home">
       <Icon name="brand" size="lg" />
       <span>Libras</span>
@@ -66,16 +65,10 @@
     </p>
     <div class="site-actions">
       <a class="button" href={appUrl}>Connect your server</a>
-      {#if mobile}
-        <button
-          class="button"
-          commandfor="live-demo-dialog"
-          command="show-modal"
-          aria-haspopup="dialog">Try live demo</button
-        >
-      {:else}
-        <a class="button" href="#live-demo">Try live demo</a>
-      {/if}
+      <button class="button mobile-only" commandfor="live-demo-dialog" command="show-modal">
+        Try live demo
+      </button>
+      <a class="button desktop-only" href="#live-demo">Try live demo</a>
     </div>
   </section>
 
@@ -102,9 +95,12 @@
       aria-label="Libras live demo"
     >
       <div class="site-demo-toolbar">
-        <span>Libras</span>
+        <!-- position title in the center -->
+        <div class="icon-button visually-hidden" data-size="sm"></div>
+        <span class="type-body text-muted">Libras</span>
+        <div class="icon-button visually-hidden desktop-only" data-size="sm"></div>
         <button
-          class="site-demo-close icon-button"
+          class="icon-button mobile-only"
           data-size="sm"
           data-variant="ghost"
           aria-label="Close demo"
@@ -118,10 +114,12 @@
     </dialog>
   </section>
 
-  <section class="site-section site-container" id="features" aria-labelledby="features-title">
-    <div class="site-section-heading">
-      <h2 class="display-lg" id="features-title">Everything you need.</h2>
-    </div>
+  <section
+    class="site-section site-container stack-xl"
+    id="features"
+    aria-labelledby="features-title"
+  >
+    <h2 class="display-lg" id="features-title">Everything you need.</h2>
     <div class="site-feature-grid">
       <article class="site-feature site-feature-library">
         <div class="site-feature-copy stack-md">
@@ -188,17 +186,16 @@
       </article>
       <article class="site-feature site-feature-open stack-md">
         <div class="row-sm">
-          <span class="site-feature-icon site-code-icon" aria-hidden="true">&lt;/&gt;</span>
+          <span class="site-feature-icon site-code-icon" aria-hidden="true"> &lt;/&gt; </span>
           <h3 class="display-md">Open, in every sense.</h3>
         </div>
         <p class="type-body text-muted">
           Your server holds the music. You hold the keys. Libras is free, MIT-licensed, and open for
           you to explore or make your own.
         </p>
-        <a class="site-text-link text-link" href={repository} target="_blank"
-          >Look under the hood {@render arrow()}</a
-        >
-        <span class="site-open-watermark" aria-hidden="true">{`{ }`}</span>
+        <a class="text-link row-sm" href={repository} target="_blank">
+          Look under the hood {@render arrow()}
+        </a>
       </article>
     </div>
   </section>
@@ -250,7 +247,9 @@
   </section>
 
   <section class="site-final-cta site-container stack-xl" aria-labelledby="cta-title">
-    <div class="site-cta-emblem" aria-hidden="true"><Icon name="brand" size="xl" /></div>
+    <div class="site-cta-emblem" aria-hidden="true">
+      <Icon name="brand" size="xl" />
+    </div>
     <h2 class="display-lg container-md" id="cta-title">
       Your favorite songs are already in your library.
     </h2>
@@ -263,7 +262,7 @@
         ><Icon name="brand" /><span>Libras</span></a
       >
     </div>
-    <nav class="row-lg text-muted type-caption" aria-label="Footer navigation">
+    <nav class="row-lg text-muted type-body" aria-label="Footer navigation">
       <a class="text-link" href={repository} target="_blank">GitHub</a><a
         class="text-link"
         href={`${repository}/blob/main/LICENSE`}

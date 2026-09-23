@@ -489,7 +489,9 @@
   align-items: center;
 }
 
-.row-wrap-sm {
+.row-wrap-sm,
+.row-wrap-md,
+.row-wrap-lg {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -500,11 +502,13 @@
   gap: var(--space-sm);
 }
 
-.row-md {
+.row-md,
+.row-wrap-md {
   gap: var(--space-md);
 }
 
-.row-lg {
+.row-lg,
+.row-wrap-lg {
   gap: var(--space-lg);
 }
 

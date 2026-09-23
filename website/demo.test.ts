@@ -73,7 +73,7 @@ it("renders the website around a live demo without replacing the host title or a
     expect(document.querySelectorAll("h1")).toHaveLength(1);
     expect(document.querySelector("h1")?.textContent).toContain("Your own music library.");
     expect(document.querySelector("h1")?.textContent).toContain("Listen anywhere.");
-    expect(document.querySelector(".site-hero .site-brand")?.textContent?.trim()).toBe("Libras");
+    expect(document.querySelector(".site-hero a.row-sm")?.textContent?.trim()).toBe("Libras");
     expect(document.querySelector(".site-header")).toBeNull();
     expect(document.querySelector<HTMLAnchorElement>(".site-actions a.button")?.pathname).toBe(
       "/libras/",
@@ -112,7 +112,9 @@ it("declares native demo commands and preserves the player across closing and re
   expect(launch.getAttribute("command")).toBe("show-modal");
   dialog.showModal();
   expect(dialog.open).toBe(true);
-  const close = document.querySelector<HTMLButtonElement>(".site-demo-close")!;
+  const close = document.querySelector<HTMLButtonElement>(
+    '.site-demo-toolbar button[command="close"]',
+  )!;
   expect(close.getAttribute("commandfor")).toBe(dialog.id);
   expect(close.getAttribute("command")).toBe("close");
   dialog.close();
