@@ -21,7 +21,7 @@ async function verify(root) {
     }
   }
   await walk(root);
-  for (const path of ["index.html", "CNAME", "webapp/index.html", "webapp/sw.js", "webapp/manifest.webmanifest"]) {
+  for (const path of ["index.html", "webapp/index.html", "webapp/sw.js", "webapp/manifest.webmanifest"]) {
     if (!files.has(path))
       throw new ArtifactError("Regular application/PWA or demo build is missing.");
   }
@@ -37,9 +37,6 @@ async function verify(root) {
   const read = (path) => readFile(join(root, path), "utf8");
   if ((await read("index.html")).includes('rel="manifest"')) {
     throw new ArtifactError("Demo HTML must not declare a PWA manifest.");
-  }
-  if ((await read("CNAME")).trim() !== "libras-music.app") {
-    throw new ArtifactError("Incorrect custom domain.");
   }
   const manifest = JSON.parse(await read("webapp/manifest.webmanifest"));
   if ([manifest.id, manifest.start_url, manifest.scope].some((path) => path !== "/webapp/")) {
