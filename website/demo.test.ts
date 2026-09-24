@@ -1,13 +1,26 @@
 // @vitest-environment happy-dom
-import { flushSync, mount, unmount, type Component } from "svelte";
+// @vitest-environment-options {"settings":{"disableCSSFileLoading":true,"handleDisabledFileLoadingAsSuccess":true}}
+import { readFileSync } from "node:fs";
+import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Demo from "./demo.svelte";
-import Website from "./website.svelte";
+import { mountDemo } from "./mount-demo";
 import { assetsFixture, searchFixture } from "./fixtures";
 import { installDisk } from "../tests/cache-test-helpers";
 import { installNavigation } from "../tests/router-test-helpers";
 
 let component: ReturnType<typeof Demo> | undefined;
+let cleanupWebsite: ReturnType<typeof mountDemo> | undefined;
+const websiteHtml = readFileSync("website/index.html", "utf8").replaceAll("%BASE_URL%", "/");
+function renderWebsite() {
+  const page = new DOMParser().parseFromString(websiteHtml, "text/html");
+  document.body.append(page.querySelector(".website")!);
+  cleanupWebsite = mountDemo(
+    document.querySelector<HTMLDialogElement>("#live-demo-dialog")!,
+    document.getElementById("demo")!,
+  );
+  flushSync();
+}
 const fetcher = vi.fn<typeof fetch>();
 async function catalogResponse(input: Parameters<typeof fetch>[0]) {
   const url = String(input);
@@ -19,8 +32,8 @@ async function catalogResponse(input: Parameters<typeof fetch>[0]) {
     });
   throw new Error("Unexpected request");
 }
-function render(App: Component<Record<string, never>> = Demo) {
-  component = mount(App, { target: document.body });
+function render() {
+  component = mount(Demo, { target: document.body });
   flushSync();
 }
 beforeEach(() => {
@@ -32,7 +45,9 @@ beforeEach(() => {
 });
 afterEach(async () => {
   if (component) await unmount(component);
+  if (cleanupWebsite) await cleanupWebsite();
   component = undefined;
+  cleanupWebsite = undefined;
   localStorage.clear();
   document.body.innerHTML = "";
   vi.restoreAllMocks();
@@ -62,7 +77,7 @@ it("renders the website around a live demo without replacing the host title or a
   const title = document.title;
   document.title = "Libras website";
   try {
-    render(Website);
+    renderWebsite();
     await vi.waitFor(() =>
       expect(document.querySelector(".site-demo-frame .app-root")?.textContent).toContain(
         "Demo artist",
@@ -101,7 +116,7 @@ it("renders the website around a live demo without replacing the host title or a
 it("declares native demo commands and preserves the player across closing and resizing", () => {
   const viewport = Object.assign(new EventTarget(), { matches: true });
   vi.spyOn(window, "matchMedia").mockReturnValue(viewport as MediaQueryList);
-  render(Website);
+  renderWebsite();
   const dialog = document.querySelector<HTMLDialogElement>(".site-demo-dialog")!;
   const app = dialog.querySelector(".app-root");
   expect(dialog.open).toBe(false);
@@ -131,11 +146,30 @@ it("declares native demo commands and preserves the player across closing and re
   flushSync();
   expect(dialog.open).toBe(true);
   expect(dialog.querySelector(".app-root")).toBe(app);
+  const nested = document.createElement("dialog");
+  dialog.querySelector("#demo")!.append(nested);
+  nested.showModal();
   viewport.matches = true;
   viewport.dispatchEvent(new Event("change"));
   flushSync();
   expect(dialog.open).toBe(false);
+  expect(nested.open).toBe(false);
   expect(document.querySelectorAll(".app-root")).toHaveLength(1);
+});
+
+it("opens the desktop preview and removes its viewport listener on cleanup", async () => {
+  const viewport = Object.assign(new EventTarget(), { matches: false });
+  vi.spyOn(window, "matchMedia").mockReturnValue(viewport as MediaQueryList);
+  renderWebsite();
+  const dialog = document.querySelector<HTMLDialogElement>("#live-demo-dialog")!;
+  expect(dialog.open).toBe(true);
+  expect(document.querySelectorAll(".app-root")).toHaveLength(1);
+  await cleanupWebsite!();
+  cleanupWebsite = undefined;
+  expect(document.querySelectorAll(".app-root")).toHaveLength(0);
+  viewport.matches = true;
+  viewport.dispatchEvent(new Event("change"));
+  expect(dialog.open).toBe(true);
 });
 
 it("rejects switching the demo into a real account", async () => {

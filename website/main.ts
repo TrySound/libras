@@ -1,8 +1,8 @@
-import { mount } from "svelte";
-import Website from "./website.svelte";
-import "../src/app.css";
-import "./website.css";
+import { mountDemo } from "./mount-demo";
 
-const target = document.getElementById("app");
-if (!target) throw new Error("Demo target was not found.");
-mount(Website, { target });
+const dialog = document.querySelector<HTMLDialogElement>("#live-demo-dialog");
+const target = document.getElementById("demo");
+if (!dialog || !target) throw new Error("Demo target was not found.");
+const cleanup = mountDemo(dialog, target);
+
+if (import.meta.hot) import.meta.hot.dispose(cleanup);
