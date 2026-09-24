@@ -57,6 +57,8 @@ In the repository's **Settings → Pages**, use GitHub Actions as the source, se
 
 At your DNS provider, point the apex (`@`) to GitHub Pages with A records `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, and `185.199.111.153`. Remove conflicting apex records. Verify domain ownership in GitHub's account settings using its supplied TXT record. DNS propagation and certificate provisioning may take time. `/webapp` is served as the `/webapp/` directory; no separate DNS record is needed.
 
+Legacy `/libras/` visits redirect to `/webapp/`, preserving query strings and hash routes. The website root also forwards `#/...` app routes, while keeping website anchors unchanged. GitHub Pages manages the old `trysound.github.io` host redirect; if it sends a bare legacy URL to the new root without a hash, it cannot be distinguished from a normal website visit and shows the landing page. A cached old service worker may continue serving the old app until its site data is cleared; the new origin cannot unregister it.
+
 Existing installs and offline data on `trysound.github.io` do not migrate across origins. Users must open the new app URL, reconnect their server (allowing `https://libras-music.app` in CORS), and reinstall/redownload as needed.
 
 Configure these **GitHub Actions repository secrets**:
