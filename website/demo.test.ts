@@ -116,9 +116,7 @@ it("declares native demo commands and preserves the player across closing and re
   await renderWebsite();
   const dialog = document.querySelector<HTMLDialogElement>(".site-demo-dialog")!;
   const app = dialog.querySelector(".app-root");
-  // The outer shell must not consume Android Back as a dialog close request.
-  // Keep browser history available to the embedded app; explicit close still works.
-  expect(dialog.getAttribute("closedby")).toBe("none");
+  expect(dialog.getAttribute("closedby")).toBe("closerequest");
   expect(dialog.open).toBe(false);
   // Happy DOM doesn't implement invoker commands; check the wiring and simulate
   // the native dialog actions. Real click behavior is checked in Chromium.
@@ -170,6 +168,179 @@ it("opens the desktop preview and removes its viewport listener on cleanup", asy
   viewport.matches = true;
   viewport.dispatchEvent(new Event("change"));
   expect(dialog.open).toBe(true);
+});
+
+// Happy DOM does not implement dialog beforetoggle/CloseWatcher or navigation
+// history. Model the native events here; exercise real close requests in Chromium.
+function installDemoHistory(initial = "/library") {
+  const navigation = installNavigation(initial);
+  let serial = 0;
+  const entry = (hash: string) => ({
+    key: String(++serial),
+    url: new URL(`#${hash}`, location.href).href,
+    sameDocument: true,
+  });
+  let entries = [entry("features"), entry(initial)];
+  let index = entries.length - 1;
+  const history = Object.assign(navigation, {
+    currentEntry: entries[index],
+    entries: () => entries,
+    back: vi.fn(() => {
+      history.currentEntry = entries[--index];
+      return { finished: Promise.resolve(history.currentEntry) };
+    }),
+  });
+  const navigate = vi.fn((href: string, options: { history: string }) => {
+    const next = entry(href.slice(1));
+    if (options.history === "replace") entries[index] = next;
+    else {
+      entries = [...entries.slice(0, index + 1), next];
+      index++;
+    }
+    history.currentEntry = next;
+    return { finished: Promise.resolve(next) };
+  });
+  return Object.assign(history, { navigate });
+}
+
+function toggleDemo(dialog: HTMLDialogElement, open: boolean) {
+  dialog.dispatchEvent(
+    Object.assign(new Event("beforetoggle"), { newState: open ? "open" : "closed" }),
+  );
+  if (open) dialog.showModal();
+  else dialog.close();
+}
+
+function requestBack(dialog: HTMLDialogElement, cancelable = true) {
+  const event = new Event("cancel", { cancelable });
+  dialog.dispatchEvent(event);
+  if (!event.defaultPrevented) toggleDemo(dialog, false);
+  return event;
+}
+
+async function renderMobileWebsite() {
+  const viewport = Object.assign(new EventTarget(), { matches: true });
+  vi.spyOn(window, "matchMedia").mockReturnValue(viewport as MediaQueryList);
+  await renderWebsite();
+  return document.querySelector<HTMLDialogElement>("#live-demo-dialog")!;
+}
+
+it("backs through demo entries before closing at the opening boundary", async () => {
+  const history = installDemoHistory();
+  const dialog = await renderMobileWebsite();
+  toggleDemo(dialog, true);
+  await history.navigate("#/settings", { history: "push" }).finished;
+  await history.navigate("#/downloads", { history: "push" }).finished;
+  expect(requestBack(dialog).defaultPrevented).toBe(true);
+  await Promise.resolve();
+  expect(history.currentEntry.url).toContain("#/settings");
+  expect(dialog.open).toBe(true);
+  expect(requestBack(dialog).defaultPrevented).toBe(true);
+  await Promise.resolve();
+  expect(history.currentEntry.url).toContain("#/library");
+  expect(requestBack(dialog).defaultPrevented).toBe(false);
+  expect(dialog.open).toBe(false);
+  expect(history.back).toHaveBeenCalledTimes(2);
+});
+
+it("seeds a library entry when opening from a website anchor", async () => {
+  const history = installDemoHistory("features");
+  const dialog = await renderMobileWebsite();
+  toggleDemo(dialog, true);
+  await Promise.resolve();
+  expect(history.navigate).toHaveBeenCalledWith("#/library", { history: "push" });
+  await history.navigate("#/settings", { history: "push" }).finished;
+  expect(requestBack(dialog).defaultPrevented).toBe(true);
+  await Promise.resolve();
+  expect(history.currentEntry.url).toContain("#/library");
+  expect(requestBack(dialog).defaultPrevented).toBe(false);
+  expect(history.back).toHaveBeenCalledTimes(1);
+});
+
+it("starts a fresh boundary after explicit close and reopening", async () => {
+  const history = installDemoHistory();
+  const dialog = await renderMobileWebsite();
+  toggleDemo(dialog, true);
+  await history.navigate("#/settings", { history: "push" }).finished;
+  toggleDemo(dialog, false);
+  expect(history.back).not.toHaveBeenCalled();
+  toggleDemo(dialog, true);
+  expect(requestBack(dialog).defaultPrevented).toBe(false);
+  expect(history.back).not.toHaveBeenCalled();
+});
+
+it("ignores initialization completing after the demo is closed and reopened", async () => {
+  const history = installDemoHistory("features");
+  const pending = Promise.withResolvers<typeof history.currentEntry>();
+  const staleEntry = history.currentEntry;
+  history.navigate.mockReturnValueOnce({ finished: pending.promise });
+  const dialog = await renderMobileWebsite();
+  toggleDemo(dialog, true);
+  toggleDemo(dialog, false);
+  await history.navigate("#/settings", { history: "push" }).finished;
+  toggleDemo(dialog, true);
+  pending.resolve(staleEntry);
+  await Promise.resolve();
+  await history.navigate("#/downloads", { history: "push" }).finished;
+  expect(requestBack(dialog).defaultPrevented).toBe(true);
+  await Promise.resolve();
+  expect(history.currentEntry.url).toContain("#/settings");
+  expect(requestBack(dialog).defaultPrevented).toBe(false);
+  expect(history.back).toHaveBeenCalledTimes(1);
+});
+
+it("does not cross non-app history entries or a replaced opening boundary", async () => {
+  const history = installDemoHistory();
+  const dialog = await renderMobileWebsite();
+  toggleDemo(dialog, true);
+  await history.navigate("#features", { history: "push" }).finished;
+  await history.navigate("#/settings", { history: "push" }).finished;
+  expect(requestBack(dialog).defaultPrevented).toBe(false);
+  expect(history.back).not.toHaveBeenCalled();
+  toggleDemo(dialog, true);
+  await history.navigate("#/downloads", { history: "replace" }).finished;
+  await history.navigate("#/library", { history: "push" }).finished;
+  expect(requestBack(dialog).defaultPrevented).toBe(false);
+  expect(history.back).not.toHaveBeenCalled();
+});
+
+it("leaves nested close requests and non-cancelable browser requests alone", async () => {
+  const history = installDemoHistory();
+  const dialog = await renderMobileWebsite();
+  toggleDemo(dialog, true);
+  await history.navigate("#/settings", { history: "push" }).finished;
+  const nested = document.createElement("dialog");
+  dialog.append(nested);
+  // Even a bubbling synthetic event must not be mistaken for the outer dialog.
+  const nestedCancel = new Event("cancel", { bubbles: true, cancelable: true });
+  nested.dispatchEvent(nestedCancel);
+  expect(nestedCancel.defaultPrevented).toBe(false);
+  expect(history.back).not.toHaveBeenCalled();
+  expect(requestBack(dialog, false).defaultPrevented).toBe(false);
+  expect(history.back).not.toHaveBeenCalled();
+});
+
+it("serializes Back requests, handles failed traversal and removes close listeners", async () => {
+  const history = installDemoHistory();
+  const dialog = await renderMobileWebsite();
+  toggleDemo(dialog, true);
+  await history.navigate("#/settings", { history: "push" }).finished;
+  const pending = Promise.withResolvers<typeof history.currentEntry>();
+  history.back.mockReturnValueOnce({ finished: pending.promise });
+  expect(requestBack(dialog).defaultPrevented).toBe(true);
+  expect(requestBack(dialog).defaultPrevented).toBe(true);
+  expect(history.back).toHaveBeenCalledTimes(1);
+  pending.reject(new Error("Interrupted"));
+  await Promise.resolve();
+  expect(dialog.open).toBe(true);
+  expect(requestBack(dialog).defaultPrevented).toBe(true);
+  await Promise.resolve();
+  expect(history.back).toHaveBeenCalledTimes(2);
+  await history.navigate("#/settings", { history: "push" }).finished;
+  await cleanupWebsite!();
+  cleanupWebsite = undefined;
+  expect(requestBack(dialog).defaultPrevented).toBe(false);
+  expect(history.back).toHaveBeenCalledTimes(2);
 });
 
 it("rejects switching the demo into a real account", async () => {
