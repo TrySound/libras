@@ -45,4 +45,4 @@
   });
 </script>
 
-<App {network} {auth} updaterComponent={undefined} />
+<App {network} {auth} updaterComponent={undefined} embedded />

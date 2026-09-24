@@ -489,7 +489,9 @@
   align-items: center;
 }
 
-.row-wrap-sm {
+.row-wrap-sm,
+.row-wrap-md,
+.row-wrap-lg {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -500,11 +502,13 @@
   gap: var(--space-sm);
 }
 
-.row-md {
+.row-md,
+.row-wrap-md {
   gap: var(--space-md);
 }
 
-.row-lg {
+.row-lg,
+.row-wrap-lg {
   gap: var(--space-lg);
 }
 
@@ -697,36 +701,49 @@ a {
 }
 
 .button {
+  --control-size: 3rem;
+  --control-padding: 1.2rem;
+  --control-background: rgb(from var(--palette-white) r g b / 3%);
+  --control-border: rgb(from var(--palette-white) r g b / 9%);
   -webkit-tap-highlight-color: transparent;
-  display: inline-grid;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  box-sizing: border-box;
   min-height: var(--control-size);
-  padding-inline: var(--control-padding);
-  place-items: center;
-  border-radius: var(--radius-pill);
+  padding: 0.4rem var(--control-padding);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  line-height: 1.5;
   text-align: center;
   text-decoration: none;
 
   @media (hover: hover) {
     &:hover:not(:active):not(:disabled) {
-      filter: brightness(1.12);
+      background-color: color-mix(in srgb, var(--control-background) 94%, var(--control-color) 6%);
+      border-color: color-mix(in srgb, var(--control-border) 88%, var(--control-color) 12%);
     }
   }
 
   @media (prefers-reduced-motion: no-preference) {
     transition:
       scale var(--transition-control),
-      filter var(--transition-control);
+      background-color var(--transition-control),
+      border-color var(--transition-control);
   }
 }
 
 .button:active:not(:disabled) {
-  filter: brightness(0.9);
+  background-color: color-mix(in srgb, var(--control-background) 90%, var(--control-color) 10%);
+  border-color: color-mix(in srgb, var(--control-border) 88%, var(--control-color) 12%);
 
   @media (prefers-reduced-motion: no-preference) {
     scale: 0.97;
     transition:
       scale var(--transition-fast),
-      filter var(--transition-fast);
+      background-color var(--transition-fast),
+      border-color var(--transition-fast);
   }
 }
 

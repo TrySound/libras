@@ -26,10 +26,11 @@
     network: Network;
     auth: AuthStore;
     updaterComponent: typeof WebappUpdater | undefined;
+    embedded?: boolean;
   }
 
   // Entry points explicitly supply infrastructure; UI and domain state belong to App.
-  let { network, auth, updaterComponent: Updater }: Props = $props();
+  let { network, auth, updaterComponent: Updater, embedded = false }: Props = $props();
 
   const durationFormatter = new Intl.DurationFormat("en", {
     minutes: "numeric",
@@ -173,10 +174,6 @@
   onstatechange={(state) => playback.updatePlayerState(state)}
 />
 
-<svelte:head>
-  <title>Libras</title>
-</svelte:head>
-
 {#snippet brand()}
   <div class="topbar-brand">
     <a
@@ -314,6 +311,7 @@
       </div>
     </header>
     <Router
+      {embedded}
       routes={[
         { pattern: "/library", render: libraryRoute },
         { pattern: "/search", render: searchRoute },

@@ -1,7 +1,8 @@
 import { mount } from "svelte";
-import Demo from "./demo.svelte";
+import Website from "./website.svelte";
 import "../src/app.css";
+import "./website.css";
 
 const target = document.getElementById("app");
 if (!target) throw new Error("Demo target was not found.");
-mount(Demo, { target });
+mount(Website, { target });
