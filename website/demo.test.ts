@@ -269,6 +269,26 @@ it("starts a fresh boundary after explicit close and reopening", async () => {
   expect(history.back).not.toHaveBeenCalled();
 });
 
+it("ignores initialization completing after the demo is closed and reopened", async () => {
+  const history = installDemoHistory("features");
+  const pending = Promise.withResolvers<typeof history.currentEntry>();
+  const staleEntry = history.currentEntry;
+  history.navigate.mockReturnValueOnce({ finished: pending.promise });
+  const dialog = await renderMobileWebsite();
+  toggleDemo(dialog, true);
+  toggleDemo(dialog, false);
+  await history.navigate("#/settings", { history: "push" }).finished;
+  toggleDemo(dialog, true);
+  pending.resolve(staleEntry);
+  await Promise.resolve();
+  await history.navigate("#/downloads", { history: "push" }).finished;
+  expect(requestBack(dialog).defaultPrevented).toBe(true);
+  await Promise.resolve();
+  expect(history.currentEntry.url).toContain("#/settings");
+  expect(requestBack(dialog).defaultPrevented).toBe(false);
+  expect(history.back).toHaveBeenCalledTimes(1);
+});
+
 it("does not cross non-app history entries or a replaced opening boundary", async () => {
   const history = installDemoHistory();
   const dialog = await renderMobileWebsite();

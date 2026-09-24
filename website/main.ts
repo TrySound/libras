@@ -7,9 +7,7 @@ if (!dialog || !target) throw new Error("Demo target was not found.");
 
 const viewport = window.matchMedia("(width < 800px)");
 let mobile: boolean | undefined;
-let boundaryKey: string | undefined;
-let session = 0;
-let navigating = false;
+let session: { key: string | undefined; busy: boolean } | undefined;
 
 function isDemoEntry(entry: NavigationHistoryEntry) {
   if (!entry.sameDocument || !entry.url) return false;
@@ -24,39 +22,37 @@ function isDemoEntry(entry: NavigationHistoryEntry) {
 
 const onToggle = async (event: ToggleEvent) => {
   if (event.target !== dialog) return;
-  const opening = ++session;
-  boundaryKey = undefined;
-  navigating = false;
-  if (event.newState !== "open" || !mobile) return;
+  session = undefined;
   const current = window.navigation.currentEntry;
-  if (!current) return;
-  if (isDemoEntry(current)) {
-    boundaryKey = current.key;
-    return;
-  }
+  if (event.newState !== "open" || !mobile || !current) return;
+  // Async work keeps its own opening object, so it cannot alter a later session.
+  const opening = { key: isDemoEntry(current) ? current.key : undefined, busy: false };
+  session = opening;
+  if (opening.key) return;
   // Give the demo a real root entry. Returning to a website anchor would not
   // update the embedded router, and must not count as an in-app Back step.
-  navigating = true;
+  opening.busy = true;
   try {
     const entry = await window.navigation.navigate("#/library", { history: "push" }).finished;
-    if (session === opening) boundaryKey = entry?.key;
+    opening.key = entry?.key;
   } catch {
     // If initialization is interrupted, allow closing rather than trapping Back.
   } finally {
-    if (session === opening) navigating = false;
+    opening.busy = false;
   }
 };
 
 const onCancel = async (event: Event) => {
   // Nested dialogs own their close requests. Never override a non-cancelable
   // browser request (CloseWatcher anti-trapping safeguards).
-  if (event.target !== dialog || !mobile || !event.cancelable) return;
-  if (navigating) {
+  const opening = session;
+  if (event.target !== dialog || !opening || !event.cancelable) return;
+  if (opening.busy) {
     event.preventDefault();
     return;
   }
   const entries = window.navigation.entries();
-  const boundary = entries.findIndex((entry) => entry.key === boundaryKey);
+  const boundary = entries.findIndex((entry) => entry.key === opening.key);
   const current = entries.findIndex((entry) => entry.key === window.navigation.currentEntry?.key);
   if (
     boundary < 0 ||
@@ -66,14 +62,13 @@ const onCancel = async (event: Event) => {
     return;
 
   event.preventDefault();
-  const opening = session;
-  navigating = true;
+  opening.busy = true;
   try {
     await window.navigation.back().finished;
   } catch {
     // An interrupted traversal leaves the explicit close button available.
   } finally {
-    if (session === opening) navigating = false;
+    opening.busy = false;
   }
 };
 dialog.addEventListener("beforetoggle", onToggle);
@@ -97,7 +92,7 @@ export const cleanup = () => {
   viewport.removeEventListener("change", syncViewport);
   dialog.removeEventListener("beforetoggle", onToggle);
   dialog.removeEventListener("cancel", onCancel);
-  ++session;
+  session = undefined;
   return unmount(component);
 };
 
