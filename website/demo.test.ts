@@ -116,6 +116,9 @@ it("declares native demo commands and preserves the player across closing and re
   await renderWebsite();
   const dialog = document.querySelector<HTMLDialogElement>(".site-demo-dialog")!;
   const app = dialog.querySelector(".app-root");
+  // The outer shell must not consume Android Back as a dialog close request.
+  // Keep browser history available to the embedded app; explicit close still works.
+  expect(dialog.getAttribute("closedby")).toBe("none");
   expect(dialog.open).toBe(false);
   // Happy DOM doesn't implement invoker commands; check the wiring and simulate
   // the native dialog actions. Real click behavior is checked in Chromium.
