@@ -22,7 +22,7 @@
     return () => viewport.removeEventListener("change", syncViewport);
   });
 
-  const appUrl = new URL("../", new URL(import.meta.env.BASE_URL, location.origin)).pathname;
+  const appUrl = "/webapp/";
   const repository = "https://github.com/TrySound/libras";
   const creditsUrl = `${import.meta.env.BASE_URL}catalog/credits.html`;
   const waveform = [

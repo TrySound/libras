@@ -16,6 +16,8 @@ export default defineConfig({
   resolve: { conditions: ["browser"] },
   ssr: { resolve: { conditions: ["browser"] }, noExternal: ["svelte"] },
   test: {
+    // Use happy-dom's isolated browser storage, not Node's file-backed Web Storage.
+    execArgv: ["--no-experimental-webstorage"],
     include: ["tests/**/*.test.ts", "website/**/*.test.ts"],
     server: { deps: { inline: ["svelte"] } },
   },

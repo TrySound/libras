@@ -2,6 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // GitHub Pages forwards old app hash routes to the custom-domain root.
+      // Leave website anchors (such as #features) on the landing page.
+      if (location.hash.startsWith("#/")) {
+        location.replace("/webapp/" + location.search + location.hash);
+      }
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#090b10" />
     <meta

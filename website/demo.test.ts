@@ -26,7 +26,7 @@ function render(App: Component<Record<string, never>> = Demo) {
 beforeEach(() => {
   installDisk();
   installNavigation("/settings");
-  vi.stubEnv("BASE_URL", "/libras/demo/");
+  vi.stubEnv("BASE_URL", "/");
   fetcher.mockReset().mockImplementation(catalogResponse);
   vi.stubGlobal("fetch", fetcher);
 });
@@ -76,7 +76,7 @@ it("renders the website around a live demo without replacing the host title or a
     expect(document.querySelector(".site-hero a.row-sm")?.textContent?.trim()).toBe("Libras");
     expect(document.querySelector(".site-header")).toBeNull();
     expect(document.querySelector<HTMLAnchorElement>(".site-actions a.button")?.pathname).toBe(
-      "/libras/",
+      "/webapp/",
     );
     const questions = document.querySelectorAll<HTMLDetailsElement>(".site-faq-list details");
     expect(questions).toHaveLength(5);

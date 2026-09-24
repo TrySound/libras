@@ -4,7 +4,17 @@
   "license": "MIT",
   "version": "0.0.0",
   "type": "module",
-  "packageManager": "pnpm@11.25.0",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^26.0.0",
+      "onFail": "download"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.25.0"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
