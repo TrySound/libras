@@ -149,6 +149,8 @@
   --surface-page-background: var(--palette-gray-900);
   --surface-card-background: var(--palette-gray-800);
   --surface-card-border: 1px solid var(--palette-gray-500);
+  /* Buttons, switches, and tiles share a shallow lift below raised and floating surfaces. */
+  --surface-lifted-shadow: var(--elevation-sm);
   --surface-input-background: var(--palette-gray-700);
   --surface-input-border: 1px solid var(--palette-gray-500);
   --surface-accent-background: var(--palette-crimson-700);
@@ -396,6 +398,7 @@
   height: 1.7rem;
   border-radius: var(--radius-pill);
   background: var(--color-track);
+  box-shadow: var(--surface-lifted-shadow);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 
@@ -403,7 +406,8 @@
     transition:
       background var(--transition-switch),
       scale var(--transition-control),
-      filter var(--transition-control);
+      filter var(--transition-control),
+      box-shadow var(--transition-control);
   }
 
   @media (hover: hover) {
@@ -414,13 +418,15 @@
 
   &:is(:active, :has(input:active)):not(:has(input:disabled)) {
     filter: brightness(0.9);
+    box-shadow: none;
 
     @media (prefers-reduced-motion: no-preference) {
       scale: 0.97;
       transition:
         background var(--transition-switch),
         scale var(--transition-fast),
-        filter var(--transition-fast);
+        filter var(--transition-fast),
+        box-shadow var(--transition-fast);
     }
   }
 
@@ -453,6 +459,7 @@
   }
 
   &:has(input:disabled) {
+    box-shadow: none;
     cursor: default;
     opacity: 0.5;
   }
@@ -708,6 +715,7 @@ a {
   border: 1px solid var(--control-border);
   color: var(--control-color);
   background: var(--control-background);
+  box-shadow: var(--surface-lifted-shadow);
   font-family: inherit;
   font-size: var(--control-size);
   font-weight: var(--control-weight);
@@ -749,20 +757,23 @@ a {
     transition:
       scale var(--transition-control),
       background-color var(--transition-control),
-      border-color var(--transition-control);
+      border-color var(--transition-control),
+      box-shadow var(--transition-control);
   }
 }
 
 .button:active:not(:disabled) {
   background-color: color-mix(in srgb, var(--control-background) 90%, var(--control-color) 10%);
   border-color: color-mix(in srgb, var(--control-border) 88%, var(--control-color) 12%);
+  box-shadow: none;
 
   @media (prefers-reduced-motion: no-preference) {
     scale: 0.97;
     transition:
       scale var(--transition-fast),
       background-color var(--transition-fast),
-      border-color var(--transition-fast);
+      border-color var(--transition-fast),
+      box-shadow var(--transition-fast);
   }
 }
 
@@ -790,7 +801,8 @@ a {
   @media (prefers-reduced-motion: no-preference) {
     transition:
       scale var(--transition-control),
-      background-color var(--transition-control);
+      background-color var(--transition-control),
+      box-shadow var(--transition-control);
   }
 }
 
@@ -800,12 +812,14 @@ a {
     var(--control-background) 80%,
     var(--color-text-primary) 20%
   );
+  box-shadow: none;
 
   @media (prefers-reduced-motion: no-preference) {
     scale: 0.9;
     transition:
       scale var(--transition-fast),
-      background-color var(--transition-fast);
+      background-color var(--transition-fast),
+      box-shadow var(--transition-fast);
   }
 }
 
@@ -828,6 +842,7 @@ a {
 
 .icon-button[data-variant="ghost"] {
   --control-background: var(--palette-transparent);
+  box-shadow: none;
 }
 
 .icon-button[data-variant="overlay"] {
@@ -838,6 +853,7 @@ a {
 
 .button:disabled,
 .icon-button:disabled {
+  box-shadow: none;
   opacity: 0.4;
   cursor: default;
 }
@@ -1007,7 +1023,7 @@ a {
   display: grid;
   width: 100%;
   padding: 0;
-  box-shadow: var(--elevation-md);
+  box-shadow: var(--surface-lifted-shadow);
 
   &:focus-visible {
     outline: var(--focus-outline);
@@ -1017,7 +1033,6 @@ a {
   @media (hover: hover) {
     &:hover:not(:active) {
       filter: brightness(1.1);
-      box-shadow: var(--elevation-sm);
     }
   }
 
@@ -1030,7 +1045,7 @@ a {
 
   &:active {
     filter: brightness(0.85);
-    box-shadow: var(--elevation-sm);
+    box-shadow: none;
 
     @media (prefers-reduced-motion: no-preference) {
       scale: 0.98;

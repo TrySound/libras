@@ -175,10 +175,10 @@
         <header class="stack-xs">
           <h2 class="type-heading" id="surfaces-heading">Surfaces and elevation</h2>
           <p class="type-body text-muted">
-            Page, card, input, accent, danger, raised, and floating surfaces describe material. Each
-            defines only the background, border, or effects it needs. Elevation describes depth,
-            independently of layout, radius, and stacking order. These are tokens, not surface
-            classes.
+            Page, card, lifted, input, accent, danger, raised, and floating surfaces describe
+            material and depth. Lifted shares a shallow shadow between buttons, switches, and tiles,
+            below raised (topbar) and floating (mini-player). Each surface defines only the
+            properties it needs. These are tokens, not surface classes.
           </p>
         </header>
         <div class="example-grid">
@@ -202,17 +202,19 @@
           </article>
           <article
             class="card surface-example-base stack-sm"
-            style="box-shadow: var(--elevation-sm)"
+            style="box-shadow: var(--surface-lifted-shadow)"
           >
-            <code>--elevation-sm</code>
-            <p class="type-small text-muted">Shallow depth: hovered and pressed tiles.</p>
+            <code>--surface-lifted-shadow</code>
+            <p class="type-small text-muted">
+              Shared shallow depth for buttons, switches, and tiles.
+            </p>
           </article>
           <article
             class="card surface-example-base stack-sm"
             style="box-shadow: var(--elevation-md)"
           >
             <code>--elevation-md</code>
-            <p class="type-small text-muted">Resting tiles and artwork.</p>
+            <p class="type-small text-muted">Raised depth for the topbar and artwork.</p>
           </article>
           <article
             class="card surface-example-base stack-sm"
@@ -225,9 +227,10 @@
           </article>
         </div>
         <p class="type-small text-muted">
-          Try the library tile below: hover and press lower its shadow; pressing also dims and
-          scales it. Scaling and transitions respect reduced motion. Existing cards remain
-          shadow-free, player background artwork keeps no shadow, and status glows are not
+          Buttons, switches, and tiles share the same lifted shadow at rest and on hover, then lose
+          it when pressed. Try the library tile below: hover brightens it, while pressing dims and
+          scales it. Ghost and disabled controls, ordinary cards, and player background artwork
+          remain shadow-free. Scaling and transitions respect reduced motion; status glows are not
           elevation.
         </p>
       </section>
@@ -623,7 +626,8 @@
         <header class="stack-xs">
           <h2 class="type-heading" id="buttons-heading">Buttons</h2>
           <p class="type-body text-muted">
-            Text and icon buttons share size, variant, focus, and disabled behavior.
+            Text and icon buttons share size, variant, focus, and disabled behavior. Non-ghost
+            buttons share lifted elevation until pressed; ghost and disabled buttons stay flat.
           </p>
         </header>
 
