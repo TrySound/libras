@@ -61,6 +61,10 @@
   --weight-regular: 400;
   --weight-semibold: 600;
   --weight-bold: 700;
+  --leading-xs: 1rem;
+  --leading-sm: 1.25rem;
+  --leading-md: 1.5rem;
+  --tracking-normal: normal;
   --tracking-label: 0.1em;
 
   /* Semantic colors: text */
@@ -95,25 +99,31 @@
   --color-backdrop: rgb(from var(--palette-black) r g b / 72%);
 
   /* Typography roles
-     Titles intentionally compose body size/line height with bold weight. */
-  --type-heading-size: var(--text-lg);
-  --type-heading-line: 1.5rem;
-  --type-heading-weight: var(--weight-bold);
-  --type-body-size: var(--text-md);
-  --type-body-line: 1.5rem;
-  --type-body-weight: var(--weight-regular);
-  --type-control-size: var(--text-md);
-  --type-control-line: 1.25rem;
-  --type-control-weight: var(--weight-semibold);
-  --type-small-size: var(--text-sm);
-  --type-small-line: 1.25rem;
-  --type-small-weight: var(--weight-regular);
-  --type-caption-size: var(--text-xs);
-  --type-caption-line: 1rem;
-  --type-caption-weight: var(--weight-regular);
-  --type-eyebrow-size: var(--text-xs);
-  --type-eyebrow-line: 1rem;
-  --type-eyebrow-weight: var(--weight-bold);
+     Titles intentionally compose body size/leading/tracking with bold weight. */
+  --heading-size: var(--text-lg);
+  --heading-leading: var(--leading-md);
+  --heading-weight: var(--weight-bold);
+  --heading-tracking: var(--tracking-normal);
+  --body-size: var(--text-md);
+  --body-leading: var(--leading-md);
+  --body-weight: var(--weight-regular);
+  --body-tracking: var(--tracking-normal);
+  --control-size: var(--text-md);
+  --control-leading: var(--leading-sm);
+  --control-weight: var(--weight-semibold);
+  --control-tracking: var(--tracking-normal);
+  --small-size: var(--text-sm);
+  --small-leading: var(--leading-sm);
+  --small-weight: var(--weight-regular);
+  --small-tracking: var(--tracking-normal);
+  --caption-size: var(--text-xs);
+  --caption-leading: var(--leading-xs);
+  --caption-weight: var(--weight-regular);
+  --caption-tracking: var(--tracking-normal);
+  --eyebrow-size: var(--text-xs);
+  --eyebrow-leading: var(--leading-xs);
+  --eyebrow-weight: var(--weight-bold);
+  --eyebrow-tracking: var(--tracking-label);
 
   /* Effects: elevation, independent of surface material */
   --elevation-sm: 0 0 0.5rem rgb(from var(--palette-black) r g b / 50%);
@@ -157,9 +167,10 @@
 
   /* Root defaults consume the semantic roles above. */
   font-family: var(--font-sans);
-  font-size: var(--type-body-size);
-  font-weight: var(--type-body-weight);
-  line-height: var(--type-body-line);
+  font-size: var(--body-size);
+  font-weight: var(--body-weight);
+  line-height: var(--body-leading);
+  letter-spacing: var(--body-tracking);
   color: var(--color-text-primary);
   background: var(--surface-page-background);
 }
@@ -174,49 +185,54 @@
 
 .type-title {
   margin-block: 0;
-  font-size: var(--type-body-size);
+  font-size: var(--body-size);
   font-weight: var(--weight-bold);
-  line-height: var(--type-body-line);
+  line-height: var(--body-leading);
+  letter-spacing: var(--body-tracking);
 }
 
 .type-heading {
   margin-block: 0;
-  font-size: var(--type-heading-size);
-  font-weight: var(--type-heading-weight);
-  line-height: var(--type-heading-line);
+  font-size: var(--heading-size);
+  font-weight: var(--heading-weight);
+  line-height: var(--heading-leading);
+  letter-spacing: var(--heading-tracking);
   text-wrap: balance;
 }
 
 .type-body {
   margin-block: 0;
-  font-size: var(--type-body-size);
-  font-weight: var(--type-body-weight);
-  line-height: var(--type-body-line);
+  font-size: var(--body-size);
+  font-weight: var(--body-weight);
+  line-height: var(--body-leading);
+  letter-spacing: var(--body-tracking);
   text-wrap: pretty;
 }
 
 .type-small {
   margin-block: 0;
-  font-size: var(--type-small-size);
-  font-weight: var(--type-small-weight);
-  line-height: var(--type-small-line);
+  font-size: var(--small-size);
+  font-weight: var(--small-weight);
+  line-height: var(--small-leading);
+  letter-spacing: var(--small-tracking);
   text-wrap: pretty;
 }
 
 .type-caption {
   margin-block: 0;
-  font-size: var(--type-caption-size);
-  font-weight: var(--type-caption-weight);
-  line-height: var(--type-caption-line);
+  font-size: var(--caption-size);
+  font-weight: var(--caption-weight);
+  line-height: var(--caption-leading);
+  letter-spacing: var(--caption-tracking);
 }
 
 .type-eyebrow {
   display: block;
   margin-block: 0;
-  font-size: var(--type-eyebrow-size);
-  font-weight: var(--type-eyebrow-weight);
-  line-height: var(--type-eyebrow-line);
-  letter-spacing: var(--tracking-label);
+  font-size: var(--eyebrow-size);
+  font-weight: var(--eyebrow-weight);
+  line-height: var(--eyebrow-leading);
+  letter-spacing: var(--eyebrow-tracking);
   text-transform: uppercase;
 }
 
@@ -242,9 +258,10 @@
 
 .input {
   font-family: inherit;
-  font-size: var(--type-body-size);
-  font-weight: var(--type-body-weight);
-  line-height: var(--type-body-line);
+  font-size: var(--body-size);
+  font-weight: var(--body-weight);
+  line-height: var(--body-leading);
+  letter-spacing: var(--body-tracking);
   padding: 0.8rem 0.9rem;
   border: var(--surface-input-border);
   border-radius: var(--radius-md);
@@ -304,9 +321,10 @@
   /* override typography when row button actually button */
   text-align: left;
   font-family: inherit;
-  font-size: var(--type-control-size);
-  font-weight: var(--type-control-weight);
-  line-height: var(--type-control-line);
+  font-size: var(--control-size);
+  font-weight: var(--control-weight);
+  line-height: var(--control-leading);
+  letter-spacing: var(--control-tracking);
 
   @media (prefers-reduced-motion: no-preference) {
     transition: background-color var(--transition-control);
@@ -681,7 +699,7 @@ a {
 
 .button,
 .icon-button {
-  --control-size: 2.75rem;
+  --control-dimension: 2.75rem;
   --control-padding: var(--space-md);
   --control-icon-size: 1.2rem;
   --control-color: var(--color-text-primary);
@@ -691,9 +709,10 @@ a {
   color: var(--control-color);
   background: var(--control-background);
   font-family: inherit;
-  font-size: var(--type-control-size);
-  font-weight: var(--type-control-weight);
-  line-height: var(--type-control-line);
+  font-size: var(--control-size);
+  font-weight: var(--control-weight);
+  line-height: var(--control-leading);
+  letter-spacing: var(--control-tracking);
   cursor: pointer;
   /* rise above linkarea to keep buttons always clickable */
   position: relative;
@@ -701,7 +720,7 @@ a {
 }
 
 .button {
-  --control-size: 3rem;
+  --control-dimension: 3rem;
   --control-padding: 1.2rem;
   --control-background: rgb(from var(--palette-white) r g b / 3%);
   --control-border: rgb(from var(--palette-white) r g b / 9%);
@@ -711,7 +730,7 @@ a {
   justify-content: center;
   gap: 0.65rem;
   box-sizing: border-box;
-  min-height: var(--control-size);
+  min-height: var(--control-dimension);
   padding: 0.4rem var(--control-padding);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
@@ -750,8 +769,8 @@ a {
 .icon-button {
   -webkit-tap-highlight-color: transparent;
   display: inline-grid;
-  width: var(--control-size);
-  height: var(--control-size);
+  width: var(--control-dimension);
+  height: var(--control-dimension);
   padding: 0;
   flex: none;
   place-items: center;
@@ -792,13 +811,13 @@ a {
 
 .button[data-size="sm"],
 .icon-button[data-size="sm"] {
-  --control-size: 2.25rem;
+  --control-dimension: 2.25rem;
   --control-padding: 0.8rem;
   --control-icon-size: 1rem;
 }
 
 .icon-button[data-size="lg"] {
-  --control-size: 4.2rem;
+  --control-dimension: 4.2rem;
   --control-padding: 1.4rem;
   --control-icon-size: 1.45rem;
 }
