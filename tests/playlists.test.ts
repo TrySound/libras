@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Cache, type CachedPlaylists } from "../src/cache.svelte";
 import { getAccountKey } from "../src/auth";
 import { Playlists, PlaylistConflictError } from "../src/playlists.svelte";
-import type { PlaylistConnection } from "../src/network.svelte";
+import type { PlaylistAction, PlaylistConnection } from "../src/network.svelte";
 
 function setup() {
   const account = { host: "https://host", username: "user" };
@@ -22,18 +22,22 @@ function setup() {
     signal: controller.signal,
     list: vi.fn(async () => [summary]),
     read,
-    create: vi.fn(async () => summary),
-    rename: vi.fn(async () => {}),
-    append: vi.fn(async (_id: string, added: readonly string[]) => {
-      ids = [...ids, ...added];
+    mutate: vi.fn(async (action: PlaylistAction) => {
+      switch (action.kind) {
+        case "create":
+          return summary;
+        case "append":
+          ids = [...ids, ...action.ids];
+          break;
+        case "remove":
+          ids = ids.filter((_, index) => !action.indexes.includes(index));
+          break;
+        case "replace":
+          ids = [...action.ids];
+          break;
+      }
+      return undefined;
     }),
-    remove: vi.fn(async (_id: string, indexes: readonly number[]) => {
-      ids = ids.filter((_, index) => !indexes.includes(index));
-    }),
-    replace: vi.fn(async (_id: string, replacement: readonly string[]) => {
-      ids = [...replacement];
-    }),
-    delete: vi.fn(async () => {}),
   } satisfies PlaylistConnection;
   const engine = new Playlists(selection);
   engine.setConnection(connection);
@@ -53,6 +57,21 @@ function setup() {
 }
 
 describe("server-backed playlists", () => {
+  it("creates and deletes through the shared action API", async () => {
+    const scope = setup();
+    const created = await scope.engine.create("Mix");
+    expect(created).toEqual({ id: "p", name: "Mix" });
+    expect(scope.connection.mutate).toHaveBeenCalledWith({ kind: "create", name: "Mix" });
+    await scope.engine.apply({ kind: "delete", id: "p", expected: ["a", "a", "b"] });
+    expect(scope.connection.mutate).toHaveBeenLastCalledWith({
+      kind: "delete",
+      id: "p",
+      expected: ["a", "a", "b"],
+    });
+    expect(scope.cache.playlists.summaries).toEqual([]);
+    scope.engine.destroy();
+  });
+
   it("keeps duplicate occurrences and removes only the chosen index", async () => {
     const scope = setup();
     await scope.engine.refresh();
@@ -63,7 +82,7 @@ describe("server-backed playlists", () => {
       "a",
       "b",
     ]);
-    await scope.engine.edit("p", ["a", "a", "b"], { kind: "remove", indexes: [1] });
+    await scope.engine.apply({ kind: "remove", id: "p", expected: ["a", "a", "b"], indexes: [1] });
     expect(scope.ids).toEqual(["a", "b"]);
     expect(scope.cache.playlists.details[0].entries.map((entry) => entry.id)).toEqual(["a", "b"]);
     scope.engine.destroy();
@@ -73,10 +92,16 @@ describe("server-backed playlists", () => {
     const scope = setup();
     scope.ids = ["b", "a", "a"];
     await expect(
-      scope.engine.edit("p", ["a", "a", "b"], { kind: "replace", ids: ["a"] }),
+      scope.engine.apply({ kind: "replace", id: "p", expected: ["a", "a", "b"], ids: ["a"] }),
     ).rejects.toBeInstanceOf(PlaylistConflictError);
-    expect(scope.connection.replace).not.toHaveBeenCalled();
-    await scope.engine.edit("p", ["a", "a", "b"], { kind: "replace", ids: ["a"], overwrite: true });
+    expect(scope.connection.mutate).not.toHaveBeenCalled();
+    await scope.engine.apply({
+      kind: "replace",
+      id: "p",
+      expected: ["a", "a", "b"],
+      ids: ["a"],
+      overwrite: true,
+    });
     expect(scope.ids).toEqual(["a"]);
     scope.engine.destroy();
   });
@@ -104,11 +129,11 @@ describe("server-backed playlists", () => {
 
   it("never retries an uncertain append", async () => {
     const scope = setup();
-    scope.connection.append.mockRejectedValueOnce(new Error("timeout"));
+    scope.connection.mutate.mockRejectedValueOnce(new Error("timeout"));
     await expect(
-      scope.engine.edit("p", ["a", "a", "b"], { kind: "append", ids: ["a"] }),
+      scope.engine.apply({ kind: "append", id: "p", expected: ["a", "a", "b"], ids: ["a"] }),
     ).rejects.toThrow("timeout");
-    expect(scope.connection.append).toHaveBeenCalledOnce();
+    expect(scope.connection.mutate).toHaveBeenCalledOnce();
     expect(scope.cache.playlists.details).toEqual([]);
     scope.engine.destroy();
   });

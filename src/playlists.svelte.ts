@@ -1,6 +1,6 @@
 import { getAccountKey } from "./auth";
 import type { CacheSelection, Immutable } from "./cache.svelte";
-import type { PlaylistConnection } from "./network.svelte";
+import type { PlaylistAction, PlaylistConnection, PlaylistEditAction } from "./network.svelte";
 import type { Playlist, PlaylistDetail } from "./schema";
 
 export class PlaylistConflictError extends Error {
@@ -137,20 +137,39 @@ export class Playlists {
     return result;
   }
 
-  async create(
+  // UI convenience: generate a unique name and then use the same action pipeline.
+  create(
     name = `Playlist ${new Date().toISOString().slice(0, 16).replace("T", " ")} ${crypto.randomUUID().slice(0, 8)}`,
   ): Promise<Immutable<Playlist>> {
+    return this.apply({ kind: "create", name });
+  }
+
+  apply(action: Extract<PlaylistAction, { kind: "create" }>): Promise<Immutable<Playlist>>;
+  apply(action: PlaylistEditAction): Promise<Immutable<PlaylistDetail>>;
+  apply(action: Extract<PlaylistAction, { kind: "delete" }>): Promise<void>;
+  apply(action: PlaylistAction): Promise<Immutable<Playlist> | Immutable<PlaylistDetail> | void> {
+    switch (action.kind) {
+      case "create":
+        return this.#create(action);
+      case "delete":
+        return this.#delete(action);
+      default:
+        return this.#edit(action);
+    }
+  }
+
+  async #create(action: Extract<PlaylistAction, { kind: "create" }>): Promise<Immutable<Playlist>> {
     const scope = this.#scope();
     const { cache, connection, check } = scope;
     this.saving = true;
     try {
-      const created = await connection.create(name);
+      const created = await connection.mutate(action);
       check();
       // A missing response ID is not proof of failure. Read the list; refuse to guess
       // when multiple playlists have the same generated/user-supplied name.
       const summaries = await connection.list();
       check();
-      const matches = summaries.filter((item) => item.name === name);
+      const matches = summaries.filter((item) => item.name === action.name);
       const item = created ?? (matches.length === 1 ? matches[0] : undefined);
       cache.setPlaylists({
         listedAt: Date.now(),
@@ -173,44 +192,32 @@ export class Playlists {
     }
   }
 
-  async edit(
-    id: string,
-    expected: readonly string[],
-    change:
-      | { kind: "rename"; name: string }
-      | { kind: "append"; ids: readonly string[] }
-      | { kind: "remove"; indexes: readonly number[] }
-      | { kind: "replace"; ids: readonly string[]; overwrite?: boolean },
-  ): Promise<Immutable<PlaylistDetail>> {
+  #edit(action: PlaylistEditAction): Promise<Immutable<PlaylistDetail>> {
     const scope = this.#scope();
-    return this.#serialize(id, async () => {
+    return this.#serialize(action.id, async () => {
       const { cache, connection, check } = scope;
       check();
       this.saving = true;
       try {
-        const remote = await connection.read(id);
+        const remote = await connection.read(action.id);
         check();
         const currentIds = remote.entries.map((entry) => entry.id);
         if (
-          JSON.stringify(expected) !== JSON.stringify(currentIds) &&
-          !(change.kind === "replace" && change.overwrite)
+          JSON.stringify(action.expected) !== JSON.stringify(currentIds) &&
+          !(action.kind === "replace" && action.overwrite)
         )
           throw new PlaylistConflictError();
-        if (change.kind === "rename") await connection.rename(id, change.name);
-        if (change.kind === "append") await connection.append(id, change.ids);
-        if (change.kind === "remove") {
-          if (
-            change.indexes.some(
-              (index) => !Number.isInteger(index) || index < 0 || index >= currentIds.length,
-            )
+        if (
+          action.kind === "remove" &&
+          action.indexes.some(
+            (index) => !Number.isInteger(index) || index < 0 || index >= currentIds.length,
           )
-            throw new RangeError("Invalid playlist occurrence index.");
-          await connection.remove(id, change.indexes);
-        }
-        if (change.kind === "replace") await connection.replace(id, change.ids);
+        )
+          throw new RangeError("Invalid playlist occurrence index.");
+        await connection.mutate(action);
         check();
         // Never retry a successful write if the confirming read or checkpoint fails.
-        const confirmed = await connection.read(id);
+        const confirmed = await connection.read(action.id);
         check();
         const detail = { ...confirmed, fetchedAt: Date.now() };
         this.#publishDetail(cache, detail);
@@ -224,24 +231,26 @@ export class Playlists {
     });
   }
 
-  async delete(id: string, expected: readonly string[]) {
+  #delete(action: Extract<PlaylistAction, { kind: "delete" }>): Promise<void> {
     const scope = this.#scope();
-    return this.#serialize(id, async () => {
+    return this.#serialize(action.id, async () => {
       const { cache, connection, check } = scope;
       check();
       this.saving = true;
       try {
-        const remote = await connection.read(id);
+        const remote = await connection.read(action.id);
         check();
-        if (JSON.stringify(expected) !== JSON.stringify(remote.entries.map((item) => item.id)))
+        if (
+          JSON.stringify(action.expected) !== JSON.stringify(remote.entries.map((item) => item.id))
+        )
           throw new PlaylistConflictError();
-        await connection.delete(id);
+        await connection.mutate(action);
         check();
         const state = cache.playlists;
         cache.setPlaylists({
           ...state,
-          summaries: state.summaries.filter((item) => item.id !== id),
-          details: state.details.filter((item) => item.summary.id !== id),
+          summaries: state.summaries.filter((item) => item.id !== action.id),
+          details: state.details.filter((item) => item.summary.id !== action.id),
         });
       } catch (error) {
         if (scope.current()) this.error = error;

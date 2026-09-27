@@ -76,6 +76,24 @@ export type RemoteQueue = {
 
 export type QueueConnection = ReturnType<typeof queueAccess>;
 
+/** Ephemeral playlist commands. Expected contents and overwrite are engine policy,
+ * while Network maps each action to a portable Subsonic request. Not an outbox. */
+export type PlaylistAction =
+  | { kind: "create"; name: string }
+  | { kind: "rename"; id: string; expected: readonly string[]; name: string }
+  | { kind: "append"; id: string; expected: readonly string[]; ids: readonly string[] }
+  | { kind: "remove"; id: string; expected: readonly string[]; indexes: readonly number[] }
+  | {
+      kind: "replace";
+      id: string;
+      expected: readonly string[];
+      ids: readonly string[];
+      overwrite?: boolean;
+    }
+  | { kind: "delete"; id: string; expected: readonly string[] };
+
+export type PlaylistEditAction = Exclude<PlaylistAction, { kind: "create" | "delete" }>;
+
 function playlistSummary(value: SubsonicPlaylist): Playlist {
   return {
     id: value.id,
@@ -100,6 +118,32 @@ function playlistEntries(value: SubsonicPlaylist): PlaylistEntry[] {
 }
 
 function playlistAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
+  function mutate(action: PlaylistAction): Promise<Playlist | undefined> {
+    return request(async () => {
+      switch (action.kind) {
+        case "create": {
+          const value = await client.createPlaylist(action.name);
+          return value ? playlistSummary(value) : undefined;
+        }
+        case "rename":
+          await client.updatePlaylist(action.id, { name: action.name });
+          break;
+        case "append":
+          await client.updatePlaylist(action.id, { songIdsToAdd: action.ids });
+          break;
+        case "remove":
+          await client.updatePlaylist(action.id, { songIndexesToRemove: action.indexes });
+          break;
+        case "replace":
+          await client.replacePlaylist(action.id, action.ids);
+          break;
+        case "delete":
+          await client.deletePlaylist(action.id);
+          break;
+      }
+      return undefined;
+    });
+  }
   return Object.freeze({
     account,
     signal: client.signal,
@@ -109,18 +153,7 @@ function playlistAccess(account: Readonly<Account>, client: SubsonicApi, request
       if (value.id !== id) throw new Error("The server returned the wrong playlist.");
       return { summary: playlistSummary(value), entries: playlistEntries(value) };
     },
-    create: async (name: string) => {
-      const value = await request(() => client.createPlaylist(name));
-      return value ? playlistSummary(value) : undefined;
-    },
-    rename: (id: string, name: string) => request(() => client.updatePlaylist(id, { name })),
-    append: (id: string, songIds: readonly string[]) =>
-      request(() => client.updatePlaylist(id, { songIdsToAdd: songIds })),
-    remove: (id: string, indexes: readonly number[]) =>
-      request(() => client.updatePlaylist(id, { songIndexesToRemove: indexes })),
-    replace: (id: string, songIds: readonly string[]) =>
-      request(() => client.replacePlaylist(id, songIds)),
-    delete: (id: string) => request(() => client.deletePlaylist(id)),
+    mutate,
   });
 }
 
