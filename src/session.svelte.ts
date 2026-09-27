@@ -9,6 +9,7 @@ import {
   type PasswordAuth,
 } from "./network.svelte";
 import type { Playback } from "./playback.svelte";
+import type { Playlists } from "./playlists.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Cache } from "./cache.svelte";
@@ -22,6 +23,7 @@ interface SessionOptions {
   covers: Covers;
   tracks: TrackEngine;
   playback: Playback;
+  playlists?: Playlists;
   preferences: Storage;
 }
 
@@ -68,6 +70,7 @@ export class Session {
     const error =
       this.#refreshError ??
       this.#options.playback.queueError ??
+      this.#options.playlists?.error ??
       this.#options.selection.cache?.error;
     return error ? `Synchronization failed: ${connectionError(error)}` : "";
   }
@@ -114,6 +117,7 @@ export class Session {
     playback.setConnection(connection?.queue);
     covers.setConnection(connection?.artwork);
     tracks.setConnection(connection?.audio);
+    this.#options.playlists?.setConnection(connection?.playlists);
   }
 
   /** Select local data before activating resources; queue activation waits for hydration. */
@@ -355,6 +359,12 @@ export class Session {
         await covers.refresh(force);
       } catch (error) {
         if (this.#isCurrentOperation(operationId)) this.#refreshError = error;
+      }
+      if (!this.#isCurrentOperation(operationId)) return;
+      try {
+        await this.#options.playlists?.refresh();
+      } catch (error) {
+        if (this.#isCurrentOperation(operationId)) this.#refreshError ??= error;
       }
       if (!this.#isCurrentOperation(operationId)) return;
       try {

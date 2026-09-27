@@ -121,6 +121,48 @@ describe("subsonic client", () => {
     expect(url.searchParams.get("c")).toBe("libras");
   });
 
+  it("validates playlist reads and preserves duplicate song parameters in writes", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("getPlaylists.view"))
+        return response({ playlists: { playlist: [{ id: "p", name: "Mix" }] } });
+      if (path.endsWith("getPlaylist.view"))
+        return response({
+          playlist: {
+            id: "p",
+            name: "Mix",
+            entry: [
+              { id: "a", title: "One" },
+              { id: "a", title: "One" },
+            ],
+          },
+        });
+      if (path.endsWith("createPlaylist.view"))
+        return response({ playlist: { id: "p", name: "Mix" } });
+      return response();
+    });
+    const client = new SubsonicClient(auth, { fetch: fetcher });
+    expect(await client.getPlaylists()).toEqual([{ id: "p", name: "Mix" }]);
+    expect((await client.getPlaylist("p")).entry?.map((song) => song.id)).toEqual(["a", "a"]);
+    await client.createPlaylist("Mix", ["a", "a"]);
+    await client.replacePlaylist("p", ["a", "a"]);
+    await client.updatePlaylist("p", { songIdsToAdd: ["a", "a"], songIndexesToRemove: [0, 2] });
+    await client.deletePlaylist("p");
+    const body = (index: number) => fetcher.mock.calls[index][1]?.body as URLSearchParams;
+    expect(body(2).getAll("songId")).toEqual(["a", "a"]);
+    expect(body(3).get("playlistId")).toBe("p");
+    expect(body(3).getAll("songId")).toEqual(["a", "a"]);
+    expect(body(4).getAll("songIdToAdd")).toEqual(["a", "a"]);
+    expect(body(4).getAll("songIndexToRemove")).toEqual(["0", "2"]);
+    expect(body(5).get("id")).toBe("p");
+  });
+
+  it("rejects absent playlist response wrappers instead of treating them as empty", async () => {
+    const client = new SubsonicClient(auth, { fetch: async () => response() });
+    await expect(client.getPlaylists()).rejects.toThrow("invalid playlists response");
+    await expect(client.getPlaylist("p")).rejects.toThrow("invalid playlist response");
+  });
+
   it("aborts pending requests and refuses late responses or further requests", async () => {
     let resolve!: (response: Response) => void;
     const fetcher = vi.fn(

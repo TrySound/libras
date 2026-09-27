@@ -3,6 +3,7 @@
   import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
+  import { Playlists } from "./playlists.svelte";
   import Player from "./player.svelte";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
@@ -80,6 +81,7 @@
     }),
   );
   const covers = new Covers(selection);
+  const playlists = new Playlists(selection);
   const trackEngine = new TrackEngine({ selection });
   let player = $state<ReturnType<typeof Player>>();
   const playback: Playback = new Playback({
@@ -97,6 +99,7 @@
         covers,
         tracks: trackEngine,
         playback,
+        playlists,
         preferences: auth.storage,
       }),
   );
@@ -140,6 +143,7 @@
   onDestroy(() => {
     session.destroy();
     playback.destroy();
+    playlists.destroy();
     covers.destroy();
     trackEngine.destroy();
   });

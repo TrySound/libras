@@ -6,6 +6,10 @@ import {
   trackSchema,
   imageSchema,
   downloadTrackSchema,
+  playlistSchema,
+  playlistDetailSchema,
+  type Playlist,
+  type PlaylistDetail,
   type ImageRecord,
   type ImageMetadata,
 } from "./schema";
@@ -40,6 +44,14 @@ const queueSchema = v.pipe(
   v.check((queue) => validSelection(queue), "Invalid queue selection."),
 );
 export type CachedQueue = v.InferOutput<typeof queueSchema>;
+
+const playlistsSchema = v.strictObject({
+  // Undefined list freshness is represented by listedAt = null, not an empty server list.
+  listedAt: v.nullable(timestamp),
+  summaries: v.array(playlistSchema),
+  details: v.array(playlistDetailSchema),
+});
+export type CachedPlaylists = v.InferOutput<typeof playlistsSchema>;
 
 const imagesSchema = v.array(imageSchema);
 export interface CachedImage extends ImageMetadata {
@@ -79,7 +91,7 @@ async function hash(key: string) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-type DocumentName = "library" | "queue" | "images" | "downloads";
+type DocumentName = "library" | "queue" | "images" | "downloads" | "playlists";
 
 /** Private namespace and atomic JSON I/O. Knows no account settings or runtime indexes. */
 class Disk {
@@ -527,6 +539,7 @@ export class Cache {
   readonly #library: CheckpointStore<ReturnType<typeof prepareLibrary>>;
   readonly #disk: Disk | undefined;
   readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
+  readonly #playlists: CheckpointStore<Immutable<CachedPlaylists>>;
   readonly #images: BinaryCatalog<Immutable<ImageRecord>>;
   readonly #downloads: BinaryCatalog<Immutable<CachedDownload>>;
 
@@ -551,6 +564,12 @@ export class Cache {
       document: "queue",
       initial: { tracks: [], index: -1, position: 0 },
       parse: (value) => v.parse(queueSchema, value),
+      serialize: (value) => value,
+    });
+    this.#playlists = new CheckpointStore<Immutable<CachedPlaylists>>(this.#disk, {
+      document: "playlists",
+      initial: { listedAt: null, summaries: [], details: [] },
+      parse: (value) => v.parse(playlistsSchema, value),
       serialize: (value) => value,
     });
     this.#images = new BinaryCatalog(this.#disk, {
@@ -603,6 +622,7 @@ export class Cache {
     const results = await Promise.allSettled([
       this.#library.load(signal),
       this.#queue.load(signal),
+      this.#playlists.load(signal),
       this.#images.load(signal),
       this.#downloads.load(signal),
     ]);
@@ -611,6 +631,16 @@ export class Cache {
       result.status === "rejected" ? [result.reason] : [],
     );
     if (errors.length) throw new AggregateError(errors, "Could not restore cache.");
+  }
+
+  get playlists() {
+    return this.#playlists.value;
+  }
+
+  /** Server-confirmed state is published immediately; durability is an independent checkpoint. */
+  setPlaylists(value: Immutable<CachedPlaylists>) {
+    this.#requireDisk();
+    this.#playlists.set(structuredClone(value));
   }
 
   get queue() {
@@ -638,6 +668,7 @@ export class Cache {
     const results = await Promise.allSettled([
       this.#library.flush(),
       this.#queue.flush(),
+      this.#playlists.flush(),
       this.#images.store.flush(),
       this.#downloads.store.flush(),
     ]);
@@ -651,6 +682,7 @@ export class Cache {
     const errors = [
       this.#library.error,
       this.#queue.error,
+      this.#playlists.error,
       this.#images.error,
       this.#downloads.error,
     ].filter((error) => error !== undefined);
@@ -664,6 +696,7 @@ export class Cache {
     return (
       this.#library.dirty ||
       this.#queue.dirty ||
+      this.#playlists.dirty ||
       this.#images.store.dirty ||
       this.#downloads.store.dirty
     );

@@ -56,6 +56,19 @@ const trackSchema = v.object({
   track: v.optional(v.number()),
 });
 
+const playlistSchema = v.object({
+  id: v.string(),
+  name: v.string(),
+  owner: v.optional(v.string()),
+  public: v.optional(v.boolean()),
+  coverArt: v.optional(v.string()),
+  songCount: v.optional(v.number()),
+  changed: v.optional(v.string()),
+  entry: v.optional(v.array(trackSchema)),
+});
+
+export type SubsonicPlaylist = v.InferOutput<typeof playlistSchema>;
+
 const serverInfoSchema = v.object({
   version: v.string(),
   type: v.string(),
@@ -81,6 +94,8 @@ export const responseSchema = v.object({
         song: v.optional(v.array(trackSchema)),
       }),
     ),
+    playlists: v.optional(v.object({ playlist: v.optional(v.array(playlistSchema)) })),
+    playlist: v.optional(playlistSchema),
     playQueue: v.optional(
       v.object({
         current: v.optional(v.string()),
@@ -194,6 +209,66 @@ export class SubsonicClient {
     signal.throwIfAborted();
     const query = this.#query(params);
     return this.#parse(await this.#fetch(this.#url(path, query), { signal }), signal);
+  }
+
+  async #post(path: string, params: URLSearchParams) {
+    const query = this.#query();
+    for (const [key, value] of params) query.append(key, value);
+    return this.#parse(
+      await this.#fetch(this.#url(path, new URLSearchParams()), {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: query,
+        signal: this.signal,
+      }),
+    );
+  }
+
+  async getPlaylists(): Promise<SubsonicPlaylist[]> {
+    const result = await this.#get("getPlaylists");
+    if (!result.playlists) throw new Error("The server returned an invalid playlists response.");
+    return result.playlists.playlist ?? [];
+  }
+
+  async getPlaylist(id: string): Promise<SubsonicPlaylist> {
+    const result = await this.#get("getPlaylist", { id });
+    if (!result.playlist) throw new Error("The server returned an invalid playlist response.");
+    return result.playlist;
+  }
+
+  async createPlaylist(
+    name: string,
+    songIds: readonly string[] = [],
+  ): Promise<SubsonicPlaylist | undefined> {
+    const params = new URLSearchParams({ name });
+    for (const id of songIds) params.append("songId", id);
+    return (await this.#post("createPlaylist", params)).playlist;
+  }
+
+  async replacePlaylist(id: string, songIds: readonly string[]): Promise<void> {
+    const params = new URLSearchParams({ playlistId: id });
+    for (const songId of songIds) params.append("songId", songId);
+    await this.#post("createPlaylist", params);
+  }
+
+  async updatePlaylist(
+    id: string,
+    options: {
+      name?: string;
+      songIdsToAdd?: readonly string[];
+      songIndexesToRemove?: readonly number[];
+    },
+  ): Promise<void> {
+    const params = new URLSearchParams({ playlistId: id });
+    if (options.name !== undefined) params.set("name", options.name);
+    for (const songId of options.songIdsToAdd ?? []) params.append("songIdToAdd", songId);
+    for (const index of options.songIndexesToRemove ?? [])
+      params.append("songIndexToRemove", String(index));
+    await this.#post("updatePlaylist", params);
+  }
+
+  async deletePlaylist(id: string): Promise<void> {
+    await this.#post("deletePlaylist", new URLSearchParams({ id }));
   }
 
   async ping(): Promise<OpenSubsonicServerInfo> {

@@ -3,10 +3,19 @@ import {
   createSubsonicAuth,
   type SubsonicApi,
   type SubsonicClientFactory,
+  type SubsonicPlaylist,
 } from "./subsonic-client";
 import { authSchema, type Auth } from "./auth";
 import * as v from "valibot";
-import type { Album, Artist, Track, Account, ImageMetadata } from "./schema";
+import type {
+  Album,
+  Artist,
+  Track,
+  Account,
+  ImageMetadata,
+  Playlist,
+  PlaylistEntry,
+} from "./schema";
 
 /** Fetch failed before returning a response; browsers do not expose a reliable CORS diagnosis. */
 export class NetworkTransportError extends Error {
@@ -51,6 +60,7 @@ export type NetworkConnection = Readonly<NetworkIdentity & { metadata: MetadataC
 export type ActiveNetworkConnection = Readonly<
   NetworkConnection & {
     queue: QueueConnection;
+    playlists: PlaylistConnection;
     artwork: ArtworkConnection;
     audio: AudioConnection;
   }
@@ -65,6 +75,56 @@ export type RemoteQueue = {
 };
 
 export type QueueConnection = ReturnType<typeof queueAccess>;
+
+function playlistSummary(value: SubsonicPlaylist): Playlist {
+  return {
+    id: value.id,
+    name: value.name,
+    owner: value.owner,
+    public: value.public,
+    artworkId: value.coverArt,
+    songCount: value.songCount,
+    changed: value.changed,
+  };
+}
+
+function playlistEntries(value: SubsonicPlaylist): PlaylistEntry[] {
+  return (value.entry ?? []).map((track) => ({
+    id: track.id,
+    title: track.title,
+    artist: track.displayArtist ?? track.artists?.map((artist) => artist.name).join(", "),
+    album: track.album,
+    artworkId: track.coverArt,
+    duration: track.duration,
+  }));
+}
+
+function playlistAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
+  return Object.freeze({
+    account,
+    signal: client.signal,
+    list: async () => (await request(() => client.getPlaylists())).map(playlistSummary),
+    read: async (id: string) => {
+      const value = await request(() => client.getPlaylist(id));
+      if (value.id !== id) throw new Error("The server returned the wrong playlist.");
+      return { summary: playlistSummary(value), entries: playlistEntries(value) };
+    },
+    create: async (name: string) => {
+      const value = await request(() => client.createPlaylist(name));
+      return value ? playlistSummary(value) : undefined;
+    },
+    rename: (id: string, name: string) => request(() => client.updatePlaylist(id, { name })),
+    append: (id: string, songIds: readonly string[]) =>
+      request(() => client.updatePlaylist(id, { songIdsToAdd: songIds })),
+    remove: (id: string, indexes: readonly number[]) =>
+      request(() => client.updatePlaylist(id, { songIndexesToRemove: indexes })),
+    replace: (id: string, songIds: readonly string[]) =>
+      request(() => client.replacePlaylist(id, songIds)),
+    delete: (id: string) => request(() => client.deletePlaylist(id)),
+  });
+}
+
+export type PlaylistConnection = ReturnType<typeof playlistAccess>;
 
 type AudioFormat = "raw" | "mp3";
 
@@ -503,9 +563,10 @@ export class Network {
     const { client } = candidate;
     const request: Request = (run) => this.#request(client, run);
     const queue = queueAccess(connection.account, client, request);
+    const playlists = playlistAccess(connection.account, client, request);
     const artwork = artworkAccess(connection.account, client, request);
     const audio = audioAccess(connection.account, client, request);
-    const active = Object.freeze({ ...connection, queue, artwork, audio });
+    const active = Object.freeze({ ...connection, queue, playlists, artwork, audio });
     this.#active?.abort();
     this.#active = client;
     this.#candidate = undefined;
