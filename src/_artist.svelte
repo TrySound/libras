@@ -8,6 +8,8 @@
   import type { Playback } from "./playback.svelte";
   import type { RouteParams } from "./router.svelte";
   import type { Session } from "./session.svelte";
+  import type { Playlists } from "./playlists.svelte";
+  import PlaylistPicker from "./playlist-picker.svelte";
 
   interface Props {
     params: RouteParams;
@@ -16,9 +18,11 @@
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
+    playlists: Playlists;
   }
 
-  let { params, cache, covers, trackEngine, session, playback }: Props = $props();
+  let { params, cache, covers, trackEngine, session, playback, playlists }: Props = $props();
+  let picker: PlaylistPicker;
 
   const loading = $derived(!session.localReady);
   const offlineMode = $derived(session.offlineMode);
@@ -184,6 +188,13 @@
       </button>
       <button
         class="wings-item row-button"
+        disabled={offlineMode || !tracks.length}
+        onclick={() => picker.open(tracks.map((track) => track.id))}
+      >
+        <Icon name="plus" class="self-center" /><span>Add to playlist</span>
+      </button>
+      <button
+        class="wings-item row-button"
         onclick={() => trackEngine.downloadMany(tracks.map((track) => track.id))}
       >
         <Icon name="download" class="self-center" />
@@ -233,6 +244,13 @@
         </button>
         <button
           class="wings-item row-button"
+          disabled={offlineMode || !albumTracks.length}
+          onclick={() => picker.open(albumTracks.map((track) => track.id))}
+        >
+          <Icon name="plus" class="self-center" /><span>Add to playlist</span>
+        </button>
+        <button
+          class="wings-item row-button"
           onclick={() => trackEngine.downloadMany(albumTracks.map((track) => track.id))}
         >
           <Icon name="download" class="self-center" />
@@ -242,3 +260,4 @@
     </dialog>
   {/each}
 {/if}
+<PlaylistPicker bind:this={picker} {cache} {playlists} {session} />

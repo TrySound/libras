@@ -580,10 +580,12 @@ it.each([
     const dialog = target.querySelector(`#${menu}`);
     expect(dialog).not.toBeNull();
     expect(dialog?.querySelector(".wings-item")?.hasAttribute("disabled")).toBe(false);
-    for (const menu of target.querySelectorAll<HTMLDialogElement>(".action-menu")) {
+    for (const menu of target.querySelectorAll<HTMLDialogElement>(
+      ".action-menu:not(.playlist-picker)",
+    )) {
       const wings = menu.querySelector(":scope > .wings")!;
       expect(wings.querySelector(":scope > .topbar.wings-item")).not.toBeNull();
-      expect(wings.querySelectorAll(":scope > button.wings-item")).toHaveLength(4);
+      expect(wings.querySelectorAll(":scope > button.wings-item")).toHaveLength(5);
       const close = wings.querySelector<HTMLButtonElement>(".topbar button")!;
       expect(close.hasAttribute("commandfor")).toBe(false);
       expect(close.hasAttribute("command")).toBe(false);
@@ -626,7 +628,7 @@ it("reuses one library menu for the long-pressed artist", async () => {
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  expect(target.querySelectorAll(".action-menu")).toHaveLength(1);
+  expect(target.querySelectorAll(".action-menu")).toHaveLength(2);
   const menu = target.querySelector<HTMLDialogElement>("#artist-menu")!;
   const tiles = target.querySelectorAll<HTMLElement>(".tile");
   for (const [index, id] of ["one", "two"].entries()) {
@@ -643,7 +645,7 @@ it("reuses one library menu for the long-pressed artist", async () => {
     button.click();
     expect(download).toHaveBeenLastCalledWith(id);
     expect(menu.open).toBe(false);
-    expect(target.querySelectorAll(".action-menu")).toHaveLength(1);
+    expect(target.querySelectorAll(".action-menu")).toHaveLength(2);
   }
   expect(download).toHaveBeenCalledTimes(2);
 });
