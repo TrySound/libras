@@ -80,6 +80,15 @@ describe("static client", () => {
     expect(() => client.getCoverArtUrl("song-1")).toThrow("not found");
   });
 
+  it("exposes an empty playlist list but rejects unsupported playlist mutations", async () => {
+    const { client, fetcher } = setup();
+    expect(await client.getPlaylists()).toEqual([]);
+    await expect(client.getPlaylist("p")).rejects.toThrow("not available");
+    await expect(client.createPlaylist("Mix")).rejects.toThrow("not available");
+    await expect(client.updatePlaylist("p", { name: "Other" })).rejects.toThrow("not available");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("ignores server queue writes without loading metadata", async () => {
     const { client, fetcher } = setup();
     await client.savePlayQueue({ tracks: ["song-1"], current: "song-1", position: 12.5 });

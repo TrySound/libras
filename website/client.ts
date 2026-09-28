@@ -161,6 +161,36 @@ export class StaticSubsonicClient implements SubsonicApi {
     return this.assetUrl(asset.path);
   }
 
+  async getPlaylists() {
+    this.signal.throwIfAborted();
+    return [];
+  }
+
+  private unsupportedPlaylist(): never {
+    this.signal.throwIfAborted();
+    throw new Error("Playlists are not available in the static demo.");
+  }
+
+  async getPlaylist(_id: string) {
+    return this.unsupportedPlaylist();
+  }
+
+  async createPlaylist(_name: string, _songIds?: readonly string[]) {
+    return this.unsupportedPlaylist();
+  }
+
+  async replacePlaylist(_id: string, _songIds: readonly string[]) {
+    return this.unsupportedPlaylist();
+  }
+
+  async updatePlaylist(_id: string, _options: Parameters<SubsonicClient["updatePlaylist"]>[1]) {
+    return this.unsupportedPlaylist();
+  }
+
+  async deletePlaylist(_id: string) {
+    return this.unsupportedPlaylist();
+  }
+
   async getPlayQueue(): Promise<SubsonicPlayQueue> {
     this.signal.throwIfAborted();
     return { tracks: [], position: 0 };

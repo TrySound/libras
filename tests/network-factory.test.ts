@@ -20,6 +20,12 @@ function client(identity: SubsonicAuth): SubsonicApi {
     search3: async () => ({ artists: [], albums: [], tracks: [] }),
     getCoverArtUrl: (id) => `https://example.test/covers/${id}`,
     getStreamUrl: (id) => `https://example.test/audio/${id}`,
+    getPlaylists: async () => [],
+    getPlaylist: async (id) => ({ id, name: "Playlist" }),
+    createPlaylist: async (name) => ({ id: "created", name }),
+    replacePlaylist: async () => {},
+    updatePlaylist: async () => {},
+    deletePlaylist: async () => {},
     getPlayQueue: async () => ({ tracks: [], position: 0 }),
     savePlayQueue: async () => {},
   };

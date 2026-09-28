@@ -40,6 +40,37 @@ export const trackSchema = v.strictObject({
   genres: v.array(v.string()),
 });
 
+// Playlist entries are occurrences, not a map keyed by song ID. They retain enough
+// information to render cached details when the library has no matching album/track.
+export const playlistEntrySchema = v.strictObject({
+  id,
+  title: v.string(),
+  artist: v.optional(v.string()),
+  album: v.optional(v.string()),
+  artworkId: v.optional(id),
+  duration: v.optional(v.pipe(v.number(), v.finite(), v.minValue(0))),
+});
+
+export const playlistSchema = v.strictObject({
+  id,
+  name: v.string(),
+  owner: v.optional(v.string()),
+  public: v.optional(v.boolean()),
+  artworkId: v.optional(id),
+  songCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+  changed: v.optional(v.string()),
+});
+
+export const playlistDetailSchema = v.strictObject({
+  summary: playlistSchema,
+  entries: v.array(playlistEntrySchema),
+  fetchedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
+});
+
+export type Playlist = v.InferOutput<typeof playlistSchema>;
+export type PlaylistEntry = v.InferOutput<typeof playlistEntrySchema>;
+export type PlaylistDetail = v.InferOutput<typeof playlistDetailSchema>;
+
 export const downloadTrackSchema = v.object({
   id: v.string(),
   title: v.string(),
