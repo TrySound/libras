@@ -27,6 +27,7 @@ it("focuses the input, expands results, retains route state, and uses album play
       tracks: new Map(tracks.map((t) => [t.id, t])),
       albumTracks: new Map([["album", tracks]]),
       artistAlbums: new Map([["artist", [{ id: "album" }]]]),
+      playlists: { listedAt: 1, summaries: [], details: [] },
     },
     session: { localReady: true, offlineMode: false },
     trackEngine: { getStatus: () => "downloaded", downloadMany },
@@ -34,6 +35,7 @@ it("focuses the input, expands results, retains route state, and uses album play
       ensureCover: () => cover,
     },
     playback,
+    playlists: { open: vi.fn(), apply: vi.fn() },
   } as unknown as Omit<ComponentProps<typeof Search>, "state">;
   const target = document.createElement("div");
   document.body.append(target);
@@ -52,7 +54,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     flushSync();
     expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(3);
     expect(target.querySelectorAll("section .wings > .wings-item")).toHaveLength(3);
-    expect(target.querySelectorAll("dialog")).toHaveLength(1);
+    expect(target.querySelectorAll("dialog")).toHaveLength(2);
     match.mockClear();
     button("Show more tracks").click();
     flushSync();
@@ -94,7 +96,7 @@ it("focuses the input, expands results, retains route state, and uses album play
       button(`Open menu for ${name}`).click();
       flushSync();
       expect(target.querySelector("#search-menu-title")?.textContent).toBe(name);
-      expect(target.querySelectorAll("dialog")).toHaveLength(1);
+      expect(target.querySelectorAll("dialog")).toHaveLength(2);
       button("Play").click();
       expect(playback.replaceQueueAndPlay).toHaveBeenLastCalledWith(tracks.map((t) => t.id));
       button("Play next").click();

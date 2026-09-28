@@ -66,7 +66,14 @@ describe("local library search", () => {
   it("filters availability before limiting, including parent albums and artists", () => {
     const offline = createSearchIndex(artists, albums, tracks, (id) => id === "11");
     expect(searchLibrary(offline, "formation").groups[2].records.map((r) => r.id)).toEqual(["11"]);
-    expect(searchLibrary(offline, "beyonce").groups.map((g) => g.total)).toEqual([1, 1, 1]);
+    expect(searchLibrary(offline, "beyonce").groups.map((g) => g.total)).toEqual([1, 1, 1, 0]);
     expect(createSearchIndex(artists, albums, tracks, () => false).size).toBe(0);
+    const cached = createSearchIndex(artists, albums, tracks, () => false, [
+      { id: "mix/1", name: "Road Trip" },
+    ]);
+    expect(searchLibrary(cached, "road").groups[3].records[0]).toMatchObject({
+      id: "mix/1",
+      href: "#/library/playlist/mix%2F1",
+    });
   });
 });
