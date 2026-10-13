@@ -158,9 +158,14 @@ it("declares native demo commands and preserves the player across closing and re
 it("opens the desktop preview and removes its viewport listener on cleanup", async () => {
   const viewport = Object.assign(new EventTarget(), { matches: false });
   vi.spyOn(window, "matchMedia").mockReturnValue(viewport as MediaQueryList);
+  // Native show() runs dialog focusing steps; the inline preview must bypass it.
+  const show = vi.spyOn(HTMLDialogElement.prototype, "show");
+  const focus = vi.spyOn(HTMLElement.prototype, "focus");
   await renderWebsite();
   const dialog = document.querySelector<HTMLDialogElement>("#live-demo-dialog")!;
   expect(dialog.open).toBe(true);
+  expect(show).not.toHaveBeenCalled();
+  expect(focus).not.toHaveBeenCalled();
   expect(document.querySelectorAll(".app-root")).toHaveLength(1);
   await cleanupWebsite!();
   cleanupWebsite = undefined;

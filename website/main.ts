@@ -82,7 +82,9 @@ const syncViewport = () => {
   }
   dialog.close();
   mobile = viewport.matches;
-  if (!mobile) dialog.show();
+  // The desktop preview is inline content, not an invoked dialog. Setting open
+  // directly avoids show()'s focus steps and the resulting host-page scroll.
+  if (!mobile) dialog.open = true;
 };
 syncViewport();
 viewport.addEventListener("change", syncViewport);
