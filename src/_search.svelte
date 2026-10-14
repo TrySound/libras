@@ -1,9 +1,9 @@
 <script module lang="ts">
   import fuzzysort from "fuzzysort";
-  import type { Album, Artist, Track } from "./schema";
+  import type { Album, Artist, Track, Playlist } from "./schema";
   import type { Immutable } from "./cache.svelte";
 
-  const searchGroups = ["Artists", "Albums", "Tracks"] as const;
+  const searchGroups = ["Artists", "Albums", "Tracks", "Playlists"] as const;
 
   type SearchGroup = (typeof searchGroups)[number];
 
@@ -17,7 +17,7 @@
   }
 
   export function createSearchState() {
-    return { query: "", limits: { Artists: 3, Albums: 3, Tracks: 3 } };
+    return { query: "", limits: { Artists: 3, Albums: 3, Tracks: 3, Playlists: 3 } };
   }
 
   type SearchState = ReturnType<typeof createSearchState>;
@@ -42,6 +42,7 @@
     albums: ReadonlyMap<string, Immutable<Album>>,
     tracks: ReadonlyMap<string, Immutable<Track>>,
     available?: (id: string) => boolean,
+    playlists: readonly Immutable<Playlist>[] = [],
   ) {
     const eligibleTracks = [...tracks.values()].filter(
       (track) => !available || available(track.id),
@@ -80,6 +81,14 @@
         artist: track.displayArtist ?? artists.get(track.artistIds[0])?.name ?? "",
         album: albums.get(track.albumId)?.title ?? "",
       })),
+      Playlists: playlists.map((playlist) => ({
+        id: playlist.id,
+        title: playlist.name,
+        artworkId: playlist.artworkId,
+        artist: "",
+        album: "",
+        href: `#/library/playlist/${encodeURIComponent(playlist.id)}`,
+      })),
     };
     const snapshot = (group: SearchGroup) =>
       fuzzysort.snapshot(records[group], {
@@ -89,6 +98,7 @@
       Artists: snapshot("Artists"),
       Albums: snapshot("Albums"),
       Tracks: snapshot("Tracks"),
+      Playlists: snapshot("Playlists"),
       size: Object.values(records).reduce((sum, group) => sum + group.length, 0),
     };
   }
@@ -128,6 +138,8 @@
   import type { TrackEngine } from "./track.svelte";
   import type { Session } from "./session.svelte";
   import type { Playback } from "./playback.svelte";
+  import type { Playlists } from "./playlists.svelte";
+  import PlaylistPicker from "./playlist-picker.svelte";
 
   let {
     cache,
@@ -135,6 +147,7 @@
     trackEngine,
     session,
     playback,
+    playlists,
     state: searchState,
   }: {
     cache: Cache;
@@ -142,6 +155,7 @@
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
+    playlists: Playlists;
     state: SearchState;
   } = $props();
 
@@ -151,9 +165,11 @@
       cache.albums,
       cache.tracks,
       session.offlineMode ? isAvailable : undefined,
+      cache.playlists.summaries,
     ),
   );
 
+  let picker: PlaylistPicker;
   const matches = $derived(searchLibrary(index, searchState.query));
 
   const results = $derived(
@@ -181,12 +197,18 @@
         ? cache.artists.get(id)
         : group === "Albums"
           ? cache.albums.get(id)
-          : cache.tracks.get(id);
+          : group === "Playlists"
+            ? cache.playlists.summaries.find((playlist) => playlist.id === id)
+            : cache.tracks.get(id);
     return item ? { group, id, title: "name" in item ? item.name : item.title } : undefined;
   });
 
   const menuTracks = $derived.by(() => {
     if (!menuItem) return [];
+    if (menuItem.group === "Playlists")
+      return (
+        cache.playlists.details.find((detail) => detail.summary.id === menuItem.id)?.entries ?? []
+      ).flatMap((entry) => cache.tracks.get(entry.id) ?? []);
     if (menuItem.group === "Artists") {
       return (cache.artistAlbums.get(menuItem.id) ?? []).flatMap(
         (album) => cache.albumTracks.get(album.id) ?? [],
@@ -197,7 +219,16 @@
     return track ? [track] : [];
   });
 
-  const menuTrackIds = $derived(availableTrackIds(menuTracks, isAvailable));
+  const menuTrackIds = $derived(
+    menuItem?.group === "Playlists"
+      ? (cache.playlists.details
+          .find((detail) => detail.summary.id === menuItem.id)
+          ?.entries.map((entry) => entry.id) ?? [])
+      : availableTrackIds(menuTracks, isAvailable),
+  );
+  const menuPlayable = $derived(
+    menuTrackIds.some((id) => !!cache.tracks.get(id) && isAvailable(id)),
+  );
   const menuDownloadStatus = $derived(
     menuItem?.group === "Tracks" ? trackEngine.getStatus(menuItem.id) : "idle",
   );
@@ -209,7 +240,10 @@
   function playMenu() {
     if (!menuItem) return;
     if (menuItem.group === "Tracks") play(menuItem.id);
-    else void playback.replaceQueueAndPlay(menuTrackIds);
+    else if (menuItem.group === "Playlists") {
+      const index = menuTrackIds.findIndex((id) => !!cache.tracks.get(id) && isAvailable(id));
+      if (index >= 0) void playback.replaceQueueAndPlay(menuTrackIds, index);
+    } else void playback.replaceQueueAndPlay(menuTrackIds);
   }
 
   function play(id: string) {
@@ -224,7 +258,7 @@
   <div class="view stack-md">
     <h1 class="type-heading">Search</h1>
     <div class="stack-sm" role="search">
-      <label for="library-search">Search artists, albums, and tracks</label>
+      <label for="library-search">Search artists, albums, tracks, and playlists</label>
       <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
       <input
         class="input"
@@ -331,13 +365,13 @@
       </button>
       <span id="search-menu-title" class="type-title">{menuItem?.title ?? ""}</span>
     </header>
-    <button class="wings-item row-button" disabled={!menuTrackIds.length} onclick={playMenu}>
+    <button class="wings-item row-button" disabled={!menuPlayable} onclick={playMenu}>
       <Icon name="play" class="self-center" />
       <span>Play</span>
     </button>
     <button
       class="wings-item row-button"
-      disabled={!menuTrackIds.length}
+      disabled={!menuPlayable}
       onclick={() => void playback.enqueue(menuTrackIds, "next")}
     >
       <Icon name="next" class="self-center" />
@@ -345,7 +379,7 @@
     </button>
     <button
       class="wings-item row-button"
-      disabled={!menuTrackIds.length}
+      disabled={!menuPlayable}
       onclick={() => void playback.enqueue(menuTrackIds, "last")}
     >
       <Icon name="plus" class="self-center" />
@@ -353,7 +387,16 @@
     </button>
     <button
       class="wings-item row-button"
-      disabled={!menuTracks.length || menuDownloadStatus !== "idle"}
+      disabled={session.offlineMode || !menuTracks.length || menuItem?.group === "Playlists"}
+      onclick={() => picker.open(menuTracks.map((track) => track.id))}
+    >
+      <Icon name="plus" class="self-center" /><span>Add to playlist</span>
+    </button>
+    <button
+      class="wings-item row-button"
+      disabled={!menuTracks.length ||
+        menuDownloadStatus !== "idle" ||
+        menuItem?.group === "Playlists"}
       onclick={() => trackEngine.downloadMany(menuTracks.map((track) => track.id))}
     >
       <Icon name={downloadPresentation[menuDownloadStatus].icon} class="self-center" />
@@ -361,3 +404,4 @@
     </button>
   </div>
 </dialog>
+<PlaylistPicker bind:this={picker} {cache} {playlists} {session} />
