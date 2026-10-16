@@ -111,9 +111,12 @@
 }
 
 .site-hero .row-sm svg {
-  color: var(--site-accent);
   width: 1em;
   height: 1em;
+
+  &:not(.brand-mark) {
+    color: var(--site-accent);
+  }
 }
 
 .site-hero h1 {

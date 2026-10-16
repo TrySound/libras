@@ -33,6 +33,7 @@
   --palette-pink-900: #44293d;
   --palette-green-500: #53d58b;
   --palette-amber-500: #e8b44d;
+  --palette-yellow-500: #ffde21;
   --palette-red-300: #ff9aa9;
   --palette-red-500: #ff667d;
   --palette-red-900: #351c25;
@@ -69,6 +70,7 @@
 
   /* Semantic colors: text */
   --color-text-primary: var(--palette-gray-100);
+  --color-brand: var(--palette-yellow-500);
   --color-text-muted: var(--palette-gray-300);
   --color-text-accent: var(--palette-crimson-300);
   --color-text-on-image: var(--palette-white);
@@ -687,6 +689,11 @@
   background: var(--surface-raised-background);
   backdrop-filter: blur(var(--surface-raised-blur));
   box-shadow: var(--surface-raised-shadow);
+}
+
+.brand-mark {
+  color: var(--color-brand);
+  forced-color-adjust: auto;
 }
 
 .topbar-brand {

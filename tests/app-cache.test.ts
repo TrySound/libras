@@ -185,6 +185,7 @@ it("uses the empty fallback before account selection and when selection is clear
   expect(target.textContent).toContain("Connect your library");
   const brand = target.querySelector(".topbar-brand svg");
   expect(brand?.getAttribute("aria-hidden")).toBe("true");
+  expect(brand?.classList.contains("brand-mark")).toBe(true);
   expect(brand?.getAttribute("width")).toBe("32");
   expect(brand?.getAttribute("height")).toBe("32");
   expect(brand?.querySelectorAll("path")).toHaveLength(0);

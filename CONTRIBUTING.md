@@ -94,7 +94,7 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
 - [GitHub Pages](.github/workflows/pages.yml) deploys `main` independently of CI. Set Settings → Pages → Source to **GitHub Actions**. Preview its base path with `BASE_PATH=/libras/ pnpm build`, then `pnpm preview` and open `/libras/`.
 - For another deployment, update the canonical and social-preview URLs in `index.html`.
 - Social artwork: edit `public/og.svg`, then regenerate `public/og.png` (1200×630) with resvg and DejaVu Sans.
-- App icons: keep `public/icon.svg`, the header logo, and raster icons in sync. Generate PNGs with resvg and the ICO with png-to-ico; preserve maskable safe areas. Attribution is in `public/icons/phosphor-license.txt`.
+- Brand: use the custom Libras scales from the `icon-brand` symbol in `src/sprite.svg`: a gently left-tilted beam, outlined triangular weights, narrow base, and no ring. Keep the 32×32 viewBox, a `translate(0 -1)` mark offset to center its visible bounds (without shifting its background), 1.6 rounded stroke, and gold `--color-brand` treatment through the explicit `.brand-mark` class on the SVG; other UI icons stay unchanged. Do not couple brand styling to the sprite’s `href`. Keep `public/icon.svg`, `public/logo.svg`, `public/og.svg`, and `website/public/icon.svg` in sync with that geometry. Generate PNGs with resvg and the ICO with png-to-ico; retain the existing image dimensions and use a subtle diagonal maroon tint-to-base icon background (`#810000` → `#550000`), and fit maskable artwork inside its central 80%-diameter safe circle.
 
 ## UI conventions
 
