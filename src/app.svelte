@@ -187,7 +187,7 @@
       aria-label="Libras home"
       title="Home"
     >
-      <Icon name="brand" size="lg" />
+      <Icon name="brand" size="lg" class="brand-mark" />
     </a>
   </div>
 {/snippet}
