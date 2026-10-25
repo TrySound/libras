@@ -98,6 +98,49 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
 
 ## UI conventions
 
+### Gradual Edgerunner redesign
+
+[Migration tracker #55](https://github.com/TrySound/libras/issues/55) owns the sequence.
+`styleguide.html` is the existing, evolving visual reference; run `pnpm dev` and open
+`/styleguide.html`. It uses the same styles as production, not a separate component library.
+
+- `src/app.css` retains legacy styles behind a temporary scope boundary and imports
+  `src/edgerunner.css`. Opt a migrated route into the new design with `.ui-edgerunner`.
+  New tokens and opt-in classes are scoped there; legacy selectors stop at that boundary.
+  Do not mix legacy and new component markup within a migrated subtree.
+- Give any dialog/popover mounted outside that subtree its own `.ui-edgerunner` class.
+  It must inherit the new foundations even while closed; preserve native hidden behavior.
+- Edgerunner ports the Original visual system from the `libras-new` design study:
+  published Figma Maroon/Gold primitives → semantic color and complete typography roles.
+  Consume roles for colors/type, primitives for ordinary spacing/shape, and keep component
+  configuration local. Containers own gaps/padding. Avoid global element resets.
+- Introduce compound components with their first consumer, not all at once. Preserve real
+  application behavior, long-press, and swipe-to-dismiss; do not port the prototype runtime.
+  Additional Highrider themes/selection are separate work in #54.
+- `src/edgerunner-fonts.css` loads self-hosted Rajdhani v17 (500/600/700), sourced from
+  Google Fonts, with script subsets and `font-display: optional`. A short browser-managed
+  loading window allows a fast font load; otherwise the page keeps its system fallback without
+  a late swap. The styleguide preloads the Latin 500 heading face; add critical-font preloads
+  to production entry points only when they start using the new typography.
+  Fonts and the SIL OFL license
+  live in `src/fonts/`; unsupported glyphs and unavailable fonts use system fallbacks.
+  Relative asset URLs support both the app and embedded website builds.
+
+The optional real-browser foundation suite checks scoped coexistence, native controls,
+focus, overlays, responsive sizing, local fonts, artwork, and reduced motion. With a dev
+or preview server running and Playwright/Chromium installed externally:
+
+```sh
+# NODE_PATH is only needed when Playwright is not on Node's normal module path.
+NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
+  node --test tests/browser/edgerunner.test.cjs
+```
+
+For a subpath deployment, include the base path in `PREVIEW_URL`. This optional suite is
+not part of `pnpm test`; DOM emulation does not validate CSS scope, layout, or native overlays.
+Review the styleguide visually as well, including long labels and enlarged text. During
+coexistence, check a migrated island inside the legacy shell, not only the all-new reference.
+
 - Store all UI icons in `src/sprite.svg` as `<symbol id="name">` elements. Render them with the typed `Icon` component from `src/icon.svelte`, rather than embedding icon geometry in components. Keep its `IconName` union in sync with the sprite. The sprite is emitted as a separate asset, not embedded in JavaScript. Use `currentColor` for themeable fills and strokes, and give icon-only controls accessible labels.
 - Prefer native invoker commands for popovers and dialogs: use `commandfor="element-id"` with `command="toggle-popover"`, `"show-popover"`, `"hide-popover"`, `"show-modal"`, or `"close"`. Prefer these over `popovertarget`/`popovertargetaction` and JavaScript click handlers that only open or close an overlay. Reserve imperative APIs for behavior that cannot be expressed declaratively, such as swipe-to-dismiss.
 
