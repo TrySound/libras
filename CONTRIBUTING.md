@@ -120,7 +120,8 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   application behavior, long-press, and swipe-to-dismiss; do not port the prototype runtime.
   Additional Highrider themes/selection are separate work in #54.
 - `src/edgerunner-fonts.css` loads self-hosted Rajdhani v17 (500/600/700), sourced from
-  Google Fonts, with script subsets and `font-display: optional`. A short browser-managed
+  Google Fonts, with Latin-only subsets and `font-display: optional`. Other characters
+  use system-font fallbacks rather than additional bundled subsets. A short browser-managed
   loading window allows a fast font load; otherwise the page keeps its system fallback without
   a late swap. The styleguide preloads the Latin 500 heading face; add critical-font preloads
   to production entry points only when they start using the new typography.

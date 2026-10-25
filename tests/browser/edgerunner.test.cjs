@@ -41,7 +41,7 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
       assert.match(styles.background, /linear-gradient/);
       assert.equal(styles.inputPadding, "8px 16px");
       assert.match(styles.font, /Rajdhani/);
-      assert.ok(styles.fontDisplays.length > 0);
+      assert.equal(styles.fontDisplays.length, 3);
       assert.ok(styles.fontDisplays.every((display) => display === "optional"));
       assert.equal(await page.locator('link[rel="preload"][as="font"][crossorigin]').count(), 1);
 
