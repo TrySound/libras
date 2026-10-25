@@ -166,7 +166,7 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
           fixture.id = "coexistence-fixture";
           fixture.innerHTML = `
           <div id="legacy-before" class="stack-xl"><button class="button" data-variant="primary">Legacy before</button></div>
-          <section class="ui-edgerunner">
+          <section id="new-boundary" class="ui-edgerunner stack-md">
             <div id="new-layout" class="stack-xl">
               <button id="new-button" class="button" data-variant="primary">New</button>
               <input id="new-input" class="input" aria-label="New input" />
@@ -175,6 +175,7 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
             </div>
           </section>
           <div id="legacy-after" class="stack-xl"><button class="button" data-variant="primary">Legacy after</button></div>
+          <div id="hidden-boundary" class="ui-edgerunner stack-md" hidden>Hidden boundary</div>
           <dialog id="external-overlay" class="ui-edgerunner card"><button class="button" data-variant="primary">Overlay</button></dialog>`;
           document.body.append(fixture);
         });
@@ -193,6 +194,7 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
             before: style("#legacy-before"),
             after: style("#legacy-after"),
             oldButton: style("#legacy-before .button"),
+            boundary: style("#new-boundary"),
             newLayout: style("#new-layout"),
             newButton: style("#new-button"),
             newCard: style("#new-card"),
@@ -203,6 +205,7 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
         });
         assert.deepEqual(styles.before, styles.after);
         assert.equal(styles.before.gap, "32px");
+        assert.equal(styles.boundary.gap, "16px");
         assert.equal(styles.newLayout.gap, "48px");
         assert.equal(styles.newButton.background, "rgb(129, 0, 0)");
         assert.notEqual(styles.oldButton.background, styles.newButton.background);
@@ -214,6 +217,7 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
         assert.equal(styles.overlay.padding, "24px");
         assert.equal(styles.overlayButton.background, styles.newButton.background);
         assert.equal(await page.locator("#new-layout [hidden]").isVisible(), false);
+        assert.equal(await page.locator("#hidden-boundary").isVisible(), false);
         assert.equal(await page.locator("#external-overlay").isVisible(), false);
         await page.evaluate(() => document.querySelector("#external-overlay").showModal());
         assert.equal(await page.locator("#external-overlay").isVisible(), true);

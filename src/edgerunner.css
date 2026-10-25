@@ -3,8 +3,8 @@
  * Palette → semantic roles; color/type roles are consumed by components.
  * Opt in with .ui-edgerunner on a route or overlay. Legacy CSS stops there.
  * Keep components opt-in, sizing local, and spacing owned by containers.
- * :where(:scope, *) lets an opt-in class style the boundary itself as well as
- * descendants, without increasing specificity (plain selectors omit the root).
+ * Only cards, stacks, and [hidden] also target the boundary itself using
+ * :where(:scope, *), without increasing specificity. Other classes style descendants.
  * Highrider themes and selection are intentionally deferred to issue #54.
  */
 @import "./edgerunner-fonts.css";
@@ -267,7 +267,7 @@
     }
   }
 
-  :where(:scope, *).truncate {
+  .truncate {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -306,69 +306,69 @@
   }
 
   /* Center-aligned, single-line horizontal flow; components own sizing. */
-  :where(:scope, *).row-xs,
-  :where(:scope, *).row-sm,
-  :where(:scope, *).row-md,
-  :where(:scope, *).row-lg,
-  :where(:scope, *).row-xl {
+  .row-xs,
+  .row-sm,
+  .row-md,
+  .row-lg,
+  .row-xl {
     display: flex;
     align-items: center;
   }
 
-  :where(:scope, *).row-xs {
+  .row-xs {
     gap: var(--space-xs);
   }
 
-  :where(:scope, *).row-sm {
+  .row-sm {
     gap: var(--space-sm);
   }
 
-  :where(:scope, *).row-md {
+  .row-md {
     gap: var(--space-md);
   }
 
-  :where(:scope, *).row-lg {
+  .row-lg {
     gap: var(--space-lg);
   }
 
-  :where(:scope, *).row-xl {
+  .row-xl {
     gap: var(--space-xl);
   }
 
-  :where(:scope, *).row-justify {
+  .row-justify {
     justify-content: space-between;
   }
 
-  :where(:scope, *).row-center {
+  .row-center {
     justify-content: center;
   }
 
-  :where(:scope, *).uppercase {
+  .uppercase {
     text-transform: uppercase;
   }
 
-  :where(:scope, *).text-secondary {
+  .text-secondary {
     color: var(--text-secondary);
   }
 
-  :where(:scope, *).text-subtle {
+  .text-subtle {
     color: var(--text-subtle);
   }
 
   /* Visibility utilities override component display without retaining focus. */
-  :where(:scope, *).only-mobile {
+  .only-mobile {
     @media (width > 600px) {
       display: none !important;
     }
   }
 
-  :where(:scope, *).only-desktop {
+  .only-desktop {
     @media (max-width: 600px) {
       display: none !important;
     }
   }
 
-  :where(:scope, *).visually-hidden {
+  .visually-hidden {
     position: absolute;
     clip-path: inset(50%);
     width: 1px;
@@ -380,7 +380,7 @@
   /* Typography classes */
 
   /* Visual roles are independent of HTML heading level, layout, and casing. */
-  :where(:scope, *).brand {
+  .brand {
     margin: 0;
     font-size-adjust: from-font;
     font-family: var(--brand-font);
@@ -390,7 +390,7 @@
     letter-spacing: var(--brand-tracking);
   }
 
-  :where(:scope, *).heading-xl {
+  .heading-xl {
     margin: 0;
     font-size-adjust: from-font;
     font-family: var(--heading-xl-font);
@@ -400,7 +400,7 @@
     letter-spacing: var(--heading-xl-tracking);
   }
 
-  :where(:scope, *).heading-lg {
+  .heading-lg {
     margin: 0;
     font-size-adjust: from-font;
     font-family: var(--heading-lg-font);
@@ -410,7 +410,7 @@
     letter-spacing: var(--heading-lg-tracking);
   }
 
-  :where(:scope, *).heading-md {
+  .heading-md {
     margin: 0;
     font-size-adjust: from-font;
     font-family: var(--heading-md-font);
@@ -420,7 +420,7 @@
     letter-spacing: var(--heading-md-tracking);
   }
 
-  :where(:scope, *).heading-sm {
+  .heading-sm {
     margin: 0;
     font-size-adjust: from-font;
     font-family: var(--heading-sm-font);
@@ -430,7 +430,7 @@
     letter-spacing: var(--heading-sm-tracking);
   }
 
-  :where(:scope, *).body {
+  .body {
     margin: 0;
     font-family: var(--body-font);
     font-size: var(--body-size);
@@ -439,7 +439,7 @@
     letter-spacing: var(--body-tracking);
   }
 
-  :where(:scope, *).label {
+  .label {
     margin: 0;
     font-family: var(--label-font);
     font-size: var(--label-size);
@@ -448,7 +448,7 @@
     letter-spacing: var(--label-tracking);
   }
 
-  :where(:scope, *).caption {
+  .caption {
     margin: 0;
     font-family: var(--caption-font);
     font-size: var(--caption-size);
@@ -457,7 +457,7 @@
     letter-spacing: var(--caption-tracking);
   }
 
-  :where(:scope, *).metadata {
+  .metadata {
     margin: 0;
     font-family: var(--metadata-font);
     font-size: var(--metadata-size);
@@ -475,7 +475,7 @@
     background: var(--surface-bg);
   }
 
-  :where(:scope, *).loader {
+  .loader {
     display: inline-grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: center;
@@ -541,7 +541,7 @@
     }
   }
 
-  :where(:scope, *).input {
+  .input {
     box-sizing: border-box;
     inline-size: 100%;
     min-inline-size: 0;
@@ -588,17 +588,17 @@
     }
   }
 
-  :where(:scope, *).input-error {
+  .input-error {
     color: var(--error-text);
   }
 
-  :where(:scope, *).input:not(:user-invalid, [aria-invalid="true"]) + .input-error,
-  :where(:scope, *).input:disabled + .input-error {
+  .input:not(:user-invalid, [aria-invalid="true"]) + .input-error,
+  .input:disabled + .input-error {
     display: none;
   }
 
   /* Native checkbox behavior; a fixed gold thumb slides between grid cells. */
-  :where(:scope, *).switch {
+  .switch {
     --press-scale: var(--press-scale-compact);
     appearance: none;
     box-sizing: border-box;
@@ -664,7 +664,7 @@
   }
 
   /* Unfilled native links/buttons; row/stack utilities own content layout. */
-  :where(:scope, *).button-quiet {
+  .button-quiet {
     position: relative;
     cursor: pointer;
     font: inherit;
@@ -706,7 +706,7 @@
 
   /* Content + padding determine size. Omitted size is md and omitted variant is
    ghost. SVG dimensions are authored on each inline SVG, never inferred here. */
-  :where(:scope, *).button {
+  .button {
     --button-padding-block: var(--space-sm);
     --button-padding-inline: var(--space-sm);
     --press-scale: var(--press-scale-compact);
@@ -816,7 +816,7 @@
   }
 
   /* Foreground artwork shares surfaces, crop, geometry and missing-cover state. */
-  :where(:scope, *).artwork {
+  .artwork {
     box-sizing: border-box;
     position: relative;
     display: block;
@@ -865,7 +865,7 @@
     }
   }
 
-  :where(:scope, *).artwork-placeholder {
+  .artwork-placeholder {
     position: absolute;
     inset: 0;
     margin: auto;
