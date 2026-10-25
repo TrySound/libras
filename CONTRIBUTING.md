@@ -108,6 +108,8 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   `src/edgerunner.css`. Opt a migrated route into the new design with `.ui-edgerunner`.
   New tokens and opt-in classes are scoped there; legacy selectors stop at that boundary.
   Do not mix legacy and new component markup within a migrated subtree.
+  `website/website.css` uses the same bounded scope so equally specific website
+  extensions still override shared rules by source order, without leaking into migrated islands.
 - Give any dialog/popover mounted outside that subtree its own `.ui-edgerunner` class.
   It must inherit the new foundations even while closed; preserve native hidden behavior.
 - Edgerunner ports the Original visual system from the `libras-new` design study:
@@ -136,7 +138,16 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/edgerunner.test.cjs
 ```
 
-For a subpath deployment, include the base path in `PREVIEW_URL`. This optional suite is
+The website cascade suite uses the website server (`pnpm --filter @libras/website dev`)
+with its own URL. It checks desktop overrides, mobile demo launch/dismissal, mounted-node
+preservation on resize, and isolation from Edgerunner islands:
+
+```sh
+NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5180 \
+  node --test tests/browser/website-cascade.test.cjs
+```
+
+For a subpath deployment, include the base path in `PREVIEW_URL`. These optional suites are
 not part of `pnpm test`; DOM emulation does not validate CSS scope, layout, or native overlays.
 Review the styleguide visually as well, including long labels and enlarged text. During
 coexistence, check a migrated island inside the legacy shell, not only the all-new reference.
