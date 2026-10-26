@@ -127,6 +127,13 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   Session still owns authentication, refresh, disconnect, and offline preferences.
   Host remains a required text field so Network can normalize bare hostnames. Native field
   errors and actual connection/synchronization errors are distinct; theme selection stays in #54.
+  Settings does not show cache-restoration messages. The status spinner and counters describe
+  the library scan only and switch together back to the connected identity; artwork, playlist,
+  and queue refresh continue in the background. Refresh is text-only, showing Refreshing…
+  until the full operation settles.
+  Connecting spinners have a 300ms visual grace period; requests and status text are immediate.
+  The shared Loader reserves its frame and cancels delayed bars on unmount. Offline mode uses
+  a crossed-cloud icon, while Disconnected retains its idle indicator.
   Busy Connect/Refresh controls stay mounted and focusable with guarded `aria-disabled` states.
   Disconnect restores Host focus, and a connection finishing after leaving Settings does not
   navigate back. The summary renders account identity, never tokens, salts, or URL userinfo.

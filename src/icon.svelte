@@ -22,6 +22,7 @@
     | "cross"
     | "error"
     | "idle"
+    | "offline"
     | "settings";
 </script>
 

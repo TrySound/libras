@@ -2,6 +2,7 @@
 import { flushSync, mount, tick, unmount } from "svelte";
 import { afterEach, expect, it, vi } from "vitest";
 import Settings from "../src/_settings.svelte";
+import type { Library } from "../src/network.svelte";
 import { createSession, credentials, deferred } from "./session-test-helpers";
 import { installNavigation } from "./router-test-helpers";
 
@@ -10,6 +11,7 @@ const identity = `${credentials.username}@${new URL(credentials.host).host}`;
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   document.body.innerHTML = "";
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -61,6 +63,7 @@ async function setup(saved = false) {
 
 it("keeps Connect focusable while busy, prevents duplicate submission, and exposes errors with the form", async () => {
   const { target, field, fill, submit, validate } = await setup();
+  vi.useFakeTimers();
   const pending = deferred();
   validate.mockImplementationOnce(() => pending.promise);
   fill();
@@ -74,7 +77,15 @@ it("keeps Connect focusable while busy, prevents duplicate submission, and expos
   expect(
     [...target.querySelectorAll<HTMLInputElement>("form input")].every((input) => input.disabled),
   ).toBe(true);
+  expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(0);
+  expect(button.querySelectorAll(".loader-bar")).toHaveLength(0);
+  await vi.advanceTimersByTimeAsync(299);
+  flushSync();
+  expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(0);
+  await vi.advanceTimersByTimeAsync(1);
+  flushSync();
   expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(5);
+  expect(button.querySelectorAll(".loader-bar")).toHaveLength(5);
   submit();
   await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
   pending.reject(new Error("Unauthorized"));
@@ -95,18 +106,37 @@ it("keeps Connect focusable while busy, prevents duplicate submission, and expos
   expect(target.textContent).not.toContain("private-password-value");
 });
 
-it("keeps restoration visible without pretending to connect or blocking the existing form workflow", async () => {
-  const { target, session, field } = await setup();
-  session.localReady = false;
+it("does not flash connecting spinners for a fast connection", async () => {
+  const { target, fill, submit, navigate } = await setup();
+  vi.useFakeTimers();
+  fill();
+  submit();
+  expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
+  await vi.advanceTimersByTimeAsync(0);
   flushSync();
-  expect(target.textContent).toContain("Restoring local library…");
-  expect(target.querySelector("#settings-connection-status")?.textContent).toContain(
-    "Disconnected",
-  );
-  expect(field("host").disabled).toBe(false);
-  expect(target.querySelector<HTMLInputElement>("#settings-offline")?.disabled).toBe(true);
-  expect(target.querySelector("select")).toBeNull();
+  expect(navigate).toHaveBeenCalledWith("/library", "push");
+  expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
+  expect(vi.getTimerCount()).toBe(0);
+  await vi.advanceTimersByTimeAsync(300);
+  flushSync();
+  expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
 });
+
+it.each([false, true])(
+  "keeps Settings usable without restoration messages (authenticated: %s)",
+  async (saved) => {
+    const { target, session, field } = await setup(saved);
+    session.localReady = false;
+    flushSync();
+    expect(target.textContent).not.toContain("Restoring local library…");
+    expect(target.querySelector("#settings-connection-status")?.textContent).toContain(
+      saved ? "Connected" : "Disconnected",
+    );
+    if (!saved) expect(field("host").disabled).toBe(false);
+    expect(target.querySelector<HTMLInputElement>("#settings-offline")?.disabled).toBe(!saved);
+    expect(target.querySelector("select")).toBeNull();
+  },
+);
 
 it("accepts a bare hostname and navigates after a successful connection without exposing credentials", async () => {
   const { target, fill, submit, session, auth, navigate } = await setup();
@@ -204,6 +234,62 @@ it("clears fields and restores focus to Host after a focused Disconnect action",
     "",
   ]);
   expect(target.querySelector<HTMLInputElement>("#settings-offline")?.checked).toBe(true);
+});
+
+it("switches the scan icon and label together while other refresh steps stay in the background", async () => {
+  const { target, session, metadata, covers, playback } = await setup(true);
+  const modified = deferred<number | null>();
+  const scan = deferred<Library>();
+  const artwork = deferred();
+  const queue = deferred();
+  const readCalls = metadata.readLibrary.mock.calls.length;
+  const coverCalls = covers.refresh.mock.calls.length;
+  const queueCalls = playback.refreshQueue.mock.calls.length;
+  metadata.getModifiedAt.mockReturnValueOnce(modified.promise);
+  metadata.readLibrary.mockImplementationOnce(async (_signal, report) => {
+    report?.({ albums: 2, tracks: 4 });
+    return scan.promise;
+  });
+  covers.refresh.mockReturnValueOnce(artwork.promise);
+  playback.refreshQueue.mockReturnValueOnce(queue.promise);
+  const run = session.refresh();
+  flushSync();
+  const status = target.querySelector("#settings-connection-status")!;
+  const button = target.querySelector("#settings-refresh")!;
+  const expectConnected = () => {
+    expect(status.querySelector(".loader")).toBeNull();
+    expect(status.querySelector("#settings-library-progress")).toBeNull();
+    expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-check");
+    expect(status.textContent?.replace(/\s+/g, " ").trim()).toBe(`Connected to ${identity}`);
+    expect(button.querySelector("svg, .loader")).toBeNull();
+    expect(target.textContent).not.toContain("Synchronizing…");
+  };
+  expectConnected();
+  expect(button.textContent?.trim()).toBe("Refreshing…");
+  modified.resolve(101);
+  await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledTimes(readCalls + 1));
+  flushSync();
+  expect(status.querySelectorAll(".loader-bar")).toHaveLength(5);
+  expect(
+    status.querySelector("#settings-library-progress")?.textContent?.replace(/\s+/g, " ").trim(),
+  ).toBe("2 albums · 4 tracks");
+  expect(status.textContent).not.toContain("Connected");
+  expect(button.querySelector("svg, .loader")).toBeNull();
+  scan.resolve({ artists: [], albums: [], tracks: [] });
+  await vi.waitFor(() => expect(covers.refresh).toHaveBeenCalledTimes(coverCalls + 1));
+  flushSync();
+  expectConnected();
+  expect(button.textContent?.trim()).toBe("Refreshing…");
+  artwork.resolve();
+  await vi.waitFor(() => expect(playback.refreshQueue).toHaveBeenCalledTimes(queueCalls + 1));
+  flushSync();
+  expectConnected();
+  expect(button.textContent?.trim()).toBe("Refreshing…");
+  queue.resolve();
+  await run;
+  flushSync();
+  expectConnected();
+  expect(button.textContent?.trim()).toBe("Refresh library");
 });
 
 it("keeps the authenticated summary and retry available after refresh errors", async () => {

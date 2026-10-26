@@ -129,7 +129,7 @@ describe("app settings", () => {
         expect(status.querySelector("use")?.getAttribute("href")).toBe(`#icon-${symbol}`);
         expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
       } else {
-        expect(status.querySelectorAll(".loader-bar")).toHaveLength(5);
+        expect(status.querySelectorAll(".loader-bar")).toHaveLength(0);
         expect(status.querySelector(".loader")?.getAttribute("aria-hidden")).toBe("true");
       }
     };
@@ -138,7 +138,7 @@ describe("app settings", () => {
     expectStatus("cross", "Connection failed");
     await session.setOfflineMode(true);
     session.status = "error";
-    expectStatus("idle", "Offline mode");
+    expectStatus("offline", "Offline mode");
     session.status = "connecting";
     expectStatus(null, "Connecting…");
     session.auth = null;

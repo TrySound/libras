@@ -29,6 +29,7 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
   };
   let pingGate;
   let tailGate;
+  let listGate;
   let pingFailure = false;
   let syncFailure = false;
   const calls = [];
@@ -47,8 +48,11 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
         ? { status: "failed", error: { message: "Unauthorized" } }
         : { version: "1.16.1", type: "test-server", serverVersion: "1", openSubsonic: true };
     } else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
-    else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
-    else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
+    else if (method === "getPlaylists") {
+      const pending = listGate;
+      if (pending) await pending.promise;
+      fields = { playlists: { playlist: [] } };
+    } else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
     else if (method === "search3") {
       if (syncFailure) {
         await route.fulfill({ status: 503, body: "Unavailable" });
@@ -130,6 +134,8 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
         await connect.click();
         await requested;
         await waitStatus("Connecting…");
+        await status.locator(".loader-bar").first().waitFor({ state: "visible" });
+        assert.equal(await status.locator(".loader-bar").count(), 5);
         assert.equal(await connect.getAttribute("aria-disabled"), "true");
         assert.equal(await connect.evaluate((element) => element === document.activeElement), true);
         assert.equal(await page.locator("form").getAttribute("aria-busy"), "true");
@@ -221,7 +227,9 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
       "refresh uses the real counters and retains its mounted, focused button",
       async () => {
         tailGate = gate();
+        listGate = gate();
         const refresh = page.locator("#settings-refresh");
+        assert.equal(await refresh.locator("svg, .loader").count(), 0);
         const tailRequested = page.waitForRequest((request) => {
           const url = new URL(request.url());
           return (
@@ -244,6 +252,7 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
         );
         assert.ok(!(await status.textContent()).includes("Refreshing…"));
         assert.ok((await refresh.textContent()).includes("Refreshing…"));
+        assert.equal(await refresh.locator("svg, .loader").count(), 0);
         assert.equal(await refresh.getAttribute("aria-disabled"), "true");
         assert.equal(await refresh.evaluate((element) => element === document.activeElement), true);
         assert.equal(
@@ -253,9 +262,28 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
         const searches = calls.filter((method) => method === "search3").length;
         await page.keyboard.press("Enter");
         assert.equal(calls.filter((method) => method === "search3").length, searches);
+        const listsRequested = page.waitForRequest((request) =>
+          new URL(request.url()).pathname.endsWith("/getPlaylists.view"),
+        );
         tailGate.resolve();
         tailGate = undefined;
+        await listsRequested;
+        await page.waitForFunction(
+          () =>
+            document.querySelector("#settings-server-identity") &&
+            !document.querySelector("#settings-connection-status .loader"),
+        );
+        assert.equal(await status.locator("#settings-library-progress").count(), 0);
+        assert.equal(await status.locator("use").getAttribute("href"), "#icon-check");
+        assert.ok((await status.textContent()).includes("Connected"));
+        assert.ok(!(await status.textContent()).includes("Synchronizing…"));
+        assert.equal(await refresh.getAttribute("aria-busy"), "true");
+        assert.ok((await refresh.textContent()).includes("Refreshing…"));
+        assert.equal(await refresh.locator("svg, .loader").count(), 0);
+        listGate.resolve();
+        listGate = undefined;
         await waitStatus("Connected");
+        assert.equal(await refresh.locator("svg, .loader").count(), 0);
         assert.equal(await refresh.evaluate((element) => element === document.activeElement), true);
       },
     );
@@ -287,11 +315,13 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
       await control.focus();
       await page.keyboard.press("Space");
       await waitStatus("Offline mode");
+      assert.equal(await status.locator("use").getAttribute("href"), "#icon-offline");
       assert.equal(await control.isChecked(), true);
       assert.equal(await page.locator("#settings-refresh").isDisabled(), true);
       const pings = calls.filter((method) => method === "ping").length;
       await page.reload();
       await waitStatus("Offline mode");
+      assert.equal(await status.locator("use").getAttribute("href"), "#icon-offline");
       assert.equal(await control.isChecked(), true);
       assert.equal(calls.filter((method) => method === "ping").length, pings);
       await control.focus();

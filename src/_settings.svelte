@@ -10,7 +10,7 @@
   }
 
   let { session }: Props = $props();
-  const loading = $derived(!session.localReady);
+  const spinnerDelay = 300;
   let host = $state("");
   let username = $state("");
   let password = $state("");
@@ -32,7 +32,8 @@
     if (!session.auth) return session.status === "error" ? "error" : "disconnected";
     if (session.offlineMode) return "offline";
     if (session.status === "error") return "error";
-    return session.syncing ? "refreshing" : "connected";
+    // Only the library scan belongs in this row; other refresh work is background work.
+    return session.syncing && session.libraryProgress ? "refreshing" : "connected";
   });
   const connectionLabel = $derived(connectionLabels[connectionState]);
   const connectionLoading = $derived(
@@ -84,10 +85,6 @@
   <div class="stack-lg scroll-runway">
     <h1 class="heading-xl" id="settings-heading">Settings</h1>
 
-    {#if loading}
-      <p class="row-sm label" role="status"><Loader />Restoring local library…</p>
-    {/if}
-
     <div class="split-layout" data-ratio="3:2">
       <section class="card stack-md" id="settings-server" aria-labelledby="settings-server-title">
         <h2 class="heading-md uppercase" id="settings-server-title">Music server</h2>
@@ -95,14 +92,16 @@
           <p class="row-sm label">
             <span class="row-sm">
               {#if connectionLoading}
-                <Loader />
+                <Loader delay={connectionState === "connecting" ? spinnerDelay : 0} />
               {:else}
                 <Icon
                   name={connectionFailed
                     ? "cross"
                     : connectionState === "connected"
                       ? "check"
-                      : "idle"}
+                      : connectionState === "offline"
+                        ? "offline"
+                        : "idle"}
                   size={24}
                   color={connectionFailed
                     ? "var(--error-text)"
@@ -222,7 +221,7 @@
                 aria-disabled={session.busy}
                 aria-busy={session.busy}
               >
-                {#if session.busy}<Loader />{/if}
+                {#if session.busy}<Loader delay={spinnerDelay} />{/if}
                 {session.busy ? "Connecting…" : "Connect"}
               </button>
             </div>
@@ -246,7 +245,6 @@
                   if (!session.syncing) void session.refresh();
                 }}
               >
-                {#if session.syncing}<Loader />{:else}<Icon name="refresh" size={24} />{/if}
                 {session.syncing ? "Refreshing…" : "Refresh library"}
               </button>
               <button
@@ -282,8 +280,6 @@
         <p class="body" id="settings-offline-help">
           {#if !session.auth}
             Connect to a server to browse online. Your saved music remains available.
-          {:else if loading}
-            Restoring local library…
           {:else}
             Show downloaded music only. Turn this off to browse and stream from your server.
           {/if}
