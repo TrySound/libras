@@ -107,8 +107,15 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
           await page.getByRole("switch", { name: "Offline library", exact: true }).isDisabled(),
           true,
         );
-        assert.equal(await page.locator("#server-host-error").isVisible(), false);
+        assert.equal(await page.locator("form .input-error, form [aria-errormessage]").count(), 0);
+        assert.equal(await status.locator("use").getAttribute("href"), "#icon-unlink");
+        assert.equal(
+          await page.locator("#server-host").getAttribute("placeholder"),
+          "music.example.com",
+        );
         assert.equal(await page.locator("select").count(), 0);
+        await page.evaluate(() => document.fonts.ready);
+        const cardBox = await page.locator("#settings-server").boundingBox();
         await page.getByRole("button", { name: "Connect", exact: true }).click();
         assert.equal(
           await page
@@ -116,7 +123,13 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
             .evaluate((element) => element === document.activeElement),
           true,
         );
-        assert.equal(await page.locator("#server-host-error").isVisible(), true);
+        assert.equal(
+          await page
+            .locator("#server-host")
+            .evaluate((input) => input.validity.valueMissing && !!input.validationMessage),
+          true,
+        );
+        assert.deepEqual(await page.locator("#settings-server").boundingBox(), cardBox);
         assert.equal(calls.length, 0);
       },
     );

@@ -194,23 +194,18 @@
           </p>
           <div class="stack-md">
             <div class="stack-xs">
-              <label class="label" for="guide-host">Server URL (required)</label>
-              <p class="caption" id="guide-host-hint">
-                Include https:// before the server address.
-              </p>
+              <label class="label" for="guide-host">Host (required)</label>
+              <p class="caption" id="guide-host-hint">The address of your Navidrome server.</p>
               <input
                 class="input"
                 id="guide-host"
-                type="url"
-                placeholder="https://music.example.com"
+                type="text"
+                inputmode="url"
+                placeholder="music.example.com"
                 required
                 autocomplete="off"
                 aria-describedby="guide-host-hint"
-                aria-errormessage="guide-host-error"
               />
-              <p class="input-error caption" id="guide-host-error">
-                Enter a complete URL, such as https://music.example.com.
-              </p>
             </div>
             <div class="stack-xs">
               <label class="label" for="guide-search">Search</label>
@@ -331,7 +326,7 @@
           <div class="stack-sm">
             <p class="row-sm label">
               <svg width="24" height="24" color="var(--text-primary)" aria-hidden="true">
-                <use href="#icon-idle"></use>
+                <use href="#icon-unlink"></use>
               </svg>
               Disconnected
             </p>

@@ -111,7 +111,7 @@
                         ? "check"
                         : connectionState === "offline"
                           ? "offline"
-                          : "idle"}
+                          : "unlink"}
                     size={24}
                     color={connectionFailed
                       ? "var(--error-text)"
@@ -162,13 +162,12 @@
               : "settings-auth-help"}
           >
             <p class="caption text-secondary" id="settings-auth-help">
-              All fields are required. Authentication is saved in this browser after you connect.
-              Your password is not stored.
+              Sign in to your Navidrome server to listen to your music.
             </p>
             <div class="stack-xs">
               <label class="label" for="server-host">Host</label>
               <p class="caption text-secondary" id="server-host-help">
-                Enter a server URL or hostname.
+                The address of your Navidrome server.
               </p>
               <input
                 class="input"
@@ -178,16 +177,14 @@
                 inputmode="url"
                 bind:this={hostInput}
                 bind:value={host}
-                placeholder="https://music.example.com"
+                placeholder="music.example.com"
                 autocomplete="url"
                 autocapitalize="off"
                 spellcheck="false"
                 aria-describedby="server-host-help"
-                aria-errormessage="server-host-error"
                 required
                 disabled={session.busy}
               />
-              <p class="input-error caption" id="server-host-error">Enter your server address.</p>
             </div>
             <div class="stack-xs">
               <label class="label" for="server-username">Username</label>
@@ -201,11 +198,9 @@
                 autocomplete="username"
                 autocapitalize="off"
                 spellcheck="false"
-                aria-errormessage="server-username-error"
                 required
                 disabled={session.busy}
               />
-              <p class="input-error caption" id="server-username-error">Enter your username.</p>
             </div>
             <div class="stack-xs">
               <label class="label" for="server-password">Password</label>
@@ -217,11 +212,9 @@
                 bind:value={password}
                 placeholder="Your password"
                 autocomplete="current-password"
-                aria-errormessage="server-password-error"
                 required
                 disabled={session.busy}
               />
-              <p class="input-error caption" id="server-password-error">Enter your password.</p>
             </div>
             <div class="row-sm">
               <button

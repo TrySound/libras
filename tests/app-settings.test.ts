@@ -107,9 +107,19 @@ describe("app settings", () => {
       const input = server.querySelector<HTMLInputElement>(`#server-${name}`)!;
       expect(input.required).toBe(true);
       expect(server.querySelector(`label[for="${input.id}"]`)).not.toBeNull();
-      expect(input.getAttribute("aria-errormessage")).toBe(`server-${name}-error`);
+      expect(input.getAttribute("aria-errormessage")).toBeNull();
+      expect(server.querySelector(`#server-${name}-error`)).toBeNull();
     }
     expect(server.querySelector("#server-host")?.getAttribute("type")).toBe("text");
+    expect(server.querySelector("#server-host")?.getAttribute("placeholder")).toBe(
+      "music.example.com",
+    );
+    expect(server.querySelector("#settings-auth-help")?.textContent).toContain(
+      "Sign in to your Navidrome server",
+    );
+    expect(server.querySelector("#server-host-help")?.textContent).toContain(
+      "address of your Navidrome server",
+    );
     expect(server.querySelector("#server-password")?.getAttribute("type")).toBe("password");
     expect(offline.classList.contains("card")).toBe(true);
     const control = offline.querySelector('input[role="switch"]')!;
@@ -146,7 +156,7 @@ describe("app settings", () => {
     session.status = "error";
     expectStatus("cross", "Connection failed");
     session.status = "disconnected";
-    expectStatus("idle", "Disconnected");
+    expectStatus("unlink", "Disconnected");
   });
 
   it("offers updates in a header popover without modifying Settings", async () => {

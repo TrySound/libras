@@ -126,7 +126,9 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   around the app during the shell migration. The wide styleguide specimen supplies its own.
   Session still owns authentication, refresh, disconnect, and offline preferences.
   Host remains a required text field so Network can normalize bare hostnames. Native field
-  errors and actual connection/synchronization errors are distinct; theme selection stays in #54.
+  validation uses the browser's built-in feedback, without inline field-error messages or
+  layout shifts; actual connection/synchronization errors remain visible in the card. The form
+  explains how to sign in to Navidrome and shows a scheme-free host example. Theme selection stays in #54.
   Settings does not show cache-restoration messages. Automatic server sync shows a dedicated
   Synchronizing with server… status (or actual scan counters), then the connected identity.
   Session distinguishes automatic sync from explicit refresh via `refreshing`; only an explicit
@@ -137,7 +139,7 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   Connection/server-sync status, loaders, and button labels render immediately, without a
   Delayed boundary or UI timers. Local OPFS restoration stays silent. Loader remains a
   presentation-only primitive. Offline mode uses a crossed-cloud icon, while
-  Disconnected retains its idle indicator. PWA updates remain in the existing header popover,
+  Disconnected uses a broken-link icon. PWA updates remain in the existing header popover,
   with the real updater's action, progress, and errors; there is no in-page Settings update card.
   Busy Connect/Refresh controls stay mounted and focusable with guarded `aria-disabled` states.
   Disconnect restores Host focus, and a connection finishing after leaving Settings does not
