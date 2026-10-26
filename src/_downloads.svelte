@@ -43,7 +43,7 @@
   <div class="stack-lg scroll-runway">
     <header class="stack-sm">
       <h1 class="heading-xl" id="downloads-heading">Downloads</h1>
-      <p class="body text-secondary">Download music from your library before going offline.</p>
+      <p class="body text-secondary">Tracks available for offline listening.</p>
     </header>
 
     {#if loading}
