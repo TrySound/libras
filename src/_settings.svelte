@@ -166,9 +166,6 @@
             </p>
             <div class="stack-xs">
               <label class="label" for="server-host">Host</label>
-              <p class="caption text-secondary" id="server-host-help">
-                The address of your Navidrome server.
-              </p>
               <input
                 class="input"
                 id="server-host"
@@ -181,7 +178,6 @@
                 autocomplete="url"
                 autocapitalize="off"
                 spellcheck="false"
-                aria-describedby="server-host-help"
                 required
                 disabled={session.busy}
               />

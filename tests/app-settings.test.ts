@@ -117,9 +117,6 @@ describe("app settings", () => {
     expect(server.querySelector("#settings-auth-help")?.textContent).toContain(
       "Sign in to your Navidrome server",
     );
-    expect(server.querySelector("#server-host-help")?.textContent).toContain(
-      "address of your Navidrome server",
-    );
     expect(server.querySelector("#server-password")?.getAttribute("type")).toBe("password");
     expect(offline.classList.contains("card")).toBe(true);
     const control = offline.querySelector('input[role="switch"]')!;
