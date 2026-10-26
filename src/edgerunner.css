@@ -720,6 +720,7 @@
     --button-padding-block: var(--space-sm);
     --button-padding-inline: var(--space-sm);
     --press-scale: var(--press-scale-compact);
+    box-sizing: border-box;
     position: relative;
     cursor: pointer;
     text-decoration: none;
@@ -822,6 +823,23 @@
     &:disabled {
       opacity: 0.4;
       cursor: not-allowed;
+    }
+  }
+
+  /* Query the app's inline size, not the browser width: the website embeds a
+   * narrow app in a wide page. The styleguide supplies its own size container. */
+  .split-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-lg);
+
+    @container (min-width: 64rem) {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+
+      &[data-ratio="3:2"] {
+        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+      }
     }
   }
 

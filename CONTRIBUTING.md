@@ -120,6 +120,16 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   placement stays local while the scrolling/navigation shell remains legacy. It reads real
   jobs and saved records, retains ordering and format-specific identities, and adds no fake
   progress or per-file failure records. Transfer/storage notices do not discard saved rows.
+- Settings (`src/_settings.svelte`) uses the same boundary with shared cards and a 3:2
+  split layout. Layout/actions query the existing app size container rather than the browser
+  width, so the narrow embedded demo remains usable on desktop; keep an inline-size container
+  around the app during the shell migration. The wide styleguide specimen supplies its own.
+  Session still owns authentication, refresh, disconnect, and offline preferences.
+  Host remains a required text field so Network can normalize bare hostnames. Native field
+  errors and actual connection/synchronization errors are distinct; theme selection stays in #54.
+  Busy Connect/Refresh controls stay mounted and focusable with guarded `aria-disabled` states.
+  Disconnect restores Host focus, and a connection finishing after leaving Settings does not
+  navigate back. The summary renders account identity, never tokens, salts, or URL userinfo.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
   and resolves optional IDs from the current library without changing saved download metadata.
@@ -164,6 +174,15 @@ completion/failure, responsive artwork and text, OPFS checkpoints, and disconnec
 ```sh
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/downloads.test.cjs
+```
+
+The Settings suite also runs against the app server with only Subsonic transport intercepted.
+It covers native validation, pending/failed login, focus, real refresh counters/errors, persisted
+keyboard offline mode through reload, responsive layouts, and leaving during connection:
+
+```sh
+NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
+  node --test tests/browser/settings.test.cjs
 ```
 
 For a subpath deployment, include the base path in `PREVIEW_URL`. These optional suites are

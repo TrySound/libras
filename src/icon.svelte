@@ -21,6 +21,7 @@
     | "sound-bars"
     | "cross"
     | "error"
+    | "idle"
     | "settings";
 </script>
 

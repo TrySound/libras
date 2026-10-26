@@ -228,6 +228,18 @@
     <path d="M12 7v6m0 3v1" />
   </symbol>
   <symbol
+    id="icon-idle"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8 12h8" />
+  </symbol>
+  <symbol
     id="icon-settings"
     viewBox="0 0 24 24"
     fill="none"

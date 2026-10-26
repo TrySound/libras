@@ -351,10 +351,8 @@ it("serializes Back requests, handles failed traversal and removes close listene
 it("rejects switching the demo into a real account", async () => {
   localStorage.setItem("navidrome-auth", "regular credentials");
   render();
-  await vi.waitFor(() =>
-    expect(document.querySelector('[aria-label="Disconnect"]')).not.toBeNull(),
-  );
-  document.querySelector<HTMLButtonElement>('[aria-label="Disconnect"]')!.click();
+  await vi.waitFor(() => expect(document.querySelector("#settings-disconnect")).not.toBeNull());
+  document.querySelector<HTMLButtonElement>("#settings-disconnect")!.click();
   flushSync();
   for (const [id, value] of [
     ["server-host", "https://regular.example.test"],
@@ -378,8 +376,7 @@ it("rejects switching the demo into a real account", async () => {
 });
 
 it("resets preferences on a new mount without writing to localStorage", async () => {
-  const toggle = () =>
-    document.querySelector<HTMLInputElement>('input[aria-label="Offline library"]');
+  const toggle = () => document.querySelector<HTMLInputElement>("#settings-offline");
   render();
   await vi.waitFor(() => expect(toggle()?.disabled).toBe(false));
   expect(toggle()!.checked).toBe(false);

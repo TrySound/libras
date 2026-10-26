@@ -28,6 +28,11 @@
         max-inline-size: 88rem;
         margin-inline: auto;
         padding: var(--space-lg);
+        overflow-wrap: anywhere;
+      }
+      .specimen-wide {
+        grid-column: 1 / -1;
+        container-type: inline-size;
       }
       .specimen-board {
         display: grid;
@@ -325,6 +330,12 @@
           </div>
           <div class="stack-sm">
             <p class="row-sm label">
+              <svg width="24" height="24" color="var(--text-primary)" aria-hidden="true">
+                <use href="#icon-idle"></use>
+              </svg>
+              Disconnected
+            </p>
+            <p class="row-sm label">
               <svg width="24" height="24" color="var(--accent)" aria-hidden="true">
                 <use href="#icon-check"></use></svg
               >Downloaded
@@ -440,6 +451,56 @@
             </div>
           </div>
           <p class="caption">Static specimens are not live regions and never auto-dismiss.</p>
+        </section>
+
+        <section class="card stack-lg specimen-wide" aria-labelledby="settings-layout-heading">
+          <h2 class="heading-md uppercase" id="settings-layout-heading">Settings composition</h2>
+          <p class="caption">
+            Shared cards use a 3:2 split in wide containers and stack in DOM order in compact views.
+            These are static connection specimens, not app preferences.
+          </p>
+          <div class="split-layout" data-ratio="3:2">
+            <section class="card stack-md" aria-labelledby="guide-server-title">
+              <h3 class="heading-md uppercase" id="guide-server-title">Music server</h3>
+              <p class="row-sm label">
+                <svg width="24" height="24" color="var(--accent)" aria-hidden="true">
+                  <use href="#icon-check"></use></svg
+                >Connected
+              </p>
+              <div class="stack-xs">
+                <p class="label">https://music.example.com</p>
+                <p class="caption text-secondary">Demo listener</p>
+              </div>
+              <p class="body">
+                Disconnect to change servers. Your offline library will stay on this device.
+              </p>
+              <div class="stack-sm">
+                <div class="row-sm">
+                  <button class="button" data-size="text" data-variant="secondary">
+                    Refresh library
+                  </button>
+                </div>
+                <div class="row-sm">
+                  <button class="button" data-size="text">Disconnect</button>
+                </div>
+              </div>
+            </section>
+            <section class="card stack-md" aria-labelledby="guide-offline-title">
+              <h3 class="heading-md uppercase" id="guide-offline-title">Offline library</h3>
+              <div class="row-sm">
+                <input
+                  class="switch"
+                  type="checkbox"
+                  role="switch"
+                  aria-labelledby="guide-offline-title"
+                  aria-describedby="guide-offline-help"
+                />
+              </div>
+              <p class="body" id="guide-offline-help">
+                Show downloaded music only. This specimen changes no application state.
+              </p>
+            </section>
+          </div>
         </section>
 
         <section class="card stack-lg" aria-labelledby="overlay-heading">

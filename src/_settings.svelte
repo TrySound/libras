@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onDestroy, tick } from "svelte";
   import Icon from "./icon.svelte";
+  import Loader from "./ui/loader.svelte";
   import type { Session } from "./session.svelte";
   import { navigate } from "./router.svelte";
 
@@ -12,174 +14,304 @@
   let host = $state("");
   let username = $state("");
   let password = $state("");
+  let hostInput = $state.raw<HTMLInputElement>();
+  let submitButton = $state.raw<HTMLButtonElement>();
+  let view = $state.raw<HTMLElement>();
+  let mounted = true;
+
+  const connectionLabels = {
+    connecting: "Connecting…",
+    disconnected: "Disconnected",
+    offline: "Offline mode",
+    error: "Connection failed",
+    refreshing: "Refreshing…",
+    connected: "Connected",
+  };
+  const connectionState = $derived.by((): keyof typeof connectionLabels => {
+    if (session.busy) return "connecting";
+    if (!session.auth) return session.status === "error" ? "error" : "disconnected";
+    if (session.offlineMode) return "offline";
+    if (session.status === "error") return "error";
+    return session.syncing ? "refreshing" : "connected";
+  });
+  const connectionLabel = $derived(connectionLabels[connectionState]);
+  const connectionLoading = $derived(
+    connectionState === "connecting" || connectionState === "refreshing",
+  );
+  const connectionFailed = $derived(connectionState === "error");
+  const serverAddress = $derived.by(() => {
+    if (!session.auth) return "";
+    const address = new URL(session.auth.host);
+    // Account identity is useful here; URL userinfo and authentication secrets are not.
+    address.username = address.password = "";
+    return address.toString().replace(/\/$/, "");
+  });
+
+  onDestroy(() => {
+    mounted = false;
+    password = "";
+  });
 
   async function submitConnection(event: SubmitEvent) {
     event.preventDefault();
+    if (session.busy || session.auth) return;
+    const sourceURL = window.location.href;
+    const form = event.currentTarget;
+    // Keep keyboard focus on a mounted control before disabling the fields.
+    if (form instanceof HTMLFormElement && form.contains(document.activeElement))
+      submitButton?.focus();
     if (await session.connect({ host, username, password })) {
       host = username = password = "";
-      navigate("/library");
+      // Session may finish after navigation starts or an embedded app is hidden.
+      if (mounted && window.location.href === sourceURL && view?.checkVisibility())
+        navigate("/library");
     }
   }
 
-  function disconnectServer() {
+  async function disconnectServer(event: MouseEvent) {
+    const restoreFocus = document.activeElement === event.currentTarget;
     session.disconnect();
     host = username = password = "";
+    await tick();
+    if (mounted && restoreFocus && document.activeElement === document.body) hostInput?.focus();
   }
 </script>
 
-{#snippet status(variant: string, label: string)}
-  <div class="row-sm">
-    <span class="status" data-variant={variant} aria-hidden="true"></span>
-    <span class="type-small text-muted">{label}</span>
-  </div>
-{/snippet}
+<section bind:this={view} class="ui-edgerunner settings-view" aria-labelledby="settings-heading">
+  <div class="stack-lg scroll-runway">
+    <h1 class="heading-xl" id="settings-heading">Settings</h1>
 
-<section class="view container settings-view stack-md">
-  <div class="stack-sm">
-    <span class="type-eyebrow text-muted">Settings</span>
-    <h2 class="type-heading">
-      {session.auth ? "Music server" : "Connect to your music"}
-    </h2>
-    <p class="type-body text-muted">
-      {session.auth
-        ? "Disconnect first to change servers. Your offline library will stay on this device."
-        : "Enter your music server details. Authentication stays on this device."}
-    </p>
-  </div>
+    {#if loading}
+      <p class="row-sm label" role="status"><Loader />Restoring local library…</p>
+    {/if}
 
-  <section class="card stack-md" aria-label="Music server">
-    <div class="row-md">
-      <div class="stack-xs grow">
-        {#if session.busy}
-          {@render status("warning", "Connecting…")}
-        {:else if !session.auth}
-          {@render status("neutral", "Disconnected")}
-        {:else if session.offlineMode}
-          {@render status("neutral", "Offline mode")}
-        {:else if session.status === "error"}
-          {@render status("danger", "Connection failed")}
-        {:else if session.syncing}
-          {@render status("warning", "Refreshing…")}
-        {:else}
-          {@render status("success", "Connected")}
-        {/if}
-        <strong class="type-title truncate">
-          {#if session.auth}
-            {session.auth.username} · {session.auth.host.replace(/^https?:\/\//i, "")}
-          {:else}
-            Add a server
+    <div class="split-layout" data-ratio="3:2">
+      <section class="card stack-md" id="settings-server" aria-labelledby="settings-server-title">
+        <h2 class="heading-md uppercase" id="settings-server-title">Music server</h2>
+        <div class="stack-sm" role="status" aria-atomic="true" id="settings-connection-status">
+          <p class="row-sm label">
+            <span class="row-sm">
+              {#if connectionLoading}
+                <Loader />
+              {:else}
+                <Icon
+                  name={connectionFailed
+                    ? "cross"
+                    : connectionState === "connected"
+                      ? "check"
+                      : "idle"}
+                  size={24}
+                  color={connectionFailed
+                    ? "var(--error-text)"
+                    : connectionState === "connected"
+                      ? "var(--accent)"
+                      : "var(--text-primary)"}
+                />
+              {/if}
+            </span>
+            {connectionLabel}
+          </p>
+          {#if session.error}
+            <p class="body" id="settings-server-error">{session.error}</p>
           {/if}
-        </strong>
+        </div>
+
         {#if (session.busy || session.syncing) && session.libraryProgress}
-          <small class="type-small text-muted truncate" role="status">
+          <p class="caption text-subtle" role="status" id="settings-library-progress">
             {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
             tracks
-          </small>
+          </p>
         {/if}
-      </div>
-      {#if session.auth}
-        <div class="row-sm">
-          <button
-            class="icon-button"
-            data-size="md"
-            data-variant="neutral"
-            aria-label={session.syncing ? "Refreshing…" : "Refresh library"}
-            title={session.syncing ? "Refreshing…" : "Refresh library"}
-            disabled={session.offlineMode || session.busy || session.syncing}
-            onclick={() => void session.refresh()}
-          >
-            <Icon name={session.syncing ? "loading" : "refresh"} />
-          </button>
-          <button
-            class="icon-button"
-            data-size="md"
-            data-variant="neutral"
-            aria-label="Disconnect"
-            title="Disconnect"
-            onclick={disconnectServer}
-          >
-            <Icon name="disconnect" />
-          </button>
-        </div>
-      {/if}
-    </div>
-    {#if !session.auth}
-      <form class="stack-md" onsubmit={submitConnection}>
-        <div class="stack-sm">
-          <div class="stack-xs">
-            <label for="server-host">Host</label>
-            <input
-              class="input"
-              id="server-host"
-              type="text"
-              bind:value={host}
-              placeholder="https://music.example.com"
-              autocomplete="url"
-              required
-              disabled={session.busy}
-            />
-          </div>
-          <div class="stack-xs">
-            <label for="server-username">Username</label>
-            <input
-              class="input"
-              id="server-username"
-              type="text"
-              bind:value={username}
-              autocomplete="username"
-              required
-              disabled={session.busy}
-            />
-          </div>
-          <div class="stack-xs">
-            <label for="server-password">Password</label>
-            <input
-              class="input"
-              id="server-password"
-              type="password"
-              bind:value={password}
-              autocomplete="current-password"
-              required
-              disabled={session.busy}
-            />
-          </div>
-        </div>
-        <button
-          class="button"
-          type="submit"
-          data-size="md"
-          data-variant="neutral"
-          disabled={session.busy}
-        >
-          {session.busy ? "Connecting…" : "Connect"}
-        </button>
-        <small>Authentication is saved in this browser after a successful login.</small>
-      </form>
-    {/if}
-  </section>
 
-  <section class="card row-md" aria-label="Offline library">
-    <div class="stack-xs grow">
-      <strong class="type-title">Offline library</strong>
-      <small class="type-small text-muted">
-        {#if !session.auth}
-          Connect to a server to browse online.
-        {:else if loading}
-          Restoring local library…
-        {:else}
-          Show only music downloaded to this device.
+        {#if session.refreshError}
+          <div class="card stack-sm">
+            <h3 class="heading-sm">Synchronization needs attention</h3>
+            <p class="body">{session.refreshError}</p>
+            <p class="body">Your existing library is still available.</p>
+          </div>
         {/if}
-        <a class="text-link" href="#/downloads">View downloads</a>
-      </small>
+
+        {#if !session.auth}
+          <form
+            class="stack-md"
+            onsubmit={submitConnection}
+            aria-busy={session.busy}
+            aria-describedby={session.error
+              ? "settings-auth-help settings-server-error"
+              : "settings-auth-help"}
+          >
+            <p class="caption text-secondary" id="settings-auth-help">
+              All fields are required. Authentication is saved in this browser after you connect.
+              Your password is not stored.
+            </p>
+            <div class="stack-xs">
+              <label class="label" for="server-host">Host</label>
+              <p class="caption text-secondary" id="server-host-help">
+                Enter a server URL or hostname.
+              </p>
+              <input
+                class="input"
+                id="server-host"
+                name="host"
+                type="text"
+                inputmode="url"
+                bind:this={hostInput}
+                bind:value={host}
+                placeholder="https://music.example.com"
+                autocomplete="url"
+                autocapitalize="off"
+                spellcheck="false"
+                aria-describedby="server-host-help"
+                aria-errormessage="server-host-error"
+                required
+                disabled={session.busy}
+              />
+              <p class="input-error caption" id="server-host-error">Enter your server address.</p>
+            </div>
+            <div class="stack-xs">
+              <label class="label" for="server-username">Username</label>
+              <input
+                class="input"
+                id="server-username"
+                name="username"
+                type="text"
+                bind:value={username}
+                placeholder="Your username"
+                autocomplete="username"
+                autocapitalize="off"
+                spellcheck="false"
+                aria-errormessage="server-username-error"
+                required
+                disabled={session.busy}
+              />
+              <p class="input-error caption" id="server-username-error">Enter your username.</p>
+            </div>
+            <div class="stack-xs">
+              <label class="label" for="server-password">Password</label>
+              <input
+                class="input"
+                id="server-password"
+                name="password"
+                type="password"
+                bind:value={password}
+                placeholder="Your password"
+                autocomplete="current-password"
+                aria-errormessage="server-password-error"
+                required
+                disabled={session.busy}
+              />
+              <p class="input-error caption" id="server-password-error">Enter your password.</p>
+            </div>
+            <div class="row-sm">
+              <button
+                bind:this={submitButton}
+                id="settings-connect"
+                class="button"
+                type="submit"
+                data-size="text"
+                data-variant="secondary"
+                aria-disabled={session.busy}
+                aria-busy={session.busy}
+              >
+                {#if session.busy}<Loader />{/if}
+                {session.busy ? "Connecting…" : "Connect"}
+              </button>
+            </div>
+          </form>
+        {:else}
+          <div class="stack-md">
+            <div class="stack-xs">
+              <p class="label" id="settings-server-address">{serverAddress}</p>
+              <p class="caption text-secondary" id="settings-server-username">
+                {session.auth.username}
+              </p>
+            </div>
+            <p class="body">
+              Disconnect to change servers. Your offline library will stay on this device.
+            </p>
+            <div class="settings-actions">
+              <button
+                class="button"
+                data-size="text"
+                data-variant="secondary"
+                id="settings-refresh"
+                aria-label={session.syncing ? "Refreshing…" : "Refresh library"}
+                aria-disabled={session.syncing}
+                aria-busy={session.syncing}
+                disabled={session.offlineMode || session.busy}
+                onclick={() => {
+                  if (!session.syncing) void session.refresh();
+                }}
+              >
+                {#if session.syncing}<Loader />{:else}<Icon name="refresh" size={24} />{/if}
+                {session.syncing ? "Refreshing…" : "Refresh library"}
+              </button>
+              <button
+                id="settings-disconnect"
+                class="button"
+                data-size="text"
+                onclick={disconnectServer}>Disconnect</button
+              >
+            </div>
+          </div>
+        {/if}
+      </section>
+
+      <section
+        class="card stack-md"
+        id="settings-offline-card"
+        aria-labelledby="settings-offline-title"
+      >
+        <div class="row-md row-justify">
+          <h2 class="heading-md uppercase" id="settings-offline-title">Offline library</h2>
+          <input
+            class="switch"
+            id="settings-offline"
+            type="checkbox"
+            role="switch"
+            aria-labelledby="settings-offline-title"
+            aria-describedby="settings-offline-help"
+            checked={session.offlineMode}
+            disabled={!session.auth || session.busy}
+            onchange={(event) => void session.setOfflineMode(event.currentTarget.checked)}
+          />
+        </div>
+        <p class="body" id="settings-offline-help">
+          {#if !session.auth}
+            Connect to a server to browse online. Your saved music remains available.
+          {:else if loading}
+            Restoring local library…
+          {:else}
+            Show downloaded music only. Turn this off to browse and stream from your server.
+          {/if}
+        </p>
+        <div class="row-sm">
+          <a class="button" data-size="text" data-variant="secondary" href="#/downloads"
+            >View downloads</a
+          >
+        </div>
+      </section>
     </div>
-    <label class="switch">
-      <input
-        type="checkbox"
-        aria-label="Offline library"
-        checked={session.offlineMode}
-        disabled={!session.auth || session.busy}
-        onchange={(event) => void session.setOfflineMode(event.currentTarget.checked)}
-      />
-    </label>
-  </section>
+  </div>
 </section>
+
+<style>
+  /* Temporary page placement until the shell migration owns shared gutters. */
+  .settings-view {
+    box-sizing: border-box;
+    min-block-size: 100%;
+    padding: var(--content-padding-block) var(--content-padding-inline);
+    overflow-wrap: anywhere;
+  }
+
+  .settings-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-sm);
+
+    @container (width > 600px) {
+      flex-direction: row;
+    }
+  }
+</style>
