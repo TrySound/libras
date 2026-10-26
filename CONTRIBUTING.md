@@ -136,7 +136,8 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   Session distinguishes automatic sync from explicit refresh via `refreshing`; only an explicit
   library-refresh phase labels the text-only action Refreshing…. Follow-on server sync keeps
   the action guarded but returns its normal label. Synchronizing with server… covers the full
-  operation, including artwork, playlists, and queue; Connected appears only after it finishes.
+  operation, including artwork, playlists, and queue; once scan counts are available they stay
+  visible instead of the synchronization message until completion, then switch to Connected.
   Action buttons use shared `row-sm row-wrap` utilities, without a page-specific actions
   class; wrapping keeps controls inside the card at enlarged text sizes.
   Connection/server-sync status, loaders, and button labels render immediately, without a

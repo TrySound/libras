@@ -338,18 +338,14 @@ export class Session {
     const unchanged = modified !== null && modified === cache.lastModified;
     if (!force && hasSnapshot && unchanged) return;
     this.#libraryProgress = { albums: 0, tracks: 0 };
-    try {
-      const library = await connection.readLibrary(connection.signal, (progress) => {
-        if (canPublish()) this.#libraryProgress = progress;
-      });
-      if (!canPublish()) return;
-      await cache.replaceLibrary(
-        { ...library, lastModified: modified, savedAt: Date.now() },
-        connection.signal,
-      );
-    } finally {
-      if (this.#isCurrentOperation(operationId)) this.#libraryProgress = undefined;
-    }
+    const library = await connection.readLibrary(connection.signal, (progress) => {
+      if (canPublish()) this.#libraryProgress = progress;
+    });
+    if (!canPublish()) return;
+    await cache.replaceLibrary(
+      { ...library, lastModified: modified, savedAt: Date.now() },
+      connection.signal,
+    );
   }
 
   #refresh(force: boolean): Promise<void> {
@@ -357,6 +353,7 @@ export class Session {
     const operationId = this.#operationId;
     const { covers, playback } = this.#options;
     this.#syncing = true;
+    this.#libraryProgress = undefined;
     this.#manualRefresh = force;
     this.#refreshError = undefined;
     return (this.#refreshPending = (async () => {
@@ -384,6 +381,8 @@ export class Session {
       }
     })().finally(() => {
       if (!this.#isCurrentOperation(operationId)) return;
+      // Keep final scan counts until all sync work settles, then publish completion together.
+      this.#libraryProgress = undefined;
       this.#syncing = false;
       this.#manualRefresh = false;
       this.#refreshPending = undefined;

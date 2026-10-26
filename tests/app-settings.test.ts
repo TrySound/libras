@@ -393,9 +393,14 @@ describe("app settings", () => {
       pending.resolve();
       await vi.waitFor(() => expect(playback.refreshQueue).toHaveBeenCalledTimes(queueCalls + 1));
       flushSync();
-      expect(target.querySelector("#settings-library-progress")).toBeNull();
       const status = target.querySelector("#settings-connection-status")!;
-      expect(status.textContent).toContain("Synchronizing with server…");
+      expect(
+        status
+          .querySelector("#settings-library-progress")
+          ?.textContent?.replace(/\s+/g, " ")
+          .trim(),
+      ).toBe(counter);
+      expect(status.textContent).not.toContain("Synchronizing");
       expect(status.textContent).not.toContain("Connected");
       expect(status.querySelector(".loader")).not.toBeNull();
       expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refresh library");
@@ -406,6 +411,7 @@ describe("app settings", () => {
       await vi.waitFor(() => expect(session.syncing).toBe(false));
       flushSync();
       expect(status.textContent).toContain("Connected");
+      expect(status.querySelector("#settings-library-progress")).toBeNull();
       expect(status.querySelector(".loader")).toBeNull();
       expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-check");
       expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refresh library");
