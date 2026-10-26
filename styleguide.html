@@ -367,6 +367,60 @@
           </p>
         </section>
 
+        <section class="card stack-lg" aria-labelledby="download-rows-heading">
+          <h2 class="heading-md uppercase" id="download-rows-heading">Download rows</h2>
+          <p class="caption">
+            Informational rows have no playback target, Tab stop, or hover feedback. Artwork hides
+            on phones without changing its shared size.
+          </p>
+          <div class="stack-sm" role="list" aria-label="Download row specimens">
+            <div class="menu-item track-row" role="listitem">
+              <span class="track-row-number row-sm" role="img" aria-label="Queued for download">
+                <svg width="24" height="24" color="var(--text-subtle)" aria-hidden="true">
+                  <use href="#icon-clock"></use>
+                </svg>
+              </span>
+              <div class="row-sm">
+                <span class="artwork only-desktop" data-size="sm" aria-hidden="true">
+                  <img hidden alt="" />
+                  <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+                    <use href="#icon-music"></use>
+                  </svg>
+                </span>
+                <div>
+                  <p class="label">
+                    A long track title that wraps instead of shrinking or truncating
+                  </p>
+                  <p class="caption text-secondary">Artist name — Album title</p>
+                </div>
+              </div>
+            </div>
+            <div class="menu-item track-row" role="listitem">
+              <span class="track-row-number row-sm" role="img" aria-label="Downloaded">
+                <svg width="24" height="24" color="var(--accent)" aria-hidden="true">
+                  <use href="#icon-check"></use>
+                </svg>
+              </span>
+              <div class="row-sm">
+                <span class="artwork only-desktop" data-size="sm" aria-hidden="true">
+                  <img hidden alt="" />
+                  <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+                    <use href="#icon-music"></use>
+                  </svg>
+                </span>
+                <div>
+                  <p class="label">Saved track</p>
+                  <p class="caption text-secondary">Artist name — Album title</p>
+                  <p class="caption text-subtle">
+                    Downloaded <time datetime="2026-01-01T12:00:00Z">January 1, 2026</time> · MP3 ·
+                    7.2 MB
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="card stack-lg" aria-labelledby="notices-heading">
           <h2 class="heading-md uppercase" id="notices-heading">Persistent notices</h2>
           <div class="card stack-md">

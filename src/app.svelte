@@ -197,7 +197,7 @@
 {/snippet}
 
 {#snippet downloadsRoute()}
-  <Downloads {cache} {trackEngine} {loading} />
+  <Downloads {cache} {covers} {trackEngine} {loading} />
 {/snippet}
 
 {#snippet libraryRoute()}
