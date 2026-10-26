@@ -367,6 +367,14 @@ describe("app settings", () => {
       const loading = saved
         ? session.refresh()
         : session.connect({ ...credentials, password: "password" });
+      if (saved) {
+        flushSync();
+        const status = target.querySelector("#settings-connection-status")!;
+        expect(status.textContent).toContain("Connected");
+        expect(status.textContent).not.toContain("Synchronizing");
+        expect(status.querySelector(".loader")).toBeNull();
+        expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refreshing…");
+      }
       await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
       flushSync();
       const counter = `${(500).toLocaleString()} albums · ${(1000).toLocaleString()} tracks`;

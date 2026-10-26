@@ -32,6 +32,8 @@
     if (session.busy) return session.localReady ? "connecting" : "initializing";
     if (!session.auth) return session.status === "error" ? "error" : "disconnected";
     if (session.status === "error") return "error";
+    // A manual refresh keeps the existing status until scan counts are available.
+    if (session.refreshing && !session.libraryProgress) return "connected";
     return session.syncing ? "synchronizing" : "connected";
   });
   const connectionLabel = $derived(connectionLabels[connectionState]);
