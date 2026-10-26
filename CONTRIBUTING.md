@@ -190,9 +190,11 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/downloads.test.cjs
 ```
 
-The Settings suite also runs against the app server with only Subsonic transport intercepted.
-It covers native validation, pending/failed login, focus, real refresh counters/errors, persisted
-keyboard offline mode through reload, responsive layouts, and leaving during connection:
+Settings state/rendering, error handling, refresh phases, and navigation races are covered by
+`tests/app-settings.test.ts` in the normal CI suite. The optional browser suite uses the real
+app/OPFS with only Subsonic transport intercepted. It focuses on browser-only behavior: native
+validation without layout shifts, keyboard/focus, responsive/enlarged-text layouts, and offline
+preferences and cached metadata surviving reload:
 
 ```sh
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
