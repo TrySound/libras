@@ -127,15 +127,16 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   Session still owns authentication, refresh, disconnect, and offline preferences.
   Host remains a required text field so Network can normalize bare hostnames. Native field
   errors and actual connection/synchronization errors are distinct; theme selection stays in #54.
-  Settings does not show cache-restoration messages. The status spinner and counters describe
-  the library scan only and switch together back to the connected identity; artwork, playlist,
-  and queue refresh continue in the background. Refresh is text-only, showing Refreshing…
-  until the full operation settles.
-  The entire Connecting status and busy button content have a 300ms visual grace period via
-  the shared Delayed snippet component; requests and busy/disabled semantics are immediate.
-  The live region reserves a line and the button retains Connect during the grace period.
-  Delayed resets and cancels its timer when the condition ends, changes, or unmounts; Loader
-  remains a presentation-only primitive. Offline mode uses a crossed-cloud icon, while
+  Settings does not show cache-restoration messages. Automatic server sync shows a dedicated
+  Synchronizing with server… status (or actual scan counters), then the connected identity.
+  Session distinguishes automatic sync from explicit refresh via `refreshing`; only an explicit
+  refresh labels the text-only action Refreshing…. During explicit refresh the status spinner
+  follows the library scan while remaining refresh work continues in the background.
+  Action buttons use shared `row-sm row-wrap` utilities, without a page-specific actions
+  class; wrapping keeps controls inside the card at enlarged text sizes.
+  Connection/server-sync status, loaders, and button labels render immediately, without a
+  Delayed boundary or UI timers. Local OPFS restoration stays silent. Loader remains a
+  presentation-only primitive. Offline mode uses a crossed-cloud icon, while
   Disconnected retains its idle indicator. PWA updates remain in the existing header popover,
   with the real updater's action, progress, and errors; there is no in-page Settings update card.
   Busy Connect/Refresh controls stay mounted and focusable with guarded `aria-disabled` states.

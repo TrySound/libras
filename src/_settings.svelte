@@ -2,7 +2,6 @@
   import { onDestroy, tick } from "svelte";
   import Icon from "./icon.svelte";
   import Loader from "./ui/loader.svelte";
-  import Delayed from "./ui/delayed.svelte";
   import type { Session } from "./session.svelte";
   import { navigate } from "./router.svelte";
 
@@ -11,7 +10,6 @@
   }
 
   let { session }: Props = $props();
-  const connectingDelay = 300;
   let host = $state("");
   let username = $state("");
   let password = $state("");
@@ -21,7 +19,9 @@
   let mounted = true;
 
   const connectionLabels = {
+    restoring: "",
     connecting: "Connecting…",
+    synchronizing: "Synchronizing with server…",
     disconnected: "Disconnected",
     offline: "Offline mode",
     error: "Connection failed",
@@ -29,16 +29,19 @@
     connected: "Connected",
   };
   const connectionState = $derived.by((): keyof typeof connectionLabels => {
-    if (session.busy) return "connecting";
+    if (session.busy) return session.localReady ? "connecting" : "restoring";
     if (!session.auth) return session.status === "error" ? "error" : "disconnected";
     if (session.offlineMode) return "offline";
     if (session.status === "error") return "error";
-    // Only the library scan belongs in this row; other refresh work is background work.
+    if (session.syncing && !session.refreshing) return "synchronizing";
+    // During an explicit refresh, only the library scan belongs in this row.
     return session.syncing && session.libraryProgress ? "refreshing" : "connected";
   });
   const connectionLabel = $derived(connectionLabels[connectionState]);
   const connectionLoading = $derived(
-    connectionState === "connecting" || connectionState === "refreshing",
+    connectionState === "connecting" ||
+      connectionState === "synchronizing" ||
+      connectionState === "refreshing",
   );
   const connectionFailed = $derived(connectionState === "error");
   const serverAddress = $derived.by(() => {
@@ -95,7 +98,7 @@
           aria-atomic="true"
           id="settings-connection-status"
         >
-          {#snippet statusRow()}
+          {#if connectionState !== "restoring"}
             <p class="row-sm label">
               <span class="row-sm">
                 {#if connectionLoading}
@@ -126,7 +129,7 @@
               {:else}
                 <span>
                   {connectionLabel}
-                  {#if session.auth}
+                  {#if session.auth && connectionState !== "synchronizing"}
                     {connectionState === "offline" || connectionFailed ? " · " : " to "}
                     <span id="settings-server-identity"
                       >{session.auth.username}@{serverAddress}</span
@@ -135,13 +138,7 @@
                 </span>
               {/if}
             </p>
-          {/snippet}
-          <Delayed when={connectionState === "connecting"} delay={connectingDelay}>
-            {@render statusRow()}
-            {#snippet fallback()}
-              {#if connectionState !== "connecting"}{@render statusRow()}{/if}
-            {/snippet}
-          </Delayed>
+          {/if}
           {#if session.error}
             <p class="body" id="settings-server-error">{session.error}</p>
           {/if}
@@ -237,10 +234,8 @@
                 aria-disabled={session.busy}
                 aria-busy={session.busy}
               >
-                <Delayed when={session.busy} delay={connectingDelay}>
-                  <Loader />Connecting…
-                  {#snippet fallback()}Connect{/snippet}
-                </Delayed>
+                {#if session.busy}<Loader />{/if}
+                {session.busy ? "Connecting…" : "Connect"}
               </button>
             </div>
           </form>
@@ -249,21 +244,21 @@
             <p class="caption text-secondary">
               Disconnect to change servers. Your offline library will stay on this device.
             </p>
-            <div class="settings-actions">
+            <div class="row-sm row-wrap">
               <button
                 class="button"
                 data-size="text"
                 data-variant="secondary"
                 id="settings-refresh"
-                aria-label={session.syncing ? "Refreshing…" : "Refresh library"}
+                aria-label={session.refreshing ? "Refreshing…" : "Refresh library"}
                 aria-disabled={session.syncing}
-                aria-busy={session.syncing}
+                aria-busy={session.refreshing}
                 disabled={session.offlineMode || session.busy}
                 onclick={() => {
                   if (!session.syncing) void session.refresh();
                 }}
               >
-                {session.syncing ? "Refreshing…" : "Refresh library"}
+                {session.refreshing ? "Refreshing…" : "Refresh library"}
               </button>
               <button
                 id="settings-disconnect"
@@ -323,16 +318,5 @@
 
   .settings-status {
     min-block-size: 1.5rem;
-  }
-
-  .settings-actions {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-sm);
-
-    @container (width > 600px) {
-      flex-direction: row;
-    }
   }
 </style>

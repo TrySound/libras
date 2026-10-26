@@ -129,8 +129,8 @@ describe("app settings", () => {
         expect(status.querySelector("use")?.getAttribute("href")).toBe(`#icon-${symbol}`);
         expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
       } else {
-        expect(status.textContent).not.toContain(label);
-        expect(status.querySelector(".loader")).toBeNull();
+        expect(status.textContent).toContain(label);
+        expect(status.querySelectorAll(".loader-bar")).toHaveLength(5);
       }
     };
     expectStatus("check", "Connected");
@@ -245,7 +245,9 @@ describe("app settings", () => {
       expect(target.querySelector("#settings-connection-status")?.textContent).not.toContain(
         "Refreshing…",
       );
-      expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refreshing…");
+      expect(target.querySelector("#settings-refresh")?.textContent).toContain(
+        saved ? "Refreshing…" : "Refresh library",
+      );
       expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(5);
       pending.resolve();
       await loading;

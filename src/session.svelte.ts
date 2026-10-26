@@ -46,6 +46,7 @@ export class Session {
   #connection?: ActiveNetworkConnection;
   #libraryProgress = $state.raw<LibraryProgress>();
   #syncing = $state(false);
+  #manualRefresh = $state(false);
   #refreshError = $state.raw<unknown>();
   #refreshPending?: Promise<void>;
   #restoration: Promise<void> = Promise.resolve();
@@ -64,6 +65,11 @@ export class Session {
 
   get syncing() {
     return this.#syncing;
+  }
+
+  /** Explicit refresh, distinct from the automatic server sync after connecting. */
+  get refreshing() {
+    return this.#syncing && this.#manualRefresh;
   }
 
   get refreshError() {
@@ -103,6 +109,7 @@ export class Session {
     this.#libraryProgress = undefined;
     this.#refreshPending = undefined;
     this.#syncing = false;
+    this.#manualRefresh = false;
     this.#refreshError = undefined;
     this.#options.network.setMode("offline");
     this.#setConnection(undefined);
@@ -350,6 +357,7 @@ export class Session {
     const operationId = this.#operationId;
     const { covers, playback } = this.#options;
     this.#syncing = true;
+    this.#manualRefresh = force;
     this.#refreshError = undefined;
     return (this.#refreshPending = (async () => {
       try {
@@ -375,6 +383,7 @@ export class Session {
     })().finally(() => {
       if (!this.#isCurrentOperation(operationId)) return;
       this.#syncing = false;
+      this.#manualRefresh = false;
       this.#refreshPending = undefined;
     }));
   }

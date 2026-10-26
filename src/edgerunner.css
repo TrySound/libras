@@ -315,7 +315,7 @@
     gap: var(--space-xl);
   }
 
-  /* Center-aligned, single-line horizontal flow; components own sizing. */
+  /* Center-aligned horizontal flow; wrapping is explicit via row-wrap. */
   .row-xs,
   .row-sm,
   .row-md,
@@ -351,6 +351,10 @@
 
   .row-center {
     justify-content: center;
+  }
+
+  .row-wrap {
+    flex-wrap: wrap;
   }
 
   .uppercase {

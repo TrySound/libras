@@ -61,6 +61,51 @@ async function setup(saved = false) {
   return { ...fixture, target, field, fill, submit, navigate, destroyUI };
 }
 
+it("keeps local restoration silent and labels initial server sync without refreshing the button", async () => {
+  vi.useFakeTimers();
+  installNavigation("/settings", vi.fn());
+  const fixture = createSession(true);
+  const local = deferred();
+  const modified = deferred<number | null>();
+  fixture.loadCache.mockReturnValueOnce(local.promise);
+  fixture.metadata.getModifiedAt.mockReturnValueOnce(modified.promise);
+  const target = document.createElement("div");
+  document.body.append(target);
+  fixture.session.start();
+  const component = mount(Settings, { target, props: { session: fixture.session } });
+  cleanups.push(async () => {
+    await unmount(component);
+    await fixture.destroy();
+  });
+  await vi.advanceTimersByTimeAsync(400);
+  flushSync();
+  expect(fixture.session.localReady).toBe(false);
+  expect(target.textContent).not.toContain("Connecting…");
+  expect(target.textContent).not.toContain("Synchronizing with server…");
+  expect(target.textContent).not.toContain("Restoring local library…");
+  expect(target.textContent).not.toContain("Refreshing…");
+  local.resolve();
+  await vi.advanceTimersByTimeAsync(0);
+  flushSync();
+  expect(fixture.session.syncing).toBe(true);
+  expect(fixture.session.refreshing).toBe(false);
+  const button = target.querySelector("#settings-refresh")!;
+  expect(button.textContent?.trim()).toBe("Refresh library");
+  expect(button.getAttribute("aria-busy")).toBe("false");
+  expect(button.parentElement?.className).toBe("row-sm row-wrap");
+  const status = target.querySelector("#settings-connection-status")!;
+  expect(status.textContent).toContain("Synchronizing with server…");
+  expect(status.textContent).not.toContain("Connected");
+  expect(status.querySelectorAll(".loader-bar")).toHaveLength(5);
+  expect(button.textContent?.trim()).toBe("Refresh library");
+  modified.resolve(100);
+  await vi.advanceTimersByTimeAsync(0);
+  flushSync();
+  expect(fixture.session.syncing).toBe(false);
+  expect(status.textContent?.replace(/\s+/g, " ")).toContain("Connected to");
+  expect(status.querySelector(".loader")).toBeNull();
+});
+
 it("keeps Connect focusable while busy, prevents duplicate submission, and exposes errors with the form", async () => {
   const { target, field, fill, submit, validate } = await setup();
   vi.useFakeTimers();
@@ -77,21 +122,6 @@ it("keeps Connect focusable while busy, prevents duplicate submission, and expos
   expect(
     [...target.querySelectorAll<HTMLInputElement>("form input")].every((input) => input.disabled),
   ).toBe(true);
-  expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(0);
-  expect(button.querySelectorAll(".loader-bar")).toHaveLength(0);
-  expect(target.querySelector("#settings-connection-status")?.textContent).not.toContain(
-    "Connecting…",
-  );
-  expect(button.textContent?.trim()).toBe("Connect");
-  await vi.advanceTimersByTimeAsync(299);
-  flushSync();
-  expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(0);
-  expect(target.querySelector("#settings-connection-status")?.textContent).not.toContain(
-    "Connecting…",
-  );
-  expect(button.textContent?.trim()).toBe("Connect");
-  await vi.advanceTimersByTimeAsync(1);
-  flushSync();
   expect(target.querySelector("#settings-connection-status")?.textContent).toContain("Connecting…");
   expect(button.textContent?.trim()).toBe("Connecting…");
   expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(5);
@@ -116,14 +146,12 @@ it("keeps Connect focusable while busy, prevents duplicate submission, and expos
   expect(target.textContent).not.toContain("private-password-value");
 });
 
-it("does not flash connecting text or spinners for a fast connection", async () => {
+it("finishes a fast connection immediately without creating UI delay timers", async () => {
   const { target, fill, submit, navigate } = await setup();
   vi.useFakeTimers();
   fill();
   submit();
-  expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
-  expect(target.textContent).not.toContain("Connecting…");
-  expect(target.querySelector("#settings-connect")?.textContent?.trim()).toBe("Connect");
+  expect(target.querySelector("#settings-connect")?.textContent?.trim()).toBe("Connecting…");
   await vi.advanceTimersByTimeAsync(0);
   flushSync();
   expect(navigate).toHaveBeenCalledWith("/library", "push");

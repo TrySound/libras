@@ -161,9 +161,18 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
       async () => {
         pingFailure = false;
         pingGate = undefined;
+        listGate = gate();
         await page.getByRole("button", { name: "Connect", exact: true }).click();
         await page.locator(".library-view .tile").waitFor();
         await page.getByRole("link", { name: "Settings", exact: true }).click();
+        await waitStatus("Synchronizing with server…");
+        const refresh = page.locator("#settings-refresh");
+        assert.equal((await refresh.textContent()).trim(), "Refresh library");
+        assert.equal(await refresh.getAttribute("aria-busy"), "false");
+        assert.equal(await refresh.getAttribute("aria-disabled"), "true");
+        assert.equal(await refresh.locator("svg, .loader").count(), 0);
+        listGate.resolve();
+        listGate = undefined;
         await waitStatus("Connected");
         assert.equal(await page.locator("form").count(), 0);
         assert.equal(
