@@ -236,9 +236,13 @@ describe("app settings", () => {
           .trim(),
       ).toBe(counter);
       expect(target.textContent).not.toContain("songs");
-      expect(target.querySelector("#settings-connection-status")?.textContent).toContain(
+      expect(
+        target.querySelector("#settings-connection-status #settings-library-progress"),
+      ).not.toBeNull();
+      expect(target.querySelector("#settings-connection-status")?.textContent).not.toContain(
         "Refreshing…",
       );
+      expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refreshing…");
       expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(5);
       pending.resolve();
       await loading;

@@ -24,7 +24,7 @@
     disconnected: "Disconnected",
     offline: "Offline mode",
     error: "Connection failed",
-    refreshing: "Refreshing…",
+    refreshing: "Connected",
     connected: "Connected",
   };
   const connectionState = $derived.by((): keyof typeof connectionLabels => {
@@ -109,19 +109,19 @@
                 />
               {/if}
             </span>
-            {connectionLabel}
+            {#if connectionLoading && session.libraryProgress}
+              <span id="settings-library-progress">
+                {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
+                tracks
+              </span>
+            {:else}
+              {connectionLabel}
+            {/if}
           </p>
           {#if session.error}
             <p class="body" id="settings-server-error">{session.error}</p>
           {/if}
         </div>
-
-        {#if (session.busy || session.syncing) && session.libraryProgress}
-          <p class="caption text-subtle" role="status" id="settings-library-progress">
-            {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
-            tracks
-          </p>
-        {/if}
 
         {#if session.refreshError}
           <div class="card stack-sm">

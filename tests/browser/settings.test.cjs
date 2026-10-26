@@ -81,7 +81,10 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
   };
   const waitStatus = (value) =>
     page.waitForFunction(
-      (label) => document.querySelector("#settings-connection-status")?.textContent.includes(label),
+      (label) =>
+        document.querySelector("#settings-connection-status")?.textContent.includes(label) &&
+        (label !== "Connected" ||
+          document.querySelector("#settings-refresh")?.getAttribute("aria-busy") !== "true"),
       value,
     );
 
@@ -229,6 +232,9 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
           document.querySelector("#settings-library-progress")?.textContent.includes("1 albums"),
         );
         assert.match(await page.locator("#settings-library-progress").textContent(), /1\s+tracks/);
+        assert.equal(await status.locator("#settings-library-progress").count(), 1);
+        assert.ok(!(await status.textContent()).includes("Refreshing…"));
+        assert.ok((await refresh.textContent()).includes("Refreshing…"));
         assert.equal(await refresh.getAttribute("aria-disabled"), "true");
         assert.equal(await refresh.evaluate((element) => element === document.activeElement), true);
         assert.equal(
