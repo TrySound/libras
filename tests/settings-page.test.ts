@@ -6,6 +6,7 @@ import { createSession, credentials, deferred } from "./session-test-helpers";
 import { installNavigation } from "./router-test-helpers";
 
 const cleanups: (() => Promise<void>)[] = [];
+const identity = `${credentials.username}@${new URL(credentials.host).host}`;
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   document.body.innerHTML = "";
@@ -115,8 +116,10 @@ it("accepts a bare hostname and navigates after a successful connection without 
   flushSync();
   expect(session.auth?.host).toBe(credentials.host);
   expect(target.querySelector("form")).toBeNull();
-  expect(target.querySelector("#settings-server-address")?.textContent).toBe(credentials.host);
-  expect(target.querySelector("#settings-server-username")?.textContent).toBe(credentials.username);
+  expect(target.querySelector("#settings-server-identity")?.textContent).toBe(identity);
+  expect(
+    target.querySelector("#settings-connection-status")?.textContent?.replace(/\s+/g, " ").trim(),
+  ).toBe(`Connected to ${identity}`);
   expect(target.textContent).not.toContain("private-password-value");
   expect(target.textContent).not.toContain(auth.load()!.token);
   expect(target.textContent).not.toContain(auth.load()!.salt);
@@ -174,8 +177,8 @@ it("omits URL userinfo and auth secrets from the read-only connection summary", 
     salt: "private-salt-value",
   };
   flushSync();
-  expect(target.querySelector("#settings-server-address")?.textContent).toBe(
-    "https://music.example/base",
+  expect(target.querySelector("#settings-server-identity")?.textContent).toBe(
+    `${credentials.username}@music.example/base`,
   );
   for (const secret of [
     "hidden-user",
@@ -210,7 +213,7 @@ it("keeps the authenticated summary and retry available after refresh errors", a
   flushSync();
   expect(target.textContent).toContain("Synchronization needs attention");
   expect(target.textContent).toContain("Library unavailable");
-  expect(target.querySelector("#settings-server-address")?.textContent).toBe(credentials.host);
+  expect(target.querySelector("#settings-server-identity")?.textContent).toBe(identity);
   expect(target.querySelector<HTMLButtonElement>("#settings-refresh")?.disabled).toBe(false);
   expect(target.querySelector("form")).toBeNull();
   await session.refresh();

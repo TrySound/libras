@@ -44,7 +44,10 @@
     const address = new URL(session.auth.host);
     // Account identity is useful here; URL userinfo and authentication secrets are not.
     address.username = address.password = "";
-    return address.toString().replace(/\/$/, "");
+    return address
+      .toString()
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/$/, "");
   });
 
   onDestroy(() => {
@@ -110,12 +113,18 @@
               {/if}
             </span>
             {#if connectionLoading && session.libraryProgress}
-              <span id="settings-library-progress">
+              <span class="text-subtle" id="settings-library-progress">
                 {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
                 tracks
               </span>
             {:else}
-              {connectionLabel}
+              <span>
+                {connectionLabel}
+                {#if session.auth}
+                  {connectionState === "offline" || connectionFailed ? " · " : " to "}
+                  <span id="settings-server-identity">{session.auth.username}@{serverAddress}</span>
+                {/if}
+              </span>
             {/if}
           </p>
           {#if session.error}
@@ -220,13 +229,7 @@
           </form>
         {:else}
           <div class="stack-md">
-            <div class="stack-xs">
-              <p class="label" id="settings-server-address">{serverAddress}</p>
-              <p class="caption text-secondary" id="settings-server-username">
-                {session.auth.username}
-              </p>
-            </div>
-            <p class="body">
+            <p class="caption text-secondary">
               Disconnect to change servers. Your offline library will stay on this device.
             </p>
             <div class="settings-actions">

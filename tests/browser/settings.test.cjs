@@ -161,10 +161,13 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
         await waitStatus("Connected");
         assert.equal(await page.locator("form").count(), 0);
         assert.equal(
-          await page.locator("#settings-server-address").textContent(),
-          `https://${host}`,
+          await page.locator("#settings-server-identity").textContent(),
+          `${username}@${host}`,
         );
-        assert.equal(await page.locator("#settings-server-username").textContent(), username);
+        assert.equal(
+          (await status.innerText()).replace(/\s+/g, " ").trim(),
+          `Connected to ${username}@${host}`,
+        );
         const auth = await page.evaluate(() => JSON.parse(localStorage.getItem("navidrome-auth")));
         const visible = await page.locator("body").innerText();
         for (const secret of [password, auth.token, auth.salt])
@@ -233,6 +236,12 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
         );
         assert.match(await page.locator("#settings-library-progress").textContent(), /1\s+tracks/);
         assert.equal(await status.locator("#settings-library-progress").count(), 1);
+        assert.equal(
+          await page
+            .locator("#settings-library-progress")
+            .evaluate((element) => getComputedStyle(element).color),
+          "rgb(254, 238, 177)",
+        );
         assert.ok(!(await status.textContent()).includes("Refreshing…"));
         assert.ok((await refresh.textContent()).includes("Refreshing…"));
         assert.equal(await refresh.getAttribute("aria-disabled"), "true");
@@ -258,7 +267,10 @@ test("Settings redesign preserves real connection, refresh, offline, and focus b
       await waitStatus("Connected");
       assert.equal(await page.locator("form").count(), 0);
       assert.ok((await status.textContent()).includes("Connected"));
-      assert.equal(await page.locator("#settings-server-address").textContent(), `https://${host}`);
+      assert.equal(
+        await page.locator("#settings-server-identity").textContent(),
+        `${username}@${host}`,
+      );
       syncFailure = false;
       await page.locator("#settings-refresh").click();
       await page.waitForFunction(

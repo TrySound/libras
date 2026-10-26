@@ -235,6 +235,9 @@ describe("app settings", () => {
           ?.textContent?.replace(/\s+/g, " ")
           .trim(),
       ).toBe(counter);
+      expect(
+        target.querySelector("#settings-library-progress")?.classList.contains("text-subtle"),
+      ).toBe(true);
       expect(target.textContent).not.toContain("songs");
       expect(
         target.querySelector("#settings-connection-status #settings-library-progress"),
@@ -260,9 +263,8 @@ describe("app settings", () => {
   it("shows read-only connection information and allows disconnect during refresh", async () => {
     const { target, session, auth, metadata, button, offline } = await setup(true);
     const server = target.querySelector("#settings-server")!;
-    expect(server.querySelector("#settings-server-address")?.textContent).toBe(credentials.host);
-    expect(server.querySelector("#settings-server-username")?.textContent).toBe(
-      credentials.username,
+    expect(server.querySelector("#settings-server-identity")?.textContent).toBe(
+      `${credentials.username}@${new URL(credentials.host).host}`,
     );
     expect(server.querySelector("#settings-connection-status")?.textContent).toContain("Connected");
     expect(server.querySelectorAll("button")).toHaveLength(2);
