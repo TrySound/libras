@@ -2,6 +2,7 @@
   import { onDestroy, tick } from "svelte";
   import Icon from "./icon.svelte";
   import Loader from "./ui/loader.svelte";
+  import Delayed from "./ui/delayed.svelte";
   import type { Session } from "./session.svelte";
   import { navigate } from "./router.svelte";
 
@@ -10,7 +11,7 @@
   }
 
   let { session }: Props = $props();
-  const spinnerDelay = 300;
+  const connectingDelay = 300;
   let host = $state("");
   let username = $state("");
   let password = $state("");
@@ -88,44 +89,59 @@
     <div class="split-layout" data-ratio="3:2">
       <section class="card stack-md" id="settings-server" aria-labelledby="settings-server-title">
         <h2 class="heading-md uppercase" id="settings-server-title">Music server</h2>
-        <div class="stack-sm" role="status" aria-atomic="true" id="settings-connection-status">
-          <p class="row-sm label">
-            <span class="row-sm">
-              {#if connectionLoading}
-                <Loader delay={connectionState === "connecting" ? spinnerDelay : 0} />
-              {:else}
-                <Icon
-                  name={connectionFailed
-                    ? "cross"
-                    : connectionState === "connected"
-                      ? "check"
-                      : connectionState === "offline"
-                        ? "offline"
-                        : "idle"}
-                  size={24}
-                  color={connectionFailed
-                    ? "var(--error-text)"
-                    : connectionState === "connected"
-                      ? "var(--accent)"
-                      : "var(--text-primary)"}
-                />
-              {/if}
-            </span>
-            {#if connectionLoading && session.libraryProgress}
-              <span class="text-subtle" id="settings-library-progress">
-                {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
-                tracks
-              </span>
-            {:else}
-              <span>
-                {connectionLabel}
-                {#if session.auth}
-                  {connectionState === "offline" || connectionFailed ? " · " : " to "}
-                  <span id="settings-server-identity">{session.auth.username}@{serverAddress}</span>
+        <div
+          class="stack-sm settings-status"
+          role="status"
+          aria-atomic="true"
+          id="settings-connection-status"
+        >
+          {#snippet statusRow()}
+            <p class="row-sm label">
+              <span class="row-sm">
+                {#if connectionLoading}
+                  <Loader />
+                {:else}
+                  <Icon
+                    name={connectionFailed
+                      ? "cross"
+                      : connectionState === "connected"
+                        ? "check"
+                        : connectionState === "offline"
+                          ? "offline"
+                          : "idle"}
+                    size={24}
+                    color={connectionFailed
+                      ? "var(--error-text)"
+                      : connectionState === "connected"
+                        ? "var(--accent)"
+                        : "var(--text-primary)"}
+                  />
                 {/if}
               </span>
-            {/if}
-          </p>
+              {#if connectionLoading && session.libraryProgress}
+                <span class="text-subtle" id="settings-library-progress">
+                  {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
+                  tracks
+                </span>
+              {:else}
+                <span>
+                  {connectionLabel}
+                  {#if session.auth}
+                    {connectionState === "offline" || connectionFailed ? " · " : " to "}
+                    <span id="settings-server-identity"
+                      >{session.auth.username}@{serverAddress}</span
+                    >
+                  {/if}
+                </span>
+              {/if}
+            </p>
+          {/snippet}
+          <Delayed when={connectionState === "connecting"} delay={connectingDelay}>
+            {@render statusRow()}
+            {#snippet fallback()}
+              {#if connectionState !== "connecting"}{@render statusRow()}{/if}
+            {/snippet}
+          </Delayed>
           {#if session.error}
             <p class="body" id="settings-server-error">{session.error}</p>
           {/if}
@@ -221,8 +237,10 @@
                 aria-disabled={session.busy}
                 aria-busy={session.busy}
               >
-                {#if session.busy}<Loader delay={spinnerDelay} />{/if}
-                {session.busy ? "Connecting…" : "Connect"}
+                <Delayed when={session.busy} delay={connectingDelay}>
+                  <Loader />Connecting…
+                  {#snippet fallback()}Connect{/snippet}
+                </Delayed>
               </button>
             </div>
           </form>
@@ -301,6 +319,10 @@
     min-block-size: 100%;
     padding: var(--content-padding-block) var(--content-padding-inline);
     overflow-wrap: anywhere;
+  }
+
+  .settings-status {
+    min-block-size: 1.5rem;
   }
 
   .settings-actions {

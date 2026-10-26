@@ -124,13 +124,13 @@ describe("app settings", () => {
     const expectStatus = (symbol: string | null, label: string) => {
       flushSync();
       const status = target.querySelector("#settings-connection-status")!;
-      expect(status.textContent).toContain(label);
       if (symbol) {
+        expect(status.textContent).toContain(label);
         expect(status.querySelector("use")?.getAttribute("href")).toBe(`#icon-${symbol}`);
         expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
       } else {
-        expect(status.querySelectorAll(".loader-bar")).toHaveLength(0);
-        expect(status.querySelector(".loader")?.getAttribute("aria-hidden")).toBe("true");
+        expect(status.textContent).not.toContain(label);
+        expect(status.querySelector(".loader")).toBeNull();
       }
     };
     expectStatus("check", "Connected");

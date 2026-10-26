@@ -79,11 +79,21 @@ it("keeps Connect focusable while busy, prevents duplicate submission, and expos
   ).toBe(true);
   expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(0);
   expect(button.querySelectorAll(".loader-bar")).toHaveLength(0);
+  expect(target.querySelector("#settings-connection-status")?.textContent).not.toContain(
+    "Connecting…",
+  );
+  expect(button.textContent?.trim()).toBe("Connect");
   await vi.advanceTimersByTimeAsync(299);
   flushSync();
   expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(0);
+  expect(target.querySelector("#settings-connection-status")?.textContent).not.toContain(
+    "Connecting…",
+  );
+  expect(button.textContent?.trim()).toBe("Connect");
   await vi.advanceTimersByTimeAsync(1);
   flushSync();
+  expect(target.querySelector("#settings-connection-status")?.textContent).toContain("Connecting…");
+  expect(button.textContent?.trim()).toBe("Connecting…");
   expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(5);
   expect(button.querySelectorAll(".loader-bar")).toHaveLength(5);
   submit();
@@ -106,12 +116,14 @@ it("keeps Connect focusable while busy, prevents duplicate submission, and expos
   expect(target.textContent).not.toContain("private-password-value");
 });
 
-it("does not flash connecting spinners for a fast connection", async () => {
+it("does not flash connecting text or spinners for a fast connection", async () => {
   const { target, fill, submit, navigate } = await setup();
   vi.useFakeTimers();
   fill();
   submit();
   expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
+  expect(target.textContent).not.toContain("Connecting…");
+  expect(target.querySelector("#settings-connect")?.textContent?.trim()).toBe("Connect");
   await vi.advanceTimersByTimeAsync(0);
   flushSync();
   expect(navigate).toHaveBeenCalledWith("/library", "push");
@@ -120,6 +132,7 @@ it("does not flash connecting spinners for a fast connection", async () => {
   await vi.advanceTimersByTimeAsync(300);
   flushSync();
   expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
+  expect(target.textContent).not.toContain("Connecting…");
 });
 
 it.each([false, true])(

@@ -131,9 +131,13 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   the library scan only and switch together back to the connected identity; artwork, playlist,
   and queue refresh continue in the background. Refresh is text-only, showing Refreshing…
   until the full operation settles.
-  Connecting spinners have a 300ms visual grace period; requests and status text are immediate.
-  The shared Loader reserves its frame and cancels delayed bars on unmount. Offline mode uses
-  a crossed-cloud icon, while Disconnected retains its idle indicator.
+  The entire Connecting status and busy button content have a 300ms visual grace period via
+  the shared Delayed snippet component; requests and busy/disabled semantics are immediate.
+  The live region reserves a line and the button retains Connect during the grace period.
+  Delayed resets and cancels its timer when the condition ends, changes, or unmounts; Loader
+  remains a presentation-only primitive. Offline mode uses a crossed-cloud icon, while
+  Disconnected retains its idle indicator. PWA updates remain in the existing header popover,
+  with the real updater's action, progress, and errors; there is no in-page Settings update card.
   Busy Connect/Refresh controls stay mounted and focusable with guarded `aria-disabled` states.
   Disconnect restores Host focus, and a connection finishing after leaving Settings does not
   navigate back. The summary renders account identity, never tokens, salts, or URL userinfo.
