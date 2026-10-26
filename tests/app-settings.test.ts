@@ -96,7 +96,7 @@ async function setup(
 }
 
 describe("app settings", () => {
-  it("keeps local restoration silent and distinguishes initial server sync from refresh", async () => {
+  it("shows startup synchronization immediately and distinguishes server sync from refresh", async () => {
     const local = deferred();
     const modified = deferred<number | null>();
     const { target, session, loadCache, button } = await setup(true, false, {
@@ -109,7 +109,9 @@ describe("app settings", () => {
     await vi.waitFor(() => expect(loadCache).toHaveBeenCalledOnce());
     const status = target.querySelector("#settings-connection-status")!;
     expect(session.localReady).toBe(false);
-    expect(status.textContent?.trim()).toBe("");
+    expect(status.textContent).toContain("Synchronizing…");
+    expect(status.querySelector(".loader")).not.toBeNull();
+    expect(status.textContent).not.toContain("with server");
     expect(target.textContent).not.toContain("Restoring local library…");
     local.resolve();
     await vi.waitFor(() => expect(session.syncing).toBe(true));
@@ -121,6 +123,27 @@ describe("app settings", () => {
     flushSync();
     expect(status.textContent).toContain("Connected");
     expect(status.querySelector(".loader")).toBeNull();
+  });
+
+  it("shows saved offline mode immediately while local data loads, without server requests", async () => {
+    const local = deferred();
+    const { target, session, metadata, validate, loadCache } = await setup(true, false, {
+      beforeStart(fixture) {
+        fixture.storage.setItem("navidrome-offline-mode", "true");
+        fixture.loadCache.mockReturnValueOnce(local.promise);
+      },
+      waitForSync: false,
+    });
+    await vi.waitFor(() => expect(loadCache).toHaveBeenCalledOnce());
+    expect(session.localReady).toBe(false);
+    const status = target.querySelector("#settings-connection-status")!;
+    expect(status.textContent).toContain("Offline mode");
+    expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-offline");
+    expect(status.querySelector(".loader")).toBeNull();
+    local.resolve();
+    await vi.waitFor(() => expect(session.localReady).toBe(true));
+    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+    expect(validate).not.toHaveBeenCalled();
   });
 
   it.each(["unmounted", "hidden", "navigating"] as const)(
@@ -255,7 +278,7 @@ describe("app settings", () => {
     session.status = "error";
     expectStatus("offline", "Offline mode");
     session.status = "connecting";
-    expectStatus(null, "Connecting…");
+    expectStatus("offline", "Offline mode");
     session.auth = null;
     expectStatus(null, "Connecting…");
     session.status = "error";
@@ -372,17 +395,19 @@ describe("app settings", () => {
       flushSync();
       expect(target.querySelector("#settings-library-progress")).toBeNull();
       const status = target.querySelector("#settings-connection-status")!;
-      if (saved) {
-        expect(status.textContent).toContain("Connected");
-        expect(status.querySelector(".loader")).toBeNull();
-        expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-check");
-        expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refreshing…");
-      } else expect(status.textContent).toContain("Synchronizing with server…");
+      expect(status.textContent).toContain("Synchronizing with server…");
+      expect(status.textContent).not.toContain("Connected");
+      expect(status.querySelector(".loader")).not.toBeNull();
+      expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refresh library");
+      expect(target.querySelector("#settings-refresh")?.getAttribute("aria-busy")).toBe("false");
+      expect(target.querySelector("#settings-refresh")?.getAttribute("aria-disabled")).toBe("true");
       queue.resolve();
       await loading;
       await vi.waitFor(() => expect(session.syncing).toBe(false));
       flushSync();
       expect(status.textContent).toContain("Connected");
+      expect(status.querySelector(".loader")).toBeNull();
+      expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-check");
       expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refresh library");
     },
   );

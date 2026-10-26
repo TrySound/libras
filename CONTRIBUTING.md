@@ -129,15 +129,18 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   validation uses the browser's built-in feedback, without inline field-error messages or
   layout shifts; actual connection/synchronization errors remain visible in the card. The form
   explains how to sign in to Navidrome and shows a scheme-free host example. Theme selection stays in #54.
-  Settings does not show cache-restoration messages. Automatic server sync shows a dedicated
+  Online startup immediately shows Synchronizing…, without OPFS implementation details.
+  A saved offline session immediately shows Offline mode, without a spinner or server-sync
+  claim. With no saved account, the initial state is Disconnected. Automatic server sync shows a dedicated
   Synchronizing with server… status (or actual scan counters), then the connected identity.
   Session distinguishes automatic sync from explicit refresh via `refreshing`; only an explicit
-  refresh labels the text-only action Refreshing…. During explicit refresh the status spinner
-  follows the library scan while remaining refresh work continues in the background.
+  library-refresh phase labels the text-only action Refreshing…. Follow-on server sync keeps
+  the action guarded but returns its normal label. Synchronizing with server… covers the full
+  operation, including artwork, playlists, and queue; Connected appears only after it finishes.
   Action buttons use shared `row-sm row-wrap` utilities, without a page-specific actions
   class; wrapping keeps controls inside the card at enlarged text sizes.
   Connection/server-sync status, loaders, and button labels render immediately, without a
-  Delayed boundary or UI timers. Local OPFS restoration stays silent. Loader remains a
+  Delayed boundary, UI timers, or reserved-height rules. Loader remains a
   presentation-only primitive. Offline mode uses a crossed-cloud icon, while
   Disconnected uses a broken-link icon. PWA updates remain in the existing header popover,
   with the real updater's action, progress, and errors; there is no in-page Settings update card.

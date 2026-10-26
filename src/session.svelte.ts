@@ -67,7 +67,7 @@ export class Session {
     return this.#syncing;
   }
 
-  /** Explicit refresh, distinct from the automatic server sync after connecting. */
+  /** Explicit library refresh; automatic and follow-on server sync stays separate. */
   get refreshing() {
     return this.#syncing && this.#manualRefresh;
   }
@@ -361,7 +361,9 @@ export class Session {
     this.#refreshError = undefined;
     return (this.#refreshPending = (async () => {
       try {
-        await this.#refreshLibrary(force, operationId);
+        await this.#refreshLibrary(force, operationId).finally(() => {
+          if (this.#isCurrentOperation(operationId)) this.#manualRefresh = false;
+        });
         if (!this.#isCurrentOperation(operationId)) return;
         this.error = "";
         await covers.refresh(force);

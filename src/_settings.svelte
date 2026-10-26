@@ -19,29 +19,26 @@
   let mounted = true;
 
   const connectionLabels = {
-    restoring: "",
+    initializing: "Synchronizing…",
     connecting: "Connecting…",
     synchronizing: "Synchronizing with server…",
     disconnected: "Disconnected",
     offline: "Offline mode",
     error: "Connection failed",
-    refreshing: "Connected",
     connected: "Connected",
   };
   const connectionState = $derived.by((): keyof typeof connectionLabels => {
-    if (session.busy) return session.localReady ? "connecting" : "restoring";
+    if (session.auth && session.offlineMode) return "offline";
+    if (session.busy) return session.localReady ? "connecting" : "initializing";
     if (!session.auth) return session.status === "error" ? "error" : "disconnected";
-    if (session.offlineMode) return "offline";
     if (session.status === "error") return "error";
-    if (session.syncing && !session.refreshing) return "synchronizing";
-    // During an explicit refresh, only the library scan belongs in this row.
-    return session.syncing && session.libraryProgress ? "refreshing" : "connected";
+    return session.syncing ? "synchronizing" : "connected";
   });
   const connectionLabel = $derived(connectionLabels[connectionState]);
   const connectionLoading = $derived(
-    connectionState === "connecting" ||
-      connectionState === "synchronizing" ||
-      connectionState === "refreshing",
+    connectionState === "initializing" ||
+      connectionState === "connecting" ||
+      connectionState === "synchronizing",
   );
   const connectionFailed = $derived(connectionState === "error");
   const serverAddress = $derived.by(() => {
@@ -93,47 +90,43 @@
       <section class="card stack-md" id="settings-server" aria-labelledby="settings-server-title">
         <h2 class="heading-md uppercase" id="settings-server-title">Music server</h2>
         <div class="stack-sm" role="status" aria-atomic="true" id="settings-connection-status">
-          {#if connectionState !== "restoring"}
-            <p class="row-sm label">
-              <span class="row-sm">
-                {#if connectionLoading}
-                  <Loader />
-                {:else}
-                  <Icon
-                    name={connectionFailed
-                      ? "cross"
-                      : connectionState === "connected"
-                        ? "check"
-                        : connectionState === "offline"
-                          ? "offline"
-                          : "unlink"}
-                    size={24}
-                    color={connectionFailed
-                      ? "var(--error-text)"
-                      : connectionState === "connected"
-                        ? "var(--accent)"
-                        : "var(--text-primary)"}
-                  />
+          <p class="row-sm label">
+            <span class="row-sm">
+              {#if connectionLoading}
+                <Loader />
+              {:else}
+                <Icon
+                  name={connectionFailed
+                    ? "cross"
+                    : connectionState === "connected"
+                      ? "check"
+                      : connectionState === "offline"
+                        ? "offline"
+                        : "unlink"}
+                  size={24}
+                  color={connectionFailed
+                    ? "var(--error-text)"
+                    : connectionState === "connected"
+                      ? "var(--accent)"
+                      : "var(--text-primary)"}
+                />
+              {/if}
+            </span>
+            {#if connectionLoading && session.libraryProgress}
+              <span class="text-subtle" id="settings-library-progress">
+                {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
+                tracks
+              </span>
+            {:else}
+              <span>
+                {connectionLabel}
+                {#if session.auth && !connectionLoading}
+                  {connectionState === "offline" || connectionFailed ? " · " : " to "}
+                  <span id="settings-server-identity">{session.auth.username}@{serverAddress}</span>
                 {/if}
               </span>
-              {#if connectionLoading && session.libraryProgress}
-                <span class="text-subtle" id="settings-library-progress">
-                  {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
-                  tracks
-                </span>
-              {:else}
-                <span>
-                  {connectionLabel}
-                  {#if session.auth && connectionState !== "synchronizing"}
-                    {connectionState === "offline" || connectionFailed ? " · " : " to "}
-                    <span id="settings-server-identity"
-                      >{session.auth.username}@{serverAddress}</span
-                    >
-                  {/if}
-                </span>
-              {/if}
-            </p>
-          {/if}
+            {/if}
+          </p>
           {#if session.error}
             <p class="body" id="settings-server-error">{session.error}</p>
           {/if}
