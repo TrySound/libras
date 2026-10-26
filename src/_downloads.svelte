@@ -43,9 +43,7 @@
   <div class="stack-lg scroll-runway">
     <header class="stack-sm">
       <h1 class="heading-xl" id="downloads-heading">Downloads</h1>
-      <p class="body text-secondary">
-        Downloading first, then queued tracks and saved files, newest first.
-      </p>
+      <p class="body text-secondary">Download music from your library before going offline.</p>
     </header>
 
     {#if loading}
@@ -133,7 +131,7 @@
     {:else if !loading && !downloadError && !cache.error}
       <div class="stack-md">
         <h2 class="heading-sm">No downloads yet</h2>
-        <p class="body">Download music from your library to listen offline.</p>
+        <p class="body">Your saved tracks will appear here.</p>
         <div class="row-sm">
           <a class="button" data-variant="secondary" data-size="text" href="#/library"
             >Open library</a
