@@ -523,6 +523,13 @@ it.each([
       "#/downloads",
       "#/settings",
     ]);
+    expect([...nav.querySelectorAll("a")].map((link) => link.textContent?.trim())).toEqual([
+      "Your library",
+      "Search",
+      "Downloads",
+      "Settings",
+    ]);
+    expect(nav.querySelector("a[title], a[aria-label]")).toBeNull();
     expect(nav.querySelector('[aria-current="page"]')?.getAttribute("href")).toBe(
       route.startsWith("/library") ? "#/library" : `#${route}`,
     );

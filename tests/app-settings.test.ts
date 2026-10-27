@@ -305,9 +305,9 @@ describe("app settings", () => {
     expect(popover.textContent).toContain("interrupts playback");
     expect(button("Close app update").getAttribute("command")).toBe("hide-popover");
     expect(target.querySelector('.settings-view [aria-label="App update"]')).toBeNull();
-    const settings = target.querySelector('a[aria-label="Settings"]')!;
-    expect(settings.getAttribute("title")).toBe("Settings");
-    expect(settings.querySelector("span")).toBeNull();
+    const settings = target.querySelector('.app-sidebar a[href="#/settings"]')!;
+    expect(settings.textContent?.trim()).toBe("Settings");
+    expect(settings.getAttribute("title")).toBeNull();
     expect(target.querySelector("#player-dialog #update-popover")).toBeNull();
     button("Update now").click();
     flushSync();

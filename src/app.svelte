@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon, { type IconName } from "./icon.svelte";
+  import Icon from "./icon.svelte";
   import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
@@ -33,12 +33,6 @@
   // Entry points explicitly supply infrastructure; UI and domain state belong to App.
   let { network, auth, updaterComponent: Updater, embedded = false }: Props = $props();
 
-  const navigationLinks: { path: string; label: string; icon: IconName }[] = [
-    { path: "/library", label: "Your library", icon: "disc" },
-    { path: "/search", label: "Search", icon: "search" },
-    { path: "/downloads", label: "Downloads", icon: "download" },
-    { path: "/settings", label: "Settings", icon: "settings" },
-  ];
   let navigationDrawer: HTMLDialogElement;
   let navigationOpen = $state(false);
 
@@ -233,23 +227,54 @@
 
 {#snippet navigation()}
   <nav class="stack-sm" aria-label="Main navigation">
-    {#each navigationLinks as link}
-      <a
-        class="menu-item"
-        href={`#${link.path}`}
-        title={link.label}
-        aria-label={link.label}
-        aria-current={isCurrentPage(link.path) ? "page" : undefined}
-        onclick={() => navigationDrawer?.close()}
-      >
-        <Icon
-          name={link.icon}
-          size={24}
-          color={isCurrentPage(link.path) ? "var(--accent)" : undefined}
-        />
-        {link.label}
-      </a>
-    {/each}
+    <a
+      class="menu-item"
+      href="#/library"
+      aria-current={isCurrentPage("/library") ? "page" : undefined}
+      onclick={() => navigationDrawer?.close()}
+    >
+      <Icon name="disc" size={24} color={isCurrentPage("/library") ? "var(--accent)" : undefined} />
+      Your library
+    </a>
+    <a
+      class="menu-item"
+      href="#/search"
+      aria-current={isCurrentPage("/search") ? "page" : undefined}
+      onclick={() => navigationDrawer?.close()}
+    >
+      <Icon
+        name="search"
+        size={24}
+        color={isCurrentPage("/search") ? "var(--accent)" : undefined}
+      />
+      Search
+    </a>
+    <a
+      class="menu-item"
+      href="#/downloads"
+      aria-current={isCurrentPage("/downloads") ? "page" : undefined}
+      onclick={() => navigationDrawer?.close()}
+    >
+      <Icon
+        name="download"
+        size={24}
+        color={isCurrentPage("/downloads") ? "var(--accent)" : undefined}
+      />
+      Downloads
+    </a>
+    <a
+      class="menu-item"
+      href="#/settings"
+      aria-current={isCurrentPage("/settings") ? "page" : undefined}
+      onclick={() => navigationDrawer?.close()}
+    >
+      <Icon
+        name="settings"
+        size={24}
+        color={isCurrentPage("/settings") ? "var(--accent)" : undefined}
+      />
+      Settings
+    </a>
   </nav>
 {/snippet}
 
