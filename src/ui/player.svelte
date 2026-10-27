@@ -6,7 +6,7 @@
   import type { Cache } from "../cache.svelte";
   import type { Playback } from "../playback.svelte";
   import type AudioPlayer from "../audio-player.svelte";
-  import { formatTime } from "../format-time";
+  import { formatTime } from "../time";
 
   interface Props {
     cache: Cache;
