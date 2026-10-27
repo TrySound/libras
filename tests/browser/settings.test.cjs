@@ -206,9 +206,13 @@ test("Settings native controls, layout, and persistence", async (t) => {
       await waitConnected();
     });
 
-    await t.test("Disconnect restores focus to Host", async () => {
+    await t.test("Disconnect does not autofocus Host", async () => {
       await page.getByRole("button", { name: "Disconnect", exact: true }).click();
-      await page.waitForFunction(() => document.activeElement?.id === "server-host");
+      await page.locator("#server-host").waitFor();
+      assert.equal(
+        await page.locator("#server-host").evaluate((input) => input === document.activeElement),
+        false,
+      );
     });
     assert.deepEqual(errors, []);
   } finally {

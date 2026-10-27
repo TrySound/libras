@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onDestroy, tick } from "svelte";
   import Icon from "./icon.svelte";
   import Loader from "./ui/loader.svelte";
   import type { Session } from "./session.svelte";
@@ -13,10 +12,8 @@
   let host = $state("");
   let username = $state("");
   let password = $state("");
-  let hostInput = $state.raw<HTMLInputElement>();
   let submitButton = $state.raw<HTMLButtonElement>();
   let view = $state.raw<HTMLElement>();
-  let mounted = true;
 
   const connectionLabels = {
     initializing: "Synchronizing…",
@@ -54,33 +51,21 @@
       .replace(/\/$/, "");
   });
 
-  onDestroy(() => {
-    mounted = false;
-    password = "";
-  });
-
   async function submitConnection(event: SubmitEvent) {
     event.preventDefault();
-    if (session.busy || session.auth) return;
     const sourceURL = window.location.href;
-    const form = event.currentTarget;
-    // Keep keyboard focus on a mounted control before disabling the fields.
-    if (form instanceof HTMLFormElement && form.contains(document.activeElement))
-      submitButton?.focus();
+    // Keep focus on the button before Session disables the fields.
+    submitButton?.focus();
     if (await session.connect({ host, username, password })) {
       host = username = password = "";
       // Session may finish after navigation starts or an embedded app is hidden.
-      if (mounted && window.location.href === sourceURL && view?.checkVisibility())
-        navigate("/library");
+      if (window.location.href === sourceURL && view?.checkVisibility()) navigate("/library");
     }
   }
 
-  async function disconnectServer(event: MouseEvent) {
-    const restoreFocus = document.activeElement === event.currentTarget;
+  function disconnectServer() {
     session.disconnect();
     host = username = password = "";
-    await tick();
-    if (mounted && restoreFocus && document.activeElement === document.body) hostInput?.focus();
   }
 </script>
 
@@ -162,7 +147,6 @@
                 name="host"
                 type="text"
                 inputmode="url"
-                bind:this={hostInput}
                 bind:value={host}
                 placeholder="music.example.com"
                 autocomplete="url"

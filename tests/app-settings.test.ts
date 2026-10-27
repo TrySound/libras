@@ -451,11 +451,7 @@ describe("app settings", () => {
     expect(button("Refreshing…").querySelector("svg, .loader")).toBeNull();
     button("Refreshing…").click();
     await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
-    button("Disconnect").focus();
     button("Disconnect").click();
-    await vi.waitFor(() =>
-      expect(document.activeElement).toBe(target.querySelector("#server-host")),
-    );
     flushSync();
     expect(auth.load()).toBeNull();
     expect(target.querySelector("form")).not.toBeNull();
