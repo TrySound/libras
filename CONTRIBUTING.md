@@ -128,10 +128,6 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   completed connections must not redirect after leaving or hiding Settings. PWA updates remain
   in a shared shell popover. Presentation examples belong in `styleguide.html`; behavior contracts
   are covered by `tests/app-settings.test.ts`.
-- The mini-player (`src/ui/mini-player.svelte`) is presentation-only; App retains Player and
-  Playback ownership. Desktop transports and native seeking switch to Play/Pause and passive
-  progress at the app container's phone breakpoint, including embedded demos. Keep the native
-  Now Playing invoker, formatted slider value, and intrinsic CSS-anchor clearance.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
   and resolves optional IDs from the current library without changing saved download metadata.
