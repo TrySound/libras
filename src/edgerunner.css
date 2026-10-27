@@ -894,8 +894,7 @@
     }
   }
 
-  /* Shared item surface. The first consumer is an informational download row,
-   * so interactive feedback will arrive with an interactive item consumer. */
+  /* Shared navigation/action surface; informational rows remain noninteractive. */
   .menu-item {
     position: relative;
     display: flex;
@@ -915,24 +914,47 @@
     text-align: start;
     text-decoration: none;
     overflow-wrap: anywhere;
-  }
+    translate: 0;
+    scale: 1;
 
-  a.menu-item {
-    &:hover,
-    &:focus-visible {
-      background: var(--item-bg-hover);
-      border-color: var(--item-border-hover);
+    &:where(button, a) {
+      cursor: pointer;
     }
-    &:active {
-      background: var(--item-bg-active);
-      border-color: var(--item-border-active);
-    }
+
     &[aria-current="page"] {
       border-color: var(--accent);
+    }
+
+    &:where(button, a):is(:hover, :focus-visible):not(:disabled) {
+      background: var(--item-bg-hover);
+      &:not([aria-current]) {
+        border-color: var(--item-border-hover);
+      }
+    }
+    &:where(button, a):active:not(:disabled) {
+      background: var(--item-bg-active);
+      &:not([aria-current]) {
+        border-color: var(--item-border-active);
+      }
     }
     &:focus-visible {
       outline: var(--focus-ring);
       outline-offset: var(--focus-ring-offset);
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      transition:
+        background-color var(--motion-duration-feedback),
+        border-color var(--motion-duration-feedback),
+        translate var(--motion-duration-press),
+        scale var(--motion-duration-press);
+      &:where(button, a):active:not(:disabled) {
+        translate: 0 var(--press-offset);
+        scale: var(--press-scale);
+      }
     }
   }
 
@@ -961,29 +983,25 @@
     border-right: var(--border-width) solid var(--shell-border);
   }
 
-  /* Native right-sheet shell; inner content composes the ordinary flow utilities.
-   * Geometry, backdrop, and entry/exit timing follow the prototype, not the app. */
-  :where(:scope, *).right-sheet {
-    --sheet-closed-translate: 100% 0;
+  /* Prototype overlay shells share appearance; sheets also share modal motion. */
+  :where(:scope, *).bottom-sheet,
+  :where(:scope, *).right-sheet,
+  :where(:scope, *).popover {
     box-sizing: border-box;
     position: fixed;
     margin: 0;
     max-width: none;
     padding: var(--space-lg);
-    padding-block-start: max(var(--space-lg), env(safe-area-inset-top));
-    padding-block-end: max(var(--space-lg), env(safe-area-inset-bottom));
-    padding-inline-end: max(var(--space-lg), env(safe-area-inset-right));
     border: 0;
-    border-radius: 0;
     background: var(--shell-bg);
     backdrop-filter: blur(4px);
     color: var(--text-primary);
     overflow: auto;
-    inset: 0 0 0 auto;
-    width: min(360px, calc(100dvw - 2 * var(--space-md)));
-    height: 100dvh;
-    max-height: none;
+  }
 
+  :where(:scope, *).bottom-sheet,
+  :where(:scope, *).right-sheet {
+    border-radius: 0;
     &:modal {
       overscroll-behavior: contain;
     }
@@ -1034,6 +1052,17 @@
     }
   }
 
+  :where(:scope, *).right-sheet {
+    --sheet-closed-translate: 100% 0;
+    inset: 0 0 0 auto;
+    width: min(360px, calc(100dvw - 2 * var(--space-md)));
+    height: 100dvh;
+    max-height: none;
+    padding-block-start: max(var(--space-lg), env(safe-area-inset-top));
+    padding-block-end: max(var(--space-lg), env(safe-area-inset-bottom));
+    padding-inline-end: max(var(--space-lg), env(safe-area-inset-right));
+  }
+
   :where(:scope, *).notification-popover {
     box-sizing: border-box;
     inset: 1rem 1rem auto auto;
@@ -1061,14 +1090,18 @@
     &:has(> .track-row-number) {
       grid-template-columns: max(2ch, 24px) minmax(0, 1fr) max-content;
     }
+  }
 
+  .track-row,
+  .tile-grid-item {
     @media (prefers-reduced-motion: no-preference) {
-      animation: --edgerunner-list-entry auto linear both;
-      animation-timeline: view(block);
-      animation-range: entry 0% cover 20%;
-
-      &:has(:focus-visible) {
-        animation: none;
+      @supports (animation-timeline: view()) {
+        animation: --edgerunner-list-entry auto linear both;
+        animation-timeline: view(block);
+        animation-range: entry 0% cover 20%;
+        &:has(:focus-visible) {
+          animation: none;
+        }
       }
     }
   }
@@ -1097,16 +1130,6 @@
   .tile-grid-item {
     --tile-padding: var(--space-md);
     aspect-ratio: 1;
-    @media (prefers-reduced-motion: no-preference) {
-      @supports (animation-timeline: view()) {
-        animation: --edgerunner-list-entry auto linear both;
-        animation-timeline: view(block);
-        animation-range: entry 0% cover 20%;
-        &:has(:focus-visible) {
-          animation: none;
-        }
-      }
-    }
   }
 
   .tile {
@@ -1184,7 +1207,6 @@
   .tile-content {
     position: relative;
     isolation: isolate;
-    overflow-wrap: anywhere;
     .tile:has(> .tile-artwork > img:not([hidden])) > & {
       color: var(--tile-text);
       &::before {
@@ -1223,98 +1245,13 @@
     }
   }
 
-  button.menu-item {
-    cursor: pointer;
-    &:not(:disabled):is(:hover, :focus-visible) {
-      background: var(--item-bg-hover);
-      border-color: var(--item-border-hover);
-    }
-    &:not(:disabled):active {
-      background: var(--item-bg-active);
-      border-color: var(--item-border-active);
-    }
-    &:focus-visible {
-      outline: var(--focus-ring);
-      outline-offset: var(--focus-ring-offset);
-    }
-    &:disabled {
-      opacity: 0.4;
-      cursor: default;
-    }
-    @media (prefers-reduced-motion: no-preference) {
-      transition:
-        background-color var(--motion-duration-feedback),
-        border-color var(--motion-duration-feedback),
-        translate var(--motion-duration-press),
-        scale var(--motion-duration-press);
-      &:active:not(:disabled) {
-        translate: 0 var(--press-offset);
-        scale: var(--press-scale);
-      }
-    }
-  }
-
-  :where(:scope, *).bottom-sheet,
-  :where(:scope, *).popover {
-    box-sizing: border-box;
-    position: fixed;
-    margin: 0;
-    padding: var(--space-lg);
-    background: var(--shell-bg);
-    backdrop-filter: blur(4px);
-    color: var(--text-primary);
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
-
   :where(:scope, *).bottom-sheet {
+    --sheet-closed-translate: 0 100%;
     inset: auto 0 0;
     inline-size: 100%;
-    max-inline-size: none;
     max-block-size: calc(100dvh - var(--space-lg));
     padding-block-end: calc(var(--space-lg) + env(safe-area-inset-bottom));
-    border: 0;
     border-top: var(--border-width) solid var(--shell-border);
-    border-radius: 0;
-    &::backdrop {
-      background: var(--canvas-bg);
-      opacity: 0.65;
-    }
-    @media (prefers-reduced-motion: no-preference) {
-      translate: 0 100%;
-      pointer-events: none;
-      transition:
-        translate var(--motion-duration-exit) var(--motion-ease-exit),
-        display var(--motion-duration-exit) allow-discrete,
-        overlay var(--motion-duration-exit) allow-discrete;
-      &::backdrop {
-        opacity: 0;
-        pointer-events: none;
-        transition:
-          opacity var(--motion-duration-exit),
-          display var(--motion-duration-exit) allow-discrete,
-          overlay var(--motion-duration-exit) allow-discrete;
-      }
-      &[open] {
-        translate: 0;
-        pointer-events: auto;
-        transition-duration: var(--motion-duration-enter);
-        transition-timing-function: var(--motion-ease-enter);
-      }
-      &[open]::backdrop {
-        opacity: 0.65;
-        pointer-events: auto;
-        transition-duration: var(--motion-duration-enter);
-      }
-      @starting-style {
-        &[open] {
-          translate: 0 100%;
-        }
-        &[open]::backdrop {
-          opacity: 0;
-        }
-      }
-    }
   }
 
   .dialog-handle {
@@ -1329,6 +1266,7 @@
   }
 
   :where(:scope, *).popover {
+    overscroll-behavior: contain;
     inset: var(--space-md);
     margin: auto;
     inline-size: min(360px, calc(100dvw - 2 * var(--space-md)));
