@@ -258,6 +258,14 @@
     inline-size: min(360px, anchor-size(width));
     block-size: anchor-size(height);
   }
+  /* Notifications enter the top layer too; constrain them to the embedded
+   * app's anchor rather than positioning them in the host viewport. */
+  .embedded :global(.notification-popover) {
+    position-anchor: --libras-app;
+    inset: calc(anchor(top) + 1rem) calc(anchor(right) + 1rem) auto auto;
+    inline-size: min(26rem, calc(anchor-size(width) - 2rem));
+    max-block-size: calc(anchor-size(height) - 2rem);
+  }
   @container navigation (width > 600px) {
     .shell-header {
       min-block-size: 76px;
