@@ -11,7 +11,7 @@
 
 /* Share the canvas recipe with the standalone document so its overscroll area
  * matches the shell. Embedded apps must never repaint their host document. */
-:where(.ui-edgerunner, :root:has(.app-root.standalone)) {
+:where(.ui-edgerunner, .app-shell, :root:has(.app-root.standalone)) {
   /* Color primitives: literal palette values, including published anchors and scales. */
   --palette-maroon: #550000;
 
@@ -82,6 +82,44 @@
 :root:has(.app-root.standalone) {
   background: var(--canvas-bg);
   background-attachment: local;
+}
+
+/* Shared layout roles belong to both the appearance boundary and the shell.
+ * The shell does not opt legacy route descendants into Edgerunner appearance. */
+:where(.ui-edgerunner, .app-shell) {
+  --content-padding-block: var(--space-lg);
+  --content-padding-inline: max(
+    var(--space-lg),
+    env(safe-area-inset-left),
+    env(safe-area-inset-right)
+  );
+  --content-end-space: 20dvh;
+  --topbar-min-height: 76px;
+  --layer-header: 10;
+  --layer-player: 20;
+  --layer-notification: 30;
+}
+
+@media (width <= 600px) {
+  :where(.ui-edgerunner, .app-shell) {
+    --content-padding-inline: max(
+      var(--space-md),
+      env(safe-area-inset-left),
+      env(safe-area-inset-right)
+    );
+    --topbar-min-height: 60px;
+  }
+}
+
+@container app (width <= 600px) {
+  :where(.ui-edgerunner, .app-shell) {
+    --content-padding-inline: max(
+      var(--space-md),
+      env(safe-area-inset-left),
+      env(safe-area-inset-right)
+    );
+    --topbar-min-height: 60px;
+  }
 }
 
 @scope (.ui-edgerunner) {
@@ -223,17 +261,6 @@
     --space-lg: 24px;
     --space-xl: 48px;
 
-    /* Shared page gutters and permanent end-of-content scroll runway. */
-    --content-padding-block: var(--space-lg);
-    --content-padding-inline: max(
-      var(--space-lg),
-      env(safe-area-inset-left),
-      env(safe-area-inset-right)
-    );
-    --content-end-space: 20dvh;
-    --topbar-min-height: 76px;
-    --layer-header: 10;
-
     /* Border/focus geometry; the outline deliberately composes geometry and color. */
     --border-width: 2px;
     --focus-ring: 4px solid var(--accent);
@@ -285,24 +312,6 @@
   @media (max-width: 600px) {
     :scope {
       --heading-xl-leading: var(--leading-compact);
-      --topbar-min-height: 60px;
-      --content-padding-inline: max(
-        var(--space-md),
-        env(safe-area-inset-left),
-        env(safe-area-inset-right)
-      );
-    }
-  }
-
-  /* Embedded app gutters follow its own width, not the host page viewport. */
-  @container app (width <= 600px) {
-    :scope {
-      --topbar-min-height: 60px;
-      --content-padding-inline: max(
-        var(--space-md),
-        env(safe-area-inset-left),
-        env(safe-area-inset-right)
-      );
     }
   }
 
@@ -1125,5 +1134,125 @@
     margin: auto;
     color: var(--text-primary);
     pointer-events: none;
+  }
+}
+
+/* App composition from libras-new: one column, shared page gutters, a fixed
+ * sidebar, and an intrinsically sized bottom-sticky player in normal flow.
+ * This layout opt-in is separate from .ui-edgerunner during route migration. */
+@scope (.app-shell) {
+  :scope {
+    --sidebar-width: 280px;
+    position: relative;
+    isolation: isolate;
+    min-block-size: 100dvh;
+    display: flex;
+    flex-direction: column;
+    container: navigation / inline-size;
+    anchor-name: --app-shell;
+    anchor-scope: --app-shell, --mini-player, --app-status-actions;
+  }
+
+  .app-page {
+    --app-header-height: var(--topbar-min-height);
+    box-sizing: border-box;
+    flex: 1;
+    inline-size: 100%;
+    min-inline-size: 0;
+    margin: 0;
+    padding: var(--content-padding-block) var(--content-padding-inline);
+    overflow-wrap: anywhere;
+  }
+
+  /* Route boundaries supply type and controls, not independent page canvases. */
+  .app-page > .ui-edgerunner {
+    background: transparent;
+  }
+
+  .app-sidebar {
+    position: fixed;
+    inset: 0 auto
+      calc(anchor-size(--mini-player height, 0px) + anchor-size(--app-status-actions height, 0px)) 0;
+    inline-size: var(--sidebar-width);
+  }
+
+  .app-player {
+    position: sticky;
+    bottom: 0;
+    anchor-name: --mini-player;
+    z-index: var(--layer-player);
+  }
+
+  @container navigation (width <= 600px) {
+    .app-page {
+      padding-block-end: calc(var(--content-padding-block) + var(--space-md));
+    }
+  }
+
+  @container navigation (width < 64rem) {
+    .app-sidebar:not(:focus-within) {
+      display: none;
+    }
+  }
+
+  @container navigation (width >= 64rem) {
+    .app-page {
+      --app-header-height: 0px;
+      padding-inline-start: calc(var(--sidebar-width) + var(--content-padding-inline));
+    }
+
+    /* App errors/updates extend the prototype's navigation. Keep one mounted
+     * set of controls, reserving their actual height rather than a fixed gap. */
+    :scope > .app-header,
+    .app-header > .app-header-actions {
+      display: contents;
+    }
+    .app-header > [data-nav="brand"]:not(:focus-within),
+    .app-header-action:not(:focus) {
+      display: none;
+    }
+    .app-status-actions {
+      position: fixed;
+      inset: auto auto anchor-size(--mini-player height, 0px) 0;
+      anchor-name: --app-status-actions;
+      inline-size: var(--sidebar-width);
+      box-sizing: border-box;
+      padding: var(--space-sm) var(--content-padding-inline);
+      background: var(--surface-bg);
+      border-inline-end: var(--border-width) solid var(--shell-border);
+      z-index: var(--layer-header);
+    }
+  }
+
+  /* Embedded variant: the host supplies a viewport, without body-owned layout.
+   * Native top-layer overlays remain bounded to that same app viewport. */
+  :scope[data-embedded] {
+    min-block-size: 100%;
+    block-size: 100%;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: var(--canvas-bg);
+    background-attachment: local;
+
+    .app-sidebar {
+      position: absolute;
+    }
+    @container navigation (width >= 64rem) {
+      .app-status-actions {
+        position: absolute;
+      }
+    }
+    .right-sheet {
+      position-anchor: --app-shell;
+      inset: anchor(top) anchor(right) auto auto;
+      inline-size: min(360px, calc(anchor-size(width) - 2 * var(--space-md)));
+      block-size: anchor-size(height);
+    }
+    .notification-popover {
+      position-anchor: --app-shell;
+      inset: calc(anchor(top) + var(--space-md)) calc(anchor(right) + var(--space-md)) auto auto;
+      inline-size: min(26rem, calc(anchor-size(width) - 2 * var(--space-md)));
+      max-block-size: calc(anchor-size(height) - 2 * var(--space-md));
+    }
   }
 }

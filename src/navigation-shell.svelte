@@ -5,10 +5,14 @@
   let {
     children,
     actions,
+    hasActions,
+    miniPlayer,
     embedded = false,
   }: {
     children: Snippet;
     actions: Snippet;
+    hasActions: boolean;
+    miniPlayer: Snippet;
     embedded?: boolean;
   } = $props();
   const links: { path: string; label: string; icon: IconName }[] = [
@@ -17,11 +21,7 @@
     { path: "/downloads", label: "Downloads", icon: "download" },
     { path: "/settings", label: "Settings", icon: "settings" },
   ];
-  let root: HTMLDivElement;
-  let sidebar: HTMLElement;
-  let header: HTMLElement;
   let drawer: HTMLDialogElement;
-  let menu: HTMLButtonElement;
   let path = $state("/library");
   let open = $state(false);
   const active = (destination: string) =>
@@ -37,29 +37,7 @@
     sync();
     window.addEventListener("hashchange", sync);
     window.navigation.addEventListener("currententrychange", sync);
-    // Observe the actual app width: a narrow embedded app must not gain a sidebar.
-    let desktop = false;
-    const observer = new ResizeObserver(() => {
-      const next =
-        root.clientWidth >= 64 * parseFloat(getComputedStyle(document.documentElement).fontSize);
-      if (next === desktop) return;
-      desktop = next;
-      const focused = document.activeElement as HTMLElement | null;
-      const outgoing = next
-        ? header.contains(focused) || drawer.contains(focused)
-        : sidebar.contains(focused);
-      const key = focused?.closest<HTMLElement>("[data-nav]")?.dataset.nav;
-      if (next && drawer.open) drawer.close();
-      if (!outgoing) return;
-      const target = next
-        ? (sidebar.querySelector<HTMLElement>(`[data-nav="${key ?? path.split("/")[1]}"]`) ??
-          sidebar.querySelector<HTMLElement>('[aria-current="page"]'))
-        : (header.querySelector<HTMLElement>(`[data-nav="${key}"]`) ?? menu);
-      target?.focus({ preventScroll: true });
-    });
-    observer.observe(root);
     return () => {
-      observer.disconnect();
       window.removeEventListener("hashchange", sync);
       window.navigation.removeEventListener("currententrychange", sync);
     };
@@ -68,7 +46,7 @@
 
 {#snippet brand()}
   <a
-    class="shell-brand button-quiet row-sm"
+    class="button-quiet row-sm"
     href="#/library"
     aria-label="Libras home"
     data-nav="brand"
@@ -98,37 +76,32 @@
   </nav>
 {/snippet}
 
-<div class="app-shell navigation-shell" class:embedded bind:this={root}>
-  {#if embedded}
-    <div class="shell-canvas ui-edgerunner" aria-hidden="true"></div>
-  {/if}
-  <aside
-    class="sidebar app-sidebar stack-lg ui-edgerunner"
-    aria-label="Navigation"
-    bind:this={sidebar}
-  >
+<div class="app-shell" data-embedded={embedded || undefined}>
+  <aside class="sidebar app-sidebar stack-lg ui-edgerunner" aria-label="Navigation">
     {@render brand()}
     {@render navigation()}
   </aside>
-  <header class="topbar app-header row-md row-justify row-wrap ui-edgerunner" bind:this={header}>
+  <header class="topbar app-header row-md row-justify row-wrap ui-edgerunner">
     {@render brand()}
-    <div class="row-sm header-actions">
-      <div class="row-sm app-status-actions">{@render actions()}</div>
-      <a class="button mobile-action" href="#/search" aria-label="Search" data-nav="search"
+    <div class="row-sm app-header-actions">
+      {#if hasActions}
+        <div class="row-sm app-status-actions">{@render actions()}</div>
+      {/if}
+      <a class="button app-header-action" href="#/search" aria-label="Search" data-nav="search"
         ><Icon name="search" size={24} /></a
       >
       <button
-        class="button mobile-action"
+        class="button app-header-action"
         aria-label="Open menu"
         aria-controls="navigation-dialog"
         aria-expanded={open}
-        bind:this={menu}
         commandfor="navigation-dialog"
         command="show-modal"><Icon name="menu-lines" size={24} /></button
       >
     </div>
   </header>
   <main class="app-page" id="main-content">{@render children()}</main>
+  {@render miniPlayer()}
   <dialog
     class="right-sheet ui-edgerunner"
     id="navigation-dialog"
@@ -153,96 +126,3 @@
     </div>
   </dialog>
 </div>
-
-<style>
-  /* Shell composition only. Shared components own surfaces, spacing and motion. */
-  .app-shell {
-    --sidebar-width: 280px;
-    position: relative;
-    min-block-size: 100%;
-    container: navigation / inline-size;
-  }
-  .app-shell:not(.embedded) {
-    min-block-size: 100dvh;
-  }
-  /* Standalone has one document-owned canvas, not a gradient restarted by
-   * each route's intrinsic content height. Embedded routes keep their canvas. */
-  .app-shell:not(.embedded) .app-page > :global(.ui-edgerunner) {
-    background: transparent;
-  }
-  .app-shell.embedded {
-    block-size: 100%;
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
-  .shell-canvas {
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: var(--canvas-bg);
-  }
-  .app-sidebar {
-    position: fixed;
-    inset: 0 auto var(--player-clearance, 0px) 0;
-    inline-size: var(--sidebar-width);
-    /* Reserve the persistent error/update controls above the legacy player. */
-    padding-block-end: 4rem;
-  }
-  .embedded .app-sidebar {
-    position: absolute;
-  }
-  .app-page {
-    min-inline-size: 0;
-    padding-block-end: calc(
-      var(--player-clearance, 0px) + var(--space-lg) + env(safe-area-inset-bottom)
-    );
-  }
-  .app-status-actions:empty {
-    display: none;
-  }
-  .embedded :global(.right-sheet) {
-    position: fixed;
-    position-anchor: --libras-app;
-    inset: anchor(top) anchor(right) auto auto;
-    inline-size: min(360px, calc(anchor-size(width) - 2 * var(--space-md)));
-    block-size: anchor-size(height);
-  }
-  /* Notifications enter the top layer too; constrain them to the embedded
-   * app's anchor rather than positioning them in the host viewport. */
-  .embedded :global(.notification-popover) {
-    position-anchor: --libras-app;
-    inset: calc(anchor(top) + 1rem) calc(anchor(right) + 1rem) auto auto;
-    inline-size: min(26rem, calc(anchor-size(width) - 2rem));
-    max-block-size: calc(anchor-size(height) - 2rem);
-  }
-  @container navigation (width >= 64rem) {
-    /* Keep one mounted set of status controls without a desktop topbar. */
-    .app-header,
-    .header-actions {
-      display: contents;
-    }
-    .app-header > :global(.shell-brand):not(:focus-within),
-    .mobile-action:not(:focus) {
-      display: none;
-    }
-    .app-status-actions {
-      position: fixed;
-      inset: auto auto var(--player-clearance, 0px) 0;
-      inline-size: var(--sidebar-width);
-      box-sizing: border-box;
-      padding: var(--space-sm) var(--content-padding-inline);
-      z-index: var(--layer-header);
-    }
-    .embedded .app-status-actions {
-      position: absolute;
-    }
-    .app-page {
-      padding-inline-start: var(--sidebar-width);
-    }
-  }
-  @container navigation (width < 64rem) {
-    .app-sidebar:not(:focus-within) {
-      display: none;
-    }
-  }
-</style>

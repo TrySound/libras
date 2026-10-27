@@ -186,7 +186,7 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/settings.test.cjs
 ```
 
-The navigation shell's native drawer, active deep links, responsive focus transfer, document
+The navigation shell's native drawer, active deep links, CSS responsive visibility, document
 scrolling, and enlarged-text layout have a separate browser check:
 
 ```sh
@@ -194,13 +194,17 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/navigation.test.cjs
 ```
 
-`src/navigation-shell.svelte` owns app placement, responsive visibility, and embedded/legacy
-compatibility. Reuse the prototype-derived `.topbar`, `.sidebar`, and `.right-sheet` components
-in `src/edgerunner.css`, plus the existing `.button-quiet` and flow utilities; do not restyle
-those primitives in the shell. The styleguide demonstrates the same production components.
-Keep Session and Player in App; never key or remount them at layout breakpoints. Its container breakpoint is shared with the
-ResizeObserver focus handoff. The embedded app retains host-owned sizing/scrolling; standalone
-uses document scrolling. The legacy player's measured height supplies clearance for both layouts.
+`src/navigation-shell.svelte` owns navigation behavior and markup only; it has no local styles.
+`src/edgerunner.css` owns the prototype-derived `.app-shell` composition as well as `.topbar`,
+`.sidebar`, `.right-sheet`, `.button-quiet`, and flow primitives. Main owns shared page gutters;
+routes must not duplicate them. The player stays in normal flow in the bottom-sticky `.app-player`
+slot, and CSS anchor sizing supplies sidebar/status clearance without JavaScript measurements.
+The styleguide exercises the same full composition in a bounded embedded frame. Only the legacy
+player surface bridge and legacy-route padding reset remain in `src/app.css` until those migrate.
+Keep Session and Player in App; never key or remount them at layout breakpoints. Container queries
+own responsive visibility; `:focus-within` retains a focused outgoing copy until focus leaves it.
+Resizing does not imperatively move focus or close an open native drawer. Embedded apps retain
+host-owned sizing and local scrolling; standalone uses document scrolling.
 
 For a subpath deployment, include the base path in `PREVIEW_URL`. These optional suites are
 not part of `pnpm test`; DOM emulation does not validate CSS scope, layout, or native overlays.

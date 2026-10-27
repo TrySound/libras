@@ -74,6 +74,10 @@
       .topbar-example-content {
         padding: var(--content-padding-block) var(--content-padding-inline);
       }
+      .shell-example {
+        block-size: 26rem;
+        container: app / size;
+      }
       @media (max-width: 600px) {
         .styleguide {
           padding: var(--space-md);
@@ -578,6 +582,59 @@
             Selected frames and icons use gold; labels remain white. Links retain native keyboard
             behavior.
           </p>
+        </section>
+
+        <section class="card stack-lg specimen-wide" aria-labelledby="shell-heading">
+          <h2 class="heading-md uppercase" id="shell-heading">Shared shell composition</h2>
+          <p class="body">
+            This bounded embedded specimen uses the same app-shell, app-page, app-sidebar, and
+            app-player composition as the app. Only the reference frame's size is local. CSS anchor
+            sizing reserves the player's intrinsic height without script measurements.
+          </p>
+          <div class="shell-example">
+            <div class="app-shell" data-embedded id="guide-shell">
+              <aside class="sidebar app-sidebar stack-lg" aria-label="Shell specimen navigation">
+                <span class="brand uppercase">Libras</span>
+                <nav class="stack-sm" aria-label="Shell specimen links">
+                  <a class="menu-item" href="#shell-heading" aria-current="page">Your library</a>
+                  <a class="menu-item" href="#shell-heading">Search</a>
+                </nav>
+              </aside>
+              <header class="topbar app-header row-md row-justify">
+                <span class="brand uppercase" data-nav="brand">Libras</span>
+                <button
+                  class="button app-header-action"
+                  commandfor="guide-navigation"
+                  command="show-modal"
+                  aria-label="Open shell specimen menu"
+                >
+                  <svg width="24" height="24" aria-hidden="true">
+                    <use href="#icon-menu-lines"></use>
+                  </svg>
+                </button>
+              </header>
+              <div class="app-page">
+                <div class="stack-lg scroll-runway">
+                  <h3 class="heading-lg">Content with shared gutters</h3>
+                  <p class="body">
+                    The main region grows above the player. A wide container reserves the sidebar; a
+                    narrow container exposes the sticky topbar instead.
+                  </p>
+                  <p class="body">
+                    Scroll this frame to see native content scrolling while the player remains
+                    visible. The sidebar has its own scroll region and ends above the actual player
+                    height.
+                  </p>
+                </div>
+              </div>
+              <div class="app-player card row-md row-justify">
+                <p class="body">Intrinsic player slot</p>
+                <button class="button" aria-label="Player slot specimen">
+                  <svg width="24" height="24" aria-hidden="true"><use href="#icon-play"></use></svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="card stack-lg" aria-labelledby="overlay-heading">

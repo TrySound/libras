@@ -50,22 +50,6 @@
   type Album = Immutable<AlbumRecord>;
   type Artist = Immutable<ArtistRecord>;
 
-  let appRoot: HTMLDivElement;
-  // The legacy player can grow with text; shell clearance follows its real box.
-  function playerClearance(element: HTMLDivElement) {
-    const update = () => {
-      const bottom = parseFloat(getComputedStyle(element).bottom) || 0;
-      appRoot.style.setProperty("--player-clearance", `${element.offsetHeight + bottom + 8}px`);
-    };
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    update();
-    return () => {
-      observer.disconnect();
-      appRoot.style.removeProperty("--player-clearance");
-    };
-  }
-
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
 
@@ -227,8 +211,8 @@
   />
 {/snippet}
 
-<div class="app-root" class:standalone={!embedded} bind:this={appRoot}>
-  <NavigationShell {embedded}>
+<div class="app-root" class:standalone={!embedded}>
+  <NavigationShell {embedded} hasActions={hasErrors || !!appUpdate?.message}>
     {#snippet actions()}
       {#if hasErrors}
         <button
@@ -317,45 +301,48 @@
         { pattern: "/downloads", render: downloadsRoute },
       ]}
     />
+    {#snippet miniPlayer()}
+      {#if currentTrack}
+        <div class="app-player">
+          <div class="mini-player wings">
+            <button
+              class="linkarea"
+              commandfor="player-dialog"
+              command="show-modal"
+              aria-label="Open player"
+            ></button>
+            <Artwork {covers} id={currentTrack.artworkId} size="sm" loading="eager" />
+            <span class="mini-copy stack-xs">
+              <strong class="type-title truncate">
+                {currentTrack.title}
+              </strong>
+              <small class="type-small text-muted truncate">
+                {currentTrack.displayArtist ?? cache.artists.get(currentTrack.artistIds[0])?.name}
+              </small>
+            </span>
+            <button
+              class="icon-button"
+              data-size="md"
+              data-variant="primary"
+              onclick={() => playback.toggle()}
+              title={player?.playing ? "Pause" : "Play"}
+            >
+              {#if playbackLoading}
+                <Icon name="loading" />
+              {:else if player?.playing}
+                <Icon name="pause" />
+              {:else}
+                <Icon name="play" />
+              {/if}
+            </button>
+            <span class="mini-progress">
+              <span style:width={`${playbackPercent()}%`}></span>
+            </span>
+          </div>
+        </div>
+      {/if}
+    {/snippet}
   </NavigationShell>
-
-  {#if currentTrack}
-    <div class="mini-player wings" {@attach playerClearance}>
-      <button
-        class="linkarea"
-        commandfor="player-dialog"
-        command="show-modal"
-        aria-label="Open player"
-      ></button>
-      <Artwork {covers} id={currentTrack.artworkId} size="sm" loading="eager" />
-      <span class="mini-copy stack-xs">
-        <strong class="type-title truncate">
-          {currentTrack.title}
-        </strong>
-        <small class="type-small text-muted truncate">
-          {currentTrack.displayArtist ?? cache.artists.get(currentTrack.artistIds[0])?.name}
-        </small>
-      </span>
-      <button
-        class="icon-button"
-        data-size="md"
-        data-variant="primary"
-        onclick={() => playback.toggle()}
-        title={player?.playing ? "Pause" : "Play"}
-      >
-        {#if playbackLoading}
-          <Icon name="loading" />
-        {:else if player?.playing}
-          <Icon name="pause" />
-        {:else}
-          <Icon name="play" />
-        {/if}
-      </button>
-      <span class="mini-progress">
-        <span style:width={`${playbackPercent()}%`}></span>
-      </span>
-    </div>
-  {/if}
 
   <dialog id="player-dialog" class="player-dialog" closedby="any" data-swipedown="close">
     <header class="topbar wings">

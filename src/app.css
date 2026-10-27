@@ -674,8 +674,24 @@
     }
   }
 
-  .standalone .mini-player {
-    position: fixed;
+  /* Temporary bridge: retain the legacy mini-player surface inside the shared
+   * shell's normal-flow, bottom-sticky player slot. Remove with player migration. */
+  .app-player {
+    padding: var(--space-sm) max(var(--space-sm), env(safe-area-inset-right))
+      max(var(--space-sm), env(safe-area-inset-bottom))
+      max(var(--space-sm), env(safe-area-inset-left));
+  }
+
+  .app-player > .mini-player {
+    position: relative;
+    inset: auto;
+  }
+
+  /* The shared page now owns outer gutters; preserve padding inside overlays. */
+  @scope (.app-page) to (.ui-edgerunner, dialog, [popover]) {
+    .view {
+      padding: 0;
+    }
   }
 
   :scope:has(.standalone) {

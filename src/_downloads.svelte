@@ -141,13 +141,3 @@
     {/if}
   </div>
 </section>
-
-<style>
-  /* Temporary page placement inside the legacy scrolling shell. The shell
-   * migration will own the shared page gutters and height instead. */
-  .downloads-view {
-    box-sizing: border-box;
-    min-block-size: 100%;
-    padding: var(--content-padding-block) var(--content-padding-inline);
-  }
-</style>

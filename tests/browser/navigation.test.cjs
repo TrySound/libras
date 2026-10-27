@@ -22,7 +22,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
       const rootStyle = getComputedStyle(document.documentElement);
       const routeStyle = getComputedStyle(document.querySelector(".settings-view"));
       return {
-        fillsViewport: document.querySelector(".navigation-shell").getBoundingClientRect().bottom >= innerHeight,
+        fillsViewport: document.querySelector(".app-shell").getBoundingClientRect().bottom >= innerHeight,
         documentCanvas: rootStyle.backgroundImage.includes("repeating-linear-gradient") && rootStyle.backgroundImage.includes("radial-gradient"),
         routeTransparent: routeStyle.backgroundImage === "none" && routeStyle.backgroundColor === "rgba(0, 0, 0, 0)",
         color: rootStyle.backgroundColor,
@@ -43,12 +43,12 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "#/settings");
     await sidebar.getByRole("link", { name: "Downloads", exact: true }).focus();
     await page.setViewportSize({ width: 768, height: 800 });
-    await page.waitForFunction(
-      () => document.activeElement?.getAttribute("aria-label") === "Open menu",
-    );
+    assert.equal(await sidebar.getByRole("link", { name: "Downloads", exact: true }).evaluate((element) => element === document.activeElement), true);
+    assert.equal(await sidebar.isVisible(), true, "CSS retains the focused outgoing copy");
     await menu.click();
     const drawer = page.getByRole("dialog", { name: "Navigation", exact: true });
     await drawer.waitFor({ state: "visible" });
+    assert.equal(await sidebar.isVisible(), false);
     await page.waitForFunction(() => document.querySelector('[aria-label="Open menu"]').getAttribute("aria-expanded") === "true");
     await page.keyboard.press("Escape");
     await drawer.waitFor({ state: "hidden" });
@@ -60,17 +60,13 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     await menu.click();
     await drawer.getByRole("link", { name: "Settings", exact: true }).focus();
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.waitForFunction(
-      () =>
-        document.activeElement?.closest(".app-sidebar") !== null &&
-        !document.querySelector("#navigation-dialog").open,
-    );
-    assert.equal(
-      await sidebar
-        .getByRole("link", { name: "Settings", exact: true })
-        .evaluate((element) => element === document.activeElement),
-      true,
-    );
+    assert.equal(await drawer.isVisible(), true, "resizing does not imperatively dismiss a modal");
+    assert.equal(await drawer.getByRole("link", { name: "Settings", exact: true }).evaluate((element) => element === document.activeElement), true);
+    await page.keyboard.press("Escape");
+    await drawer.waitFor({ state: "hidden" });
+    await page.keyboard.press("Tab");
+    assert.equal(await page.evaluate(() => document.activeElement.getClientRects().length > 0), true);
+    assert.equal(await menu.isVisible(), false);
     // Legacy deep links still resolve and select Library, not a second destination.
     await page.goto(`${base}#/library/artist/missing/album/missing`);
     await sidebar.waitFor();
@@ -225,7 +221,11 @@ test("resizing retains the real audio transport and queue, with player clearance
     await page.locator('.app-sidebar a[href="#/downloads"]').click();
     await page.locator(".downloads-view").waitFor();
     assert.equal(await transport.evaluate((audio) => !audio.paused), true);
+    assert.equal(await page.locator(".app-player").evaluate((element) => getComputedStyle(element).position), "sticky");
+    await page.screenshot({ path: "/tmp/libras-composition-playing.png" });
+    await page.setViewportSize({ width: 1280, height: 200 });
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    assert.ok(await page.evaluate(() => window.scrollY) > 0);
     await page.getByRole("button", { name: "Open player", exact: true }).click();
     await page.locator("#player-dialog").waitFor();
     assert.equal(await page.locator("#player-dialog").evaluate((element) => {

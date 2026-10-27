@@ -148,7 +148,7 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
         });
         assert.deepEqual(topbar, { minHeight: height, display: "flex", blur: "blur(4px)" });
       }
-      const sidebar = await page.locator(".sidebar").evaluate((element) => {
+      const sidebar = await page.locator('.sidebar[aria-label="Sidebar specimen"]').evaluate((element) => {
         const style = getComputedStyle(element);
         return { padding: style.paddingTop, border: style.borderRightWidth, blur: style.backdropFilter };
       });
@@ -173,6 +173,45 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
       assert.equal(await sheet.evaluate((element) => getComputedStyle(element).transitionDuration), "0s");
       await page.keyboard.press("Escape");
       await sheet.waitFor({ state: "hidden" });
+    });
+
+    await t.test("shared shell owns gutters, scrolling, and intrinsic player clearance", async () => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const shell = page.locator("#guide-shell");
+      await shell.scrollIntoViewIfNeeded();
+      const geometry = () => shell.evaluate((element) => {
+        const sidebar = element.querySelector(".app-sidebar");
+        const player = element.querySelector(".app-player");
+        const main = getComputedStyle(element.querySelector(".app-page"));
+        return {
+          sidebarVisible: getComputedStyle(sidebar).display !== "none",
+          padding: parseFloat(main.paddingInlineStart),
+          gutter: parseFloat(main.paddingInlineEnd),
+          clearance: sidebar.getBoundingClientRect().bottom - player.getBoundingClientRect().top,
+          playerHeight: player.getBoundingClientRect().height,
+        };
+      });
+      const before = await geometry();
+      assert.equal(before.sidebarVisible, true);
+      assert.equal(before.padding, 280 + before.gutter);
+      assert.ok(Math.abs(before.clearance) <= 1);
+      await shell.locator(".app-player .body").evaluate((element) => {
+        element.textContent = "Intrinsic player content grows with its text. ".repeat(20);
+      });
+      const after = await geometry();
+      assert.ok(after.playerHeight > before.playerHeight);
+      assert.ok(Math.abs(after.clearance) <= 1, "CSS anchors follow intrinsic player growth");
+      await shell.locator(".app-player .body").evaluate((element) => { element.textContent = "Intrinsic player slot"; });
+      await page.setViewportSize({ width: 375, height: 900 });
+      const mobile = await geometry();
+      assert.equal(mobile.sidebarVisible, false);
+      assert.equal(mobile.padding, mobile.gutter);
+      await shell.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+      assert.equal(await shell.evaluate((element) => {
+        const frame = element.getBoundingClientRect();
+        const player = element.querySelector(".app-player").getBoundingClientRect();
+        return element.scrollTop > 0 && player.bottom <= frame.bottom + 1;
+      }), true);
     });
 
     await t.test("missing artwork and reduced-motion loading", async () => {
