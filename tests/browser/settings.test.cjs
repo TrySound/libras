@@ -114,6 +114,22 @@ test("Settings native controls, layout, and persistence", async (t) => {
       },
     );
 
+    await t.test("error controls remain accessible while the desktop topbar is fully hidden", async () => {
+      const popover = page.locator("#error-popover");
+      const identity = await popover.elementHandle();
+      for (const width of [1280, 375, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        assert.equal(await page.locator(".app-header").evaluate((element) => getComputedStyle(element).display === "none"), width >= 1024);
+        assert.equal(await page.locator(".app-status-actions").isVisible(), width >= 1024);
+        assert.equal(await page.getByRole("button", { name: "Show errors", exact: true }).count(), 1);
+        await page.getByRole("button", { name: "Show errors", exact: true }).click();
+        await popover.waitFor();
+        assert.equal(await page.locator("#error-popover").count(), 1);
+        assert.equal(await identity.evaluate((element) => element === document.querySelector("#error-popover")), true);
+        await page.getByRole("button", { name: "Close errors", exact: true }).click();
+      }
+    });
+
     // Connect once to exercise the populated card and persist a real library snapshot.
     pingFailure = false;
     pingGate = undefined;

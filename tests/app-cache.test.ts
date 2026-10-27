@@ -183,16 +183,16 @@ it("uses the empty fallback before account selection and when selection is clear
   flushSync();
   expect(mocks.options!.selection.cache).toBeUndefined();
   expect(target.textContent).toContain("Connect your library");
-  const brand = target.querySelector('.app-header [data-nav="brand"] svg');
+  const brand = target.querySelector('.app-header a[aria-label="Libras home"] svg');
   expect(brand?.getAttribute("aria-hidden")).toBe("true");
   expect(brand?.getAttribute("width")).toBe("32");
   expect(brand?.getAttribute("height")).toBe("32");
   expect(brand?.querySelectorAll("path")).toHaveLength(0);
   expect(brand?.querySelector("use")?.getAttribute("href")).toBe("#icon-brand");
-  expect(target.querySelector('.app-header [data-nav="brand"]')?.textContent?.trim()).toBe(
+  expect(target.querySelector('.app-header a[aria-label="Libras home"]')?.textContent?.trim()).toBe(
     "Libras",
   );
-  for (const link of target.querySelectorAll('[data-nav="brand"]')) {
+  for (const link of target.querySelectorAll('a[aria-label="Libras home"]')) {
     expect(link.getAttribute("href")).toBe("#/library");
     expect(link.getAttribute("aria-label")).toBe("Libras home");
   }

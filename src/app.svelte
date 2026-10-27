@@ -226,7 +226,29 @@
         >
           <Icon name="error" color="var(--error-text)" />
         </button>
-        <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
+      {/if}
+      {#if appUpdate?.message}
+        <button
+          class="button"
+          data-size="md"
+          data-variant="ghost"
+          commandfor="update-popover"
+          command="toggle-popover"
+          aria-label="App update"
+          title="App update"
+        >
+          <Icon name={appUpdate.busy ? "loading" : "refresh"} />
+        </button>
+      {/if}
+    {/snippet}
+    {#snippet notifications()}
+      {#if hasErrors}
+        <div
+          id="error-popover"
+          class="ui-edgerunner notification-popover"
+          popover="auto"
+          aria-label="Errors"
+        >
           <div class="stack-sm">
             {#each alerts as alert (alert.id)}
               {#if alert.message}
@@ -245,20 +267,9 @@
         </div>
       {/if}
       {#if appUpdate?.message}
-        <button
-          class="button"
-          data-size="md"
-          data-variant="ghost"
-          commandfor="update-popover"
-          command="toggle-popover"
-          aria-label="App update"
-          title="App update"
-        >
-          <Icon name={appUpdate.busy ? "loading" : "refresh"} />
-        </button>
         <div
           id="update-popover"
-          class="notification-popover"
+          class="ui-edgerunner notification-popover"
           popover="auto"
           aria-label="App update"
         >

@@ -203,7 +203,8 @@ The styleguide exercises the same full composition in a bounded embedded frame. 
 player surface bridge and legacy-route padding reset remain in `src/app.css` until those migrate.
 Keep Session and Player in App; never key or remount them at layout breakpoints. Container queries
 own responsive visibility unconditionally, without focused-copy exceptions or scripted focus
-transfer. Resizing does not imperatively move focus or close an open native drawer. Embedded apps retain
+transfer. The entire mobile topbar is hidden on desktop; separate desktop error/update invokers
+point to the same single set of native notification popovers. Resizing does not imperatively move focus or close an open native drawer. Embedded apps retain
 host-owned sizing and local scrolling; standalone uses document scrolling.
 
 For a subpath deployment, include the base path in `PREVIEW_URL`. These optional suites are

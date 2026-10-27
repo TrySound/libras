@@ -5,12 +5,14 @@
   let {
     children,
     actions,
+    notifications,
     hasActions,
     miniPlayer,
     embedded = false,
   }: {
     children: Snippet;
     actions: Snippet;
+    notifications: Snippet;
     hasActions: boolean;
     miniPlayer: Snippet;
     embedded?: boolean;
@@ -49,7 +51,6 @@
     class="button-quiet row-sm"
     href="#/library"
     aria-label="Libras home"
-    data-nav="brand"
     onclick={() => drawer?.close()}
   >
     <Icon name="brand" size={32} color="var(--accent)" />
@@ -83,14 +84,10 @@
   <header class="topbar app-header row-md row-justify row-wrap ui-edgerunner">
     {@render brand()}
     <div class="row-sm">
-      {#if hasActions}
-        <div class="row-sm app-status-actions">{@render actions()}</div>
-      {/if}
-      <a class="button app-header-action" href="#/search" aria-label="Search"
-        ><Icon name="search" size={24} /></a
-      >
+      {@render actions()}
+      <a class="button" href="#/search" aria-label="Search"><Icon name="search" size={24} /></a>
       <button
-        class="button app-header-action"
+        class="button"
         aria-label="Open menu"
         aria-controls="navigation-dialog"
         aria-expanded={open}
@@ -99,8 +96,12 @@
       >
     </div>
   </header>
+  {#if hasActions}
+    <div class="row-sm app-status-actions ui-edgerunner">{@render actions()}</div>
+  {/if}
   <main class="app-page">{@render children()}</main>
   {@render miniPlayer()}
+  {@render notifications()}
   <dialog
     class="right-sheet ui-edgerunner"
     id="navigation-dialog"

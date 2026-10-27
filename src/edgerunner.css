@@ -1028,7 +1028,7 @@
     }
   }
 
-  .notification-popover {
+  :where(:scope, *).notification-popover {
     box-sizing: border-box;
     inset: 1rem 1rem auto auto;
     margin: 0;
@@ -1181,6 +1181,10 @@
     z-index: var(--layer-player);
   }
 
+  :scope > .app-status-actions {
+    display: none;
+  }
+
   @container navigation (width <= 600px) {
     .app-page {
       padding-block-end: calc(var(--content-padding-block) + var(--space-md));
@@ -1198,16 +1202,13 @@
       padding-inline-start: calc(var(--sidebar-width) + var(--content-padding-inline));
     }
 
-    /* App errors/updates extend the prototype's navigation. Keep one mounted
-     * set of controls, reserving their actual height rather than a fixed gap. */
     :scope > .app-header {
-      display: contents;
-    }
-    .app-header > [data-nav="brand"],
-    .app-header .app-header-action {
       display: none;
     }
-    .app-status-actions {
+    /* Separate desktop invokers share the same native notification popovers.
+     * Reserve the controls' intrinsic height above the player. */
+    :scope > .app-status-actions {
+      display: flex;
       position: fixed;
       inset: auto auto anchor-size(--mini-player height, 0px) 0;
       anchor-name: --app-status-actions;

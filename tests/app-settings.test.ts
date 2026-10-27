@@ -287,7 +287,7 @@ describe("app settings", () => {
     expectStatus("unlink", "Disconnected");
   });
 
-  it("offers updates in a header popover without modifying Settings", async () => {
+  it("offers updates through a shared popover without modifying Settings", async () => {
     const { target, button } = await setup();
     expect(button("App update")).toBeUndefined();
     const callbacks = vi.mocked(registerSW).mock.calls.at(-1)![0]!;
@@ -298,6 +298,9 @@ describe("app settings", () => {
     expect(button("App update").getAttribute("commandfor")).toBe("update-popover");
     expect(button("App update").getAttribute("command")).toBe("toggle-popover");
     const popover = target.querySelector("#update-popover")!;
+    expect(target.querySelectorAll("#update-popover")).toHaveLength(1);
+    expect(target.querySelectorAll('button[aria-label="App update"]')).toHaveLength(2);
+    expect(popover.closest(".app-header")).toBeNull();
     expect(popover.getAttribute("popover")).toBe("auto");
     expect(popover.textContent).toContain("interrupts playback");
     expect(button("Close app update").getAttribute("command")).toBe("hide-popover");
@@ -334,6 +337,10 @@ describe("app settings", () => {
     expect(trigger.closest(".app-header")).not.toBeNull();
     expect(target.querySelector('.app-sidebar a[href="#/settings"]')).not.toBeNull();
     const popover = target.querySelector("#error-popover")!;
+    expect(target.querySelectorAll("#error-popover")).toHaveLength(1);
+    expect(target.querySelectorAll('button[aria-label="Show errors"]')).toHaveLength(2);
+    expect(target.querySelector('.app-status-actions [aria-label="Show errors"]')).not.toBeNull();
+    expect(popover.closest(".app-header")).toBeNull();
     expect(popover.getAttribute("popover")).toBe("auto");
     expect(popover.querySelectorAll('[role="alert"]')).toHaveLength(1);
     const notice = popover.querySelector('[role="alert"]')!;
