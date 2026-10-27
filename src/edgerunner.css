@@ -97,7 +97,6 @@
   --topbar-min-height: 76px;
   --layer-header: 10;
   --layer-player: 20;
-  --layer-notification: 30;
 }
 
 @media (width <= 600px) {
@@ -1154,7 +1153,6 @@
   }
 
   .app-page {
-    --app-header-height: var(--topbar-min-height);
     box-sizing: border-box;
     flex: 1;
     inline-size: 100%;
@@ -1197,7 +1195,6 @@
 
   @container navigation (width >= 64rem) {
     .app-page {
-      --app-header-height: 0px;
       padding-inline-start: calc(var(--sidebar-width) + var(--content-padding-inline));
     }
 

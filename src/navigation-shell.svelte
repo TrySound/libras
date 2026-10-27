@@ -66,7 +66,6 @@
         title={link.label}
         aria-label={link.label}
         aria-current={active(link.path) ? "page" : undefined}
-        data-nav={link.path.slice(1)}
         onclick={() => drawer?.close()}
       >
         <Icon name={link.icon} size={24} color={active(link.path) ? "var(--accent)" : undefined} />
@@ -87,7 +86,7 @@
       {#if hasActions}
         <div class="row-sm app-status-actions">{@render actions()}</div>
       {/if}
-      <a class="button app-header-action" href="#/search" aria-label="Search" data-nav="search"
+      <a class="button app-header-action" href="#/search" aria-label="Search"
         ><Icon name="search" size={24} /></a
       >
       <button
@@ -100,7 +99,7 @@
       >
     </div>
   </header>
-  <main class="app-page" id="main-content">{@render children()}</main>
+  <main class="app-page">{@render children()}</main>
   {@render miniPlayer()}
   <dialog
     class="right-sheet ui-edgerunner"

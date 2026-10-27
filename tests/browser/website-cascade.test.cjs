@@ -29,6 +29,8 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
       assert.equal(await page.locator(".site-demo-launch").isVisible(), false);
       assert.equal(await demo.isVisible(), true);
       assert.equal(await demo.evaluate((element) => element.matches(":modal")), false);
+      assert.equal(await page.locator("#main-content").count(), 1, "only the host main owns the skip-link ID");
+      assert.equal(await page.locator(".site-skip-link").getAttribute("href"), "#main-content");
       assert.equal(await page.evaluate(() =>
         getComputedStyle(document.documentElement).getPropertyValue("--canvas-bg").trim()
       ), "", "the embedded canvas must not repaint the host document");
