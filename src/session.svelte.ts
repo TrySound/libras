@@ -45,8 +45,7 @@ export class Session {
   #account?: Readonly<Account>;
   #connection?: ActiveNetworkConnection;
   #libraryProgress = $state.raw<LibraryProgress>();
-  #syncing = $state(false);
-  #manualRefresh = $state(false);
+  #syncState = $state<"idle" | "automatic" | "manual">("idle");
   #refreshError = $state.raw<unknown>();
   #refreshPending?: Promise<void>;
   #restoration: Promise<void> = Promise.resolve();
@@ -64,12 +63,12 @@ export class Session {
   }
 
   get syncing() {
-    return this.#syncing;
+    return this.#syncState !== "idle";
   }
 
   /** Explicit refresh operation, including its follow-on server sync. */
   get refreshing() {
-    return this.#syncing && this.#manualRefresh;
+    return this.#syncState === "manual";
   }
 
   get refreshError() {
@@ -108,8 +107,7 @@ export class Session {
   #detach() {
     this.#libraryProgress = undefined;
     this.#refreshPending = undefined;
-    this.#syncing = false;
-    this.#manualRefresh = false;
+    this.#syncState = "idle";
     this.#refreshError = undefined;
     this.#options.network.setMode("offline");
     this.#setConnection(undefined);
@@ -352,9 +350,8 @@ export class Session {
     if (this.#refreshPending) return this.#refreshPending;
     const operationId = this.#operationId;
     const { covers, playback } = this.#options;
-    this.#syncing = true;
+    this.#syncState = force ? "manual" : "automatic";
     this.#libraryProgress = undefined;
-    this.#manualRefresh = force;
     this.#refreshError = undefined;
     return (this.#refreshPending = (async () => {
       try {
@@ -381,8 +378,7 @@ export class Session {
       if (!this.#isCurrentOperation(operationId)) return;
       // Keep final scan counts until all sync work settles, then publish completion together.
       this.#libraryProgress = undefined;
-      this.#syncing = false;
-      this.#manualRefresh = false;
+      this.#syncState = "idle";
       this.#refreshPending = undefined;
     }));
   }

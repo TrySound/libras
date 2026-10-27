@@ -120,38 +120,15 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   placement stays local while the scrolling/navigation shell remains legacy. It reads real
   jobs and saved records, retains ordering and format-specific identities, and adds no fake
   progress or per-file failure records. Transfer/storage notices do not discard saved rows.
-- Settings (`src/_settings.svelte`) uses the same boundary with shared cards and a 3:2
-  split layout. Layout/actions query the existing app size container rather than the browser
-  width, so the narrow embedded demo remains usable on desktop; keep an inline-size container
-  around the app during the shell migration. The wide styleguide specimen supplies its own.
-  Session still owns authentication, refresh, disconnect, and offline preferences.
-  Host remains a required text field so Network can normalize bare hostnames. Native field
-  validation uses the browser's built-in feedback, without inline field-error messages or
-  layout shifts; actual connection/synchronization errors remain visible in the card. The form
-  explains how to sign in to Navidrome and shows a scheme-free host example. Theme selection stays in #54.
-  Online startup immediately shows Synchronizing…, without OPFS implementation details.
-  A saved offline session immediately shows Offline mode, without a spinner or server-sync
-  claim. With no saved account, the initial state is Disconnected. Automatic server sync shows a dedicated
-  Synchronizing with server… status (or actual scan counters), then the connected identity.
-  Session distinguishes automatic sync from explicit refresh via `refreshing`; only an explicit
-  refresh operation labels the text-only action Refreshing… until all follow-on work completes.
-  The action and counters share the same completion boundary. Synchronizing with server… covers the full
-  operation, including artwork, playlists, and queue; once scan counts are available they stay
-  visible instead of the synchronization message until completion, then switch to Connected.
-  A manual refresh retains the connected status until counters arrive, without a transient
-  Synchronizing… message before them.
-  Action buttons use shared `row-sm row-wrap` utilities, without a page-specific actions
-  class; wrapping keeps controls inside the card at enlarged text sizes.
-  Connection/server-sync status, loaders, and button labels render immediately, without a
-  Delayed boundary, UI timers, or reserved-height rules. Loader remains a
-  presentation-only primitive. Offline mode uses a crossed-cloud icon, while
-  Disconnected uses a broken-link icon. PWA updates remain in the existing header popover,
-  with the real updater's action, progress, and errors; there is no in-page Settings update card.
-  Busy Connect/Refresh controls stay mounted and focusable with guarded `aria-disabled` states.
-  Disconnect clears the form without moving focus to Host. Session guards duplicate connection
-  attempts; the submit handler only guards post-connect navigation against a changed URL or
-  hidden/unmounted view. Submitting does not force focus to the button. The summary uses
-  `URL.host` for the host/port only, never URL paths, tokens, salts, or userinfo.
+- Settings (`src/_settings.svelte`) uses shared cards and an app-container-based 3:2 split;
+  preserve the inline-size container so the embedded demo adapts independently of the browser.
+  Session owns authentication, disconnect, offline preferences, and automatic/manual sync.
+  Explicit refresh feedback and scan counters share the full sync operation's lifetime.
+  Keep native field validation, bare-hostname support, and actual server errors; never expose
+  authentication secrets. Busy actions stay mounted with guarded `aria-disabled` states, and
+  completed connections must not redirect after leaving or hiding Settings. PWA updates remain
+  in the header popover. Presentation examples belong in `styleguide.html`; behavior contracts
+  are covered by `tests/app-settings.test.ts`.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
   and resolves optional IDs from the current library without changing saved download metadata.

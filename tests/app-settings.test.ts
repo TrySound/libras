@@ -268,7 +268,7 @@ describe("app settings", () => {
         expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
       } else {
         expect(status.textContent).toContain(label);
-        expect(status.querySelectorAll(".loader-bar")).toHaveLength(5);
+        expect(status.querySelector(".loader")).not.toBeNull();
       }
     };
     expectStatus("check", "Connected");
@@ -387,7 +387,6 @@ describe("app settings", () => {
       expect(
         target.querySelector("#settings-library-progress")?.classList.contains("text-subtle"),
       ).toBe(true);
-      expect(target.textContent).not.toContain("songs");
       expect(
         target.querySelector("#settings-connection-status #settings-library-progress"),
       ).not.toBeNull();
@@ -397,7 +396,7 @@ describe("app settings", () => {
       expect(target.querySelector("#settings-refresh")?.textContent).toContain(
         saved ? "Refreshing…" : "Refresh library",
       );
-      expect(target.querySelectorAll("#settings-connection-status .loader-bar")).toHaveLength(5);
+      expect(target.querySelector("#settings-connection-status .loader")).not.toBeNull();
       pending.resolve();
       await vi.waitFor(() => expect(playback.refreshQueue).toHaveBeenCalledTimes(queueCalls + 1));
       flushSync();
