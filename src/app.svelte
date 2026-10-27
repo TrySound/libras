@@ -1,6 +1,5 @@
 <script lang="ts">
-  import Icon from "./icon.svelte";
-  import NavigationShell from "./navigation-shell.svelte";
+  import Icon, { type IconName } from "./icon.svelte";
   import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
@@ -20,7 +19,7 @@
   import { Cache, type Immutable } from "./cache.svelte";
   import { Session } from "./session.svelte";
   import type { Network } from "./network.svelte";
-  import Router, { navigate, type RouteParams } from "./router.svelte";
+  import Router, { navigate, route, type RouteParams } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { installSwipeToDismiss } from "./swipe-to-dismiss";
 
@@ -33,6 +32,17 @@
 
   // Entry points explicitly supply infrastructure; UI and domain state belong to App.
   let { network, auth, updaterComponent: Updater, embedded = false }: Props = $props();
+
+  const navigationLinks: { path: string; label: string; icon: IconName }[] = [
+    { path: "/library", label: "Your library", icon: "disc" },
+    { path: "/search", label: "Search", icon: "search" },
+    { path: "/downloads", label: "Downloads", icon: "download" },
+    { path: "/settings", label: "Settings", icon: "settings" },
+  ];
+  let navigationDrawer: HTMLDialogElement;
+  let navigationOpen = $state(false);
+  const isNavigationActive = (path: string) =>
+    route.pattern === path || route.pattern?.startsWith(`${path}/`);
 
   const durationFormatter = new Intl.DurationFormat("en", {
     minutes: "numeric",
@@ -211,8 +221,42 @@
   />
 {/snippet}
 
+{#snippet brand()}
+  <a
+    class="button-quiet row-sm"
+    href="#/library"
+    aria-label="Libras home"
+    onclick={() => navigationDrawer?.close()}
+  >
+    <Icon name="brand" size={32} color="var(--accent)" />
+    <span class="brand uppercase">Libras</span>
+  </a>
+{/snippet}
+
+{#snippet navigation()}
+  <nav class="stack-sm" aria-label="Main navigation">
+    {#each navigationLinks as link}
+      <a
+        class="menu-item"
+        href={`#${link.path}`}
+        title={link.label}
+        aria-label={link.label}
+        aria-current={isNavigationActive(link.path) ? "page" : undefined}
+        onclick={() => navigationDrawer?.close()}
+      >
+        <Icon
+          name={link.icon}
+          size={24}
+          color={isNavigationActive(link.path) ? "var(--accent)" : undefined}
+        />
+        {link.label}
+      </a>
+    {/each}
+  </nav>
+{/snippet}
+
 <div class="app-root" class:standalone={!embedded}>
-  <NavigationShell {embedded} hasActions={hasErrors || !!appUpdate?.message}>
+  <div class="app-shell" data-embedded={embedded || undefined}>
     {#snippet actions()}
       {#if hasErrors}
         <button
@@ -241,116 +285,159 @@
         </button>
       {/if}
     {/snippet}
-    {#snippet notifications()}
-      {#if hasErrors}
-        <div
-          id="error-popover"
-          class="ui-edgerunner notification-popover"
-          popover="auto"
-          aria-label="Errors"
+    <aside class="sidebar app-sidebar stack-lg ui-edgerunner" aria-label="Navigation">
+      {@render brand()}
+      {@render navigation()}
+    </aside>
+    <header class="topbar app-header row-md row-justify row-wrap ui-edgerunner">
+      {@render brand()}
+      <div class="row-sm">
+        {@render actions()}
+        <a class="button" href="#/search" aria-label="Search"><Icon name="search" size={24} /></a>
+        <button
+          class="button"
+          aria-label="Open menu"
+          aria-controls="navigation-dialog"
+          aria-expanded={navigationOpen}
+          commandfor="navigation-dialog"
+          command="show-modal"><Icon name="menu-lines" size={24} /></button
         >
-          <div class="stack-sm">
-            {#each alerts as alert (alert.id)}
-              {#if alert.message}
-                <p class="card caption" role="alert">{alert.message}</p>
-              {/if}
-            {/each}
-          </div>
+      </div>
+    </header>
+    {#if hasErrors || appUpdate?.message}
+      <div class="row-sm app-status-actions ui-edgerunner">{@render actions()}</div>
+    {/if}
+    <main class="app-page">
+      <Router
+        {embedded}
+        routes={[
+          { pattern: "/library", render: libraryRoute },
+          { pattern: "/search", render: searchRoute },
+          { pattern: "/library/artist/:artistId/album/:albumId", render: albumRoute },
+          { pattern: "/library/artist/:artistId", render: artistRoute },
+          { pattern: "/settings", render: settingsRoute },
+          { pattern: "/downloads", render: downloadsRoute },
+        ]}
+      />
+    </main>
+    {#if currentTrack}
+      <div class="app-player">
+        <div class="mini-player wings">
           <button
-            class="button"
-            data-size="sm"
-            data-variant="ghost"
-            aria-label="Close errors"
-            commandfor="error-popover"
-            command="hide-popover"><Icon name="cross" /></button
+            class="linkarea"
+            commandfor="player-dialog"
+            command="show-modal"
+            aria-label="Open player"
+          ></button>
+          <Artwork {covers} id={currentTrack.artworkId} size="sm" loading="eager" />
+          <span class="mini-copy stack-xs">
+            <strong class="type-title truncate">
+              {currentTrack.title}
+            </strong>
+            <small class="type-small text-muted truncate">
+              {currentTrack.displayArtist ?? cache.artists.get(currentTrack.artistIds[0])?.name}
+            </small>
+          </span>
+          <button
+            class="icon-button"
+            data-size="md"
+            data-variant="primary"
+            onclick={() => playback.toggle()}
+            title={player?.playing ? "Pause" : "Play"}
           >
-        </div>
-      {/if}
-      {#if appUpdate?.message}
-        <div
-          id="update-popover"
-          class="ui-edgerunner notification-popover"
-          popover="auto"
-          aria-label="App update"
-        >
-          <div class="stack-sm">
-            <strong class="heading-md">App update</strong>
-            <p class="caption">{appUpdate.message}</p>
-            {#if appUpdate.hasUpdate}
-              <button
-                class="button"
-                data-size="sm"
-                disabled={appUpdate.busy}
-                onclick={() => void updater?.update()}
-              >
-                {appUpdate.busy ? "Updating…" : "Update now"}
-              </button>
+            {#if playbackLoading}
+              <Icon name="loading" />
+            {:else if player?.playing}
+              <Icon name="pause" />
+            {:else}
+              <Icon name="play" />
             {/if}
-          </div>
+          </button>
+          <span class="mini-progress">
+            <span style:width={`${playbackPercent()}%`}></span>
+          </span>
+        </div>
+      </div>
+    {/if}
+    {#if hasErrors}
+      <div
+        id="error-popover"
+        class="ui-edgerunner notification-popover"
+        popover="auto"
+        aria-label="Errors"
+      >
+        <div class="stack-sm">
+          {#each alerts as alert (alert.id)}
+            {#if alert.message}
+              <p class="card caption" role="alert">{alert.message}</p>
+            {/if}
+          {/each}
+        </div>
+        <button
+          class="button"
+          data-size="sm"
+          data-variant="ghost"
+          aria-label="Close errors"
+          commandfor="error-popover"
+          command="hide-popover"><Icon name="cross" /></button
+        >
+      </div>
+    {/if}
+    {#if appUpdate?.message}
+      <div
+        id="update-popover"
+        class="ui-edgerunner notification-popover"
+        popover="auto"
+        aria-label="App update"
+      >
+        <div class="stack-sm">
+          <strong class="heading-md">App update</strong>
+          <p class="caption">{appUpdate.message}</p>
+          {#if appUpdate.hasUpdate}
+            <button
+              class="button"
+              data-size="sm"
+              disabled={appUpdate.busy}
+              onclick={() => void updater?.update()}
+            >
+              {appUpdate.busy ? "Updating…" : "Update now"}
+            </button>
+          {/if}
+        </div>
+        <button
+          class="button"
+          data-size="sm"
+          data-variant="ghost"
+          aria-label="Close app update"
+          commandfor="update-popover"
+          command="hide-popover"><Icon name="cross" /></button
+        >
+      </div>
+    {/if}
+    <dialog
+      class="right-sheet ui-edgerunner"
+      id="navigation-dialog"
+      aria-label="Navigation"
+      closedby="any"
+      bind:this={navigationDrawer}
+      ontoggle={() => {
+        navigationOpen = navigationDrawer.open;
+      }}
+    >
+      <div class="stack-lg">
+        <header class="row-md row-justify">
+          {@render brand()}
           <button
             class="button"
-            data-size="sm"
-            data-variant="ghost"
-            aria-label="Close app update"
-            commandfor="update-popover"
-            command="hide-popover"><Icon name="cross" /></button
+            aria-label="Close menu"
+            commandfor="navigation-dialog"
+            command="close"><Icon name="cross" size={24} /></button
           >
-        </div>
-      {/if}
-    {/snippet}
-    <Router
-      {embedded}
-      routes={[
-        { pattern: "/library", render: libraryRoute },
-        { pattern: "/search", render: searchRoute },
-        { pattern: "/library/artist/:artistId/album/:albumId", render: albumRoute },
-        { pattern: "/library/artist/:artistId", render: artistRoute },
-        { pattern: "/settings", render: settingsRoute },
-        { pattern: "/downloads", render: downloadsRoute },
-      ]}
-    />
-    {#snippet miniPlayer()}
-      {#if currentTrack}
-        <div class="app-player">
-          <div class="mini-player wings">
-            <button
-              class="linkarea"
-              commandfor="player-dialog"
-              command="show-modal"
-              aria-label="Open player"
-            ></button>
-            <Artwork {covers} id={currentTrack.artworkId} size="sm" loading="eager" />
-            <span class="mini-copy stack-xs">
-              <strong class="type-title truncate">
-                {currentTrack.title}
-              </strong>
-              <small class="type-small text-muted truncate">
-                {currentTrack.displayArtist ?? cache.artists.get(currentTrack.artistIds[0])?.name}
-              </small>
-            </span>
-            <button
-              class="icon-button"
-              data-size="md"
-              data-variant="primary"
-              onclick={() => playback.toggle()}
-              title={player?.playing ? "Pause" : "Play"}
-            >
-              {#if playbackLoading}
-                <Icon name="loading" />
-              {:else if player?.playing}
-                <Icon name="pause" />
-              {:else}
-                <Icon name="play" />
-              {/if}
-            </button>
-            <span class="mini-progress">
-              <span style:width={`${playbackPercent()}%`}></span>
-            </span>
-          </div>
-        </div>
-      {/if}
-    {/snippet}
-  </NavigationShell>
+        </header>
+        {@render navigation()}
+      </div>
+    </dialog>
+  </div>
 
   <dialog id="player-dialog" class="player-dialog" closedby="any" data-swipedown="close">
     <header class="topbar wings">
