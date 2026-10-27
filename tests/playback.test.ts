@@ -3,7 +3,7 @@ import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Playback } from "../src/playback.svelte";
 import { flushSync, mount as mountComponent, unmount } from "svelte";
-import Player from "../src/player.svelte";
+import Player from "../src/audio-player.svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { observePlayback } from "./playback-reactivity.test.svelte";
 import { Cache } from "../src/cache.svelte";

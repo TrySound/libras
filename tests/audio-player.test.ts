@@ -7,7 +7,7 @@ import Player, {
   type PlayerSource,
   type PlayerProps,
   type PlayerState,
-} from "../src/player.svelte";
+} from "../src/audio-player.svelte";
 
 class AudioStub extends EventTarget {
   preload = "";

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Playback } from "../src/playback.svelte";
 import { TrackEngine } from "../src/track.svelte";
 import { Covers } from "../src/covers.svelte";
-import Player from "../src/player.svelte";
+import Player from "../src/audio-player.svelte";
 import { flushSync, mount, unmount } from "svelte";
 import { AudioStub } from "./audio-test-helpers";
 import { Cache, type CachedQueue } from "../src/cache.svelte";

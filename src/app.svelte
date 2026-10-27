@@ -4,8 +4,9 @@
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import { Playlists } from "./playlists.svelte";
-  import Player from "./player.svelte";
-  import MiniPlayer from "./ui/mini-player.svelte";
+  import AudioPlayer from "./audio-player.svelte";
+  import Player from "./ui/player.svelte";
+  import { formatTime } from "./format-time";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
@@ -36,19 +37,6 @@
 
   let navigationDrawer: HTMLDialogElement;
   let navigationOpen = $state(false);
-
-  const durationFormatter = new Intl.DurationFormat("en", {
-    minutes: "numeric",
-    seconds: "2-digit",
-  });
-
-  function formatTime(value: number) {
-    const seconds = Number.isFinite(value) ? Math.floor(value) : 0;
-    return durationFormatter.format({
-      minutes: Math.floor(seconds / 60),
-      seconds: seconds % 60,
-    });
-  }
 
   type Album = Immutable<AlbumRecord>;
   type Artist = Immutable<ArtistRecord>;
@@ -87,7 +75,7 @@
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
   const trackEngine = new TrackEngine({ selection });
-  let player = $state<ReturnType<typeof Player>>();
+  let player = $state<ReturnType<typeof AudioPlayer>>();
   const playback: Playback = new Playback({
     selection,
     tracks: trackEngine,
@@ -166,7 +154,7 @@
   }
 </script>
 
-<Player
+<AudioPlayer
   bind:this={player}
   hasPrevious={hasPreviousTrack || (cache.queue.index >= 0 && cache.queue.position > 0)}
   hasNext={hasNextTrack}
@@ -339,25 +327,7 @@
         ]}
       />
     </main>
-    {#if currentTrack}
-      <MiniPlayer
-        {covers}
-        artworkId={currentTrack.artworkId}
-        title={currentTrack.title}
-        artist={currentTrack.displayArtist ?? playerArtist?.name}
-        playing={player?.playing ?? false}
-        loading={playbackLoading}
-        position={cache.queue.position}
-        duration={playbackDuration}
-        positionText={`${formatTime(cache.queue.position)} of ${formatTime(playbackDuration)}`}
-        hasPrevious={hasPreviousTrack || cache.queue.position > 0}
-        hasNext={hasNextTrack}
-        ontoggle={() => playback.toggle()}
-        onprevious={() => playback.previous()}
-        onnext={() => playback.next()}
-        onseek={(position) => playback.seek(position)}
-      />
-    {/if}
+    <Player {cache} {covers} {playback} audio={player} />
     {#if hasErrors}
       <div
         id="error-popover"
