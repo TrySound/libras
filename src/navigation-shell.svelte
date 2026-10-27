@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import type { Route } from "./router.svelte";
   import Icon, { type IconName } from "./icon.svelte";
 
   let {
@@ -8,7 +9,7 @@
     notifications,
     hasActions,
     miniPlayer,
-    path,
+    route,
     embedded = false,
   }: {
     children: Snippet;
@@ -16,7 +17,7 @@
     notifications: Snippet;
     hasActions: boolean;
     miniPlayer: Snippet;
-    path: string;
+    route: Route;
     embedded?: boolean;
   } = $props();
   const links: { path: string; label: string; icon: IconName }[] = [
@@ -28,7 +29,7 @@
   let drawer: HTMLDialogElement;
   let open = $state(false);
   const active = (destination: string) =>
-    path === destination || path.startsWith(`${destination}/`);
+    route.pattern === destination || route.pattern?.startsWith(`${destination}/`);
 </script>
 
 {#snippet brand()}

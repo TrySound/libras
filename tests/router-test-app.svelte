@@ -1,13 +1,7 @@
 <script lang="ts">
-  import Router, { type RenderRoute, type RouteParams } from "../src/router.svelte";
+  import Router, { Route, type RouteParams } from "../src/router.svelte";
 
-  let {
-    embedded = false,
-    layout = false,
-  }: {
-    embedded?: boolean;
-    layout?: boolean;
-  } = $props();
+  let { embedded = false, route = new Route() }: { embedded?: boolean; route?: Route } = $props();
 </script>
 
 {#snippet page(name: string, params: RouteParams)}
@@ -26,16 +20,12 @@
   {@render page("player", params)}
 {/snippet}
 
-{#snippet frame(route: RenderRoute, params: RouteParams)}
-  <section data-layout={route.pattern}>
-    <input aria-label="Persistent layout input" />
-    {@render route.render(params)}
-  </section>
-{/snippet}
-
+<section data-route-pattern={route.pattern} data-route-url={route.url?.href}>
+  <input aria-label="Persistent shell input" />
+</section>
 <Router
   {embedded}
-  children={layout ? frame : undefined}
+  {route}
   routes={[
     { pattern: "/library/artist/:artistId/album/:albumId", render: album },
     { pattern: "/library/artist/:artistId", render: artist },

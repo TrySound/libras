@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { navigate } from "../src/router.svelte";
+import { Route, navigate } from "../src/router.svelte";
 import RouterTestApp from "./router-test-app.svelte";
 import { installNavigation } from "./router-test-helpers";
 
@@ -15,14 +15,15 @@ afterEach(async () => {
   document.startViewTransition = originalStartViewTransition;
 });
 
-function setup(path = "/library", embedded = false, layout = false) {
+function setup(path = "/library", embedded = false) {
   const navigation = installNavigation(path);
   const target = document.createElement("main");
   document.body.append(target);
-  const component = mount(RouterTestApp, { target, props: { embedded, layout } });
+  const route = new Route();
+  const component = mount(RouterTestApp, { target, props: { embedded, route } });
   cleanups.push(() => unmount(component));
   flushSync();
-  return { navigation, target };
+  return { navigation, target, route };
 }
 
 describe("router", () => {
@@ -169,11 +170,13 @@ describe("router", () => {
     await expect(caught.mock.results[0].value).resolves.toBeUndefined();
   });
 
-  it("supplies the resolved route to a persistent layout and ignores host anchors", async () => {
-    const { navigation, target } = setup("/unknown", true, true);
-    const layout = target.querySelector<HTMLElement>("[data-layout]")!;
+  it("publishes reactive URL and pattern metadata without wrapping the shell", async () => {
+    const { navigation, target, route } = setup("/unknown", true);
+    const summary = target.querySelector<HTMLElement>("[data-route-pattern]")!;
     const input = target.querySelector<HTMLInputElement>("input")!;
-    expect(layout.dataset.layout).toBe("/library");
+    expect(route.pattern).toBe("/library");
+    expect(route.url?.hash).toBe("#/unknown");
+    expect(summary.dataset.routePattern).toBe("/library");
     input.value = "Retain layout state";
     const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
     navigation.dispatchEvent(
@@ -185,12 +188,31 @@ describe("router", () => {
       }),
     );
     await intercept.mock.results[0].value;
-    expect(target.querySelector("[data-layout]")).toBe(layout);
+    expect(target.querySelector("[data-route-pattern]")).toBe(summary);
     expect(target.querySelector("input")).toBe(input);
     expect(input.value).toBe("Retain layout state");
-    expect(layout.dataset.layout).toBe("/library/artist/:artistId");
+    expect(route.pattern).toBe("/library/artist/:artistId");
+    expect(route.url?.hash).toBe("#/library/artist/artist%201");
+    expect(summary.dataset.routePattern).toBe(route.pattern);
+    expect(summary.dataset.routeUrl).toBe(route.url?.href);
     expect(target.querySelector("p")!.textContent).toBe('artist:{"artistId":"artist 1"}');
 
+    // URL changes stay reactive even when the matched pattern does not change.
+    intercept.mockClear();
+    navigation.dispatchEvent(
+      Object.assign(new Event("navigate"), {
+        navigationType: "traverse",
+        canIntercept: true,
+        destination: { url: new URL("#/library/artist/artist%202", window.location.href).href },
+        intercept,
+      }),
+    );
+    await intercept.mock.results[0].value;
+    expect(route.pattern).toBe("/library/artist/:artistId");
+    expect(route.url?.hash).toBe("#/library/artist/artist%202");
+    expect(summary.dataset.routeUrl).toBe(route.url?.href);
+    expect(target.querySelector("p")!.textContent).toBe('artist:{"artistId":"artist 2"}');
+    const committedUrl = route.url;
     intercept.mockClear();
     navigation.dispatchEvent(
       Object.assign(new Event("navigate"), {
@@ -201,12 +223,15 @@ describe("router", () => {
       }),
     );
     expect(intercept).not.toHaveBeenCalled();
-    expect(layout.dataset.layout).toBe("/library/artist/:artistId");
+    expect(route.url).toBe(committedUrl);
+    expect(route.pattern).toBe("/library/artist/:artistId");
+    expect(summary.dataset.routePattern).toBe(route.pattern);
   });
 
-  it("leaves the resolved layout unchanged for aborted navigation", async () => {
-    const { navigation, target } = setup("/library", true, true);
-    const layout = target.querySelector<HTMLElement>("[data-layout]")!;
+  it("leaves route metadata unchanged for aborted navigation", async () => {
+    const { navigation, target, route } = setup("/library", true);
+    const summary = target.querySelector<HTMLElement>("[data-route-pattern]")!;
+    const committedUrl = route.url;
     const controller = new AbortController();
     controller.abort();
     const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
@@ -220,8 +245,10 @@ describe("router", () => {
       }),
     );
     await intercept.mock.results[0].value;
-    expect(target.querySelector("[data-layout]")).toBe(layout);
-    expect(layout.dataset.layout).toBe("/library");
+    expect(target.querySelector("[data-route-pattern]")).toBe(summary);
+    expect(route.pattern).toBe("/library");
+    expect(route.url).toBe(committedUrl);
+    expect(summary.dataset.routeUrl).toBe(committedUrl?.href);
   });
 
   it("removes the navigation listener on unmount", async () => {

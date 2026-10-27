@@ -195,8 +195,11 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
 ```
 
 `src/navigation-shell.svelte` owns navigation markup and native drawer controls only; it has no
-local styles or location listeners. Router supplies its resolved route through a persistent layout
-snippet, keeping active navigation and rendered content on the same source of truth.
+local styles or location listeners. App creates one `Route` object and passes it to the shell and
+its nested Router. Router publishes reactive `url` (the resolved URL) and `pattern` (the matched
+or fallback pattern) fields at mount and on app navigation. The shell stays outside routed
+content and reads that metadata; no layout wrapper or duplicated route matching is needed.
+Host-only anchors and aborted navigations leave the last resolved app route unchanged.
 `src/edgerunner.css` owns the prototype-derived `.app-shell` composition as well as `.topbar`,
 `.sidebar`, `.right-sheet`, `.button-quiet`, and flow primitives. Main owns shared page gutters;
 routes must not duplicate them. The player stays in normal flow in the bottom-sticky `.app-player`

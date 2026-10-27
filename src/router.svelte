@@ -3,6 +3,12 @@
 
   export type RouteParams = Record<string, string | undefined>;
 
+  /** Per-app route metadata, published reactively by its mounted Router. */
+  export class Route {
+    url = $state.raw<URL>();
+    pattern = $state<string>();
+  }
+
   /** Paths are slash-prefixed, without a hash. */
   export function navigate(path: string, history: "push" | "replace" = "push") {
     void window.navigation.navigate(`#${path}`, { history }).finished?.catch(() => {});
@@ -22,11 +28,11 @@
     fallback?: RenderRoute;
     /** Leave the host page's scroll, focus, and view transitions alone. */
     embedded?: boolean;
-    /** Optional persistent layout, given the resolved route rather than the raw URL. */
-    children?: Snippet<[RenderRoute, RouteParams]>;
+    /** Shared metadata for navigation outside the routed content. */
+    route?: Route;
   }
 
-  let { routes, fallback = routes[0], embedded = false, children }: Props = $props();
+  let { routes, fallback = routes[0], embedded = false, route = new Route() }: Props = $props();
 
   const initial = untrack(() => {
     if (!fallback) throw new Error("Router requires at least one route.");
@@ -60,6 +66,12 @@
     return { route: initial.fallback, params: {} };
   }
 
+  function updateRoute(url: URL) {
+    match = resolve(url);
+    route.url = url;
+    route.pattern = match.route.pattern;
+  }
+
   onMount(() => {
     const handleNavigation = (event: NavigateEvent) => {
       const destination = new URL(event.destination.url);
@@ -77,7 +89,7 @@
         handler: async () => {
           const update = async () => {
             if (event.signal?.aborted) return;
-            match = resolve(destination);
+            updateRoute(destination);
             await tick();
           };
           if (
@@ -103,17 +115,11 @@
       });
     };
     window.navigation.addEventListener("navigate", handleNavigation);
-    if (window.location.hash.startsWith("#/")) {
-      match = resolve(new URL(window.location.href));
-    } else if (!embedded) {
-      navigate(initial.fallback.pattern, "replace");
-    }
+    const url = new URL(window.location.href);
+    updateRoute(url);
+    if (!url.hash.startsWith("#/") && !embedded) navigate(initial.fallback.pattern, "replace");
     return () => window.navigation.removeEventListener("navigate", handleNavigation);
   });
 </script>
 
-{#if children}
-  {@render children(match.route, match.params)}
-{:else}
-  {@render match.route.render(match.params)}
-{/if}
+{@render match.route.render(match.params)}
