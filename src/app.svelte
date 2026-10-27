@@ -8,6 +8,7 @@
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
+  import PlaylistRoute from "./_playlist.svelte";
   import ArtistRoute from "./_artist.svelte";
   import LibraryRoute from "./_library.svelte";
   import SearchRoute, { createSearchState } from "./_search.svelte";
@@ -201,19 +202,28 @@
 {/snippet}
 
 {#snippet libraryRoute()}
-  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} />
+  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {playlists} />
 {/snippet}
 
 {#snippet searchRoute()}
-  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} state={searchState} />
+  <SearchRoute
+    {cache}
+    {covers}
+    {trackEngine}
+    {session}
+    {playback}
+    {playlists}
+    state={searchState}
+  />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
-  <ArtistRoute {params} {cache} {covers} {trackEngine} {session} {playback} />
+  <ArtistRoute {params} {cache} {covers} {trackEngine} {session} {playback} {playlists} />
 {/snippet}
 
 {#snippet albumRoute(params: RouteParams)}
   <AlbumRoute
+    {playlists}
     {params}
     {cache}
     {covers}
@@ -222,6 +232,10 @@
     {playback}
     playbackState={playbackLoading ? "loading" : player?.playing ? "playing" : "paused"}
   />
+{/snippet}
+
+{#snippet playlistRoute(params: RouteParams)}
+  <PlaylistRoute {params} {cache} {covers} {playlists} {playback} {session} {trackEngine} />
 {/snippet}
 
 <div class="app-root">
@@ -319,6 +333,7 @@
       routes={[
         { pattern: "/library", render: libraryRoute },
         { pattern: "/search", render: searchRoute },
+        { pattern: "/library/playlist/:playlistId", render: playlistRoute },
         {
           pattern: "/library/artist/:artistId/album/:albumId",
           render: albumRoute,
