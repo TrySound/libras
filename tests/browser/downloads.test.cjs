@@ -87,7 +87,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       );
       assert.equal(await page.getByRole("heading", { name: "No downloads yet" }).isVisible(), true);
       assert.equal(await page.locator('.downloads-view a[href="#/library"]').isVisible(), true);
-      assert.equal(await page.locator(".topbar").first().isVisible(), true);
+      assert.equal(await page.locator(".shell-header").isVisible(), true);
       assert.equal(await page.locator(".app-shell.ui-edgerunner").count(), 0);
     });
 

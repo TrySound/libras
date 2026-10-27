@@ -195,7 +195,7 @@
   }
 
   /* At the inline demo's scroll boundaries, continue scrolling the website. */
-  .site-demo-dialog:not(:modal) .app-shell {
+  .site-demo-dialog:not(:modal) .navigation-shell {
     overscroll-behavior: auto;
   }
 

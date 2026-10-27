@@ -186,6 +186,19 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/settings.test.cjs
 ```
 
+The navigation shell's native drawer, active deep links, responsive focus transfer, document
+scrolling, and enlarged-text layout have a separate browser check:
+
+```sh
+NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
+  node --test tests/browser/navigation.test.cjs
+```
+
+`src/navigation-shell.svelte` owns navigation presentation only. Keep Session and Player in App;
+never key or remount them at layout breakpoints. Its container breakpoint is shared with the
+ResizeObserver focus handoff. The embedded app retains host-owned sizing/scrolling; standalone
+uses document scrolling. The legacy player's measured height supplies clearance for both layouts.
+
 For a subpath deployment, include the base path in `PREVIEW_URL`. These optional suites are
 not part of `pnpm test`; DOM emulation does not validate CSS scope, layout, or native overlays.
 Review the styleguide visually as well, including long labels and enlarged text. During

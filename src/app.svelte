@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import NavigationShell from "./navigation-shell.svelte";
   import { onDestroy, onMount, untrack } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
@@ -48,6 +49,22 @@
 
   type Album = Immutable<AlbumRecord>;
   type Artist = Immutable<ArtistRecord>;
+
+  let appRoot: HTMLDivElement;
+  // The legacy player can grow with text; shell clearance follows its real box.
+  function playerClearance(element: HTMLDivElement) {
+    const update = () => {
+      const bottom = parseFloat(getComputedStyle(element).bottom) || 0;
+      appRoot.style.setProperty("--player-clearance", `${element.offsetHeight + bottom + 8}px`);
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    update();
+    return () => {
+      observer.disconnect();
+      appRoot.style.removeProperty("--player-clearance");
+    };
+  }
 
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
@@ -178,20 +195,6 @@
   onstatechange={(state) => playback.updatePlayerState(state)}
 />
 
-{#snippet brand()}
-  <div class="topbar-brand">
-    <a
-      class="icon-button"
-      data-variant="ghost"
-      href="#/library"
-      aria-label="Libras home"
-      title="Home"
-    >
-      <Icon name="brand" size="lg" />
-    </a>
-  </div>
-{/snippet}
-
 {#snippet settingsRoute()}
   <Settings {session} />
 {/snippet}
@@ -224,96 +227,82 @@
   />
 {/snippet}
 
-<div class="app-root">
-  <main class="app-shell">
-    <header class="topbar wings">
-      {@render brand()}
-      <div></div>
-      <div class="row-sm">
-        {#if hasErrors}
-          <button
-            class="icon-button"
-            data-size="md"
-            data-variant="ghost"
-            commandfor="error-popover"
-            command="toggle-popover"
-            aria-label="Show errors"
-            title="Show errors"
-          >
-            <Icon name="error" class="text-danger" />
-          </button>
-          <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
-            <div class="stack-sm grow">
-              {#each alerts as alert (alert.id)}
-                {#if alert.message}
-                  <p class="card type-small" data-variant="danger" role="alert">{alert.message}</p>
-                {/if}
-              {/each}
-            </div>
-            <button
-              class="icon-button"
-              data-size="sm"
-              data-variant="ghost"
-              aria-label="Close errors"
-              commandfor="error-popover"
-              command="hide-popover"><Icon name="cross" /></button
-            >
-          </div>
-        {/if}
-        {#if appUpdate?.message}
-          <button
-            class="icon-button"
-            data-size="md"
-            data-variant="ghost"
-            commandfor="update-popover"
-            command="toggle-popover"
-            aria-label="App update"
-            title="App update"
-          >
-            <Icon name={appUpdate.busy ? "loading" : "refresh"} />
-          </button>
-          <div
-            id="update-popover"
-            class="notification-popover"
-            popover="auto"
-            aria-label="App update"
-          >
-            <div class="stack-sm">
-              <strong class="type-title">App update</strong>
-              <p class="type-small">{appUpdate.message}</p>
-              {#if appUpdate.hasUpdate}
-                <button
-                  class="button"
-                  data-size="sm"
-                  disabled={appUpdate.busy}
-                  onclick={() => void updater?.update()}
-                >
-                  {appUpdate.busy ? "Updating…" : "Update now"}
-                </button>
-              {/if}
-            </div>
-            <button
-              class="icon-button"
-              data-size="sm"
-              data-variant="ghost"
-              aria-label="Close app update"
-              commandfor="update-popover"
-              command="hide-popover"><Icon name="cross" /></button
-            >
-          </div>
-        {/if}
-        <a
-          class="icon-button"
+<div class="app-root" class:standalone={!embedded} bind:this={appRoot}>
+  <NavigationShell {embedded}>
+    {#snippet actions()}
+      {#if hasErrors}
+        <button
+          class="button"
           data-size="md"
           data-variant="ghost"
-          href="#/settings"
-          aria-label="Settings"
-          title="Settings"
+          commandfor="error-popover"
+          command="toggle-popover"
+          aria-label="Show errors"
+          title="Show errors"
         >
-          <Icon name="settings" />
-        </a>
-      </div>
-    </header>
+          <Icon name="error" color="var(--error-text)" />
+        </button>
+        <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
+          <div class="stack-sm">
+            {#each alerts as alert (alert.id)}
+              {#if alert.message}
+                <p class="card caption" role="alert">{alert.message}</p>
+              {/if}
+            {/each}
+          </div>
+          <button
+            class="button"
+            data-size="sm"
+            data-variant="ghost"
+            aria-label="Close errors"
+            commandfor="error-popover"
+            command="hide-popover"><Icon name="cross" /></button
+          >
+        </div>
+      {/if}
+      {#if appUpdate?.message}
+        <button
+          class="button"
+          data-size="md"
+          data-variant="ghost"
+          commandfor="update-popover"
+          command="toggle-popover"
+          aria-label="App update"
+          title="App update"
+        >
+          <Icon name={appUpdate.busy ? "loading" : "refresh"} />
+        </button>
+        <div
+          id="update-popover"
+          class="notification-popover"
+          popover="auto"
+          aria-label="App update"
+        >
+          <div class="stack-sm">
+            <strong class="heading-md">App update</strong>
+            <p class="caption">{appUpdate.message}</p>
+            {#if appUpdate.hasUpdate}
+              <button
+                class="button"
+                data-size="sm"
+                disabled={appUpdate.busy}
+                onclick={() => void updater?.update()}
+              >
+                {appUpdate.busy ? "Updating…" : "Update now"}
+              </button>
+            {/if}
+          </div>
+          <button
+            class="button"
+            data-size="sm"
+            data-variant="ghost"
+            aria-label="Close app update"
+            commandfor="update-popover"
+            command="hide-popover"><Icon name="cross" /></button
+          >
+        </div>
+      {/if}
+    {/snippet}
     <Router
       {embedded}
       routes={[
@@ -328,10 +317,10 @@
         { pattern: "/downloads", render: downloadsRoute },
       ]}
     />
-  </main>
+  </NavigationShell>
 
   {#if currentTrack}
-    <div class="mini-player wings">
+    <div class="mini-player wings" {@attach playerClearance}>
       <button
         class="linkarea"
         commandfor="player-dialog"

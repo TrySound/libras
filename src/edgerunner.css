@@ -215,7 +215,11 @@
 
     /* Shared page gutters and permanent end-of-content scroll runway. */
     --content-padding-block: var(--space-lg);
-    --content-padding-inline: var(--space-lg);
+    --content-padding-inline: max(
+      var(--space-lg),
+      env(safe-area-inset-left),
+      env(safe-area-inset-right)
+    );
     --content-end-space: 20dvh;
 
     /* Border/focus geometry; the outline deliberately composes geometry and color. */
@@ -269,7 +273,22 @@
   @media (max-width: 600px) {
     :scope {
       --heading-xl-leading: var(--leading-compact);
-      --content-padding-inline: var(--space-md);
+      --content-padding-inline: max(
+        var(--space-md),
+        env(safe-area-inset-left),
+        env(safe-area-inset-right)
+      );
+    }
+  }
+
+  /* Embedded app gutters follow its own width, not the host page viewport. */
+  @container app (width <= 600px) {
+    :scope {
+      --content-padding-inline: max(
+        var(--space-md),
+        env(safe-area-inset-left),
+        env(safe-area-inset-right)
+      );
     }
   }
 
@@ -868,6 +887,45 @@
     text-align: start;
     text-decoration: none;
     overflow-wrap: anywhere;
+  }
+
+  a.menu-item {
+    &:hover,
+    &:focus-visible {
+      background: var(--item-bg-hover);
+      border-color: var(--item-border-hover);
+    }
+    &:active {
+      background: var(--item-bg-active);
+      border-color: var(--item-border-active);
+    }
+    &[aria-current="page"] {
+      border-color: var(--accent);
+    }
+    &:focus-visible {
+      outline: var(--focus-ring);
+      outline-offset: var(--focus-ring-offset);
+    }
+  }
+
+  .notification-popover {
+    box-sizing: border-box;
+    inset: 1rem 1rem auto auto;
+    margin: 0;
+    inline-size: min(26rem, calc(100dvw - 2rem));
+    max-block-size: calc(100dvh - 2rem);
+    overflow: auto;
+    padding: var(--space-lg);
+    color: var(--text-primary);
+    background: var(--shell-bg);
+    border: var(--border-width) solid var(--shell-border);
+    border-radius: var(--radius-lg);
+    corner-shape: var(--corner-shape);
+    &:popover-open {
+      display: flex;
+      align-items: start;
+      gap: var(--space-sm);
+    }
   }
 
   .track-row {

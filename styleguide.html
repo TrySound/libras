@@ -495,6 +495,40 @@
           </div>
         </section>
 
+        <section class="card stack-lg" aria-labelledby="navigation-heading">
+          <h2 class="heading-md uppercase" id="navigation-heading">Navigation shell</h2>
+          <p class="body">
+            A 280px independently scrolling sidebar at 64rem; below that, a sticky header and
+            right-side native modal drawer. Embedded apps respond to their own width. The document
+            owns standalone scrolling, and sidebar/content clearance follows the existing player's
+            actual height. The session, routes, and audio player remain mounted through resizing.
+          </p>
+          <nav class="stack-sm" aria-label="Navigation specimen">
+            <a class="menu-item" href="#navigation-heading" aria-current="page">
+              <svg width="24" height="24" color="var(--accent)" aria-hidden="true">
+                <use href="#icon-disc"></use>
+              </svg>
+              Your library
+            </a>
+            <a class="menu-item" href="#navigation-heading">
+              <svg width="24" height="24" aria-hidden="true"><use href="#icon-search"></use></svg>
+              Search
+            </a>
+            <a class="menu-item" href="#navigation-heading">
+              <svg width="24" height="24" aria-hidden="true"><use href="#icon-download"></use></svg>
+              Downloads
+            </a>
+            <a class="menu-item" href="#navigation-heading">
+              <svg width="24" height="24" aria-hidden="true"><use href="#icon-settings"></use></svg>
+              Settings
+            </a>
+          </nav>
+          <p class="caption">
+            Selected frames and icons use gold; labels remain white. Links retain native keyboard
+            behavior.
+          </p>
+        </section>
+
         <section class="card stack-lg" aria-labelledby="overlay-heading">
           <h2 class="heading-md uppercase" id="overlay-heading">Native overlay isolation</h2>
           <p class="body">
