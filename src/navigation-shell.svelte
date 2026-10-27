@@ -68,7 +68,7 @@
 
 {#snippet brand()}
   <a
-    class="shell-brand row-sm"
+    class="shell-brand button-quiet row-sm"
     href="#/library"
     aria-label="Libras home"
     data-nav="brand"
@@ -98,20 +98,22 @@
   </nav>
 {/snippet}
 
-<div class="navigation-shell" class:embedded bind:this={root}>
+<div class="app-shell navigation-shell" class:embedded bind:this={root}>
   {#if embedded}
     <div class="shell-canvas ui-edgerunner" aria-hidden="true"></div>
   {/if}
-  <aside class="shell-sidebar ui-edgerunner" aria-label="Navigation" bind:this={sidebar}>
-    <div class="stack-lg">
-      {@render brand()}
-      {@render navigation()}
-    </div>
-  </aside>
-  <header class="shell-header ui-edgerunner" bind:this={header}>
+  <aside
+    class="sidebar app-sidebar stack-lg ui-edgerunner"
+    aria-label="Navigation"
+    bind:this={sidebar}
+  >
     {@render brand()}
-    <div class="row-sm shell-header-actions">
-      {@render actions()}
+    {@render navigation()}
+  </aside>
+  <header class="topbar app-header row-md row-justify row-wrap ui-edgerunner" bind:this={header}>
+    {@render brand()}
+    <div class="row-sm header-actions">
+      <div class="row-sm app-status-actions">{@render actions()}</div>
       <a class="button mobile-action" href="#/search" aria-label="Search" data-nav="search"
         ><Icon name="search" size={24} /></a
       >
@@ -126,9 +128,9 @@
       >
     </div>
   </header>
-  <main class="shell-content" id="main-content">{@render children()}</main>
+  <main class="app-page" id="main-content">{@render children()}</main>
   <dialog
-    class="navigation-drawer ui-edgerunner"
+    class="right-sheet ui-edgerunner"
     id="navigation-dialog"
     aria-label="Navigation"
     closedby="any"
@@ -153,21 +155,22 @@
 </div>
 
 <style>
-  .navigation-shell {
+  /* Shell composition only. Shared components own surfaces, spacing and motion. */
+  .app-shell {
     --sidebar-width: 280px;
     position: relative;
     min-block-size: 100%;
     container: navigation / inline-size;
   }
-  .navigation-shell:not(.embedded) {
+  .app-shell:not(.embedded) {
     min-block-size: 100dvh;
   }
   /* Standalone has one document-owned canvas, not a gradient restarted by
    * each route's intrinsic content height. Embedded routes keep their canvas. */
-  .navigation-shell:not(.embedded) .shell-content > :global(.ui-edgerunner) {
+  .app-shell:not(.embedded) .app-page > :global(.ui-edgerunner) {
     background: transparent;
   }
-  .navigation-shell.embedded {
+  .app-shell.embedded {
     block-size: 100%;
     overflow: auto;
     overscroll-behavior: contain;
@@ -178,84 +181,30 @@
     z-index: -1;
     background: var(--canvas-bg);
   }
-  .shell-sidebar {
+  .app-sidebar {
+    position: fixed;
+    inset: 0 auto var(--player-clearance, 0px) 0;
+    inline-size: var(--sidebar-width);
+    /* Reserve the persistent error/update controls above the legacy player. */
+    padding-block-end: 4rem;
+  }
+  .embedded .app-sidebar {
+    position: absolute;
+  }
+  .app-page {
+    min-inline-size: 0;
+    padding-block-end: calc(
+      var(--player-clearance, 0px) + var(--space-lg) + env(safe-area-inset-bottom)
+    );
+  }
+  .app-status-actions:empty {
     display: none;
   }
-  .shell-header {
-    position: sticky;
-    inset-block-start: 0;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-md);
-    flex-wrap: wrap;
-    box-sizing: border-box;
-    min-block-size: 60px;
-    padding: max(var(--space-sm), env(safe-area-inset-top))
-      max(var(--content-padding-inline), env(safe-area-inset-right)) var(--space-sm)
-      max(var(--content-padding-inline), env(safe-area-inset-left));
-    background: var(--shell-bg);
-    backdrop-filter: blur(4px);
-    border-block-end: var(--border-width) solid var(--shell-border);
-  }
-  .shell-brand {
-    color: var(--text-primary);
-    text-decoration: none;
-  }
-  .shell-brand:focus-visible {
-    outline: var(--focus-ring);
-    outline-offset: var(--focus-ring-offset);
-  }
-  .shell-content {
-    min-inline-size: 0;
-    padding-block-end: calc(var(--player-clearance, 0px) + 1.5rem + env(safe-area-inset-bottom));
-  }
-  .navigation-drawer {
-    box-sizing: border-box;
-    inset: 0 0 0 auto;
-    margin: 0;
-    inline-size: min(360px, 100%);
-    max-inline-size: 100%;
-    block-size: 100dvh;
-    max-block-size: 100dvh;
-    padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
-      max(24px, env(safe-area-inset-bottom)) 24px;
-    border: 0;
-    border-inline-start: var(--border-width) solid var(--shell-border);
-    background: var(--shell-bg);
-    color: var(--text-primary);
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
-  .navigation-drawer::backdrop {
-    overflow: hidden;
-    overscroll-behavior: contain;
-    background: var(--canvas-bg);
-    opacity: 0.65;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    .navigation-drawer {
-      transform: translateX(100%);
-      transition:
-        transform 180ms ease-out,
-        display 180ms allow-discrete,
-        overlay 180ms allow-discrete;
-    }
-    .navigation-drawer[open] {
-      transform: translateX(0);
-    }
-    @starting-style {
-      .navigation-drawer[open] {
-        transform: translateX(100%);
-      }
-    }
-  }
-  .embedded .navigation-drawer {
+  .embedded :global(.right-sheet) {
     position: fixed;
     position-anchor: --libras-app;
     inset: anchor(top) anchor(right) auto auto;
-    inline-size: min(360px, anchor-size(width));
+    inline-size: min(360px, calc(anchor-size(width) - 2 * var(--space-md)));
     block-size: anchor-size(height);
   }
   /* Notifications enter the top layer too; constrain them to the embedded
@@ -266,53 +215,34 @@
     inline-size: min(26rem, calc(anchor-size(width) - 2rem));
     max-block-size: calc(anchor-size(height) - 2rem);
   }
-  @container navigation (width > 600px) {
-    .shell-header {
-      min-block-size: 76px;
-    }
-  }
   @container navigation (width >= 64rem) {
-    .shell-sidebar {
-      display: block;
-      position: fixed;
-      inset: 0 auto var(--player-clearance, 0px) 0;
-      box-sizing: border-box;
-      inline-size: var(--sidebar-width);
-      padding: var(--content-padding-block) var(--content-padding-inline) 4rem;
-      overflow: auto;
-      overscroll-behavior: contain;
-      background: var(--surface-bg);
-      border-inline-end: var(--border-width) solid var(--shell-border);
+    /* Keep one mounted set of status controls without a desktop topbar. */
+    .app-header,
+    .header-actions {
+      display: contents;
     }
-    .embedded .shell-sidebar {
-      position: absolute;
-    }
-    .shell-header {
-      position: fixed;
-      inset: auto auto var(--player-clearance, 0px) 0;
-      inline-size: var(--sidebar-width);
-      min-block-size: 0;
-      border: 0;
-      background: transparent;
-      backdrop-filter: none;
-    }
-    .shell-header > :global(.shell-brand):not(:focus-within),
+    .app-header > :global(.shell-brand):not(:focus-within),
     .mobile-action:not(:focus) {
       display: none;
     }
-    .embedded .shell-header {
+    .app-status-actions {
+      position: fixed;
+      inset: auto auto var(--player-clearance, 0px) 0;
+      inline-size: var(--sidebar-width);
+      box-sizing: border-box;
+      padding: var(--space-sm) var(--content-padding-inline);
+      z-index: var(--layer-header);
+    }
+    .embedded .app-status-actions {
       position: absolute;
     }
-    .shell-content {
+    .app-page {
       padding-inline-start: var(--sidebar-width);
     }
   }
   @container navigation (width < 64rem) {
-    .shell-sidebar:focus-within {
-      display: block;
-      position: absolute;
-      z-index: 12;
-      background: var(--surface-bg);
+    .app-sidebar:not(:focus-within) {
+      display: none;
     }
   }
 </style>

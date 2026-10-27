@@ -57,7 +57,7 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
     await t.test(
       "Settings adapts to the narrow embedded app, not the desktop browser",
       async () => {
-        assert.equal(await page.locator("#demo .shell-sidebar").isVisible(), false);
+        assert.equal(await page.locator("#demo .app-sidebar").isVisible(), false);
         await page.locator("#demo").getByRole("button", { name: "Open menu", exact: true }).click();
         await page
           .locator("#navigation-dialog")

@@ -3,8 +3,8 @@
  * Palette → semantic roles; color/type roles are consumed by components.
  * Opt in with .ui-edgerunner on a route or overlay. Legacy CSS stops there.
  * Keep components opt-in, sizing local, and spacing owned by containers.
- * Only cards, stacks, and [hidden] also target the boundary itself using
- * :where(:scope, *), without increasing specificity. Other classes style descendants.
+ * Cards, flow utilities, navigation shells, and [hidden] also target the boundary
+ * itself using :where(:scope, *), without increasing specificity.
  * Highrider themes and selection are intentionally deferred to issue #54.
  */
 @import "./edgerunner-fonts.css";
@@ -231,6 +231,8 @@
       env(safe-area-inset-right)
     );
     --content-end-space: 20dvh;
+    --topbar-min-height: 76px;
+    --layer-header: 10;
 
     /* Border/focus geometry; the outline deliberately composes geometry and color. */
     --border-width: 2px;
@@ -283,6 +285,7 @@
   @media (max-width: 600px) {
     :scope {
       --heading-xl-leading: var(--leading-compact);
+      --topbar-min-height: 60px;
       --content-padding-inline: max(
         var(--space-md),
         env(safe-area-inset-left),
@@ -294,6 +297,7 @@
   /* Embedded app gutters follow its own width, not the host page viewport. */
   @container app (width <= 600px) {
     :scope {
+      --topbar-min-height: 60px;
       --content-padding-inline: max(
         var(--space-md),
         env(safe-area-inset-left),
@@ -345,44 +349,44 @@
   }
 
   /* Center-aligned horizontal flow; wrapping is explicit via row-wrap. */
-  .row-xs,
-  .row-sm,
-  .row-md,
-  .row-lg,
-  .row-xl {
+  :where(:scope, *).row-xs,
+  :where(:scope, *).row-sm,
+  :where(:scope, *).row-md,
+  :where(:scope, *).row-lg,
+  :where(:scope, *).row-xl {
     display: flex;
     align-items: center;
   }
 
-  .row-xs {
+  :where(:scope, *).row-xs {
     gap: var(--space-xs);
   }
 
-  .row-sm {
+  :where(:scope, *).row-sm {
     gap: var(--space-sm);
   }
 
-  .row-md {
+  :where(:scope, *).row-md {
     gap: var(--space-md);
   }
 
-  .row-lg {
+  :where(:scope, *).row-lg {
     gap: var(--space-lg);
   }
 
-  .row-xl {
+  :where(:scope, *).row-xl {
     gap: var(--space-xl);
   }
 
-  .row-justify {
+  :where(:scope, *).row-justify {
     justify-content: space-between;
   }
 
-  .row-center {
+  :where(:scope, *).row-center {
     justify-content: center;
   }
 
-  .row-wrap {
+  :where(:scope, *).row-wrap {
     flex-wrap: wrap;
   }
 
@@ -915,6 +919,104 @@
     &:focus-visible {
       outline: var(--focus-ring);
       outline-offset: var(--focus-ring-offset);
+    }
+  }
+
+  /* Navigation components from libras-new. Appearance is independent of app
+   * placement, and these primitives also work on an Edgerunner boundary. */
+  :where(:scope, *).topbar {
+    position: sticky;
+    top: 0;
+    z-index: var(--layer-header);
+    box-sizing: border-box;
+    background: var(--shell-bg);
+    backdrop-filter: blur(4px);
+    border-bottom: var(--border-width) solid var(--shell-border);
+    min-height: var(--topbar-min-height);
+    padding: var(--space-sm) var(--content-padding-inline);
+    padding-block-start: max(var(--space-sm), env(safe-area-inset-top));
+  }
+
+  :where(:scope, *).sidebar {
+    box-sizing: border-box;
+    background: var(--surface-bg);
+    backdrop-filter: blur(4px);
+    padding: var(--content-padding-block) var(--content-padding-inline) 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border-right: var(--border-width) solid var(--shell-border);
+  }
+
+  /* Native right-sheet shell; inner content composes the ordinary flow utilities.
+   * Geometry, backdrop, and entry/exit timing follow the prototype, not the app. */
+  :where(:scope, *).right-sheet {
+    --sheet-closed-translate: 100% 0;
+    box-sizing: border-box;
+    position: fixed;
+    margin: 0;
+    max-width: none;
+    padding: var(--space-lg);
+    padding-block-start: max(var(--space-lg), env(safe-area-inset-top));
+    padding-block-end: max(var(--space-lg), env(safe-area-inset-bottom));
+    padding-inline-end: max(var(--space-lg), env(safe-area-inset-right));
+    border: 0;
+    border-radius: 0;
+    background: var(--shell-bg);
+    backdrop-filter: blur(4px);
+    color: var(--text-primary);
+    overflow: auto;
+    inset: 0 0 0 auto;
+    width: min(360px, calc(100dvw - 2 * var(--space-md)));
+    height: 100dvh;
+    max-height: none;
+
+    &:modal {
+      overscroll-behavior: contain;
+    }
+    &::backdrop {
+      background: var(--canvas-bg);
+      opacity: 0.65;
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      translate: var(--sheet-closed-translate);
+      pointer-events: none;
+      transition:
+        translate var(--motion-duration-exit) var(--motion-ease-exit),
+        display var(--motion-duration-exit),
+        overlay var(--motion-duration-exit);
+      transition-behavior: allow-discrete;
+      &::backdrop {
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity var(--motion-duration-exit) var(--motion-ease-exit),
+          display var(--motion-duration-exit),
+          overlay var(--motion-duration-exit);
+        transition-behavior: allow-discrete;
+      }
+      &[open] {
+        translate: 0;
+        pointer-events: auto;
+        transition-duration: var(--motion-duration-enter);
+        transition-timing-function: var(--motion-ease-enter);
+      }
+      &[open]::backdrop {
+        opacity: 0.65;
+        pointer-events: auto;
+        transition-duration: var(--motion-duration-enter);
+        transition-timing-function: var(--motion-ease-enter);
+      }
+      @starting-style {
+        &[open] {
+          translate: var(--sheet-closed-translate);
+        }
+        &[open]::backdrop {
+          opacity: 0;
+        }
+      }
     }
   }
 

@@ -194,8 +194,11 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/navigation.test.cjs
 ```
 
-`src/navigation-shell.svelte` owns navigation presentation only. Keep Session and Player in App;
-never key or remount them at layout breakpoints. Its container breakpoint is shared with the
+`src/navigation-shell.svelte` owns app placement, responsive visibility, and embedded/legacy
+compatibility. Reuse the prototype-derived `.topbar`, `.sidebar`, and `.right-sheet` components
+in `src/edgerunner.css`, plus the existing `.button-quiet` and flow utilities; do not restyle
+those primitives in the shell. The styleguide demonstrates the same production components.
+Keep Session and Player in App; never key or remount them at layout breakpoints. Its container breakpoint is shared with the
 ResizeObserver focus handoff. The embedded app retains host-owned sizing/scrolling; standalone
 uses document scrolling. The legacy player's measured height supplies clearance for both layouts.
 

@@ -67,6 +67,13 @@
       .overlay-example::backdrop {
         background: rgb(0 0 0 / 65%);
       }
+      .topbar-example {
+        max-block-size: 14rem;
+        overflow: auto;
+      }
+      .topbar-example-content {
+        padding: var(--content-padding-block) var(--content-padding-inline);
+      }
       @media (max-width: 600px) {
         .styleguide {
           padding: var(--space-md);
@@ -503,26 +510,70 @@
             owns standalone scrolling, and sidebar/content clearance follows the existing player's
             actual height. The session, routes, and audio player remain mounted through resizing.
           </p>
-          <nav class="stack-sm" aria-label="Navigation specimen">
-            <a class="menu-item" href="#navigation-heading" aria-current="page">
-              <svg width="24" height="24" color="var(--accent)" aria-hidden="true">
-                <use href="#icon-disc"></use>
-              </svg>
-              Your library
-            </a>
-            <a class="menu-item" href="#navigation-heading">
-              <svg width="24" height="24" aria-hidden="true"><use href="#icon-search"></use></svg>
-              Search
-            </a>
-            <a class="menu-item" href="#navigation-heading">
-              <svg width="24" height="24" aria-hidden="true"><use href="#icon-download"></use></svg>
-              Downloads
-            </a>
-            <a class="menu-item" href="#navigation-heading">
-              <svg width="24" height="24" aria-hidden="true"><use href="#icon-settings"></use></svg>
-              Settings
-            </a>
-          </nav>
+          <div class="topbar-example">
+            <header class="topbar row-md row-justify">
+              <a
+                class="button-quiet row-sm"
+                href="#navigation-heading"
+                aria-label="Libras specimen home"
+              >
+                <svg width="32" height="32" color="var(--accent)" aria-hidden="true">
+                  <use href="#icon-brand"></use>
+                </svg>
+                <span class="brand uppercase">Libras</span>
+              </a>
+              <button
+                class="button"
+                commandfor="guide-navigation"
+                command="show-modal"
+                aria-label="Open navigation specimen"
+              >
+                <svg width="24" height="24" aria-hidden="true">
+                  <use href="#icon-menu-lines"></use>
+                </svg>
+              </button>
+            </header>
+            <div class="topbar-example-content stack-lg">
+              <p class="body">
+                The shared topbar stays above scrolling content. Its surface, divider, gutters, and
+                responsive height are production styles, not reference-only styling.
+              </p>
+              <p class="body">
+                The quiet brand control uses the existing button-quiet and row-sm primitives. Open
+                the menu to inspect the same right-sheet used by the app.
+              </p>
+              <p class="body">
+                Sidebar placement belongs to the app shell; the sidebar specimen below demonstrates
+                only its shared appearance and content flow.
+              </p>
+            </div>
+          </div>
+          <aside class="sidebar stack-lg" aria-label="Sidebar specimen">
+            <nav class="stack-sm" aria-label="Navigation specimen">
+              <a class="menu-item" href="#navigation-heading" aria-current="page">
+                <svg width="24" height="24" color="var(--accent)" aria-hidden="true">
+                  <use href="#icon-disc"></use>
+                </svg>
+                Your library
+              </a>
+              <a class="menu-item" href="#navigation-heading">
+                <svg width="24" height="24" aria-hidden="true"><use href="#icon-search"></use></svg>
+                Search
+              </a>
+              <a class="menu-item" href="#navigation-heading">
+                <svg width="24" height="24" aria-hidden="true">
+                  <use href="#icon-download"></use>
+                </svg>
+                Downloads
+              </a>
+              <a class="menu-item" href="#navigation-heading">
+                <svg width="24" height="24" aria-hidden="true">
+                  <use href="#icon-settings"></use>
+                </svg>
+                Settings
+              </a>
+            </nav>
+          </aside>
           <p class="caption">
             Selected frames and icons use gold; labels remain white. Links retain native keyboard
             behavior.
@@ -576,6 +627,30 @@
       </footer>
     </main>
 
+    <dialog
+      id="guide-navigation"
+      class="ui-edgerunner right-sheet"
+      aria-label="Navigation specimen"
+      closedby="any"
+    >
+      <div class="stack-lg">
+        <header class="row-md row-justify">
+          <span class="brand uppercase">Libras</span>
+          <button
+            class="button"
+            commandfor="guide-navigation"
+            command="close"
+            aria-label="Close navigation specimen"
+          >
+            <svg width="24" height="24" aria-hidden="true"><use href="#icon-cross"></use></svg>
+          </button>
+        </header>
+        <p class="body">
+          The app and this reference share the right-sheet geometry, backdrop, scrolling, and
+          reduced-motion-aware entry and exit transitions.
+        </p>
+      </div>
+    </dialog>
     <dialog
       id="guide-dialog"
       class="ui-edgerunner card overlay-example"

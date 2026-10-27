@@ -183,13 +183,13 @@ it("uses the empty fallback before account selection and when selection is clear
   flushSync();
   expect(mocks.options!.selection.cache).toBeUndefined();
   expect(target.textContent).toContain("Connect your library");
-  const brand = target.querySelector(".shell-header .shell-brand svg");
+  const brand = target.querySelector(".app-header .shell-brand svg");
   expect(brand?.getAttribute("aria-hidden")).toBe("true");
   expect(brand?.getAttribute("width")).toBe("32");
   expect(brand?.getAttribute("height")).toBe("32");
   expect(brand?.querySelectorAll("path")).toHaveLength(0);
   expect(brand?.querySelector("use")?.getAttribute("href")).toBe("#icon-brand");
-  expect(target.querySelector(".shell-header .shell-brand")?.textContent?.trim()).toBe("Libras");
+  expect(target.querySelector(".app-header .shell-brand")?.textContent?.trim()).toBe("Libras");
   for (const link of target.querySelectorAll(".shell-brand")) {
     expect(link.getAttribute("href")).toBe("#/library");
     expect(link.getAttribute("aria-label")).toBe("Libras home");
@@ -510,8 +510,8 @@ it.each([
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const topbar = target.querySelector(".shell-header")!;
-  expect(target.querySelectorAll(".shell-header")).toHaveLength(1);
+  const topbar = target.querySelector(".app-header")!;
+  expect(target.querySelectorAll(".app-header")).toHaveLength(1);
   const links = topbar.querySelectorAll("a");
   expect([...links].map((link) => link.getAttribute("href"))).toEqual(["#/library", "#/search"]);
   for (const nav of target.querySelectorAll('nav[aria-label="Main navigation"]')) {
@@ -536,7 +536,13 @@ it.each([
   const heading = queue.querySelector(":scope > .view.row-md")!;
   expect(heading).not.toBeNull();
   expect(heading.querySelector(":scope > .stack-xs.grow h2")).not.toBeNull();
-  const controls = target.querySelectorAll(".topbar a, .topbar button");
+  expect(topbar.classList.contains("topbar")).toBe(true);
+  expect(target.querySelector(".app-sidebar.sidebar.stack-lg")).not.toBeNull();
+  expect(target.querySelector("#navigation-dialog.right-sheet")).not.toBeNull();
+  expect(topbar.querySelector(".button-quiet.row-sm")).not.toBeNull();
+  const controls = target.querySelectorAll(
+    "#player-dialog .topbar a, #player-dialog .topbar button",
+  );
   expect(controls.length).toBeGreaterThan(0);
   for (const control of controls) expect(control.getAttribute("data-variant")).toBe("ghost");
 });

@@ -331,8 +331,8 @@ describe("app settings", () => {
     const trigger = button("Show errors");
     expect(trigger.getAttribute("commandfor")).toBe("error-popover");
     expect(trigger.getAttribute("command")).toBe("toggle-popover");
-    expect(trigger.closest(".shell-header")).not.toBeNull();
-    expect(target.querySelector('.shell-sidebar a[href="#/settings"]')).not.toBeNull();
+    expect(trigger.closest(".app-header")).not.toBeNull();
+    expect(target.querySelector('.app-sidebar a[href="#/settings"]')).not.toBeNull();
     const popover = target.querySelector("#error-popover")!;
     expect(popover.getAttribute("popover")).toBe("auto");
     expect(popover.querySelectorAll('[role="alert"]')).toHaveLength(1);

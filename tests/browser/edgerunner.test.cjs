@@ -139,6 +139,42 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
       assert.equal(await page.locator("#guide-popover").isVisible(), false);
     });
 
+    await t.test("shared navigation primitives work outside the app shell", async () => {
+      for (const [width, height] of [[375, "60px"], [768, "76px"]]) {
+        await page.setViewportSize({ width, height: 900 });
+        const topbar = await page.locator(".topbar-example .topbar").evaluate((element) => {
+          const style = getComputedStyle(element);
+          return { minHeight: style.minHeight, display: style.display, blur: style.backdropFilter };
+        });
+        assert.deepEqual(topbar, { minHeight: height, display: "flex", blur: "blur(4px)" });
+      }
+      const sidebar = await page.locator(".sidebar").evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { padding: style.paddingTop, border: style.borderRightWidth, blur: style.backdropFilter };
+      });
+      assert.deepEqual(sidebar, { padding: "24px", border: "2px", blur: "blur(4px)" });
+      const invoker = page.getByRole("button", { name: "Open navigation specimen", exact: true });
+      const sheet = page.locator("#guide-navigation");
+      assert.equal(await sheet.isVisible(), false);
+      await invoker.click();
+      const geometry = await sheet.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { width: style.width, padding: style.padding, duration: style.transitionDuration };
+      });
+      assert.deepEqual(geometry, { width: "360px", padding: "24px", duration: "0.28s" });
+      await page.getByRole("button", { name: "Close navigation specimen", exact: true }).click();
+      assert.equal(await sheet.evaluate((element) => getComputedStyle(element).transitionDuration.split(", ").every((duration) => duration === "0.16s")), true);
+      await sheet.waitFor({ state: "hidden" });
+      assert.equal(await invoker.evaluate((element) => element === document.activeElement), true);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.setViewportSize({ width: 320, height: 900 });
+      await invoker.click();
+      assert.equal(await sheet.evaluate((element) => getComputedStyle(element).width), "288px");
+      assert.equal(await sheet.evaluate((element) => getComputedStyle(element).transitionDuration), "0s");
+      await page.keyboard.press("Escape");
+      await sheet.waitFor({ state: "hidden" });
+    });
+
     await t.test("missing artwork and reduced-motion loading", async () => {
       const artwork = page.locator(".artwork");
       assert.equal(await artwork.first().locator(".artwork-placeholder").isVisible(), false);

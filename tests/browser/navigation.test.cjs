@@ -36,7 +36,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     });
     await page.screenshot({ path: "/tmp/libras-navigation-tall-settings.png" });
     await page.setViewportSize({ width: 1280, height: 800 });
-    const sidebar = page.locator(".shell-sidebar");
+    const sidebar = page.locator(".app-sidebar");
     const menu = page.getByRole("button", { name: "Open menu", exact: true });
     await sidebar.waitFor({ state: "visible" });
     assert.equal(await menu.isVisible(), false);
@@ -62,7 +62,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.waitForFunction(
       () =>
-        document.activeElement?.closest(".shell-sidebar") !== null &&
+        document.activeElement?.closest(".app-sidebar") !== null &&
         !document.querySelector("#navigation-dialog").open,
     );
     assert.equal(
@@ -213,16 +213,16 @@ test("resizing retains the real audio transport and queue, with player clearance
       assert.equal(await page.evaluate(() => window.__audioInstances.length), 1);
       const clearance = await page.evaluate(() => {
         const player = document.querySelector(".mini-player").getBoundingClientRect();
-        const sidebar = document.querySelector(".shell-sidebar").getBoundingClientRect();
+        const sidebar = document.querySelector(".app-sidebar").getBoundingClientRect();
         return (
-          getComputedStyle(document.querySelector(".shell-sidebar")).display === "none" ||
+          getComputedStyle(document.querySelector(".app-sidebar")).display === "none" ||
           sidebar.bottom <= player.top
         );
       });
       assert.equal(clearance, true);
     }
     assert.ok((await transport.evaluate((audio) => audio.currentTime)) >= before);
-    await page.locator('.shell-sidebar a[href="#/downloads"]').click();
+    await page.locator('.app-sidebar a[href="#/downloads"]').click();
     await page.locator(".downloads-view").waitFor();
     assert.equal(await transport.evaluate((audio) => !audio.paused), true);
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
