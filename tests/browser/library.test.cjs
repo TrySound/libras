@@ -193,6 +193,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     await artistView.getByRole("link", { name: "Open Album 0", exact: true }).click();
     const albumView = page.getByRole("region", { name: "Album details" });
     await albumView.getByRole("heading", { name: "Album 0", exact: true }).waitFor();
+    assert.equal(await albumView.locator(".track-row-number").first().evaluate(node => getComputedStyle(node).textAlign), "center");
     assert.equal(
       await albumView.getByRole("button", { name: "Play Track 0", exact: true }).count(),
       1,
