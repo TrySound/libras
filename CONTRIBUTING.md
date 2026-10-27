@@ -134,8 +134,8 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   claim. With no saved account, the initial state is Disconnected. Automatic server sync shows a dedicated
   Synchronizing with server… status (or actual scan counters), then the connected identity.
   Session distinguishes automatic sync from explicit refresh via `refreshing`; only an explicit
-  library-refresh phase labels the text-only action Refreshing…. Follow-on server sync keeps
-  the action guarded but returns its normal label. Synchronizing with server… covers the full
+  refresh operation labels the text-only action Refreshing… until all follow-on work completes.
+  The action and counters share the same completion boundary. Synchronizing with server… covers the full
   operation, including artwork, playlists, and queue; once scan counts are available they stay
   visible instead of the synchronization message until completion, then switch to Connected.
   A manual refresh retains the connected status until counters arrive, without a transient

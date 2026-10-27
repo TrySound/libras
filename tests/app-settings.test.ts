@@ -411,8 +411,12 @@ describe("app settings", () => {
       expect(status.textContent).not.toContain("Synchronizing");
       expect(status.textContent).not.toContain("Connected");
       expect(status.querySelector(".loader")).not.toBeNull();
-      expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refresh library");
-      expect(target.querySelector("#settings-refresh")?.getAttribute("aria-busy")).toBe("false");
+      expect(target.querySelector("#settings-refresh")?.textContent).toContain(
+        saved ? "Refreshing…" : "Refresh library",
+      );
+      expect(target.querySelector("#settings-refresh")?.getAttribute("aria-busy")).toBe(
+        String(saved),
+      );
       expect(target.querySelector("#settings-refresh")?.getAttribute("aria-disabled")).toBe("true");
       queue.resolve();
       await loading;
