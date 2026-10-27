@@ -136,7 +136,7 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
 - Edgerunner uses one responsive breakpoint: mobile at app widths ≤50rem, desktop above
   (800px at the default root size). Shared `.only-mobile` / `.only-desktop` utilities,
   navigation, player controls, page gutters, split layouts, and tile sizing switch together.
-- Artist and album details share `src/ui/collection-panel.svelte` and contextual actions.
+- Artist and album details keep their panel markup and contextual actions inline in each route.
   They follow the prototype's split layout and CSS-only cover height budget, adapting to
   the app container rather than the host viewport. Artist albums use unnumbered media rows;
   album tracks retain ordered playback, credits, durations, download states, and current-track

@@ -3,9 +3,6 @@
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
-  import CollectionPanel from "./ui/collection-panel.svelte";
-  import ActionTrigger from "./ui/action-trigger.svelte";
-  import CollectionActions from "./ui/collection-actions.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -51,35 +48,64 @@
   const menuTracks = $derived(menuAlbum ? (cache.albumTracks.get(menuAlbum.id) ?? []) : tracks);
   const menuTitle = $derived(menuAlbum?.title ?? artist?.name);
   const menuArtwork = $derived(menuAlbum ? menuAlbum.artworkId : artist?.artworkId);
+  const menuTrackIds = $derived(availableTrackIds(menuTracks));
+
+  let sheet: HTMLDialogElement;
+  let popover: HTMLDivElement;
+  function dismissActions() {
+    sheet.close();
+    popover.hidePopover?.();
+  }
 </script>
 
 <section class="ui-edgerunner split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
-    <CollectionPanel
-      {covers}
-      artworkId={artist.artworkId}
-      title={artist.name}
-      metadata={[
-        `${visibleAlbums.length} album${visibleAlbums.length === 1 ? "" : "s"}`,
-        ...genres,
-      ].join(" · ")}
-    >
-      {#snippet actions()}
-        <button
-          class="button"
-          data-variant="primary"
-          aria-label={`Play ${artist.name}`}
-          disabled={!availableTrackIds(tracks).length}
-          onclick={() => void playback.replaceQueueAndPlay(availableTrackIds(tracks))}
-          ><Icon name="play" size={24} /></button
-        >
-        <ActionTrigger
-          title={artist.name}
-          menuId="artist-detail-menu"
-          onselect={() => (menuAlbumId = undefined)}
-        />
-      {/snippet}
-    </CollectionPanel>
+    <div class="viewport-panel">
+      <Artwork
+        {covers}
+        id={artist.artworkId}
+        size="cover"
+        loading="eager"
+        class="viewport-panel-cover"
+      />
+      <div class="stack-sm">
+        <div class="row-md row-justify">
+          <div class="stack-xs"><h1 class="heading-xl">{artist.name}</h1></div>
+          <div class="row-sm">
+            <button
+              class="button"
+              data-variant="primary"
+              aria-label={`Play ${artist.name}`}
+              disabled={!availableTrackIds(tracks).length}
+              onclick={() => void playback.replaceQueueAndPlay(availableTrackIds(tracks))}
+              ><Icon name="play" size={24} /></button
+            >
+            <button
+              class="button only-mobile"
+              data-variant="secondary"
+              commandfor="artist-detail-menu"
+              command="show-modal"
+              aria-label={`Actions for ${artist.name}`}
+              onclick={() => (menuAlbumId = undefined)}><Icon name="menu" size={24} /></button
+            >
+            <button
+              class="button only-desktop"
+              data-variant="secondary"
+              commandfor="artist-detail-menu-popover"
+              command="toggle-popover"
+              aria-label={`Actions for ${artist.name}`}
+              onclick={() => (menuAlbumId = undefined)}><Icon name="menu" size={24} /></button
+            >
+          </div>
+        </div>
+        <p class="caption text-secondary">
+          {[
+            `${visibleAlbums.length} album${visibleAlbums.length === 1 ? "" : "s"}`,
+            ...genres,
+          ].join(" · ")}
+        </p>
+      </div>
+    </div>
     <div class="stack-lg scroll-runway">
       <h2 class="heading-lg uppercase">{offlineMode ? "Downloaded albums" : "Albums"}</h2>
       <div class="stack-sm">
@@ -104,11 +130,22 @@
               onfocus={() => (menuAlbumId = album.id)}
             ></a>
             <div class="row-sm">
-              <ActionTrigger
-                title={album.title}
-                menuId="artist-detail-menu"
-                onselect={() => (menuAlbumId = album.id)}
-              />
+              <button
+                class="button only-mobile"
+                data-variant="secondary"
+                commandfor="artist-detail-menu"
+                command="show-modal"
+                aria-label={`Actions for ${album.title}`}
+                onclick={() => (menuAlbumId = album.id)}><Icon name="menu" size={24} /></button
+              >
+              <button
+                class="button only-desktop"
+                data-variant="secondary"
+                commandfor="artist-detail-menu-popover"
+                command="toggle-popover"
+                aria-label={`Actions for ${album.title}`}
+                onclick={() => (menuAlbumId = album.id)}><Icon name="menu" size={24} /></button
+              >
             </div>
           </article>
         {:else}
@@ -135,13 +172,75 @@
   {/if}
 </section>
 
-<CollectionActions
+<dialog
+  bind:this={sheet}
   id="artist-detail-menu"
-  title={menuTitle}
-  artworkId={menuArtwork}
-  {covers}
-  {playback}
-  {trackEngine}
-  trackIds={availableTrackIds(menuTracks)}
-  downloadIds={menuTracks.map((track) => track.id)}
-/>
+  class="ui-edgerunner bottom-sheet action-menu"
+  aria-labelledby="artist-detail-menu-title"
+  closedby="closerequest"
+  data-swipedown="close"
+>
+  <span class="dialog-handle" aria-hidden="true"></span>
+  {@render actions("artist-detail-menu", false)}
+</dialog>
+<div
+  bind:this={popover}
+  id="artist-detail-menu-popover"
+  class="ui-edgerunner popover"
+  popover="auto"
+  role="dialog"
+  aria-labelledby="artist-detail-menu-popover-title"
+>
+  {@render actions("artist-detail-menu-popover", true)}
+</div>
+
+{#snippet actions(target: string, isPopover: boolean)}
+  <div class="stack-lg">
+    <header class="row-md row-justify">
+      <div class="row-md">
+        <Artwork {covers} id={menuArtwork} size="lg" />
+        <h2 id={`${target}-title`} class="heading-md">{menuTitle}</h2>
+      </div>
+      <button
+        class="button"
+        commandfor={target}
+        command={isPopover ? "hide-popover" : "close"}
+        aria-label="Close menu"><Icon name="cross" size={24} /></button
+      >
+    </header>
+    <div class="stack-sm">
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          void playback.replaceQueueAndPlay(menuTrackIds);
+          dismissActions();
+        }}><Icon name="play" size={24} /><span>Play</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          void playback.enqueue(menuTrackIds, "next");
+          dismissActions();
+        }}><Icon name="next" size={24} /><span>Play next</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          void playback.enqueue(menuTrackIds, "last");
+          dismissActions();
+        }}><Icon name="plus" size={24} /><span>Play last</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTracks.length}
+        onclick={() => {
+          trackEngine.downloadMany(menuTracks.map((track) => track.id));
+          dismissActions();
+        }}><Icon name="download" size={24} /><span>Download</span></button
+      >
+    </div>
+  </div>
+{/snippet}

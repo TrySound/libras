@@ -3,9 +3,6 @@
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
-  import CollectionPanel from "./ui/collection-panel.svelte";
-  import ActionTrigger from "./ui/action-trigger.svelte";
-  import CollectionActions from "./ui/collection-actions.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -56,39 +53,77 @@
   const totalDuration = $derived(
     visibleTracks.reduce((sum, track) => sum + (track.duration ?? 0), 0),
   );
+  const menuTrackIds = $derived(menuTrack ? [menuTrack.id] : visibleTrackIds);
+  const menuDownloadIds = $derived(
+    menuTrack ? [menuTrack.id] : albumTracks.map((track) => track.id),
+  );
+  const menuDownloadStatus = $derived(menuTrack ? trackEngine.getStatus(menuTrack.id) : undefined);
+
+  let sheet: HTMLDialogElement;
+  let popover: HTMLDivElement;
+  function dismissActions() {
+    sheet.close();
+    popover.hidePopover?.();
+  }
 </script>
 
 <section class="ui-edgerunner split-layout" aria-label="Album details">
   {#if libraryAvailable && artist && album}
-    <CollectionPanel
-      {covers}
-      artworkId={album.artworkId}
-      title={album.title}
-      credit={album.displayArtist ?? artist.name}
-      href={`#/library/artist/${encodeURIComponent(artist.id)}`}
-      metadata={[
-        album.year ?? "Unknown year",
-        ...album.genres,
-        `${visibleTracks.length} track${visibleTracks.length === 1 ? "" : "s"}`,
-        ...(totalDuration ? [`${Math.ceil(totalDuration / 60)} min`] : []),
-      ].join(" · ")}
-    >
-      {#snippet actions()}
-        <button
-          class="button"
-          data-variant="primary"
-          aria-label={`Play ${album.title}`}
-          disabled={!visibleTrackIds.length}
-          onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
-          ><Icon name="play" size={24} /></button
-        >
-        <ActionTrigger
-          title={album.title}
-          menuId="album-detail-menu"
-          onselect={() => (menuTrackId = undefined)}
-        />
-      {/snippet}
-    </CollectionPanel>
+    <div class="viewport-panel">
+      <Artwork
+        {covers}
+        id={album.artworkId}
+        size="cover"
+        loading="eager"
+        class="viewport-panel-cover"
+      />
+      <div class="stack-sm">
+        <div class="row-md row-justify">
+          <div class="stack-xs">
+            <h1 class="heading-xl">{album.title}</h1>
+            <a
+              class="button-quiet caption text-secondary"
+              href={`#/library/artist/${encodeURIComponent(artist.id)}`}
+              >{album.displayArtist ?? artist.name}</a
+            >
+          </div>
+          <div class="row-sm">
+            <button
+              class="button"
+              data-variant="primary"
+              aria-label={`Play ${album.title}`}
+              disabled={!visibleTrackIds.length}
+              onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
+              ><Icon name="play" size={24} /></button
+            >
+            <button
+              class="button only-mobile"
+              data-variant="secondary"
+              commandfor="album-detail-menu"
+              command="show-modal"
+              aria-label={`Actions for ${album.title}`}
+              onclick={() => (menuTrackId = undefined)}><Icon name="menu" size={24} /></button
+            >
+            <button
+              class="button only-desktop"
+              data-variant="secondary"
+              commandfor="album-detail-menu-popover"
+              command="toggle-popover"
+              aria-label={`Actions for ${album.title}`}
+              onclick={() => (menuTrackId = undefined)}><Icon name="menu" size={24} /></button
+            >
+          </div>
+        </div>
+        <p class="caption text-secondary">
+          {[
+            album.year ?? "Unknown year",
+            ...album.genres,
+            `${visibleTracks.length} track${visibleTracks.length === 1 ? "" : "s"}`,
+            ...(totalDuration ? [`${Math.ceil(totalDuration / 60)} min`] : []),
+          ].join(" · ")}
+        </p>
+      </div>
+    </div>
     <div class="stack-lg scroll-runway">
       <h2 class="heading-lg uppercase">{offlineMode ? "Downloaded tracks" : "Tracks"}</h2>
       <div class="stack-sm">
@@ -147,11 +182,22 @@
                     seconds: Math.floor(track.duration % 60),
                   })}{/if}
               </span>
-              <ActionTrigger
-                title={track.title}
-                menuId="album-detail-menu"
-                onselect={() => (menuTrackId = track.id)}
-              />
+              <button
+                class="button only-mobile"
+                data-variant="secondary"
+                commandfor="album-detail-menu"
+                command="show-modal"
+                aria-label={`Actions for ${track.title}`}
+                onclick={() => (menuTrackId = track.id)}><Icon name="menu" size={24} /></button
+              >
+              <button
+                class="button only-desktop"
+                data-variant="secondary"
+                commandfor="album-detail-menu-popover"
+                command="toggle-popover"
+                aria-label={`Actions for ${track.title}`}
+                onclick={() => (menuTrackId = track.id)}><Icon name="menu" size={24} /></button
+              >
             </div>
           </div>
         {:else}
@@ -178,15 +224,97 @@
   {/if}
 </section>
 
-<CollectionActions
+<dialog
+  bind:this={sheet}
   id="album-detail-menu"
-  title={menuTrack?.title ?? album?.title}
-  artworkId={menuTrack?.artworkId ?? album?.artworkId}
-  {covers}
-  {playback}
-  {trackEngine}
-  trackIds={menuTrack ? [menuTrack.id] : visibleTrackIds}
-  downloadIds={menuTrack ? [menuTrack.id] : albumTracks.map((track) => track.id)}
-  onplay={menuTrack ? () => playTrack(menuTrack) : undefined}
-  downloadStatus={menuTrack ? trackEngine.getStatus(menuTrack.id) : undefined}
-/>
+  class="ui-edgerunner bottom-sheet action-menu"
+  aria-labelledby="album-detail-menu-title"
+  closedby="closerequest"
+  data-swipedown="close"
+>
+  <span class="dialog-handle" aria-hidden="true"></span>
+  {@render actions("album-detail-menu", false)}
+</dialog>
+<div
+  bind:this={popover}
+  id="album-detail-menu-popover"
+  class="ui-edgerunner popover"
+  popover="auto"
+  role="dialog"
+  aria-labelledby="album-detail-menu-popover-title"
+>
+  {@render actions("album-detail-menu-popover", true)}
+</div>
+
+{#snippet actions(target: string, isPopover: boolean)}
+  <div class="stack-lg">
+    <header class="row-md row-justify">
+      <div class="row-md">
+        <Artwork {covers} id={menuTrack?.artworkId ?? album?.artworkId} size="lg" />
+        <h2 id={`${target}-title`} class="heading-md">{menuTrack?.title ?? album?.title}</h2>
+      </div>
+      <button
+        class="button"
+        commandfor={target}
+        command={isPopover ? "hide-popover" : "close"}
+        aria-label="Close menu"><Icon name="cross" size={24} /></button
+      >
+    </header>
+    <div class="stack-sm">
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          if (menuTrack) playTrack(menuTrack);
+          else void playback.replaceQueueAndPlay(menuTrackIds);
+          dismissActions();
+        }}><Icon name="play" size={24} /><span>Play</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          void playback.enqueue(menuTrackIds, "next");
+          dismissActions();
+        }}><Icon name="next" size={24} /><span>Play next</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          void playback.enqueue(menuTrackIds, "last");
+          dismissActions();
+        }}><Icon name="plus" size={24} /><span>Play last</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuDownloadIds.length ||
+          (menuDownloadStatus !== undefined && menuDownloadStatus !== "idle")}
+        onclick={() => {
+          trackEngine.downloadMany(menuDownloadIds);
+          dismissActions();
+        }}
+      >
+        <Icon
+          name={menuDownloadStatus === "downloaded"
+            ? "check"
+            : menuDownloadStatus === "queued"
+              ? "clock"
+              : menuDownloadStatus === "downloading"
+                ? "loading"
+                : "download"}
+          size={24}
+        />
+        <span
+          >{menuDownloadStatus === "downloaded"
+            ? "Downloaded"
+            : menuDownloadStatus === "queued"
+              ? "Queued"
+              : menuDownloadStatus === "downloading"
+                ? "Downloading…"
+                : "Download"}</span
+        >
+      </button>
+    </div>
+  </div>
+{/snippet}
