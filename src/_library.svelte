@@ -3,7 +3,6 @@
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
-  import CollectionTile from "./ui/collection-tile.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Artist } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -110,15 +109,20 @@
       {#if visibleArtists.length > 0}
         <div class="tile-grid" aria-busy={loading}>
           {#each artistPage as artist (artist.id)}
-            <CollectionTile
-              {covers}
-              artworkId={artist.artworkId}
-              title={artist.name}
-              href={`#/library/artist/${encodeURIComponent(artist.id)}`}
-              menuId="artist-menu"
-              onselect={() => (menuArtistId = artist.id)}
-            >
-              {#snippet actions()}
+            <article class="tile tile-grid-item">
+              <Artwork {covers} id={artist.artworkId} size="fill" class="tile-artwork" />
+              <div class="tile-content stack-sm">
+                <h3 class="heading-sm">{artist.name}</h3>
+              </div>
+              <a
+                class="link-target"
+                href={`#/library/artist/${encodeURIComponent(artist.id)}`}
+                aria-label={artist.name}
+                data-longpressfor="artist-menu"
+                data-longpress="show-modal"
+                onfocus={() => (menuArtistId = artist.id)}
+              ></a>
+              <div class="row-sm tile-actions">
                 <button
                   class="button action-mobile"
                   data-variant="secondary"
@@ -135,8 +139,8 @@
                   aria-label={`Actions for ${artist.name}`}
                   onclick={() => (menuArtistId = artist.id)}><Icon name="menu" size={24} /></button
                 >
-              {/snippet}
-            </CollectionTile>
+              </div>
+            </article>
           {/each}
         </div>
         {#if artistPage.length < visibleArtists.length}
