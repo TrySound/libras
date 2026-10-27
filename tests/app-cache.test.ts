@@ -135,13 +135,16 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const albumRows = [...target.querySelectorAll(".container.wings > .wings-item")];
+  const albumRows = [...target.querySelectorAll('[aria-label="Album details"] .track-row')];
   const queueRows = [...target.querySelectorAll(".player-queue .wings > .wings-item")];
   expect(albumRows).toHaveLength(3);
   expect(queueRows).toHaveLength(3);
-  const subtitle = (row: Element) => row.querySelector(".stack-xs small")?.textContent?.trim();
-  const duration = (row: Element) => row.querySelector(".text-right")?.textContent?.trim() ?? "";
-  const number = (row: Element) => row.querySelector(".track-leading")?.textContent?.trim();
+  const subtitle = (row: Element) =>
+    row.querySelector(".stack-xs small, .caption")?.textContent?.trim();
+  const duration = (row: Element) =>
+    row.querySelector(".text-right, :scope > .row-sm > .metadata")?.textContent?.trim() ?? "";
+  const number = (row: Element) =>
+    row.querySelector(".track-leading, .track-row-number")?.textContent?.trim();
   expect(subtitle(albumRows[0])).toBeUndefined();
   expect(subtitle(albumRows[1])).toBe("Guest credit");
   expect(subtitle(albumRows[2])).toBe("Guest artist, Main artist");
@@ -156,10 +159,13 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   expect(number(queueRows[2])).toBe("03");
   for (const rows of [albumRows, queueRows]) {
     expect(rows.map(duration)).toEqual(["4:32", "0:00", ""]);
-    expect(rows[0].querySelector('[aria-label="Current track, not playing"]')).not.toBeNull();
+    expect(
+      rows[0].querySelector('[aria-label="Current track, not playing"]') ??
+        (rows[0].getAttribute("aria-current") === "true" ? rows[0] : null),
+    ).not.toBeNull();
   }
   for (const row of queueRows) expect(row.textContent).not.toContain("Album title");
-  expect(albumRows[1].querySelector('[title="Open menu for Second track"]')).not.toBeNull();
+  expect(albumRows[1].querySelector('[aria-label="Actions for Second track"]')).not.toBeNull();
 });
 
 it("restores downloads silently without flashing the empty state", () => {
@@ -551,11 +557,11 @@ it.each([
 
 it.each([
   { route: "/library", selector: ".tile > a.link-target", menu: "artist-menu" },
-  { route: "/library/artist/artist", selector: "a.linkarea", menu: "album-menu-0" },
+  { route: "/library/artist/artist", selector: "a.link-target", menu: "artist-detail-menu" },
   {
     route: "/library/artist/artist/album/album",
-    selector: "button.linkarea",
-    menu: "album-track-menu-0",
+    selector: "button.link-target",
+    menu: "album-detail-menu",
   },
 ])(
   "keeps available content and menus usable during restoration on $route",
@@ -589,9 +595,7 @@ it.each([
     expect(target.querySelector(selector)).not.toBeNull();
     if (route !== "/library") {
       expect(target.querySelector(selector)!.closest(".view")).toBeNull();
-      expect(
-        target.querySelector(".collection-heading")?.closest(".view.container"),
-      ).not.toBeNull();
+      expect(target.querySelector(".ui-edgerunner .viewport-panel h1")).not.toBeNull();
     }
     target.querySelector<HTMLElement>(selector)!.focus();
     flushSync();
@@ -600,30 +604,10 @@ it.each([
     expect(
       dialog?.querySelector("button.menu-item, button.wings-item")?.hasAttribute("disabled"),
     ).toBe(false);
-    if (route === "/library") {
-      expect(dialog?.classList.contains("ui-edgerunner")).toBe(true);
-      expect(dialog?.querySelectorAll("button.menu-item")).toHaveLength(4);
-      expect(dialog?.querySelector('[command="close"]')?.getAttribute("commandfor")).toBe(menu);
-      return;
-    }
-    for (const menu of target.querySelectorAll<HTMLDialogElement>(".action-menu")) {
-      const wings = menu.querySelector(":scope > .wings")!;
-      expect(wings.querySelector(":scope > .topbar.wings-item")).not.toBeNull();
-      expect(wings.querySelectorAll(":scope > button.wings-item")).toHaveLength(4);
-      const close = wings.querySelector<HTMLButtonElement>(".topbar button")!;
-      expect(close.hasAttribute("commandfor")).toBe(false);
-      expect(close.hasAttribute("command")).toBe(false);
-      expect(close.getAttribute("title")).toBe("Close menu");
-      expect(close.getAttribute("data-variant")).toBe("ghost");
-      expect(close.querySelector("use")?.getAttribute("href")).toBe("#icon-chevron-down");
-      expect(menu.querySelector(".topbar .type-title")?.id).toBe(
-        menu.getAttribute("aria-labelledby"),
-      );
-      expect(menu.textContent).not.toContain("Cancel");
-      menu.showModal();
-      close.click();
-      expect(menu.open).toBe(false);
-    }
+    expect(dialog?.classList.contains("ui-edgerunner")).toBe(true);
+    expect(dialog?.querySelectorAll("button.menu-item")).toHaveLength(4);
+    expect(dialog?.querySelector('[command="close"]')?.getAttribute("commandfor")).toBe(menu);
+    expect(dialog?.querySelector("h2")?.id).toBe(dialog?.getAttribute("aria-labelledby"));
   },
 );
 
@@ -724,7 +708,11 @@ it("derives artist genres from albums and reacts to library updates", async () =
   cleanups.push(() => unmount(component));
   flushSync();
   const labels = () =>
-    [...target.querySelectorAll(".row-wrap-sm > .chip")].map((node) => node.textContent?.trim());
+    target
+      .querySelector(".viewport-panel > .stack-sm > .caption")
+      ?.textContent?.trim()
+      .split(" · ")
+      .slice(1);
   expect(labels()).toEqual(["Rock", "Jazz", "Soul"]);
   expect(cache.artists.get("artist")).not.toHaveProperty("genres");
 
@@ -737,7 +725,7 @@ it("derives artist genres from albums and reacts to library updates", async () =
 
   await cache.replaceLibrary({ ...snapshot, albums: [{ ...snapshot.albums[0], genres: [] }] });
   flushSync();
-  expect(target.querySelector(".chip")).toBeNull();
+  expect(labels()).toEqual([]);
 });
 
 it.each([
@@ -850,7 +838,7 @@ it("shows the album display credit without changing its artist link", async () =
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const credit = target.querySelector(".collection-heading a");
+  const credit = target.querySelector(".viewport-panel a");
   expect(credit?.textContent?.trim()).toBe("Lead & Guest");
   expect(credit?.getAttribute("href")).toBe("#/library/artist/artist");
 });
@@ -878,8 +866,13 @@ it("shows only album genres on the album route", async () => {
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  expect(target.querySelector(".row-wrap-sm > .chip")?.textContent?.trim()).toBe("Jazz");
-  expect(target.querySelector(".collection-heading a")?.getAttribute("href")).toBe(
+  expect(target.querySelector(".viewport-panel > .stack-sm > .caption")?.textContent).toContain(
+    "Jazz",
+  );
+  expect(target.querySelector(".viewport-panel > .stack-sm > .caption")?.textContent).not.toContain(
+    "Track-only genre",
+  );
+  expect(target.querySelector(".viewport-panel a")?.getAttribute("href")).toBe(
     "#/library/artist/artist",
   );
 });
@@ -1037,11 +1030,11 @@ it.each([
 });
 
 it.each([
-  { route: "/library/artist/artist", selector: "a.linkarea", observesArtwork: true },
+  { route: "/library/artist/artist", selector: "a.link-target", observesArtwork: true },
   {
     route: "/library/artist/artist/album/album",
-    selector: "button.linkarea",
-    observesArtwork: false,
+    selector: "button.link-target",
+    observesArtwork: true,
   },
 ])("keeps row controls accessible on $route", async ({ route, selector, observesArtwork }) => {
   installDisk();
@@ -1093,9 +1086,9 @@ it.each([
   expect(row.hasAttribute("data-viewport-hidden")).toBe(false);
   control.focus();
   expect(document.activeElement).toBe(control);
-  expect(observers.size).toBe(observesArtwork ? 1 : 0);
   if (observesArtwork) {
-    expect(load).not.toHaveBeenCalled();
+    expect(observers.has(row.querySelector(".artwork")!)).toBe(true);
+    load.mockClear();
     observers.get(row.querySelector(".artwork")!)!(false);
     expect(load).not.toHaveBeenCalled();
     observers.get(row.querySelector(".artwork")!)!(true);
@@ -1219,7 +1212,7 @@ it("follows normalized album artwork IDs without publishing a late old image", a
     savedAt: 2,
     albums: [{ ...data.albums[0], artworkId: "new-cover" }],
   });
-  const image = () => target.querySelector(".collection-view .artwork img")?.getAttribute("src");
+  const image = () => target.querySelector(".viewport-panel .artwork img")?.getAttribute("src");
   await vi.waitFor(() => {
     flushSync();
     expect(image()).toBe("blob:reference-1");
@@ -1244,6 +1237,7 @@ it("follows normalized album artwork IDs without publishing a late old image", a
     artists: [{ ...data.artists[0], artworkId: undefined }],
   });
   flushSync();
-  expect(image()).toBeUndefined();
-  expect(target.querySelector(".collection-view .artwork svg")).not.toBeNull();
+  expect(image()).toBeNull();
+  expect(target.querySelector(".viewport-panel .artwork img")?.hasAttribute("hidden")).toBe(true);
+  expect(target.querySelector(".viewport-panel .artwork svg")).not.toBeNull();
 });

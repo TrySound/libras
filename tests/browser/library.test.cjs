@@ -130,6 +130,86 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     await first.getByRole("link", { name: artists[0].name, exact: true }).click();
     await page.waitForURL(/artist%200/);
     assert.equal(await page.locator(".library-view").count(), 0);
+    const artistView = page.getByRole("region", { name: "Artist details" });
+    await artistView.getByRole("heading", { name: artists[0].name, exact: true }).waitFor();
+    assert.equal(await artistView.locator(".track-row").count(), 1);
+    await artistView
+      .getByRole("button", { name: "Actions for Album 0", exact: true })
+      .filter({ visible: true })
+      .click();
+    const artistActions = page.locator("#artist-detail-menu-popover");
+    await artistActions.waitFor({ state: "visible" });
+    assert.equal(await artistActions.getByRole("heading").textContent(), "Album 0");
+    await page.keyboard.press("Escape");
+    await artistView.getByRole("link", { name: "Open Album 0", exact: true }).click();
+    const albumView = page.getByRole("region", { name: "Album details" });
+    await albumView.getByRole("heading", { name: "Album 0", exact: true }).waitFor();
+    assert.equal(
+      await albumView.getByRole("button", { name: "Play Track 0", exact: true }).count(),
+      1,
+    );
+    for (const width of [320, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.equal(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+        true,
+      );
+      await albumView
+        .getByRole("button", { name: "Actions for Track 0", exact: true })
+        .filter({ visible: true })
+        .click();
+      const panel = page.locator(
+        width <= 800 ? "#album-detail-menu" : "#album-detail-menu-popover",
+      );
+      await panel.waitFor({ state: "visible" });
+      assert.equal(await panel.getByRole("heading").textContent(), "Track 0");
+      assert.equal(
+        await panel.getByRole("button", { name: "Download", exact: true }).isEnabled(),
+        true,
+      );
+      await page.keyboard.press("Escape");
+    }
+    const trackTarget = albumView.getByRole("button", { name: "Play Track 0", exact: true });
+    await trackTarget.scrollIntoViewIfNeeded();
+    const trackBox = await trackTarget.boundingBox();
+    await page.mouse.move(trackBox.x + 8, trackBox.y + 8);
+    await page.mouse.down();
+    await page.locator("#album-detail-menu").waitFor({ state: "visible" });
+    await page.mouse.up();
+    assert.equal(
+      await page.locator("#album-detail-menu").getByRole("heading").textContent(),
+      "Track 0",
+    );
+    await page.keyboard.press("Escape");
+    assert.equal(await trackTarget.evaluate((node) => node === document.activeElement), true);
+    await page.setViewportSize({ width: 393, height: 852 });
+    await albumView
+      .getByRole("button", { name: "Actions for Album 0", exact: true })
+      .filter({ visible: true })
+      .click();
+    await page.locator("#album-detail-menu").waitFor({ state: "visible" });
+    assert.equal(
+      await page.locator("#album-detail-menu").getByRole("heading").textContent(),
+      "Album 0",
+    );
+    await page.setViewportSize({ width: 1280, height: 800 });
+    assert.equal(await page.locator("#album-detail-menu").isVisible(), true);
+    await page.keyboard.press("Escape");
+    await page.locator("#album-detail-menu").waitFor({ state: "hidden" });
+    await albumView
+      .getByRole("button", { name: "Actions for Track 0", exact: true })
+      .filter({ visible: true })
+      .click();
+    await page.locator("#album-detail-menu-popover").waitFor({ state: "visible" });
+    await page
+      .locator("#album-detail-menu-popover")
+      .getByRole("button", { name: "Play last", exact: true })
+      .click();
+    await page.locator("#album-detail-menu-popover").waitFor({ state: "hidden" });
+    await albumView.getByRole("link", { name: artists[0].name, exact: true }).click();
+    await artistView.waitFor();
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
