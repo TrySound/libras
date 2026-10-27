@@ -7,19 +7,6 @@
     display: none !important;
   }
 
-  :scope::view-transition-group(mini-player) {
-    z-index: 20;
-    animation: none;
-  }
-
-  :scope::view-transition-old(mini-player) {
-    display: none;
-  }
-
-  :scope::view-transition-new(mini-player) {
-    animation: none;
-  }
-
   :scope {
     /* Foundations: palette */
     --palette-transparent: transparent;
@@ -670,19 +657,6 @@
     }
   }
 
-  /* Temporary bridge: retain the legacy mini-player surface inside the shared
-   * shell's normal-flow, bottom-sticky player slot. Remove with player migration. */
-  .app-player {
-    padding: var(--space-sm) max(var(--space-sm), env(safe-area-inset-right))
-      max(var(--space-sm), env(safe-area-inset-bottom))
-      max(var(--space-sm), env(safe-area-inset-left));
-  }
-
-  .app-player > .mini-player {
-    position: relative;
-    inset: auto;
-  }
-
   /* The shared page now owns outer gutters; preserve padding inside overlays. */
   @scope (.app-page) to (dialog, [popover]) {
     .view {
@@ -1249,76 +1223,6 @@
     place-items: center;
     align-content: center;
     text-align: center;
-  }
-
-  .mini-player {
-    view-transition-name: mini-player;
-    position: absolute;
-    z-index: 20;
-    right: var(--space-sm);
-    bottom: max(var(--space-sm), env(safe-area-inset-bottom));
-    left: var(--space-sm);
-    border: var(--surface-floating-border);
-    border-radius: var(--radius-sm);
-    text-align: left;
-    background: var(--surface-floating-background);
-    backdrop-filter: blur(var(--surface-floating-blur));
-    box-shadow: var(--surface-floating-shadow);
-
-    @media (prefers-reduced-motion: no-preference) {
-      transition: background-color var(--transition-control);
-    }
-
-    &:has(.linkarea:active) {
-      background: color-mix(
-        in srgb,
-        var(--surface-floating-background) 90%,
-        var(--color-text-primary) 10%
-      );
-      @media (prefers-reduced-motion: no-preference) {
-        transition: background-color var(--transition-fast);
-      }
-    }
-
-    @media (hover: hover) {
-      &:has(.linkarea:hover) {
-        background: color-mix(
-          in srgb,
-          var(--surface-floating-background) 90%,
-          var(--color-text-primary) 10%
-        );
-        @media (prefers-reduced-motion: no-preference) {
-          transition: background-color var(--transition-fast);
-        }
-      }
-    }
-
-    &:has(.linkarea:focus-visible) {
-      outline: var(--focus-outline);
-      outline-offset: var(--focus-outline-offset);
-    }
-  }
-
-  .mini-progress {
-    pointer-events: none;
-    position: absolute;
-    right: 0.5rem;
-    bottom: 0;
-    left: 0.5rem;
-    overflow: hidden;
-    height: 0.18rem;
-    border-radius: var(--radius-pill);
-    background: var(--color-track);
-  }
-
-  .mini-progress span {
-    display: block;
-    height: 100%;
-    background: var(--color-accent);
-  }
-
-  .mini-copy {
-    min-width: 0;
   }
 
   .notification-popover {

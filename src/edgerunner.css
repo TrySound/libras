@@ -1083,6 +1083,143 @@
     }
   }
 
+  /* Native playback primitives; each player owns only their placement. */
+  .seek {
+    --seek-track-size: 4px;
+    --seek-hit-size: 32px;
+    --seek-thumb-size: 7px;
+    display: block;
+    font: inherit;
+    -webkit-tap-highlight-color: transparent;
+    appearance: none;
+    width: 100%;
+    min-width: 0;
+    height: var(--seek-hit-size);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    cursor: pointer;
+    accent-color: var(--accent);
+
+    &:focus-visible {
+      outline: var(--focus-ring);
+      outline-offset: var(--focus-ring-offset);
+    }
+
+    &::-webkit-slider-runnable-track {
+      height: var(--seek-track-size);
+      border: 0;
+      background: linear-gradient(
+        to right,
+        var(--accent) var(--progress),
+        var(--shell-border) var(--progress)
+      );
+    }
+
+    &::-webkit-slider-thumb {
+      appearance: none;
+      width: var(--seek-thumb-size);
+      height: var(--seek-thumb-size);
+      margin-block-start: calc((var(--seek-track-size) - var(--seek-thumb-size)) / 2);
+      border: 0;
+      border-radius: var(--radius-xs);
+      corner-shape: var(--corner-shape);
+      background: var(--accent);
+    }
+
+    &::-moz-range-track {
+      height: var(--seek-track-size);
+      border: 0;
+      background: var(--shell-border);
+    }
+
+    &::-moz-range-progress {
+      height: var(--seek-track-size);
+      background: var(--accent);
+    }
+
+    &::-moz-range-thumb {
+      width: var(--seek-thumb-size);
+      height: var(--seek-thumb-size);
+      border: 0;
+      border-radius: var(--radius-xs);
+      corner-shape: var(--corner-shape);
+      background: var(--accent);
+    }
+  }
+
+  .playback-progress {
+    appearance: none;
+    display: block;
+    width: 100%;
+    height: 2px;
+    border: 0;
+    border-radius: 0;
+    overflow: clip;
+    background: var(--shell-border);
+    pointer-events: none;
+
+    &::-webkit-progress-bar {
+      background: transparent;
+    }
+    &::-webkit-progress-value {
+      background: var(--accent);
+    }
+    &::-moz-progress-bar {
+      background: var(--accent);
+    }
+  }
+
+  :where(:scope, *).mini-player {
+    view-transition-name: mini-player;
+    box-sizing: border-box;
+    background: var(--shell-bg);
+    backdrop-filter: blur(4px);
+    border-top: var(--border-width) solid var(--shell-border);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) max(var(--content-padding-inline), env(safe-area-inset-right))
+      calc(var(--space-sm) + env(safe-area-inset-bottom))
+      max(var(--content-padding-inline), env(safe-area-inset-left));
+
+    /* Flex metadata must shrink before the artwork or intrinsic transports. */
+    > .button-quiet > .stack-xs {
+      min-inline-size: 0;
+    }
+
+    @container navigation (width <= 600px) {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--space-sm);
+      .only-desktop {
+        display: none !important;
+      }
+    }
+  }
+
+  .mini-player-seek {
+    position: absolute;
+    inset-inline: 0;
+    top: calc(-1 * var(--border-width) - (var(--seek-hit-size) - var(--seek-track-size)) / 2);
+    z-index: 1;
+    @container navigation (width <= 600px) {
+      display: none;
+    }
+  }
+
+  .mini-player-progress {
+    display: none;
+    position: absolute;
+    top: calc(-1 * var(--border-width));
+    inset-inline: 0;
+    @container navigation (width <= 600px) {
+      display: block;
+    }
+  }
+
   /* Foreground artwork shares surfaces, crop, geometry and missing-cover state. */
   .artwork {
     box-sizing: border-box;
@@ -1140,6 +1277,19 @@
     color: var(--text-primary);
     pointer-events: none;
   }
+}
+
+/* Route transitions must not crossfade or duplicate the persistent player. */
+::view-transition-group(mini-player) {
+  z-index: 20;
+  animation: none;
+}
+
+::view-transition-old(mini-player) {
+  display: none;
+}
+::view-transition-new(mini-player) {
+  animation: none;
 }
 
 /* App composition from libras-new: one column, shared page gutters, a fixed

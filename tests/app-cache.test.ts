@@ -503,9 +503,11 @@ it("restores the large player slider when queue hydration finishes before metada
   expect(slider.max).toBe("120");
   expect(slider.valueAsNumber).toBe(45.5);
   expect(target.querySelector(".playback-time")?.textContent).toContain("0:45");
-  expect(
-    parseFloat(target.querySelector<HTMLElement>(".mini-progress > span")!.style.width),
-  ).toBeCloseTo((45.5 / 120) * 100);
+  const progress = target.querySelector<HTMLProgressElement>(
+    'progress[aria-label="Playback progress"]',
+  )!;
+  expect(progress.max).toBe(120);
+  expect(progress.value).toBe(45.5);
   expect(cache.queue.position).toBe(45.5);
 });
 
@@ -515,7 +517,7 @@ it.each([
   "/downloads",
   "/library/artist/:artistId",
   "/library/artist/:artistId/album/:albumId",
-])("keeps shell navigation and the legacy player on %s", (route) => {
+])("keeps shell navigation and the player on %s", (route) => {
   installDisk();
   window.history.replaceState(null, "", `#${route}`);
   const target = document.createElement("main");
@@ -737,9 +739,13 @@ it.each([
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  expect(target.querySelector(".mini-copy small")?.textContent?.trim()).toBe(expected);
-  expect(target.querySelector(".mini-copy strong")?.classList.contains("truncate")).toBe(true);
-  expect(target.querySelector(".mini-copy small")?.classList.contains("truncate")).toBe(true);
+  const expand = target.querySelector('button[aria-label="Open Now Playing"]')!;
+  const description = expand
+    .getAttribute("aria-describedby")!
+    .split(" ")
+    .map((id) => document.getElementById(id)?.textContent)
+    .join(" ");
+  expect(description).toBe(`Track ${expected}`);
   const artistLink = target.querySelector("#player-dialog .player-content a");
   expect(artistLink?.textContent?.trim()).toBe(expected);
   expect(artistLink?.getAttribute("href")).toBe("#/library/artist/artist");

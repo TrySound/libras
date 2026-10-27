@@ -5,6 +5,7 @@
   import { Playback } from "./playback.svelte";
   import { Playlists } from "./playlists.svelte";
   import Player from "./player.svelte";
+  import MiniPlayer from "./ui/mini-player.svelte";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
@@ -162,11 +163,6 @@
 
   function albumPath(artist: Artist, album: Album) {
     return `${artistPath(artist)}/album/${encodeURIComponent(album.id)}`;
-  }
-
-  function playbackPercent() {
-    if (!Number.isFinite(playbackDuration) || playbackDuration <= 0) return 0;
-    return Math.min(100, Math.max(0, (cache.queue.position / playbackDuration) * 100));
   }
 </script>
 
@@ -344,43 +340,23 @@
       />
     </main>
     {#if currentTrack}
-      <div class="app-player">
-        <div class="mini-player wings">
-          <button
-            class="linkarea"
-            commandfor="player-dialog"
-            command="show-modal"
-            aria-label="Open player"
-          ></button>
-          <Artwork {covers} id={currentTrack.artworkId} size="sm" loading="eager" />
-          <span class="mini-copy stack-xs">
-            <strong class="type-title truncate">
-              {currentTrack.title}
-            </strong>
-            <small class="type-small text-muted truncate">
-              {currentTrack.displayArtist ?? cache.artists.get(currentTrack.artistIds[0])?.name}
-            </small>
-          </span>
-          <button
-            class="icon-button"
-            data-size="md"
-            data-variant="primary"
-            onclick={() => playback.toggle()}
-            title={player?.playing ? "Pause" : "Play"}
-          >
-            {#if playbackLoading}
-              <Icon name="loading" />
-            {:else if player?.playing}
-              <Icon name="pause" />
-            {:else}
-              <Icon name="play" />
-            {/if}
-          </button>
-          <span class="mini-progress">
-            <span style:width={`${playbackPercent()}%`}></span>
-          </span>
-        </div>
-      </div>
+      <MiniPlayer
+        {covers}
+        artworkId={currentTrack.artworkId}
+        title={currentTrack.title}
+        artist={currentTrack.displayArtist ?? playerArtist?.name}
+        playing={player?.playing ?? false}
+        loading={playbackLoading}
+        position={cache.queue.position}
+        duration={playbackDuration}
+        positionText={`${formatTime(cache.queue.position)} of ${formatTime(playbackDuration)}`}
+        hasPrevious={hasPreviousTrack || cache.queue.position > 0}
+        hasNext={hasNextTrack}
+        ontoggle={() => playback.toggle()}
+        onprevious={() => playback.previous()}
+        onnext={() => playback.next()}
+        onseek={(position) => playback.seek(position)}
+      />
     {/if}
     {#if hasErrors}
       <div
