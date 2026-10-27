@@ -280,6 +280,9 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
         const shell = node.closest(".app-shell").getBoundingClientRect();
         return {
           opacity: style.opacity,
+          objectPosition: style.objectPosition,
+          filter: style.filter,
+          foregroundFilter: getComputedStyle(document.querySelector(".viewport-panel .artwork img")).filter,
           pointerEvents: style.pointerEvents,
           mask: style.maskImage,
           fillsShell:
@@ -287,6 +290,9 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
         };
       });
       assert.equal(styles.opacity, "0.12");
+      assert.equal(styles.objectPosition, "65% 0%");
+      assert.equal(styles.filter, "blur(4px)");
+      assert.equal(styles.foregroundFilter, "none");
       assert.equal(styles.pointerEvents, "none");
       assert.notEqual(styles.mask, "none");
       assert.equal(styles.fillsShell, true);

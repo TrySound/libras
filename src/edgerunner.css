@@ -1503,7 +1503,8 @@
     inline-size: 100%;
     block-size: 100%;
     object-fit: cover;
-    object-position: 65% center;
+    object-position: 65% top;
+    filter: blur(4px);
     pointer-events: none;
     mask-mode: alpha;
     mask-image: radial-gradient(

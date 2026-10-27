@@ -146,7 +146,8 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   selection. Keep offline filtering, long-press, and independent row options intact.
   Each detail route renders its own decorative atmosphere from the same Covers source as
   the foreground image. It fills the positioned app shell behind content/chrome, using
-  the prototype's 12% opacity and radial mask; missing artwork stays hidden.
+  12% opacity and the prototype's radial mask, with top-aligned artwork and a subtle
+  4px blur on the atmosphere only; missing artwork stays hidden.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
   and resolves optional IDs from the current library without changing saved download metadata.
