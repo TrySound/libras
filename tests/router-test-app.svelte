@@ -20,9 +20,7 @@
   {@render page("player", params)}
 {/snippet}
 
-<section data-route-pattern={route.pattern} data-route-url={route.url?.href}>
-  <input aria-label="Persistent shell input" />
-</section>
+<output data-route-pattern={route.pattern} data-route-url={route.url?.href}></output>
 <Router
   {embedded}
   routes={[

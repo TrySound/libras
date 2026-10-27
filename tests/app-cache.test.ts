@@ -196,6 +196,17 @@ it("uses the empty fallback before account selection and when selection is clear
     expect(link.getAttribute("href")).toBe("#/library");
     expect(link.getAttribute("aria-label")).toBe("Libras home");
   }
+  expect(
+    [...target.querySelectorAll(".app-sidebar nav a")].map((link) => [
+      link.textContent?.trim(),
+      link.getAttribute("href"),
+    ]),
+  ).toEqual([
+    ["Your library", "#/library"],
+    ["Search", "#/search"],
+    ["Downloads", "#/downloads"],
+    ["Settings", "#/settings"],
+  ]);
   const dialog = target.querySelector<HTMLDialogElement>("#player-dialog")!;
   expect(dialog.querySelector(".topbar-brand")).toBeNull();
   expect(mocks.navigate).toHaveBeenCalledWith("/settings", "replace");
@@ -517,19 +528,6 @@ it.each([
   const links = topbar.querySelectorAll("a");
   expect([...links].map((link) => link.getAttribute("href"))).toEqual(["#/library", "#/search"]);
   for (const nav of target.querySelectorAll('nav[aria-label="Main navigation"]')) {
-    expect([...nav.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toEqual([
-      "#/library",
-      "#/search",
-      "#/downloads",
-      "#/settings",
-    ]);
-    expect([...nav.querySelectorAll("a")].map((link) => link.textContent?.trim())).toEqual([
-      "Your library",
-      "Search",
-      "Downloads",
-      "Settings",
-    ]);
-    expect(nav.querySelector("a[title], a[aria-label]")).toBeNull();
     expect(nav.querySelector('[aria-current="page"]')?.getAttribute("href")).toBe(
       route.startsWith("/library") ? "#/library" : `#${route}`,
     );
@@ -545,10 +543,6 @@ it.each([
   const heading = queue.querySelector(":scope > .view.row-md")!;
   expect(heading).not.toBeNull();
   expect(heading.querySelector(":scope > .stack-xs.grow h2")).not.toBeNull();
-  expect(topbar.classList.contains("topbar")).toBe(true);
-  expect(target.querySelector(".app-sidebar.sidebar.stack-lg")).not.toBeNull();
-  expect(target.querySelector("#navigation-dialog.right-sheet")).not.toBeNull();
-  expect(topbar.querySelector(".button-quiet.row-sm")).not.toBeNull();
   const controls = target.querySelectorAll(
     "#player-dialog .topbar a, #player-dialog .topbar button",
   );

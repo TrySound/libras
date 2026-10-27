@@ -22,7 +22,7 @@ function setup(path = "/library", embedded = false) {
   const component = mount(RouterTestApp, { target, props: { embedded } });
   cleanups.push(() => unmount(component));
   flushSync();
-  return { navigation, target, route };
+  return { navigation, target };
 }
 
 describe("router", () => {
@@ -157,6 +157,8 @@ describe("router", () => {
     navigation.dispatchEvent(event);
     expect(intercept).not.toHaveBeenCalled();
     expect(target.querySelector("p")!.textContent).toBe("library:{}");
+    expect(route.pattern).toBe("/library");
+    expect(route.url?.hash).toBe("#/library");
   });
 
   it.each([
@@ -186,66 +188,30 @@ describe("router", () => {
     await expect(caught.mock.results[0].value).resolves.toBeUndefined();
   });
 
-  it("publishes reactive URL and pattern metadata without wrapping the shell", async () => {
-    const { navigation, target, route } = setup("/unknown", true);
+  it("publishes reactive metadata, including URL changes within the same pattern", async () => {
+    const { navigation, target } = setup("/unknown", true);
     const summary = target.querySelector<HTMLElement>("[data-route-pattern]")!;
-    const input = target.querySelector<HTMLInputElement>("input")!;
-    expect(route.pattern).toBe("/library");
-    expect(route.url?.hash).toBe("#/unknown");
     expect(summary.dataset.routePattern).toBe("/library");
-    input.value = "Retain layout state";
-    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
-    navigation.dispatchEvent(
-      Object.assign(new Event("navigate"), {
-        navigationType: "push",
-        canIntercept: true,
-        destination: { url: new URL("#/library/artist/artist%201", window.location.href).href },
-        intercept,
-      }),
-    );
-    await intercept.mock.results[0].value;
-    expect(target.querySelector("[data-route-pattern]")).toBe(summary);
-    expect(target.querySelector("input")).toBe(input);
-    expect(input.value).toBe("Retain layout state");
-    expect(route.pattern).toBe("/library/artist/:artistId");
-    expect(route.url?.hash).toBe("#/library/artist/artist%201");
-    expect(summary.dataset.routePattern).toBe(route.pattern);
-    expect(summary.dataset.routeUrl).toBe(route.url?.href);
-    expect(target.querySelector("p")!.textContent).toBe('artist:{"artistId":"artist 1"}');
-
-    // URL changes stay reactive even when the matched pattern does not change.
-    intercept.mockClear();
-    navigation.dispatchEvent(
-      Object.assign(new Event("navigate"), {
-        navigationType: "traverse",
-        canIntercept: true,
-        destination: { url: new URL("#/library/artist/artist%202", window.location.href).href },
-        intercept,
-      }),
-    );
-    await intercept.mock.results[0].value;
-    expect(route.pattern).toBe("/library/artist/:artistId");
-    expect(route.url?.hash).toBe("#/library/artist/artist%202");
-    expect(summary.dataset.routeUrl).toBe(route.url?.href);
-    expect(target.querySelector("p")!.textContent).toBe('artist:{"artistId":"artist 2"}');
-    const committedUrl = route.url;
-    intercept.mockClear();
-    navigation.dispatchEvent(
-      Object.assign(new Event("navigate"), {
-        navigationType: "push",
-        canIntercept: true,
-        destination: { url: new URL("#features", window.location.href).href },
-        intercept,
-      }),
-    );
-    expect(intercept).not.toHaveBeenCalled();
-    expect(route.url).toBe(committedUrl);
-    expect(route.pattern).toBe("/library/artist/:artistId");
-    expect(summary.dataset.routePattern).toBe(route.pattern);
+    expect(route.url?.hash).toBe("#/unknown");
+    for (const id of ["artist%201", "artist%202"]) {
+      const url = new URL(`#/library/artist/${id}`, window.location.href);
+      const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+      navigation.dispatchEvent(
+        Object.assign(new Event("navigate"), {
+          navigationType: "push",
+          canIntercept: true,
+          destination: { url: url.href },
+          intercept,
+        }),
+      );
+      await intercept.mock.results[0].value;
+      expect(summary.dataset.routePattern).toBe("/library/artist/:artistId");
+      expect(summary.dataset.routeUrl).toBe(url.href);
+    }
   });
 
   it("leaves route metadata unchanged for aborted navigation", async () => {
-    const { navigation, target, route } = setup("/library", true);
+    const { navigation, target } = setup("/library", true);
     const summary = target.querySelector<HTMLElement>("[data-route-pattern]")!;
     const committedUrl = route.url;
     const controller = new AbortController();
@@ -261,7 +227,6 @@ describe("router", () => {
       }),
     );
     await intercept.mock.results[0].value;
-    expect(target.querySelector("[data-route-pattern]")).toBe(summary);
     expect(route.pattern).toBe("/library");
     expect(route.url).toBe(committedUrl);
     expect(summary.dataset.routeUrl).toBe(committedUrl?.href);

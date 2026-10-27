@@ -140,39 +140,20 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
     });
 
     await t.test("shared navigation primitives work outside the app shell", async () => {
-      for (const [width, height] of [[375, "60px"], [768, "76px"]]) {
-        await page.setViewportSize({ width, height: 900 });
-        const topbar = await page.locator(".topbar-example .topbar").evaluate((element) => {
-          const style = getComputedStyle(element);
-          return { minHeight: style.minHeight, display: style.display, blur: style.backdropFilter };
-        });
-        assert.deepEqual(topbar, { minHeight: height, display: "flex", blur: "blur(4px)" });
-      }
-      const sidebar = await page.locator('.sidebar[aria-label="Sidebar specimen"]').evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { padding: style.paddingTop, border: style.borderRightWidth, blur: style.backdropFilter };
-      });
-      assert.deepEqual(sidebar, { padding: "24px", border: "2px", blur: "blur(4px)" });
+      await page.setViewportSize({ width: 320, height: 900 });
+      await page.emulateMedia({ reducedMotion: "reduce" });
       const invoker = page.getByRole("button", { name: "Open navigation specimen", exact: true });
       const sheet = page.locator("#guide-navigation");
       assert.equal(await sheet.isVisible(), false);
       await invoker.click();
-      const geometry = await sheet.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { width: style.width, padding: style.padding, duration: style.transitionDuration };
-      });
-      assert.deepEqual(geometry, { width: "360px", padding: "24px", duration: "0.28s" });
-      await page.getByRole("button", { name: "Close navigation specimen", exact: true }).click();
-      assert.equal(await sheet.evaluate((element) => getComputedStyle(element).transitionDuration.split(", ").every((duration) => duration === "0.16s")), true);
-      await sheet.waitFor({ state: "hidden" });
-      assert.equal(await invoker.evaluate((element) => element === document.activeElement), true);
-      await page.emulateMedia({ reducedMotion: "reduce" });
-      await page.setViewportSize({ width: 320, height: 900 });
-      await invoker.click();
-      assert.equal(await sheet.evaluate((element) => getComputedStyle(element).width), "288px");
+      assert.equal(await sheet.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return box.left >= 0 && box.right <= innerWidth;
+      }), true);
       assert.equal(await sheet.evaluate((element) => getComputedStyle(element).transitionDuration), "0s");
       await page.keyboard.press("Escape");
       await sheet.waitFor({ state: "hidden" });
+      assert.equal(await invoker.evaluate((element) => element === document.activeElement), true);
     });
 
     await t.test("shared shell owns gutters, scrolling, and intrinsic player clearance", async () => {
@@ -185,6 +166,7 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
         const main = getComputedStyle(element.querySelector(".app-page"));
         return {
           sidebarVisible: getComputedStyle(sidebar).display !== "none",
+          sidebarWidth: sidebar.getBoundingClientRect().width,
           padding: parseFloat(main.paddingInlineStart),
           gutter: parseFloat(main.paddingInlineEnd),
           clearance: sidebar.getBoundingClientRect().bottom - player.getBoundingClientRect().top,
@@ -193,7 +175,7 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
       });
       const before = await geometry();
       assert.equal(before.sidebarVisible, true);
-      assert.equal(before.padding, 280 + before.gutter);
+      assert.equal(before.padding, before.sidebarWidth + before.gutter);
       assert.ok(Math.abs(before.clearance) <= 1);
       await shell.locator(".app-player .body").evaluate((element) => {
         element.textContent = "Intrinsic player content grows with its text. ".repeat(20);

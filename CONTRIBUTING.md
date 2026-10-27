@@ -106,7 +106,7 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
 
 - `src/app.css` retains legacy styles behind a temporary scope boundary and imports
   `src/edgerunner.css`. Opt a migrated route into the new design with `.ui-edgerunner`.
-  New tokens and opt-in classes are scoped there; legacy selectors stop at that boundary.
+  Appearance rules opt in there; legacy selectors stop at that boundary.
   Do not mix legacy and new component markup within a migrated subtree.
   `website/website.css` uses the same bounded scope so equally specific website
   extensions still override shared rules by source order, without leaking into migrated islands.
@@ -116,8 +116,7 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   published Figma Maroon/Gold primitives → semantic color and complete typography roles.
   Consume roles for colors/type, primitives for ordinary spacing/shape, and keep component
   configuration local. Containers own gaps/padding. Avoid global element resets.
-- Downloads (`src/_downloads.svelte`) is the first migrated route. Its temporary page
-  placement stays local while the scrolling/navigation shell remains legacy. It reads real
+- Downloads (`src/_downloads.svelte`) is the first migrated route. It reads real
   jobs and saved records, retains ordering and format-specific identities, and adds no fake
   progress or per-file failure records. Transfer/storage notices do not discard saved rows.
 - Settings (`src/_settings.svelte`) uses shared cards and an app-container-based 3:2 split;
@@ -127,7 +126,7 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   Keep native field validation, bare-hostname support, and actual server errors; never expose
   authentication secrets. Busy actions stay mounted with guarded `aria-disabled` states, and
   completed connections must not redirect after leaving or hiding Settings. PWA updates remain
-  in the header popover. Presentation examples belong in `styleguide.html`; behavior contracts
+  in a shared shell popover. Presentation examples belong in `styleguide.html`; behavior contracts
   are covered by `tests/app-settings.test.ts`.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
@@ -194,29 +193,11 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/navigation.test.cjs
 ```
 
-`src/app.svelte` composes shell/navigation markup and native drawer controls directly, using
-local snippets for repeated brand, navigation, and status controls. There is no separate shell
-component or local shell stylesheet. The page's single Router publishes the exported reactive
-`route` object from `src/router.svelte`: `url` is the resolved URL and `pattern` is the matched or
-fallback pattern, populated at mount and on app navigation. App uses Router's `isCurrentPage(path)`
-helper for active navigation, matching the resolved page or a parent section at a path boundary.
-Its shell stays outside routed content, without location listeners or a layout wrapper.
-Host-only anchors and aborted navigations leave the last resolved app route unchanged.
-`src/edgerunner.css` owns the prototype-derived `.app-shell` composition as well as `.topbar`,
-`.sidebar`, `.right-sheet`, `.button-quiet`, and flow primitives. The namespaced `app-*` placement
-rules use ordinary selectors. Keep the appearance/migration scopes to isolate legacy rules;
-`:where(:scope, *)` is only needed when a component or utility must style the `.ui-edgerunner`
-boundary itself without adding specificity. Main owns shared page gutters;
-routes must not duplicate them. The player stays in normal flow in the bottom-sticky `.app-player`
-slot, and CSS anchor sizing supplies sidebar/status clearance without JavaScript measurements.
-The styleguide exercises the same full composition in a bounded embedded frame. Only the legacy
-player surface bridge and legacy-route padding reset remain in `src/app.css` until those migrate.
-Keep Session and Player in App; never key or remount them at layout breakpoints. Container queries
-own responsive visibility unconditionally, without focused-copy exceptions or scripted focus
-transfer. The entire mobile topbar is hidden on desktop; separate desktop error/update invokers
-point to the same single set of native notification popovers. Drawer links close it when clicked;
-route changes and resizing do not imperatively close it or move focus. Embedded apps retain
-host-owned sizing and local scrolling; standalone uses document scrolling.
+`src/app.svelte` owns shell markup, Session, and Player; `src/edgerunner.css` owns shared
+placement and page gutters. Container queries switch navigation without remounting playback.
+Standalone apps scroll the document; embedded apps retain host-owned sizing and local scrolling.
+Router exports reactive `route` metadata (`url`, resolved `pattern`) and `isCurrentPage(path)`
+for active navigation. Drawer links close it; route changes and resizing do not.
 
 For a subpath deployment, include the base path in `PREVIEW_URL`. These optional suites are
 not part of `pnpm test`; DOM emulation does not validate CSS scope, layout, or native overlays.
