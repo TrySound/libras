@@ -134,6 +134,9 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   retains the shared modal with Escape/close-button/swipe dismissal (light-dismiss would
   consume the long-press release). Overlay dismissal stays native rather than resize-driven.
   Artist and album details remain legacy until their combined migration in #62.
+- Edgerunner uses one responsive breakpoint: mobile at app widths ≤50rem, desktop above
+  (800px at the default root size). Shared `.only-mobile` / `.only-desktop` utilities,
+  navigation, player controls, page gutters, split layouts, and tile sizing switch together.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
   and resolves optional IDs from the current library without changing saved download metadata.

@@ -140,9 +140,12 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
           document.querySelector(".downloads-view .artwork img:not([hidden])"),
         );
         assert.equal(await rows.nth(1).locator(".artwork-placeholder").isVisible(), true);
-        for (const width of [320, 375, 768, 1440]) {
+        for (const width of [320, 375, 768, 800, 810, 811, 1440]) {
           await page.setViewportSize({ width, height: 900 });
-          assert.equal(await rows.first().locator(".artwork").isVisible(), width > 600);
+          const desktop = await page
+            .locator(".app-root")
+            .evaluate((node) => node.clientWidth > 800);
+          assert.equal(await rows.first().locator(".artwork").isVisible(), desktop);
           assert.ok(
             await page
               .locator(".downloads-view")

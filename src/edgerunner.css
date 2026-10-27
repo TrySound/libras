@@ -103,7 +103,7 @@
   --layer-player: 20;
 }
 
-@media (width <= 600px) {
+@media (width <= 50rem) {
   .ui-edgerunner,
   .app-shell {
     --content-padding-inline: max(
@@ -115,7 +115,7 @@
   }
 }
 
-@container app (width <= 600px) {
+@container app (width <= 50rem) {
   .ui-edgerunner,
   .app-shell {
     --content-padding-inline: max(
@@ -314,7 +314,7 @@
     display: none !important;
   }
 
-  @media (max-width: 600px) {
+  @media (width <= 50rem) {
     :scope {
       --heading-xl-leading: var(--leading-compact);
     }
@@ -418,13 +418,13 @@
 
   /* Visibility utilities override component display without retaining focus. */
   .only-mobile {
-    @container app (width > 600px) {
+    @container app (width > 50rem) {
       display: none !important;
     }
   }
 
   .only-desktop {
-    @container app (width <= 600px) {
+    @container app (width <= 50rem) {
       display: none !important;
     }
   }
@@ -885,7 +885,7 @@
     align-items: start;
     gap: var(--space-lg);
 
-    @container (min-width: 64rem) {
+    @container (width > 50rem) {
       grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
 
       &[data-ratio="3:2"] {
@@ -1122,7 +1122,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(var(--tile-min-size), 100%), 1fr));
     gap: var(--space-md);
-    @container app (width >= 64rem) {
+    @container app (width > 50rem) {
       --tile-min-size: 12rem;
     }
   }
@@ -1232,17 +1232,6 @@
 
   .library-sentinel {
     block-size: 1px;
-  }
-
-  .action-mobile {
-    @container app (width >= 64rem) {
-      display: none;
-    }
-  }
-  .action-desktop {
-    @container app (width < 64rem) {
-      display: none;
-    }
   }
 
   :where(:scope, *).bottom-sheet {
@@ -1412,7 +1401,7 @@
       calc(var(--space-sm) + env(safe-area-inset-bottom))
       max(var(--content-padding-inline), env(safe-area-inset-left));
 
-    @container app (width <= 600px) {
+    @container app (width <= 50rem) {
       grid-template-columns: minmax(0, 1fr) auto;
       gap: var(--space-sm);
     }
@@ -1423,7 +1412,7 @@
     inset-inline: 0;
     top: calc(-1 * var(--border-width) - (var(--seek-hit-size) - var(--seek-track-size)) / 2);
     z-index: 1;
-    @container app (width <= 600px) {
+    @container app (width <= 50rem) {
       display: none;
     }
   }
@@ -1433,7 +1422,7 @@
     position: absolute;
     top: calc(-1 * var(--border-width));
     inset-inline: 0;
-    @container app (width <= 600px) {
+    @container app (width <= 50rem) {
       display: block;
     }
   }
@@ -1564,19 +1553,19 @@
   display: none;
 }
 
-@container navigation (width <= 600px) {
+@container navigation (width <= 50rem) {
   .app-page {
     padding-block-end: calc(var(--content-padding-block) + var(--space-md));
   }
 }
 
-@container navigation (width < 64rem) {
+@container navigation (width <= 50rem) {
   .app-shell > .app-sidebar {
     display: none;
   }
 }
 
-@container navigation (width >= 64rem) {
+@container navigation (width > 50rem) {
   .app-page {
     padding-inline-start: calc(var(--sidebar-width) + var(--content-padding-inline));
   }
@@ -1613,7 +1602,7 @@
   .app-sidebar {
     position: absolute;
   }
-  @container navigation (width >= 64rem) {
+  @container navigation (width > 50rem) {
     .app-status-actions {
       position: absolute;
     }

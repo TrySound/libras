@@ -103,8 +103,12 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     await page.evaluate(() => {
       document.documentElement.style.fontSize = "";
     });
-    for (const width of [320, 768, 1280]) {
+    for (const width of [320, 768, 800, 810, 811, 1280]) {
       await page.setViewportSize({ width, height: 900 });
+      const desktop = await page.locator(".app-root").evaluate((node) => node.clientWidth > 800);
+      assert.equal(await first.locator(".only-desktop").isVisible(), desktop);
+      assert.equal(await first.locator(".only-mobile").isVisible(), !desktop);
+      assert.equal(await page.locator(".app-sidebar").isVisible(), desktop);
       assert.equal(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,

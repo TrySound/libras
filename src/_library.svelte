@@ -105,7 +105,7 @@
               ></a>
               <div class="row-sm tile-actions">
                 <button
-                  class="button action-mobile"
+                  class="button only-mobile"
                   data-variant="secondary"
                   commandfor="artist-menu"
                   command="show-modal"
@@ -113,7 +113,7 @@
                   onclick={() => (menuArtistId = artist.id)}><Icon name="menu" size={24} /></button
                 >
                 <button
-                  class="button action-desktop"
+                  class="button only-desktop"
                   data-variant="secondary"
                   commandfor="artist-popover"
                   command="toggle-popover"
