@@ -1213,14 +1213,17 @@ it("follows normalized album artwork IDs without publishing a late old image", a
     albums: [{ ...data.albums[0], artworkId: "new-cover" }],
   });
   const image = () => target.querySelector(".viewport-panel .artwork img")?.getAttribute("src");
+  const atmosphere = () => target.querySelector(".atmosphere")?.getAttribute("src");
   await vi.waitFor(() => {
     flushSync();
     expect(image()).toBe("blob:reference-1");
+    expect(atmosphere()).toBe(image());
   });
   completeOld(opened);
   await vi.waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(2));
   flushSync();
   expect(image()).toBe("blob:reference-1");
+  expect(atmosphere()).toBe(image());
   await cache.replaceLibrary({
     ...data,
     savedAt: 3,
@@ -1229,6 +1232,7 @@ it("follows normalized album artwork IDs without publishing a late old image", a
   await vi.waitFor(() => {
     flushSync();
     expect(image()).toBe("blob:reference-3");
+    expect(atmosphere()).toBe(image());
   });
   await cache.replaceLibrary({
     ...data,
@@ -1238,6 +1242,8 @@ it("follows normalized album artwork IDs without publishing a late old image", a
   });
   flushSync();
   expect(image()).toBeNull();
+  expect(atmosphere()).toBeNull();
+  expect(target.querySelector(".atmosphere")?.hasAttribute("hidden")).toBe(true);
   expect(target.querySelector(".viewport-panel .artwork img")?.hasAttribute("hidden")).toBe(true);
   expect(target.querySelector(".viewport-panel .artwork svg")).not.toBeNull();
 });

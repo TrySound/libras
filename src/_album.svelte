@@ -32,6 +32,7 @@
   const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const artist = $derived(params.artistId ? cache.artists.get(params.artistId) : undefined);
   const album = $derived(params.albumId ? cache.albums.get(params.albumId) : undefined);
+  const atmosphere = $derived(album?.artworkId ? covers.ensureCover(album.artworkId) : undefined);
   const visibleTracks = $derived(
     album
       ? offlineMode
@@ -69,6 +70,14 @@
 
 <section class="ui-edgerunner split-layout" aria-label="Album details">
   {#if libraryAvailable && artist && album}
+    <img
+      class="atmosphere"
+      src={atmosphere?.source}
+      hidden={!atmosphere?.source}
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+    />
     <div class="viewport-panel">
       <Artwork
         {covers}

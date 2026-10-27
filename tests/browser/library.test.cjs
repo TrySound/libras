@@ -15,11 +15,13 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
   const artists = Array.from({ length: 53 }, (_, i) => ({
     id: `artist ${i}`,
     name: i ? `Artist ${i}` : "A very long artist name without artwork that should wrap naturally",
+    coverArt: i === 1 ? "artist-cover" : undefined,
   }));
   const albums = artists.map((artist, i) => ({
     id: `album-${i}`,
     name: `Album ${i}`,
     artists: [artist],
+    coverArt: i === 1 ? "album-cover" : undefined,
   }));
   const songs = albums.map((album, i) => ({
     id: `track-${i}`,
@@ -31,6 +33,13 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
   await page.route("https://library.example.test/**", async (route) => {
     const url = new URL(route.request().url());
     const method = url.pathname.split("/").pop().replace(".view", "");
+    if (method === "getCoverArt") {
+      await route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#b04040"/></svg>',
+      });
+      return;
+    }
     let fields = {};
     if (method === "ping")
       fields = { version: "1.16.1", type: "test", serverVersion: "1", openSubsonic: true };
@@ -148,7 +157,12 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
           parseFloat(pageStyle.paddingInlineEnd);
         return {
           split:
-            contentWidth > 64 * parseFloat(getComputedStyle(document.documentElement).fontSize),
+            contentWidth > 50 * parseFloat(getComputedStyle(document.documentElement).fontSize),
+          expectedRatio:
+            contentWidth > 64 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+              ? 2 / 3
+              : 1,
+          ratio: panelBox.width / listBox.width,
           display: getComputedStyle(node).display,
           sticky: getComputedStyle(panel).position === "sticky",
           beside: listBox.left >= panelBox.right,
@@ -158,11 +172,16 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       assert.equal(layout.display, "grid", `detail layout uses grid at ${width}px`);
       assert.equal(layout.sticky, layout.split, `sticky matches page width at ${width}px`);
       assert.equal(layout.beside, layout.split, `columns match page width at ${width}px`);
-      if (!layout.split)
-        assert.equal(layout.below, true, `mobile content follows the panel at ${width}px`);
+      if (layout.split)
+        assert.ok(
+          Math.abs(layout.ratio - layout.expectedRatio) < 0.02,
+          `column ratio matches page width at ${width}px`,
+        );
+      else assert.equal(layout.below, true, `mobile content follows the panel at ${width}px`);
     }
-    for (const width of [768, 820, 1024, 1280, 1350, 1380, 1440])
+    for (const width of [768, 820, 1024, 1130, 1160, 1280, 1350, 1380, 1440])
       await checkDetailLayout(artistView, width);
+    assert.equal(await artistView.locator(".atmosphere").isVisible(), false);
     await artistView
       .getByRole("button", { name: "Actions for Album 0", exact: true })
       .filter({ visible: true })
@@ -178,7 +197,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       await albumView.getByRole("button", { name: "Play Track 0", exact: true }).count(),
       1,
     );
-    for (const width of [768, 820, 1024, 1280, 1350, 1380, 1440])
+    for (const width of [768, 820, 1024, 1130, 1160, 1280, 1350, 1380, 1440])
       await checkDetailLayout(albumView, width);
     for (const width of [320, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
@@ -242,6 +261,44 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     await page.locator("#album-detail-menu-popover").waitFor({ state: "hidden" });
     await albumView.getByRole("link", { name: artists[0].name, exact: true }).click();
     await artistView.waitFor();
+    await page.locator('a[href="#/library"]').filter({ visible: true }).first().click();
+    await page.getByRole("link", { name: "Artist 1", exact: true }).click();
+    async function checkAtmosphere() {
+      const background = page.locator(".app-page .atmosphere");
+      await background.waitFor({ state: "visible" });
+      await page.waitForFunction(() => {
+        const cover = document.querySelector(".viewport-panel .artwork img");
+        return (
+          cover?.getAttribute("src") &&
+          cover.getAttribute("src") ===
+            document.querySelector(".app-page .atmosphere").getAttribute("src")
+        );
+      });
+      const styles = await background.evaluate((node) => {
+        const style = getComputedStyle(node);
+        const box = node.getBoundingClientRect();
+        const shell = node.closest(".app-shell").getBoundingClientRect();
+        return {
+          opacity: style.opacity,
+          pointerEvents: style.pointerEvents,
+          mask: style.maskImage,
+          fillsShell:
+            Math.abs(box.height - shell.height) < 1 && Math.abs(box.width - shell.width) < 1,
+        };
+      });
+      assert.equal(styles.opacity, "0.12");
+      assert.equal(styles.pointerEvents, "none");
+      assert.notEqual(styles.mask, "none");
+      assert.equal(styles.fillsShell, true);
+      return background.getAttribute("src");
+    }
+    const artistBackground = await checkAtmosphere();
+    await artistView.getByRole("link", { name: "Open Album 1", exact: true }).click();
+    await albumView.getByRole("heading", { name: "Album 1", exact: true }).waitFor();
+    assert.notEqual(await checkAtmosphere(), artistBackground);
+    await page.locator('a[href="#/library"]').filter({ visible: true }).first().click();
+    await page.locator(".library-view").waitFor();
+    assert.equal(await page.locator(".atmosphere").count(), 0);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

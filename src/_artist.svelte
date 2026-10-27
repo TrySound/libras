@@ -24,6 +24,7 @@
   const offlineMode = $derived(session.offlineMode);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
   const artist = $derived(params.artistId ? cache.artists.get(params.artistId) : undefined);
+  const atmosphere = $derived(artist?.artworkId ? covers.ensureCover(artist.artworkId) : undefined);
   const albums = $derived(artist ? (cache.artistAlbums.get(artist.id) ?? []) : []);
   const tracks = $derived(albums.flatMap((album) => cache.albumTracks.get(album.id) ?? []));
   const visibleAlbums = $derived(
@@ -60,6 +61,14 @@
 
 <section class="ui-edgerunner split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
+    <img
+      class="atmosphere"
+      src={atmosphere?.source}
+      hidden={!atmosphere?.source}
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+    />
     <div class="viewport-panel">
       <Artwork
         {covers}

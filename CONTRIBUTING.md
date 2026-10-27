@@ -135,14 +135,18 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   consume the long-press release). Overlay dismissal stays native rather than resize-driven.
 - Edgerunner navigation, player controls, page gutters, tile sizing, and shared
   `.only-mobile` / `.only-desktop` utilities switch at app widths >50rem (800px at the
-  default root size). Split layouts and sticky detail panels instead query the nearest
-  size container at >64rem (1024px). The page is an inline-size container, so its content
-  width excludes the sidebar and gutters; other hosts can supply their own container.
+  default root size). Split layouts instead query the nearest size container: stacked
+  through 50rem, equal columns above 50rem, and 2:3 above 64rem (3:2 for Settings).
+  Detail panels become sticky with the first split. The page is an inline-size container,
+  so its content width excludes the sidebar and gutters; other hosts can supply their own container.
 - Artist and album details keep their panel markup and contextual actions inline in each route.
   They follow the prototype's split layout and CSS-only cover height budget, adapting to
   the available page content rather than the host viewport. Artist albums use unnumbered media rows;
   album tracks retain ordered playback, credits, durations, download states, and current-track
   selection. Keep offline filtering, long-press, and independent row options intact.
+  Each detail route renders its own decorative atmosphere from the same Covers source as
+  the foreground image. It fills the positioned app shell behind content/chrome, using
+  the prototype's 12% opacity and radial mask; missing artwork stays hidden.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
   and resolves optional IDs from the current library without changing saved download metadata.

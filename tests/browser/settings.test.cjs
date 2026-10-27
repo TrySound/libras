@@ -150,7 +150,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
             node.clientWidth -
             parseFloat(style.paddingInlineStart) -
             parseFloat(style.paddingInlineEnd);
-          return width > 64 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+          return width > 50 * parseFloat(getComputedStyle(document.documentElement).fontSize);
         });
         assert.equal(split ? geometry.separated : geometry.stacked, true);
         assert.equal(geometry.fits, true);
