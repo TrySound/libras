@@ -19,7 +19,7 @@
   import { Cache, type Immutable } from "./cache.svelte";
   import { Session } from "./session.svelte";
   import type { Network } from "./network.svelte";
-  import Router, { navigate, route, type RouteParams } from "./router.svelte";
+  import Router, { isCurrentPage, navigate, type RouteParams } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { installSwipeToDismiss } from "./swipe-to-dismiss";
 
@@ -41,8 +41,6 @@
   ];
   let navigationDrawer: HTMLDialogElement;
   let navigationOpen = $state(false);
-  const isNavigationActive = (path: string) =>
-    route.pattern === path || route.pattern?.startsWith(`${path}/`);
 
   const durationFormatter = new Intl.DurationFormat("en", {
     minutes: "numeric",
@@ -241,13 +239,13 @@
         href={`#${link.path}`}
         title={link.label}
         aria-label={link.label}
-        aria-current={isNavigationActive(link.path) ? "page" : undefined}
+        aria-current={isCurrentPage(link.path) ? "page" : undefined}
         onclick={() => navigationDrawer?.close()}
       >
         <Icon
           name={link.icon}
           size={24}
-          color={isNavigationActive(link.path) ? "var(--accent)" : undefined}
+          color={isCurrentPage(link.path) ? "var(--accent)" : undefined}
         />
         {link.label}
       </a>

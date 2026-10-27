@@ -9,6 +9,11 @@
     pattern: undefined,
   });
 
+  /** Match a navigation destination to the resolved page or a parent section. */
+  export function isCurrentPage(path: string): boolean {
+    return route.pattern === path || (route.pattern?.startsWith(`${path}/`) ?? false);
+  }
+
   /** Paths are slash-prefixed, without a hash. */
   export function navigate(path: string, history: "push" | "replace" = "push") {
     void window.navigation.navigate(`#${path}`, { history }).finished?.catch(() => {});

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { route, navigate } from "../src/router.svelte";
+import { route, isCurrentPage, navigate } from "../src/router.svelte";
 import RouterTestApp from "./router-test-app.svelte";
 import { installNavigation } from "./router-test-helpers";
 
@@ -158,6 +158,23 @@ describe("router", () => {
     expect(intercept).not.toHaveBeenCalled();
     expect(target.querySelector("p")!.textContent).toBe("library:{}");
   });
+
+  it.each([
+    { path: "/library", current: ["/library"], other: ["/lib", "/library/artist", "/settings"] },
+    {
+      path: "/library/artist/artist-1",
+      current: ["/library", "/library/artist", "/library/artist/:artistId"],
+      other: ["/lib", "/library/art", "/library/artists", "/settings"],
+    },
+    { path: "/unknown", current: ["/library"], other: ["/unknown", "/settings"] },
+  ])(
+    "identifies the current page and its parent sections for $path",
+    ({ path, current, other }) => {
+      setup(path);
+      for (const destination of current) expect(isCurrentPage(destination)).toBe(true);
+      for (const destination of other) expect(isCurrentPage(destination)).toBe(false);
+    },
+  );
 
   it("handles rejected navigation promises", async () => {
     const navigation = installNavigation("/library");
