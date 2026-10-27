@@ -135,8 +135,9 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   consume the long-press release). Overlay dismissal stays native rather than resize-driven.
 - Edgerunner navigation, player controls, page gutters, tile sizing, and shared
   `.only-mobile` / `.only-desktop` utilities switch at app widths >50rem (800px at the
-  default root size). Split layouts and sticky detail panels instead query the named
-  `page` container's content width, excluding the sidebar and page gutters, at >50rem.
+  default root size). Split layouts and sticky detail panels instead query the nearest
+  size container at >64rem (1024px). The page is an inline-size container, so its content
+  width excludes the sidebar and gutters; other hosts can supply their own container.
 - Artist and album details keep their panel markup and contextual actions inline in each route.
   They follow the prototype's split layout and CSS-only cover height budget, adapting to
   the available page content rather than the host viewport. Artist albums use unnumbered media rows;

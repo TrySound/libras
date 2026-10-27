@@ -133,7 +133,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
     await waitConnected();
 
     await t.test("cards respond to page width and controls fit at 200% text size", async () => {
-      for (const width of [320, 768, 800, 810, 811, 1024, 1130, 1160, 1280]) {
+      for (const width of [320, 768, 800, 810, 811, 1024, 1280, 1350, 1380, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         const geometry = await page.locator(".settings-view").evaluate((element) => {
           const server = element.querySelector("#settings-server").getBoundingClientRect();
@@ -146,8 +146,11 @@ test("Settings native controls, layout, and persistence", async (t) => {
         });
         const split = await page.locator(".app-page").evaluate((node) => {
           const style = getComputedStyle(node);
-          const width = node.clientWidth - parseFloat(style.paddingInlineStart) - parseFloat(style.paddingInlineEnd);
-          return width > 50 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+          const width =
+            node.clientWidth -
+            parseFloat(style.paddingInlineStart) -
+            parseFloat(style.paddingInlineEnd);
+          return width > 64 * parseFloat(getComputedStyle(document.documentElement).fontSize);
         });
         assert.equal(split ? geometry.separated : geometry.stacked, true);
         assert.equal(geometry.fits, true);

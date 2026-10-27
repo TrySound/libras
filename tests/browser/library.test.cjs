@@ -148,7 +148,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
           parseFloat(pageStyle.paddingInlineEnd);
         return {
           split:
-            contentWidth > 50 * parseFloat(getComputedStyle(document.documentElement).fontSize),
+            contentWidth > 64 * parseFloat(getComputedStyle(document.documentElement).fontSize),
           display: getComputedStyle(node).display,
           sticky: getComputedStyle(panel).position === "sticky",
           beside: listBox.left >= panelBox.right,
@@ -161,7 +161,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       if (!layout.split)
         assert.equal(layout.below, true, `mobile content follows the panel at ${width}px`);
     }
-    for (const width of [768, 800, 820, 1024, 1130, 1160, 1280])
+    for (const width of [768, 820, 1024, 1280, 1350, 1380, 1440])
       await checkDetailLayout(artistView, width);
     await artistView
       .getByRole("button", { name: "Actions for Album 0", exact: true })
@@ -178,7 +178,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       await albumView.getByRole("button", { name: "Play Track 0", exact: true }).count(),
       1,
     );
-    for (const width of [768, 800, 820, 1024, 1130, 1160, 1280])
+    for (const width of [768, 820, 1024, 1280, 1350, 1380, 1440])
       await checkDetailLayout(albumView, width);
     for (const width of [320, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
