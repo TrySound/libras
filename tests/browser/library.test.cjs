@@ -140,10 +140,15 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
         const list = panel.nextElementSibling;
         const panelBox = panel.getBoundingClientRect();
         const listBox = list.getBoundingClientRect();
-        const app = node.closest(".app-root");
+        const page = node.closest(".app-page");
+        const pageStyle = getComputedStyle(page);
+        const contentWidth =
+          page.clientWidth -
+          parseFloat(pageStyle.paddingInlineStart) -
+          parseFloat(pageStyle.paddingInlineEnd);
         return {
-          desktop:
-            app.clientWidth > 50 * parseFloat(getComputedStyle(document.documentElement).fontSize),
+          split:
+            contentWidth > 50 * parseFloat(getComputedStyle(document.documentElement).fontSize),
           display: getComputedStyle(node).display,
           sticky: getComputedStyle(panel).position === "sticky",
           beside: listBox.left >= panelBox.right,
@@ -151,12 +156,13 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
         };
       });
       assert.equal(layout.display, "grid", `detail layout uses grid at ${width}px`);
-      assert.equal(layout.sticky, layout.desktop, `sticky matches desktop mode at ${width}px`);
-      assert.equal(layout.beside, layout.desktop, `columns match desktop mode at ${width}px`);
-      if (!layout.desktop)
+      assert.equal(layout.sticky, layout.split, `sticky matches page width at ${width}px`);
+      assert.equal(layout.beside, layout.split, `columns match page width at ${width}px`);
+      if (!layout.split)
         assert.equal(layout.below, true, `mobile content follows the panel at ${width}px`);
     }
-    for (const width of [768, 800, 820, 1024, 1280]) await checkDetailLayout(artistView, width);
+    for (const width of [768, 800, 820, 1024, 1130, 1160, 1280])
+      await checkDetailLayout(artistView, width);
     await artistView
       .getByRole("button", { name: "Actions for Album 0", exact: true })
       .filter({ visible: true })
@@ -172,7 +178,8 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       await albumView.getByRole("button", { name: "Play Track 0", exact: true }).count(),
       1,
     );
-    for (const width of [768, 800, 820, 1024, 1280]) await checkDetailLayout(albumView, width);
+    for (const width of [768, 800, 820, 1024, 1130, 1160, 1280])
+      await checkDetailLayout(albumView, width);
     for (const width of [320, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       assert.equal(

@@ -877,15 +877,15 @@
     }
   }
 
-  /* Query the app's inline size, not the browser width: the website embeds a
-   * narrow app in a wide page. The styleguide supplies its own size container. */
+  /* Split only when the page content has room after sidebar and gutters.
+   * The styleguide supplies the same named page container for specimens. */
   :where(:scope, *).split-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: var(--space-lg);
 
-    @container app (width > 50rem) {
+    @container page (width > 50rem) {
       grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
 
       &[data-ratio="3:2"] {
@@ -910,9 +910,12 @@
     );
 
     @container app (width > 50rem) {
+      block-size: max(0px, calc(100dvh - 5rem - 2 * var(--content-padding-block)));
+    }
+
+    @container page (width > 50rem) {
       position: sticky;
       inset-block-start: var(--content-padding-block);
-      block-size: max(0px, calc(100dvh - 5rem - 2 * var(--content-padding-block)));
     }
   }
 
@@ -1581,6 +1584,7 @@
 }
 
 .app-page {
+  container: page / inline-size;
   box-sizing: border-box;
   flex: 1;
   inline-size: 100%;

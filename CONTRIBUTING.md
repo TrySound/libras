@@ -133,12 +133,13 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   collection actions. Explicit options open a mobile modal or desktop popover; long-press
   retains the shared modal with Escape/close-button/swipe dismissal (light-dismiss would
   consume the long-press release). Overlay dismissal stays native rather than resize-driven.
-- Edgerunner uses one responsive breakpoint: mobile at app widths ≤50rem, desktop above
-  (800px at the default root size). Shared `.only-mobile` / `.only-desktop` utilities,
-  navigation, player controls, page gutters, split layouts, and tile sizing switch together.
+- Edgerunner navigation, player controls, page gutters, tile sizing, and shared
+  `.only-mobile` / `.only-desktop` utilities switch at app widths >50rem (800px at the
+  default root size). Split layouts and sticky detail panels instead query the named
+  `page` container's content width, excluding the sidebar and page gutters, at >50rem.
 - Artist and album details keep their panel markup and contextual actions inline in each route.
   They follow the prototype's split layout and CSS-only cover height budget, adapting to
-  the app container rather than the host viewport. Artist albums use unnumbered media rows;
+  the available page content rather than the host viewport. Artist albums use unnumbered media rows;
   album tracks retain ordered playback, credits, durations, download states, and current-track
   selection. Keep offline filtering, long-press, and independent row options intact.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their

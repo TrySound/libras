@@ -132,8 +132,8 @@ test("Settings native controls, layout, and persistence", async (t) => {
     await page.getByRole("link", { name: "Settings", exact: true }).click();
     await waitConnected();
 
-    await t.test("cards respond to app width and controls fit at 200% text size", async () => {
-      for (const width of [320, 768, 800, 810, 811, 1280]) {
+    await t.test("cards respond to page width and controls fit at 200% text size", async () => {
+      for (const width of [320, 768, 800, 810, 811, 1024, 1130, 1160, 1280]) {
         await page.setViewportSize({ width, height: 900 });
         const geometry = await page.locator(".settings-view").evaluate((element) => {
           const server = element.querySelector("#settings-server").getBoundingClientRect();
@@ -144,8 +144,12 @@ test("Settings native controls, layout, and persistence", async (t) => {
             fits: element.scrollWidth <= element.clientWidth,
           };
         });
-        const desktop = await page.locator(".app-root").evaluate((node) => node.clientWidth > 800);
-        assert.equal(desktop ? geometry.separated : geometry.stacked, true);
+        const split = await page.locator(".app-page").evaluate((node) => {
+          const style = getComputedStyle(node);
+          const width = node.clientWidth - parseFloat(style.paddingInlineStart) - parseFloat(style.paddingInlineEnd);
+          return width > 50 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+        });
+        assert.equal(split ? geometry.separated : geometry.stacked, true);
         assert.equal(geometry.fits, true);
       }
       await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
