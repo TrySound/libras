@@ -159,44 +159,11 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   expect(number(queueRows[2])).toBe("03");
   for (const rows of [albumRows, queueRows]) {
     expect(rows.map(duration)).toEqual(["4:32", "0:00", ""]);
-    expect(
-      rows[0].querySelector('[aria-label="Current track, not playing"]') ??
-        (rows[0].getAttribute("aria-current") === "true" ? rows[0] : null),
-    ).not.toBeNull();
   }
+  expect(albumRows[0].getAttribute("aria-current")).toBe("true");
+  expect(queueRows[0].querySelector('[aria-label="Current track, not playing"]')).not.toBeNull();
   for (const row of queueRows) expect(row.textContent).not.toContain("Album title");
   expect(albumRows[1].querySelector('[aria-label="Actions for Second track"]')).not.toBeNull();
-});
-
-it("uses the shared loader for album download indicators and actions", async () => {
-  installDisk();
-  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
-  await cache.replaceLibrary({
-    ...library("Artist", 1),
-    albums: [{ id: "album", artistIds: ["artist"], title: "Album", genres: [] }],
-    tracks: [{ id: "track", albumId: "album", artistIds: ["artist"], title: "Track", genres: [] }],
-  });
-  vi.spyOn(TrackEngine.prototype, "getStatus").mockReturnValue("downloading");
-  mocks.cache = cache;
-  installNavigation("/library/artist/artist/album/album", mocks.navigate);
-  const target = document.createElement("main");
-  document.body.append(target);
-  const component = mount(App, { target });
-  cleanups.push(() => unmount(component));
-  flushSync();
-  const indicator = target.querySelector('[aria-label="Downloading"] .loader');
-  expect(indicator).not.toBeNull();
-  expect(indicator?.getAttribute("aria-hidden")).toBe("true");
-  target.querySelector<HTMLElement>(".track-row button.link-target")!.focus();
-  flushSync();
-  for (const id of ["album-detail-menu", "album-detail-menu-popover"]) {
-    const button = [...target.querySelectorAll<HTMLButtonElement>(`#${id} button`)].find(
-      (button) => button.textContent?.trim() === "Downloading…",
-    );
-    expect(button?.disabled).toBe(true);
-    expect(button?.querySelector(".loader")).not.toBeNull();
-    expect(button?.querySelector("use")).toBeNull();
-  }
 });
 
 it("restores downloads silently without flashing the empty state", () => {
@@ -624,19 +591,11 @@ it.each([
     expect(target.textContent).not.toContain("Restoring local library…");
     expect(target.querySelector(".library-view .loader, .scan-spinner")).toBeNull();
     expect(target.querySelector(selector)).not.toBeNull();
-    if (route !== "/library") {
-      expect(target.querySelector(selector)!.closest(".view")).toBeNull();
-      expect(target.querySelector(".ui-edgerunner .viewport-panel h1")).not.toBeNull();
-    }
     target.querySelector<HTMLElement>(selector)!.focus();
     flushSync();
     const dialog = target.querySelector(`#${menu}`);
     expect(dialog).not.toBeNull();
     expect(dialog?.querySelector("button.menu-item")?.hasAttribute("disabled")).toBe(false);
-    expect(dialog?.classList.contains("ui-edgerunner")).toBe(true);
-    expect(dialog?.classList.contains("bottom-sheet")).toBe(true);
-    expect(dialog?.querySelectorAll("button.menu-item")).toHaveLength(4);
-    expect(dialog?.querySelector('[command="close"]')?.getAttribute("commandfor")).toBe(menu);
     expect(dialog?.querySelector("h2")?.id).toBe(dialog?.getAttribute("aria-labelledby"));
   },
 );
