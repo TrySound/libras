@@ -1034,7 +1034,7 @@ it.each([
   {
     route: "/library/artist/artist/album/album",
     selector: "button.link-target",
-    observesArtwork: true,
+    observesArtwork: false,
   },
 ])("keeps row controls accessible on $route", async ({ route, selector, observesArtwork }) => {
   installDisk();
@@ -1095,6 +1095,8 @@ it.each([
     expect(load).toHaveBeenCalledOnce();
     observers.get(row.querySelector(".artwork")!)!(false);
     expect(row.hasAttribute("data-viewport-hidden")).toBe(false);
+  } else {
+    expect(row.querySelector(".artwork, img")).toBeNull();
   }
 });
 

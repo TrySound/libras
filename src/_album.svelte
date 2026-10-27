@@ -165,16 +165,11 @@
                 >
               {:else}{String(track.number ?? index + 1).padStart(2, "0")}{/if}
             </span>
-            <div class="row-sm">
-              <Artwork {covers} id={track.artworkId ?? album.artworkId} size="sm" />
-              <div>
-                <p class="label">{track.title}</p>
-                {#if credit && credit !== (album.displayArtist ?? artist.name).trim()}<p
-                    class="caption text-secondary"
-                  >
-                    {credit}
-                  </p>{/if}
-              </div>
+            <div>
+              <p class="label">{track.title}</p>
+              {#if credit && credit !== (album.displayArtist ?? artist.name).trim()}
+                <p class="caption text-secondary">{credit}</p>
+              {/if}
             </div>
             <button
               class="button-quiet link-target"
