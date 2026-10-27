@@ -80,9 +80,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       await options.filter({ visible: true }).evaluate((node) => node === document.activeElement),
       true,
     );
-    await options.filter({ visible: true }).click();
     await page.setViewportSize({ width: 393, height: 852 });
-    await popover.waitFor({ state: "hidden" });
     await options.filter({ visible: true }).click();
     const sheet = page.locator("#artist-menu");
     await sheet.waitFor({ state: "visible" });

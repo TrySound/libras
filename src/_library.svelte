@@ -59,32 +59,13 @@
     artistLimit = Math.min(artistLimit + artistPageSize, visibleArtists.length);
   }
 
-  function observeActionBreakpoint(node: HTMLElement) {
-    if (typeof ResizeObserver === "undefined") return;
-    const app = node.closest(".app-root") ?? node;
-    let desktop: boolean | undefined;
-    const observer = new ResizeObserver(([entry]) => {
-      const next =
-        entry.contentRect.width >=
-        64 * parseFloat(getComputedStyle(document.documentElement).fontSize);
-      if (desktop !== undefined && next !== desktop) dismissActions();
-      desktop = next;
-    });
-    observer.observe(app);
-    return () => observer.disconnect();
-  }
-
   function dismissActions() {
     (document.getElementById("artist-menu") as HTMLDialogElement)?.close();
     document.getElementById("artist-popover")?.hidePopover?.();
   }
 </script>
 
-<section
-  class="ui-edgerunner library-view"
-  aria-labelledby="library-heading"
-  {@attach observeActionBreakpoint}
->
+<section class="ui-edgerunner library-view" aria-labelledby="library-heading">
   <div class="stack-lg scroll-runway">
     <h1 class="visually-hidden" id="library-heading">Your library</h1>
     {#if libraryError && libraryAvailable}

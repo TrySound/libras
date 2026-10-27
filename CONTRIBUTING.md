@@ -132,7 +132,7 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   auto-fit grid. Preserve artist ordering, 48-item lazy batches, offline filtering, and real
   collection actions. Explicit options open a mobile modal or desktop popover; long-press
   retains the shared modal with Escape/close-button/swipe dismissal (light-dismiss would
-  consume the long-press release). Crossing the app's action breakpoint dismisses overlays.
+  consume the long-press release). Overlay dismissal stays native rather than resize-driven.
   Artist and album details remain legacy until their combined migration in #62.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
