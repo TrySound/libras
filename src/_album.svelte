@@ -3,6 +3,7 @@
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
+  import Loader from "./ui/loader.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -150,15 +151,13 @@
           >
             <span class="track-row-number metadata text-subtle">
               {#if currentTrack?.id === track.id && playbackState === "loading"}
-                <span role="img" aria-label="Loading playback"
-                  ><Icon name="loading" size={24} /></span
-                >
+                <span role="img" aria-label="Loading playback"><Loader /></span>
               {:else if currentTrack?.id === track.id && playbackState === "playing"}
                 <span role="img" aria-label="Playing"
                   ><Icon name="sound-bars" size={24} color="var(--accent)" /></span
                 >
               {:else if downloadStatus === "downloading"}
-                <span role="img" aria-label="Downloading"><Icon name="loading" size={24} /></span>
+                <span role="img" aria-label="Downloading"><Loader /></span>
               {:else if downloadStatus === "queued"}
                 <span role="img" aria-label="Queued for download"
                   ><Icon name="clock" size={24} /></span
@@ -299,16 +298,18 @@
           dismissActions();
         }}
       >
-        <Icon
-          name={menuDownloadStatus === "downloaded"
-            ? "check"
-            : menuDownloadStatus === "queued"
-              ? "clock"
-              : menuDownloadStatus === "downloading"
-                ? "loading"
+        {#if menuDownloadStatus === "downloading"}
+          <Loader />
+        {:else}
+          <Icon
+            name={menuDownloadStatus === "downloaded"
+              ? "check"
+              : menuDownloadStatus === "queued"
+                ? "clock"
                 : "download"}
-          size={24}
-        />
+            size={24}
+          />
+        {/if}
         <span
           >{menuDownloadStatus === "downloaded"
             ? "Downloaded"

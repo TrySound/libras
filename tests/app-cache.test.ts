@@ -168,6 +168,37 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   expect(albumRows[1].querySelector('[aria-label="Actions for Second track"]')).not.toBeNull();
 });
 
+it("uses the shared loader for album download indicators and actions", async () => {
+  installDisk();
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+  await cache.replaceLibrary({
+    ...library("Artist", 1),
+    albums: [{ id: "album", artistIds: ["artist"], title: "Album", genres: [] }],
+    tracks: [{ id: "track", albumId: "album", artistIds: ["artist"], title: "Track", genres: [] }],
+  });
+  vi.spyOn(TrackEngine.prototype, "getStatus").mockReturnValue("downloading");
+  mocks.cache = cache;
+  installNavigation("/library/artist/artist/album/album", mocks.navigate);
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const indicator = target.querySelector('[aria-label="Downloading"] .loader');
+  expect(indicator).not.toBeNull();
+  expect(indicator?.getAttribute("aria-hidden")).toBe("true");
+  target.querySelector<HTMLElement>(".track-row button.link-target")!.focus();
+  flushSync();
+  for (const id of ["album-detail-menu", "album-detail-menu-popover"]) {
+    const button = [...target.querySelectorAll<HTMLButtonElement>(`#${id} button`)].find(
+      (button) => button.textContent?.trim() === "Downloading…",
+    );
+    expect(button?.disabled).toBe(true);
+    expect(button?.querySelector(".loader")).not.toBeNull();
+    expect(button?.querySelector("use")).toBeNull();
+  }
+});
+
 it("restores downloads silently without flashing the empty state", () => {
   mocks.localReady = false;
   installNavigation("/downloads", mocks.navigate);
