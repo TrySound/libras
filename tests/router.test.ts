@@ -15,11 +15,11 @@ afterEach(async () => {
   document.startViewTransition = originalStartViewTransition;
 });
 
-function setup(path = "/library", embedded = false) {
+function setup(path = "/library", embedded = false, layout = false) {
   const navigation = installNavigation(path);
   const target = document.createElement("main");
   document.body.append(target);
-  const component = mount(RouterTestApp, { target, props: { embedded } });
+  const component = mount(RouterTestApp, { target, props: { embedded, layout } });
   cleanups.push(() => unmount(component));
   flushSync();
   return { navigation, target };
@@ -167,6 +167,61 @@ describe("router", () => {
     navigate("/player");
     expect(caught).toHaveBeenCalledOnce();
     await expect(caught.mock.results[0].value).resolves.toBeUndefined();
+  });
+
+  it("supplies the resolved route to a persistent layout and ignores host anchors", async () => {
+    const { navigation, target } = setup("/unknown", true, true);
+    const layout = target.querySelector<HTMLElement>("[data-layout]")!;
+    const input = target.querySelector<HTMLInputElement>("input")!;
+    expect(layout.dataset.layout).toBe("/library");
+    input.value = "Retain layout state";
+    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+    navigation.dispatchEvent(
+      Object.assign(new Event("navigate"), {
+        navigationType: "push",
+        canIntercept: true,
+        destination: { url: new URL("#/library/artist/artist%201", window.location.href).href },
+        intercept,
+      }),
+    );
+    await intercept.mock.results[0].value;
+    expect(target.querySelector("[data-layout]")).toBe(layout);
+    expect(target.querySelector("input")).toBe(input);
+    expect(input.value).toBe("Retain layout state");
+    expect(layout.dataset.layout).toBe("/library/artist/:artistId");
+    expect(target.querySelector("p")!.textContent).toBe('artist:{"artistId":"artist 1"}');
+
+    intercept.mockClear();
+    navigation.dispatchEvent(
+      Object.assign(new Event("navigate"), {
+        navigationType: "push",
+        canIntercept: true,
+        destination: { url: new URL("#features", window.location.href).href },
+        intercept,
+      }),
+    );
+    expect(intercept).not.toHaveBeenCalled();
+    expect(layout.dataset.layout).toBe("/library/artist/:artistId");
+  });
+
+  it("leaves the resolved layout unchanged for aborted navigation", async () => {
+    const { navigation, target } = setup("/library", true, true);
+    const layout = target.querySelector<HTMLElement>("[data-layout]")!;
+    const controller = new AbortController();
+    controller.abort();
+    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+    navigation.dispatchEvent(
+      Object.assign(new Event("navigate"), {
+        navigationType: "push",
+        canIntercept: true,
+        signal: controller.signal,
+        destination: { url: new URL("#/player", window.location.href).href },
+        intercept,
+      }),
+    );
+    await intercept.mock.results[0].value;
+    expect(target.querySelector("[data-layout]")).toBe(layout);
+    expect(layout.dataset.layout).toBe("/library");
   });
 
   it("removes the navigation listener on unmount", async () => {

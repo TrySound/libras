@@ -22,9 +22,11 @@
     fallback?: RenderRoute;
     /** Leave the host page's scroll, focus, and view transitions alone. */
     embedded?: boolean;
+    /** Optional persistent layout, given the resolved route rather than the raw URL. */
+    children?: Snippet<[RenderRoute, RouteParams]>;
   }
 
-  let { routes, fallback = routes[0], embedded = false }: Props = $props();
+  let { routes, fallback = routes[0], embedded = false, children }: Props = $props();
 
   const initial = untrack(() => {
     if (!fallback) throw new Error("Router requires at least one route.");
@@ -110,4 +112,8 @@
   });
 </script>
 
-{@render match.route.render(match.params)}
+{#if children}
+  {@render children(match.route, match.params)}
+{:else}
+  {@render match.route.render(match.params)}
+{/if}

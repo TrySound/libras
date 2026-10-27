@@ -194,7 +194,9 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/navigation.test.cjs
 ```
 
-`src/navigation-shell.svelte` owns navigation behavior and markup only; it has no local styles.
+`src/navigation-shell.svelte` owns navigation markup and native drawer controls only; it has no
+local styles or location listeners. Router supplies its resolved route through a persistent layout
+snippet, keeping active navigation and rendered content on the same source of truth.
 `src/edgerunner.css` owns the prototype-derived `.app-shell` composition as well as `.topbar`,
 `.sidebar`, `.right-sheet`, `.button-quiet`, and flow primitives. Main owns shared page gutters;
 routes must not duplicate them. The player stays in normal flow in the bottom-sticky `.app-player`
@@ -204,7 +206,8 @@ player surface bridge and legacy-route padding reset remain in `src/app.css` unt
 Keep Session and Player in App; never key or remount them at layout breakpoints. Container queries
 own responsive visibility unconditionally, without focused-copy exceptions or scripted focus
 transfer. The entire mobile topbar is hidden on desktop; separate desktop error/update invokers
-point to the same single set of native notification popovers. Resizing does not imperatively move focus or close an open native drawer. Embedded apps retain
+point to the same single set of native notification popovers. Drawer links close it when clicked;
+route changes and resizing do not imperatively close it or move focus. Embedded apps retain
 host-owned sizing and local scrolling; standalone uses document scrolling.
 
 For a subpath deployment, include the base path in `PREVIEW_URL`. These optional suites are

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, type Snippet } from "svelte";
+  import type { Snippet } from "svelte";
   import Icon, { type IconName } from "./icon.svelte";
 
   let {
@@ -8,6 +8,7 @@
     notifications,
     hasActions,
     miniPlayer,
+    path,
     embedded = false,
   }: {
     children: Snippet;
@@ -15,6 +16,7 @@
     notifications: Snippet;
     hasActions: boolean;
     miniPlayer: Snippet;
+    path: string;
     embedded?: boolean;
   } = $props();
   const links: { path: string; label: string; icon: IconName }[] = [
@@ -24,26 +26,9 @@
     { path: "/settings", label: "Settings", icon: "settings" },
   ];
   let drawer: HTMLDialogElement;
-  let path = $state("/library");
   let open = $state(false);
   const active = (destination: string) =>
     path === destination || path.startsWith(`${destination}/`);
-
-  onMount(() => {
-    const sync = () => {
-      const current = window.location.hash.slice(1);
-      // Router falls back to Library for unknown URLs; keep navigation consistent.
-      path = links.find((link) => current === link.path)?.path ?? "/library";
-      if (drawer.open) drawer.close();
-    };
-    sync();
-    window.addEventListener("hashchange", sync);
-    window.navigation.addEventListener("currententrychange", sync);
-    return () => {
-      window.removeEventListener("hashchange", sync);
-      window.navigation.removeEventListener("currententrychange", sync);
-    };
-  });
 </script>
 
 {#snippet brand()}

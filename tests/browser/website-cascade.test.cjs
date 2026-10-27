@@ -82,6 +82,16 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
       },
     );
 
+    await t.test("host anchors do not change the embedded app's active route", async () => {
+      await page.locator(".site-skip-link").focus();
+      await page.keyboard.press("Enter");
+      await page.waitForURL("**/#main-content");
+      await page.locator("#demo .settings-view").waitFor();
+      await page.locator("#demo").getByRole("button", { name: "Open menu", exact: true }).click();
+      assert.equal(await page.locator("#navigation-dialog").getByRole("link", { name: "Settings", exact: true }).getAttribute("aria-current"), "page");
+      await page.keyboard.press("Escape");
+    });
+
     await t.test("website extensions stop at an Edgerunner boundary", async () => {
       await page.evaluate(() => {
         const island = document.createElement("section");

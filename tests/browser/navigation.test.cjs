@@ -63,6 +63,15 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     await drawer.getByRole("link", { name: "Downloads", exact: true }).click();
     await drawer.waitFor({ state: "hidden" });
     await page.waitForURL("**/#/downloads");
+    const mountedShell = await page.locator(".app-shell").elementHandle();
+    await menu.click();
+    await page.evaluate(() => window.navigation.navigate("#/settings").finished);
+    await page.locator(".settings-view").waitFor();
+    assert.equal(await drawer.isVisible(), true, "route changes alone do not dismiss the drawer");
+    assert.equal(await drawer.getByRole("link", { name: "Settings", exact: true }).getAttribute("aria-current"), "page");
+    assert.equal(await mountedShell.evaluate((element) => element === document.querySelector(".app-shell")), true);
+    await drawer.getByRole("link", { name: "Settings", exact: true }).click();
+    await drawer.waitFor({ state: "hidden" });
     await menu.click();
     await drawer.getByRole("link", { name: "Settings", exact: true }).focus();
     await page.setViewportSize({ width: 1280, height: 800 });

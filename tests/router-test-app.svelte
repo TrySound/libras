@@ -1,7 +1,13 @@
 <script lang="ts">
-  import Router, { type RouteParams } from "../src/router.svelte";
+  import Router, { type RenderRoute, type RouteParams } from "../src/router.svelte";
 
-  let { embedded = false }: { embedded?: boolean } = $props();
+  let {
+    embedded = false,
+    layout = false,
+  }: {
+    embedded?: boolean;
+    layout?: boolean;
+  } = $props();
 </script>
 
 {#snippet page(name: string, params: RouteParams)}
@@ -20,8 +26,16 @@
   {@render page("player", params)}
 {/snippet}
 
+{#snippet frame(route: RenderRoute, params: RouteParams)}
+  <section data-layout={route.pattern}>
+    <input aria-label="Persistent layout input" />
+    {@render route.render(params)}
+  </section>
+{/snippet}
+
 <Router
   {embedded}
+  children={layout ? frame : undefined}
   routes={[
     { pattern: "/library/artist/:artistId/album/:albumId", render: album },
     { pattern: "/library/artist/:artistId", render: artist },
