@@ -48,8 +48,8 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "#/settings");
     await sidebar.getByRole("link", { name: "Downloads", exact: true }).focus();
     await page.setViewportSize({ width: 768, height: 800 });
-    assert.equal(await sidebar.getByRole("link", { name: "Downloads", exact: true }).evaluate((element) => element === document.activeElement), true);
-    assert.equal(await sidebar.isVisible(), true, "CSS retains the focused outgoing copy");
+    assert.equal(await sidebar.isVisible(), false, "the mobile breakpoint hides even a focused sidebar");
+    assert.equal(await menu.isVisible(), true);
     await menu.click();
     const drawer = page.getByRole("dialog", { name: "Navigation", exact: true });
     await drawer.waitFor({ state: "visible" });

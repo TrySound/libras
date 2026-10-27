@@ -1188,7 +1188,7 @@
   }
 
   @container navigation (width < 64rem) {
-    .app-sidebar:not(:focus-within) {
+    :scope > .app-sidebar {
       display: none;
     }
   }
@@ -1203,8 +1203,8 @@
     :scope > .app-header {
       display: contents;
     }
-    .app-header > [data-nav="brand"]:not(:focus-within),
-    .app-header-action:not(:focus) {
+    .app-header > [data-nav="brand"],
+    .app-header .app-header-action {
       display: none;
     }
     .app-status-actions {
