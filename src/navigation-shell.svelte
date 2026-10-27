@@ -99,7 +99,9 @@
 {/snippet}
 
 <div class="navigation-shell" class:embedded bind:this={root}>
-  <div class="shell-canvas ui-edgerunner" aria-hidden="true"></div>
+  {#if embedded}
+    <div class="shell-canvas ui-edgerunner" aria-hidden="true"></div>
+  {/if}
   <aside class="shell-sidebar ui-edgerunner" aria-label="Navigation" bind:this={sidebar}>
     <div class="stack-lg">
       {@render brand()}
@@ -156,6 +158,14 @@
     position: relative;
     min-block-size: 100%;
     container: navigation / inline-size;
+  }
+  .navigation-shell:not(.embedded) {
+    min-block-size: 100dvh;
+  }
+  /* Standalone has one document-owned canvas, not a gradient restarted by
+   * each route's intrinsic content height. Embedded routes keep their canvas. */
+  .navigation-shell:not(.embedded) .shell-content > :global(.ui-edgerunner) {
+    background: transparent;
   }
   .navigation-shell.embedded {
     block-size: 100%;

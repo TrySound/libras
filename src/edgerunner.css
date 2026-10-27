@@ -9,73 +9,83 @@
  */
 @import "./edgerunner-fonts.css";
 
-@scope (.ui-edgerunner) {
-  :scope {
-    /* Color primitives: literal palette values, including published anchors and scales. */
-    --palette-maroon: #550000;
+/* Share the canvas recipe with the standalone document so its overscroll area
+ * matches the shell. Embedded apps must never repaint their host document. */
+:where(.ui-edgerunner, :root:has(.app-root.standalone)) {
+  /* Color primitives: literal palette values, including published anchors and scales. */
+  --palette-maroon: #550000;
 
-    /* Figma shades: higher indices are darker. */
-    --palette-maroon-shade-0: #550000;
-    --palette-maroon-shade-1: #4c0000;
-    --palette-maroon-shade-2: #420000;
-    --palette-maroon-shade-3: #390000;
-    --palette-maroon-shade-4: #2f0000;
-    --palette-maroon-shade-5: #260000;
-    --palette-maroon-shade-6: #1c0000;
-    --palette-maroon-shade-7: #130000;
+  /* Figma shades: higher indices are darker. */
+  --palette-maroon-shade-0: #550000;
+  --palette-maroon-shade-1: #4c0000;
+  --palette-maroon-shade-2: #420000;
+  --palette-maroon-shade-3: #390000;
+  --palette-maroon-shade-4: #2f0000;
+  --palette-maroon-shade-5: #260000;
+  --palette-maroon-shade-6: #1c0000;
+  --palette-maroon-shade-7: #130000;
 
-    /* Figma tints: copied as published; tint-0 supplies shell/scrollbar styling. */
-    --palette-maroon-tint-0: #550000;
-    --palette-maroon-tint-1: #810000;
-    --palette-maroon-tint-2: #ae0000;
-    --palette-maroon-tint-3: #da0000;
-    --palette-maroon-tint-4: #ff0808;
-    --palette-maroon-tint-5: #ff3434;
-    --palette-maroon-tint-6: #ff6060;
-    --palette-maroon-tint-7: #ff8d8d;
+  /* Figma tints: copied as published; tint-0 supplies shell/scrollbar styling. */
+  --palette-maroon-tint-0: #550000;
+  --palette-maroon-tint-1: #810000;
+  --palette-maroon-tint-2: #ae0000;
+  --palette-maroon-tint-3: #da0000;
+  --palette-maroon-tint-4: #ff0808;
+  --palette-maroon-tint-5: #ff3434;
+  --palette-maroon-tint-6: #ff6060;
+  --palette-maroon-tint-7: #ff8d8d;
 
-    /* Figma tones: source order is not monotonic in lightness. */
-    --palette-maroon-tone-0: #550000;
-    --palette-maroon-tone-1: #ef1014;
-    --palette-maroon-tone-2: #df2026;
-    --palette-maroon-tone-3: #cf3038;
-    --palette-maroon-tone-4: #bf4048;
-    --palette-maroon-tone-5: #af5058;
-    --palette-maroon-tone-6: #9f6066;
-    --palette-maroon-tone-7: #8f7073;
+  /* Figma tones: source order is not monotonic in lightness. */
+  --palette-maroon-tone-0: #550000;
+  --palette-maroon-tone-1: #ef1014;
+  --palette-maroon-tone-2: #df2026;
+  --palette-maroon-tone-3: #cf3038;
+  --palette-maroon-tone-4: #bf4048;
+  --palette-maroon-tone-5: #af5058;
+  --palette-maroon-tone-6: #9f6066;
+  --palette-maroon-tone-7: #8f7073;
 
-    /* Figma Gold anchor and published tint scale, in source order. */
-    --palette-gold: #efbf04;
-    --palette-gold-tint-0: #efbf04;
-    --palette-gold-tint-1: #fbcc13;
-    --palette-gold-tint-2: #fbd12d;
-    --palette-gold-tint-3: #fcd748;
-    --palette-gold-tint-4: #fcdd62;
-    --palette-gold-tint-5: #fde37c;
-    --palette-gold-tint-6: #fde897;
-    --palette-gold-tint-7: #feeeb1;
+  /* Figma Gold anchor and published tint scale, in source order. */
+  --palette-gold: #efbf04;
+  --palette-gold-tint-0: #efbf04;
+  --palette-gold-tint-1: #fbcc13;
+  --palette-gold-tint-2: #fbd12d;
+  --palette-gold-tint-3: #fcd748;
+  --palette-gold-tint-4: #fcdd62;
+  --palette-gold-tint-5: #fde37c;
+  --palette-gold-tint-6: #fde897;
+  --palette-gold-tint-7: #feeeb1;
 
-    /* Neutral references; white supplies ordinary text and icon foregrounds. */
-    --palette-white: #ffffff;
-    --palette-black: #000000;
+  /* Neutral references; white supplies ordinary text and icon foregrounds. */
+  --palette-white: #ffffff;
+  --palette-black: #000000;
 
-    /* Color roles: customization grouped as <group>-<property>[-<state>].
+  /* Color roles: customization grouped as <group>-<property>[-<state>].
    * Every color recipe references palette literals directly, never another role.
    * Backgrounds are complete CSS backgrounds: replace with a color or layers.
    * No scoped palette overrides: editing this block updates all consumers.
    */
-    --canvas-bg:
-      repeating-linear-gradient(
-        135deg in oklab,
-        transparent 0 47px,
-        alpha(from var(--palette-maroon-tone-7) / 7%) 47px 48px
-      ),
-      radial-gradient(
-          ellipse at 100% 0% in oklab,
-          alpha(from var(--palette-maroon-shade-3) / 80%),
-          transparent 75%
-        )
-        var(--palette-maroon-shade-7);
+  --canvas-bg:
+    repeating-linear-gradient(
+      135deg in oklab,
+      transparent 0 47px,
+      alpha(from var(--palette-maroon-tone-7) / 7%) 47px 48px
+    ),
+    radial-gradient(
+        ellipse at 100% 0% in oklab,
+        alpha(from var(--palette-maroon-shade-3) / 80%),
+        transparent 75%
+      )
+      var(--palette-maroon-shade-7);
+}
+
+:root:has(.app-root.standalone) {
+  background: var(--canvas-bg);
+  background-attachment: local;
+}
+
+@scope (.ui-edgerunner) {
+  :scope {
     --surface-bg: linear-gradient(
       135deg in oklab,
       alpha(from var(--palette-maroon-shade-4) / 80%),

@@ -15,6 +15,27 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
   try {
     await page.goto(base);
     await page.locator(".settings-view").waitFor();
+    // Short routes still paint the whole viewport, including the document canvas
+    // exposed by native overscroll (which headless Chromium cannot rubber-band).
+    await page.setViewportSize({ width: 1280, height: 1600 });
+    const background = await page.evaluate(() => {
+      const rootStyle = getComputedStyle(document.documentElement);
+      const routeStyle = getComputedStyle(document.querySelector(".settings-view"));
+      return {
+        fillsViewport: document.querySelector(".navigation-shell").getBoundingClientRect().bottom >= innerHeight,
+        documentCanvas: rootStyle.backgroundImage.includes("repeating-linear-gradient") && rootStyle.backgroundImage.includes("radial-gradient"),
+        routeTransparent: routeStyle.backgroundImage === "none" && routeStyle.backgroundColor === "rgba(0, 0, 0, 0)",
+        color: rootStyle.backgroundColor,
+      };
+    });
+    assert.deepEqual(background, {
+      fillsViewport: true,
+      documentCanvas: true,
+      routeTransparent: true,
+      color: "rgb(19, 0, 0)",
+    });
+    await page.screenshot({ path: "/tmp/libras-navigation-tall-settings.png" });
+    await page.setViewportSize({ width: 1280, height: 800 });
     const sidebar = page.locator(".shell-sidebar");
     const menu = page.getByRole("button", { name: "Open menu", exact: true });
     await sidebar.waitFor({ state: "visible" });
@@ -28,7 +49,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     await menu.click();
     const drawer = page.getByRole("dialog", { name: "Navigation", exact: true });
     await drawer.waitFor({ state: "visible" });
-    assert.equal(await menu.getAttribute("aria-expanded"), "true");
+    await page.waitForFunction(() => document.querySelector('[aria-label="Open menu"]').getAttribute("aria-expanded") === "true");
     await page.keyboard.press("Escape");
     await drawer.waitFor({ state: "hidden" });
     assert.equal(await menu.evaluate((element) => element === document.activeElement), true);

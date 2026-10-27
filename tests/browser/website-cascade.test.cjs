@@ -29,6 +29,9 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
       assert.equal(await page.locator(".site-demo-launch").isVisible(), false);
       assert.equal(await demo.isVisible(), true);
       assert.equal(await demo.evaluate((element) => element.matches(":modal")), false);
+      assert.equal(await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--canvas-bg").trim()
+      ), "", "the embedded canvas must not repaint the host document");
     });
 
     await t.test("mobile launch and modal preserve the mounted demo across resizing", async () => {
