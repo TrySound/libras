@@ -246,11 +246,11 @@ test("navigation and resizing retain real playback and the queue", async () => {
       if (width > 600) assert.ok(Math.abs(toggleBox.x + toggleBox.width / 2 - playerBox.x - playerBox.width / 2) <= 1, "desktop transports stay centered");
     }
     // A narrow host on a desktop browser must use phone controls too.
-    await page.locator(".app-shell").evaluate((element) => element.style.inlineSize = "400px");
+    await page.locator(".app-root").evaluate((element) => element.style.inlineSize = "400px");
     assert.equal(await seek.isVisible(), false);
     assert.equal(await mini.getByRole("button", { name: "Next track", exact: true }).isVisible(), false);
     assert.equal(await mini.getByRole("progressbar").isVisible(), true);
-    await page.locator(".app-shell").evaluate((element) => element.style.inlineSize = "");
+    await page.locator(".app-root").evaluate((element) => element.style.inlineSize = "");
     await page.setViewportSize({ width: 320, height: 700 });
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

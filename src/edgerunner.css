@@ -418,13 +418,13 @@
 
   /* Visibility utilities override component display without retaining focus. */
   .only-mobile {
-    @media (width > 600px) {
+    @container app (width > 600px) {
       display: none !important;
     }
   }
 
   .only-desktop {
-    @media (max-width: 600px) {
+    @container app (width <= 600px) {
       display: none !important;
     }
   }
@@ -1186,17 +1186,9 @@
       calc(var(--space-sm) + env(safe-area-inset-bottom))
       max(var(--content-padding-inline), env(safe-area-inset-left));
 
-    /* Flex metadata must shrink before the artwork or intrinsic transports. */
-    > .button-quiet > .stack-xs {
-      min-inline-size: 0;
-    }
-
-    @container navigation (width <= 600px) {
+    @container app (width <= 600px) {
       grid-template-columns: minmax(0, 1fr) auto;
       gap: var(--space-sm);
-      .only-desktop {
-        display: none !important;
-      }
     }
   }
 
@@ -1205,7 +1197,7 @@
     inset-inline: 0;
     top: calc(-1 * var(--border-width) - (var(--seek-hit-size) - var(--seek-track-size)) / 2);
     z-index: 1;
-    @container navigation (width <= 600px) {
+    @container app (width <= 600px) {
       display: none;
     }
   }
@@ -1215,7 +1207,7 @@
     position: absolute;
     top: calc(-1 * var(--border-width));
     inset-inline: 0;
-    @container navigation (width <= 600px) {
+    @container app (width <= 600px) {
       display: block;
     }
   }
