@@ -1203,8 +1203,7 @@
 
     /* App errors/updates extend the prototype's navigation. Keep one mounted
      * set of controls, reserving their actual height rather than a fixed gap. */
-    :scope > .app-header,
-    .app-header > .app-header-actions {
+    :scope > .app-header {
       display: contents;
     }
     .app-header > [data-nav="brand"]:not(:focus-within),

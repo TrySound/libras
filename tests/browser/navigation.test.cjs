@@ -40,6 +40,11 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     const menu = page.getByRole("button", { name: "Open menu", exact: true });
     await sidebar.waitFor({ state: "visible" });
     assert.equal(await menu.isVisible(), false);
+    assert.equal(await page.evaluate(() => {
+      const shell = document.querySelector(".app-shell").getBoundingClientRect();
+      const main = document.querySelector(".app-page").getBoundingClientRect();
+      return main.top === shell.top;
+    }), true, "the ordinary actions row adds no desktop header space");
     assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "#/settings");
     await sidebar.getByRole("link", { name: "Downloads", exact: true }).focus();
     await page.setViewportSize({ width: 768, height: 800 });

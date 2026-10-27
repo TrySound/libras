@@ -83,7 +83,7 @@
   </aside>
   <header class="topbar app-header row-md row-justify row-wrap ui-edgerunner">
     {@render brand()}
-    <div class="row-sm app-header-actions">
+    <div class="row-sm">
       {#if hasActions}
         <div class="row-sm app-status-actions">{@render actions()}</div>
       {/if}
