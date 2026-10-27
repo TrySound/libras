@@ -160,7 +160,7 @@
 
 <dialog
   id="artist-menu"
-  class="ui-edgerunner bottom-sheet action-menu"
+  class="ui-edgerunner bottom-sheet"
   aria-labelledby="artist-menu-title"
   closedby="closerequest"
   data-swipedown="close"

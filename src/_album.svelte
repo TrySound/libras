@@ -230,7 +230,7 @@
 <dialog
   bind:this={sheet}
   id="album-detail-menu"
-  class="ui-edgerunner bottom-sheet action-menu"
+  class="ui-edgerunner bottom-sheet"
   aria-labelledby="album-detail-menu-title"
   closedby="closerequest"
   data-swipedown="close"

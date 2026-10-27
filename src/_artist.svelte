@@ -184,7 +184,7 @@
 <dialog
   bind:this={sheet}
   id="artist-detail-menu"
-  class="ui-edgerunner bottom-sheet action-menu"
+  class="ui-edgerunner bottom-sheet"
   aria-labelledby="artist-detail-menu-title"
   closedby="closerequest"
   data-swipedown="close"

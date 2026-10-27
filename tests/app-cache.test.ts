@@ -632,10 +632,9 @@ it.each([
     flushSync();
     const dialog = target.querySelector(`#${menu}`);
     expect(dialog).not.toBeNull();
-    expect(
-      dialog?.querySelector("button.menu-item, button.wings-item")?.hasAttribute("disabled"),
-    ).toBe(false);
+    expect(dialog?.querySelector("button.menu-item")?.hasAttribute("disabled")).toBe(false);
     expect(dialog?.classList.contains("ui-edgerunner")).toBe(true);
+    expect(dialog?.classList.contains("bottom-sheet")).toBe(true);
     expect(dialog?.querySelectorAll("button.menu-item")).toHaveLength(4);
     expect(dialog?.querySelector('[command="close"]')?.getAttribute("commandfor")).toBe(menu);
     expect(dialog?.querySelector("h2")?.id).toBe(dialog?.getAttribute("aria-labelledby"));
@@ -689,7 +688,7 @@ it("reuses one library menu for the long-pressed artist", async () => {
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  expect(target.querySelectorAll(".action-menu")).toHaveLength(1);
+  expect(target.querySelectorAll("dialog.bottom-sheet")).toHaveLength(1);
   const menu = target.querySelector<HTMLDialogElement>("#artist-menu")!;
   const tiles = target.querySelectorAll<HTMLElement>(".tile > a.link-target");
   for (const [index, id] of ["one", "two"].entries()) {
@@ -706,7 +705,7 @@ it("reuses one library menu for the long-pressed artist", async () => {
     button.click();
     expect(download).toHaveBeenLastCalledWith(id);
     expect(menu.open).toBe(false);
-    expect(target.querySelectorAll(".action-menu")).toHaveLength(1);
+    expect(target.querySelectorAll("dialog.bottom-sheet")).toHaveLength(1);
   }
   expect(download).toHaveBeenCalledTimes(2);
 });

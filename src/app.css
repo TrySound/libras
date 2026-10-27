@@ -63,7 +63,6 @@
     --color-text-primary: var(--palette-gray-100);
     --color-text-muted: var(--palette-gray-300);
     --color-text-accent: var(--palette-crimson-300);
-    --color-text-on-image: var(--palette-white);
     --color-text-danger: var(--palette-red-300);
 
     /* Semantic colors: separators */
@@ -72,7 +71,6 @@
     /* Semantic colors: controls and emphasis */
     --color-control-neutral: var(--palette-gray-600);
     --color-control-primary: var(--palette-crimson-500);
-    --color-control-overlay: rgb(from var(--palette-black) r g b / 72%);
     --color-track: var(--palette-gray-500);
     --color-accent: var(--palette-crimson-300);
 
@@ -85,9 +83,7 @@
     /* Semantic colors: artwork and overlays */
     --color-artwork-start: var(--palette-crimson-700);
     --color-artwork-end: var(--palette-pink-900);
-    --color-overlay-border: rgb(from var(--palette-white) r g b / 25%);
     --color-artwork-icon: rgb(from var(--palette-white) r g b / 85%);
-    --color-image-scrim: rgb(from var(--palette-black) r g b / 92%);
     --color-backdrop: rgb(from var(--palette-black) r g b / 72%);
 
     /* Typography roles
@@ -586,12 +582,6 @@
     }
   }
 
-  .tiles-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(9rem, 100%), 1fr));
-    gap: var(--space-md);
-  }
-
   /* decorative */
 
   .chip {
@@ -840,12 +830,6 @@
     box-shadow: none;
   }
 
-  .icon-button[data-variant="overlay"] {
-    --control-background: var(--color-control-overlay);
-    --control-border: var(--color-overlay-border);
-    backdrop-filter: blur(8px);
-  }
-
   .button:disabled,
   .icon-button:disabled {
     box-shadow: none;
@@ -857,15 +841,6 @@
   .icon-button:focus-visible {
     outline: var(--focus-outline);
     outline-offset: var(--focus-outline-offset);
-  }
-
-  .collection-heading {
-    align-items: start;
-    margin-bottom: var(--space-xl);
-  }
-
-  .library-meta {
-    color: var(--color-text-muted);
   }
 
   .player-dialog {
@@ -945,12 +920,6 @@
     padding-top: 0;
   }
 
-  .collection-artwork {
-    max-width: 20rem;
-    margin: 0 auto var(--space-lg);
-    box-shadow: var(--elevation-md);
-  }
-
   .player-main > .artwork {
     grid-area: 1 / 1;
     height: 100%;
@@ -1014,58 +983,6 @@
     gap: 0.75rem;
   }
 
-  .tile {
-    content-visibility: auto;
-    /* Preserve scroll geometry while offscreen contents are skipped. */
-    aspect-ratio: 1;
-    position: relative;
-    min-width: 0;
-    overflow: hidden;
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: var(--surface-card-background);
-    color: inherit;
-    text-align: left;
-    -webkit-tap-highlight-color: transparent;
-    -webkit-touch-callout: none;
-    user-select: none;
-    display: grid;
-    width: 100%;
-    padding: 0;
-    box-shadow: var(--surface-lifted-shadow);
-
-    &:focus-visible {
-      outline: var(--focus-outline);
-      outline-offset: var(--focus-outline-offset);
-    }
-
-    @media (hover: hover) {
-      &:hover:not(:active) {
-        filter: brightness(1.1);
-      }
-    }
-
-    @media (prefers-reduced-motion: no-preference) {
-      transition:
-        scale var(--transition-control),
-        filter var(--transition-control),
-        box-shadow var(--transition-control);
-    }
-
-    &:active {
-      filter: brightness(0.85);
-      box-shadow: none;
-
-      @media (prefers-reduced-motion: no-preference) {
-        scale: 0.98;
-        transition:
-          scale var(--transition-fast),
-          filter var(--transition-fast),
-          box-shadow var(--transition-fast);
-      }
-    }
-  }
-
   .artwork {
     position: relative;
     display: grid;
@@ -1098,23 +1015,6 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-  }
-
-  .tile::after {
-    position: absolute;
-    inset: 35% 0 0;
-    content: "";
-    background: linear-gradient(var(--palette-transparent), var(--color-image-scrim));
-  }
-
-  .tile-name {
-    position: absolute;
-    z-index: 1;
-    right: 0.7rem;
-    bottom: 0.65rem;
-    left: 0.7rem;
-    color: var(--color-text-on-image);
-    font-weight: var(--weight-semibold);
   }
 
   .action-menu {
@@ -1204,12 +1104,6 @@
     place-items: center;
     color: var(--color-text-muted);
     text-align: right;
-  }
-
-  .track-details {
-    min-width: 0;
-    padding-block: 0.65rem;
-    overflow-wrap: anywhere;
   }
 
   .player-queue {
