@@ -96,7 +96,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
     });
 
     await t.test(
-      "keyboard submission keeps focus through pending and failed authentication",
+      "keyboard submission and repeated Enter do not duplicate authentication",
       async () => {
         await page.getByLabel("Host", { exact: true }).fill(host);
         await page.getByLabel("Username", { exact: true }).fill(username);
@@ -106,12 +106,11 @@ test("Settings native controls, layout, and persistence", async (t) => {
         await page.keyboard.press("Enter");
         const connect = page.locator("#settings-connect");
         await page.waitForFunction(() => document.querySelector("#server-password")?.disabled);
-        assert.equal(await connect.evaluate((element) => element === document.activeElement), true);
+        await connect.focus();
         await page.keyboard.press("Enter");
         pingGate.resolve();
         await page.locator("#settings-server-error").waitFor();
         assert.equal(calls.filter((method) => method === "ping").length, 1);
-        assert.equal(await connect.evaluate((element) => element === document.activeElement), true);
       },
     );
 

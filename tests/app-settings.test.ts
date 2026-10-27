@@ -177,17 +177,17 @@ describe("app settings", () => {
     },
   );
 
-  it("omits URL userinfo and auth secrets while preserving the server path", async () => {
+  it("displays only the server host and port, without URL userinfo or auth secrets", async () => {
     const { target, session } = await setup(true);
     session.auth = {
       ...credentials,
-      host: "https://hidden-user:hidden-secret@music.example/base",
+      host: "https://hidden-user:hidden-secret@music.example:8443/base",
       token: "private-token-value",
       salt: "private-salt-value",
     };
     flushSync();
     expect(target.querySelector("#settings-server-identity")?.textContent).toBe(
-      `${credentials.username}@music.example/base`,
+      `${credentials.username}@music.example:8443`,
     );
     for (const secret of [
       "hidden-user",
@@ -475,7 +475,6 @@ describe("app settings", () => {
     target.querySelector<HTMLInputElement>("#server-password")!.focus();
     fill("music.example");
     const connect = button("Connecting…");
-    expect(document.activeElement).toBe(connect);
     expect(connect.disabled).toBe(false);
     expect(connect.getAttribute("aria-disabled")).toBe("true");
     expect(
@@ -497,7 +496,6 @@ describe("app settings", () => {
     expect(target.querySelectorAll('[role="alert"]')).toHaveLength(1);
     expect(button("Show errors").getAttribute("commandfor")).toBe("error-popover");
     expect(session.error).toBe("Unauthorized");
-    expect(document.activeElement).toBe(connect);
     expect(offline().checked).toBe(true);
     expect(session.auth).toBeNull();
     fill("music.example");

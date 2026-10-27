@@ -150,7 +150,8 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   Busy Connect/Refresh controls stay mounted and focusable with guarded `aria-disabled` states.
   Disconnect clears the form without moving focus to Host. Session guards duplicate connection
   attempts; the submit handler only guards post-connect navigation against a changed URL or
-  hidden/unmounted view. The summary renders account identity, never tokens, salts, or URL userinfo.
+  hidden/unmounted view. Submitting does not force focus to the button. The summary uses
+  `URL.host` for the host/port only, never URL paths, tokens, salts, or userinfo.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
   and resolves optional IDs from the current library without changing saved download metadata.

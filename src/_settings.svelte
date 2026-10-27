@@ -12,7 +12,6 @@
   let host = $state("");
   let username = $state("");
   let password = $state("");
-  let submitButton = $state.raw<HTMLButtonElement>();
   let view = $state.raw<HTMLElement>();
 
   const connectionLabels = {
@@ -40,22 +39,11 @@
       connectionState === "synchronizing",
   );
   const connectionFailed = $derived(connectionState === "error");
-  const serverAddress = $derived.by(() => {
-    if (!session.auth) return "";
-    const address = new URL(session.auth.host);
-    // Account identity is useful here; URL userinfo and authentication secrets are not.
-    address.username = address.password = "";
-    return address
-      .toString()
-      .replace(/^https?:\/\//i, "")
-      .replace(/\/$/, "");
-  });
+  const serverAddress = $derived(session.auth ? new URL(session.auth.host).host : "");
 
   async function submitConnection(event: SubmitEvent) {
     event.preventDefault();
     const sourceURL = window.location.href;
-    // Keep focus on the button before Session disables the fields.
-    submitButton?.focus();
     if (await session.connect({ host, username, password })) {
       host = username = password = "";
       // Session may finish after navigation starts or an embedded app is hidden.
@@ -188,7 +176,6 @@
             </div>
             <div class="row-sm">
               <button
-                bind:this={submitButton}
                 id="settings-connect"
                 class="button"
                 type="submit"
