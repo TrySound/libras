@@ -77,15 +77,6 @@
           <Icon name="menu" />
         </button>
       </div>
-
-      {#if loading}
-        <div class="empty-state stack-md">
-          <div class="scan-spinner">
-            <Icon name="loading" />
-          </div>
-          <p class="type-body text-muted">Restoring local library…</p>
-        </div>
-      {/if}
     </div>
     <div class="container wings">
       {#each visibleAlbums as album, index}

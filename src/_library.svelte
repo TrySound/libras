@@ -3,7 +3,6 @@
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
-  import Loader from "./ui/loader.svelte";
   import CollectionTile from "./ui/collection-tile.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Artist } from "./schema";
@@ -89,9 +88,6 @@
 >
   <div class="stack-lg scroll-runway">
     <h1 class="visually-hidden" id="library-heading">Your library</h1>
-    {#if loading}
-      <p class="row-sm label" role="status"><Loader /> Restoring local library…</p>
-    {/if}
     {#if libraryError && libraryAvailable}
       <div class="card stack-md">
         <h2 class="heading-sm">Library needs attention</h2>

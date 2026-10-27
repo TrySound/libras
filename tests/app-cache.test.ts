@@ -162,7 +162,7 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   expect(albumRows[1].querySelector('[title="Open menu for Second track"]')).not.toBeNull();
 });
 
-it("uses session restoration state on the downloads page", () => {
+it("restores downloads silently without flashing the empty state", () => {
   mocks.localReady = false;
   installNavigation("/downloads", mocks.navigate);
   const target = document.createElement("main");
@@ -170,7 +170,8 @@ it("uses session restoration state on the downloads page", () => {
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  expect(target.textContent).toContain("Restoring local library…");
+  expect(target.textContent).not.toContain("Restoring local library…");
+  expect(target.querySelector(".downloads-view .loader")).toBeNull();
   expect(target.textContent).not.toContain("No downloads yet");
 });
 
@@ -583,7 +584,8 @@ it.each([
     const component = mount(App, { target });
     cleanups.push(() => unmount(component));
     flushSync();
-    expect(target.textContent).toContain("Restoring local library…");
+    expect(target.textContent).not.toContain("Restoring local library…");
+    expect(target.querySelector(".library-view .loader, .scan-spinner")).toBeNull();
     expect(target.querySelector(selector)).not.toBeNull();
     if (route !== "/library") {
       expect(target.querySelector(selector)!.closest(".view")).toBeNull();

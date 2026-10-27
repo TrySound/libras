@@ -46,13 +46,6 @@
       <p class="body text-secondary">Tracks available for offline listening.</p>
     </header>
 
-    {#if loading}
-      <p class="row-sm label" role="status">
-        <Loader />
-        Restoring local library…
-      </p>
-    {/if}
-
     {#if downloadError}
       <div class="card stack-md">
         <h2 class="row-sm heading-sm">
