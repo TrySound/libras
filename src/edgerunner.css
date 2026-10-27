@@ -1542,7 +1542,7 @@
 }
 
 /* Route boundaries supply type and controls, not independent page canvases. */
-.app-page > .ui-edgerunner {
+.app-page > .ui-edgerunner:not(dialog, [popover]) {
   background: transparent;
 }
 

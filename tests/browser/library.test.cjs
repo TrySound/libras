@@ -68,6 +68,10 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     await options.filter({ visible: true }).click();
     const popover = page.locator("#artist-popover");
     await popover.waitFor({ state: "visible" });
+    assert.notEqual(
+      await popover.evaluate((node) => getComputedStyle(node).backgroundImage),
+      "none",
+    );
     assert.equal(await popover.getByRole("heading").textContent(), artists[0].name);
     assert.equal(await page.locator("#artist-menu").isVisible(), false);
     assert.equal(new URL(page.url()).hash, "#/library");
@@ -83,6 +87,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     const sheet = page.locator("#artist-menu");
     await sheet.waitFor({ state: "visible" });
     assert.equal(await sheet.evaluate((node) => node.matches(":modal")), true);
+    assert.notEqual(await sheet.evaluate((node) => getComputedStyle(node).backgroundImage), "none");
     await page.keyboard.press("Escape");
     assert.equal(
       await options.filter({ visible: true }).evaluate((node) => node === document.activeElement),
@@ -111,6 +116,15 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     }
     await page.locator(".library-sentinel").scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.querySelectorAll(".tile").length === 53);
+    await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+    assert.equal(
+      await page.evaluate(() => {
+        const root = document.documentElement;
+        return root.getBoundingClientRect().height >= root.scrollHeight - 1;
+      }),
+      true,
+      "the canvas background covers the full document, including the end runway",
+    );
     await first.getByRole("link", { name: artists[0].name, exact: true }).click();
     await page.waitForURL(/artist%200/);
     assert.equal(await page.locator(".library-view").count(), 0);
