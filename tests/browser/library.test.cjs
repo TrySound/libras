@@ -133,6 +133,30 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     const artistView = page.getByRole("region", { name: "Artist details" });
     await artistView.getByRole("heading", { name: artists[0].name, exact: true }).waitFor();
     assert.equal(await artistView.locator(".track-row").count(), 1);
+    async function checkDetailLayout(view, width) {
+      await page.setViewportSize({ width, height: 900 });
+      const layout = await view.evaluate((node) => {
+        const panel = node.querySelector(".viewport-panel");
+        const list = panel.nextElementSibling;
+        const panelBox = panel.getBoundingClientRect();
+        const listBox = list.getBoundingClientRect();
+        const app = node.closest(".app-root");
+        return {
+          desktop:
+            app.clientWidth > 50 * parseFloat(getComputedStyle(document.documentElement).fontSize),
+          display: getComputedStyle(node).display,
+          sticky: getComputedStyle(panel).position === "sticky",
+          beside: listBox.left >= panelBox.right,
+          below: listBox.top >= panelBox.bottom,
+        };
+      });
+      assert.equal(layout.display, "grid", `detail layout uses grid at ${width}px`);
+      assert.equal(layout.sticky, layout.desktop, `sticky matches desktop mode at ${width}px`);
+      assert.equal(layout.beside, layout.desktop, `columns match desktop mode at ${width}px`);
+      if (!layout.desktop)
+        assert.equal(layout.below, true, `mobile content follows the panel at ${width}px`);
+    }
+    for (const width of [768, 800, 820, 1024, 1280]) await checkDetailLayout(artistView, width);
     await artistView
       .getByRole("button", { name: "Actions for Album 0", exact: true })
       .filter({ visible: true })
@@ -148,6 +172,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       await albumView.getByRole("button", { name: "Play Track 0", exact: true }).count(),
       1,
     );
+    for (const width of [768, 800, 820, 1024, 1280]) await checkDetailLayout(albumView, width);
     for (const width of [320, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       assert.equal(

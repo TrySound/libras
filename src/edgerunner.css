@@ -879,13 +879,13 @@
 
   /* Query the app's inline size, not the browser width: the website embeds a
    * narrow app in a wide page. The styleguide supplies its own size container. */
-  .split-layout {
+  :where(:scope, *).split-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: var(--space-lg);
 
-    @container (width > 50rem) {
+    @container app (width > 50rem) {
       grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
 
       &[data-ratio="3:2"] {
