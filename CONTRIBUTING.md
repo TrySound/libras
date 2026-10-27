@@ -195,10 +195,10 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
 ```
 
 `src/navigation-shell.svelte` owns navigation markup and native drawer controls only; it has no
-local styles or location listeners. App creates one `Route` object and passes it to the shell and
-its nested Router. Router publishes reactive `url` (the resolved URL) and `pattern` (the matched
-or fallback pattern) fields at mount and on app navigation. The shell stays outside routed
-content and reads that metadata; no layout wrapper or duplicated route matching is needed.
+local styles or location listeners. The page's single Router publishes the exported reactive
+`route` object from `src/router.svelte`: `url` is the resolved URL and `pattern` is the matched or
+fallback pattern, populated at mount and on app navigation. The shell imports that object directly
+and stays outside routed content; no constructor, prop wiring, or layout wrapper is needed.
 Host-only anchors and aborted navigations leave the last resolved app route unchanged.
 `src/edgerunner.css` owns the prototype-derived `.app-shell` composition as well as `.topbar`,
 `.sidebar`, `.right-sheet`, `.button-quiet`, and flow primitives. Main owns shared page gutters;

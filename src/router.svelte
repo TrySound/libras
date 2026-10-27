@@ -3,11 +3,11 @@
 
   export type RouteParams = Record<string, string | undefined>;
 
-  /** Per-app route metadata, published reactively by its mounted Router. */
-  export class Route {
-    url = $state.raw<URL>();
-    pattern = $state<string>();
-  }
+  /** Current route metadata, published reactively by the page's Router. */
+  export const route = $state<{ url: URL | undefined; pattern: string | undefined }>({
+    url: undefined,
+    pattern: undefined,
+  });
 
   /** Paths are slash-prefixed, without a hash. */
   export function navigate(path: string, history: "push" | "replace" = "push") {
@@ -28,11 +28,9 @@
     fallback?: RenderRoute;
     /** Leave the host page's scroll, focus, and view transitions alone. */
     embedded?: boolean;
-    /** Shared metadata for navigation outside the routed content. */
-    route?: Route;
   }
 
-  let { routes, fallback = routes[0], embedded = false, route = new Route() }: Props = $props();
+  let { routes, fallback = routes[0], embedded = false }: Props = $props();
 
   const initial = untrack(() => {
     if (!fallback) throw new Error("Router requires at least one route.");

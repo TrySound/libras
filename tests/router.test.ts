@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Route, navigate } from "../src/router.svelte";
+import { route, navigate } from "../src/router.svelte";
 import RouterTestApp from "./router-test-app.svelte";
 import { installNavigation } from "./router-test-helpers";
 
@@ -19,8 +19,7 @@ function setup(path = "/library", embedded = false) {
   const navigation = installNavigation(path);
   const target = document.createElement("main");
   document.body.append(target);
-  const route = new Route();
-  const component = mount(RouterTestApp, { target, props: { embedded, route } });
+  const component = mount(RouterTestApp, { target, props: { embedded } });
   cleanups.push(() => unmount(component));
   flushSync();
   return { navigation, target, route };

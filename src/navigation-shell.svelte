@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import type { Route } from "./router.svelte";
+  import { route } from "./router.svelte";
   import Icon, { type IconName } from "./icon.svelte";
 
   let {
@@ -9,7 +9,6 @@
     notifications,
     hasActions,
     miniPlayer,
-    route,
     embedded = false,
   }: {
     children: Snippet;
@@ -17,7 +16,6 @@
     notifications: Snippet;
     hasActions: boolean;
     miniPlayer: Snippet;
-    route: Route;
     embedded?: boolean;
   } = $props();
   const links: { path: string; label: string; icon: IconName }[] = [

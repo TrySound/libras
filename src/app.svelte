@@ -20,7 +20,7 @@
   import { Cache, type Immutable } from "./cache.svelte";
   import { Session } from "./session.svelte";
   import type { Network } from "./network.svelte";
-  import Router, { Route, navigate, type RouteParams } from "./router.svelte";
+  import Router, { navigate, type RouteParams } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { installSwipeToDismiss } from "./swipe-to-dismiss";
 
@@ -50,7 +50,6 @@
   type Album = Immutable<AlbumRecord>;
   type Artist = Immutable<ArtistRecord>;
 
-  const route = new Route();
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
 
@@ -213,7 +212,7 @@
 {/snippet}
 
 <div class="app-root" class:standalone={!embedded}>
-  <NavigationShell {embedded} {route} hasActions={hasErrors || !!appUpdate?.message}>
+  <NavigationShell {embedded} hasActions={hasErrors || !!appUpdate?.message}>
     {#snippet actions()}
       {#if hasErrors}
         <button
@@ -301,7 +300,6 @@
     {/snippet}
     <Router
       {embedded}
-      {route}
       routes={[
         { pattern: "/library", render: libraryRoute },
         { pattern: "/search", render: searchRoute },
