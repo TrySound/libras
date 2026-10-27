@@ -179,8 +179,24 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
         );
       else assert.equal(layout.below, true, `mobile content follows the panel at ${width}px`);
     }
+    async function checkCoverBudget(view) {
+      for (const height of [900, 450, 900]) {
+        await page.setViewportSize({ width: 1440, height });
+        const cover = await view.locator(".viewport-panel").evaluate((panel) => {
+          const artwork = panel.querySelector(".viewport-panel-cover");
+          const details = artwork.nextElementSibling;
+          return {
+            display: getComputedStyle(artwork).display,
+            detailsOffset: details.getBoundingClientRect().top - panel.getBoundingClientRect().top,
+          };
+        });
+        assert.equal(cover.display, height === 450 ? "none" : "block");
+        if (height === 450) assert.ok(Math.abs(cover.detailsOffset) < 1, "hidden cover leaves no gap above details");
+      }
+    }
     for (const width of [768, 820, 1024, 1130, 1160, 1280, 1350, 1380, 1440])
       await checkDetailLayout(artistView, width);
+    await checkCoverBudget(artistView);
     assert.equal(await artistView.locator(".atmosphere").isVisible(), false);
     await artistView
       .getByRole("button", { name: "Actions for Album 0", exact: true })
@@ -200,6 +216,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     );
     for (const width of [768, 820, 1024, 1130, 1160, 1280, 1350, 1380, 1440])
       await checkDetailLayout(albumView, width);
+    await checkCoverBudget(albumView);
     for (const width of [320, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       assert.equal(

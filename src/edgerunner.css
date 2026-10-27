@@ -923,7 +923,7 @@
     }
   }
 
-  .viewport-panel-cover {
+  .artwork.viewport-panel-cover {
     contain: inline-size;
     contain-intrinsic-inline-size: 28rem;
     min-inline-size: 0;
