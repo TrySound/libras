@@ -1083,6 +1083,294 @@
     }
   }
 
+  /* Collection browsing: intrinsic columns adapt to the app, including embeds. */
+  .tile-grid {
+    --tile-min-size: 8.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--tile-min-size), 100%), 1fr));
+    gap: var(--space-md);
+    @container app (width >= 64rem) {
+      --tile-min-size: 12rem;
+    }
+  }
+
+  .tile-grid-item {
+    --tile-padding: var(--space-md);
+    aspect-ratio: 1;
+    @media (prefers-reduced-motion: no-preference) {
+      @supports (animation-timeline: view()) {
+        animation: --edgerunner-list-entry auto linear both;
+        animation-timeline: view(block);
+        animation-range: entry 0% cover 20%;
+        &:has(:focus-visible) {
+          animation: none;
+        }
+      }
+    }
+  }
+
+  .tile {
+    box-sizing: border-box;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    min-inline-size: 0;
+    padding: var(--tile-padding);
+    border: var(--border-width) solid var(--item-border);
+    border-radius: var(--radius-lg);
+    corner-shape: var(--corner-shape);
+    overflow: clip;
+    color: var(--text-primary);
+    translate: 0;
+    scale: 1;
+    &:has(> .link-target:where(:hover, :focus-visible)) {
+      border-color: var(--item-border-hover);
+      > .tile-artwork {
+        background-color: var(--item-bg-hover);
+      }
+    }
+    &:has(> .link-target:focus-visible) {
+      outline: var(--focus-ring);
+      outline-offset: var(--focus-ring-offset);
+    }
+    &:has(> .link-target:active) {
+      border-color: var(--item-border-active);
+      > .tile-artwork {
+        background-color: var(--item-bg-active);
+      }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      transition:
+        border-color var(--motion-duration-feedback),
+        translate var(--motion-duration-press),
+        scale var(--motion-duration-press);
+      &:has(> .link-target:active) {
+        translate: 0 var(--press-offset);
+        scale: var(--press-scale);
+      }
+      &:has(> .link-target:where(:hover, :focus-visible, :active)) > .tile-artwork {
+        scale: 1.04;
+      }
+    }
+  }
+
+  .link-target {
+    position: absolute;
+    inset: 0;
+    cursor: pointer;
+    border-radius: inherit;
+    corner-shape: inherit;
+    &:focus-visible {
+      outline: none;
+    }
+  }
+
+  .artwork.tile-artwork {
+    position: absolute;
+    inset: 0;
+    scale: 1;
+    > .artwork-placeholder {
+      display: none;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      transition:
+        scale 400ms,
+        background-color var(--motion-duration-feedback);
+    }
+  }
+
+  .tile-content {
+    position: relative;
+    isolation: isolate;
+    overflow-wrap: anywhere;
+    .tile:has(> .tile-artwork > img:not([hidden])) > & {
+      color: var(--tile-text);
+      &::before {
+        content: "";
+        position: absolute;
+        inset: calc(-1 * var(--tile-padding)) calc(-1 * var(--tile-padding)) -48px;
+        z-index: -1;
+        background: linear-gradient(
+          180deg,
+          alpha(from #130000 / 64%),
+          alpha(from #130000 / 60%) calc(100% - 48px),
+          transparent
+        );
+        pointer-events: none;
+      }
+    }
+  }
+
+  .tile-actions {
+    position: relative;
+    align-self: flex-end;
+  }
+
+  .library-sentinel {
+    block-size: 1px;
+  }
+
+  .action-mobile {
+    @container app (width >= 64rem) {
+      display: none;
+    }
+  }
+  .action-desktop {
+    @container app (width < 64rem) {
+      display: none;
+    }
+  }
+
+  button.menu-item {
+    cursor: pointer;
+    &:not(:disabled):is(:hover, :focus-visible) {
+      background: var(--item-bg-hover);
+      border-color: var(--item-border-hover);
+    }
+    &:not(:disabled):active {
+      background: var(--item-bg-active);
+      border-color: var(--item-border-active);
+    }
+    &:focus-visible {
+      outline: var(--focus-ring);
+      outline-offset: var(--focus-ring-offset);
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      transition:
+        background-color var(--motion-duration-feedback),
+        border-color var(--motion-duration-feedback),
+        translate var(--motion-duration-press),
+        scale var(--motion-duration-press);
+      &:active:not(:disabled) {
+        translate: 0 var(--press-offset);
+        scale: var(--press-scale);
+      }
+    }
+  }
+
+  :where(:scope, *).bottom-sheet,
+  :where(:scope, *).popover {
+    box-sizing: border-box;
+    position: fixed;
+    margin: 0;
+    padding: var(--space-lg);
+    background: var(--shell-bg);
+    backdrop-filter: blur(4px);
+    color: var(--text-primary);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  :where(:scope, *).bottom-sheet {
+    inset: auto 0 0;
+    inline-size: 100%;
+    max-inline-size: none;
+    max-block-size: calc(100dvh - var(--space-lg));
+    padding-block-end: calc(var(--space-lg) + env(safe-area-inset-bottom));
+    border: 0;
+    border-top: var(--border-width) solid var(--shell-border);
+    border-radius: 0;
+    &::backdrop {
+      background: var(--canvas-bg);
+      opacity: 0.65;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      translate: 0 100%;
+      pointer-events: none;
+      transition:
+        translate var(--motion-duration-exit) var(--motion-ease-exit),
+        display var(--motion-duration-exit) allow-discrete,
+        overlay var(--motion-duration-exit) allow-discrete;
+      &::backdrop {
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity var(--motion-duration-exit),
+          display var(--motion-duration-exit) allow-discrete,
+          overlay var(--motion-duration-exit) allow-discrete;
+      }
+      &[open] {
+        translate: 0;
+        pointer-events: auto;
+        transition-duration: var(--motion-duration-enter);
+        transition-timing-function: var(--motion-ease-enter);
+      }
+      &[open]::backdrop {
+        opacity: 0.65;
+        pointer-events: auto;
+        transition-duration: var(--motion-duration-enter);
+      }
+      @starting-style {
+        &[open] {
+          translate: 0 100%;
+        }
+        &[open]::backdrop {
+          opacity: 0;
+        }
+      }
+    }
+  }
+
+  .dialog-handle {
+    position: absolute;
+    inset-block-start: var(--space-sm);
+    inset-inline-start: 50%;
+    translate: -50% 0;
+    inline-size: 40px;
+    block-size: 6px;
+    background: var(--text-secondary);
+    pointer-events: none;
+  }
+
+  :where(:scope, *).popover {
+    inset: var(--space-md);
+    margin: auto;
+    inline-size: min(360px, calc(100dvw - 2 * var(--space-md)));
+    block-size: fit-content;
+    max-block-size: calc(100dvh - 2 * var(--space-md));
+    border: var(--border-width) solid var(--shell-border);
+    border-radius: var(--radius-lg);
+    corner-shape: var(--corner-shape);
+    @media (prefers-reduced-motion: no-preference) {
+      opacity: 0;
+      translate: 0;
+      pointer-events: none;
+      transition:
+        opacity var(--motion-duration-exit) var(--motion-ease-exit),
+        translate var(--motion-duration-exit),
+        display var(--motion-duration-exit) allow-discrete,
+        overlay var(--motion-duration-exit) allow-discrete;
+      &:popover-open {
+        opacity: 1;
+        pointer-events: auto;
+        transition-duration: var(--motion-duration-enter);
+        transition-timing-function: var(--motion-ease-enter);
+      }
+      @starting-style {
+        &:popover-open {
+          opacity: 0;
+          translate: 0 10px;
+        }
+      }
+    }
+    @supports (position-area: block-end) {
+      inset: auto;
+      position-area: block-end span-inline-start;
+      position-try-fallbacks:
+        flip-block,
+        flip-inline,
+        flip-block flip-inline,
+        --edgerunner-popover-centered;
+      margin: var(--space-sm) 0;
+    }
+  }
+
   /* Native playback primitives; each player owns only their placement. */
   .seek {
     --seek-track-size: 4px;
@@ -1271,6 +1559,12 @@
   }
 }
 
+@position-try --edgerunner-popover-centered {
+  position-area: none;
+  inset: 16px;
+  margin: auto;
+}
+
 /* Route transitions must not crossfade or duplicate the persistent player. */
 ::view-transition-group(mini-player) {
   z-index: 20;
@@ -1391,6 +1685,12 @@
     inset: anchor(top) anchor(right) auto auto;
     inline-size: min(360px, calc(anchor-size(width) - 2 * var(--space-md)));
     block-size: anchor-size(height);
+  }
+  .bottom-sheet {
+    position-anchor: --app-shell;
+    inset: auto auto anchor(bottom) anchor(left);
+    inline-size: anchor-size(width);
+    max-block-size: calc(anchor-size(height) - var(--space-lg));
   }
   .notification-popover {
     position-anchor: --app-shell;
