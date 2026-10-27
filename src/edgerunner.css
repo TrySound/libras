@@ -3,14 +3,16 @@
  * Palette → semantic roles; color/type roles are consumed by components.
  * Opt in with .ui-edgerunner on a route or overlay. Legacy CSS stops there.
  * Keep components opt-in, sizing local, and spacing owned by containers.
- * Cards, flow utilities, navigation shells, and [hidden] also target the boundary
- * itself using :where(:scope, *), without increasing specificity.
+ * Boundary-self rules use :where(:scope, *) only for current root consumers:
+ * cards/stacks, sm/md rows, row-justify/row-wrap, navigation chrome/overlays,
+ * and [hidden]. Other component selectors style descendants.
  * Highrider themes and selection are intentionally deferred to issue #54.
  */
 @import "./edgerunner-fonts.css";
 
 /* Share the canvas recipe with the standalone document so its overscroll area
- * matches the shell. Embedded apps must never repaint their host document. */
+ * matches the shell. Embedded apps must never repaint their host document.
+ * Keep defaults at zero specificity so the :has() filter cannot outrank role overrides. */
 :where(.ui-edgerunner, .app-shell, :root:has(.app-root.standalone)) {
   /* Color primitives: literal palette values, including published anchors and scales. */
   --palette-maroon: #550000;
@@ -82,11 +84,13 @@
 :root:has(.app-root.standalone) {
   background: var(--canvas-bg);
   background-attachment: local;
+  scrollbar-gutter: stable;
 }
 
 /* Shared layout roles belong to both the appearance boundary and the shell.
  * The shell does not opt legacy route descendants into Edgerunner appearance. */
-:where(.ui-edgerunner, .app-shell) {
+.ui-edgerunner,
+.app-shell {
   --content-padding-block: var(--space-lg);
   --content-padding-inline: max(
     var(--space-lg),
@@ -100,7 +104,8 @@
 }
 
 @media (width <= 600px) {
-  :where(.ui-edgerunner, .app-shell) {
+  .ui-edgerunner,
+  .app-shell {
     --content-padding-inline: max(
       var(--space-md),
       env(safe-area-inset-left),
@@ -111,7 +116,8 @@
 }
 
 @container app (width <= 600px) {
-  :where(.ui-edgerunner, .app-shell) {
+  .ui-edgerunner,
+  .app-shell {
     --content-padding-inline: max(
       var(--space-md),
       env(safe-area-inset-left),
@@ -357,16 +363,16 @@
   }
 
   /* Center-aligned horizontal flow; wrapping is explicit via row-wrap. */
-  :where(:scope, *).row-xs,
+  .row-xs,
   :where(:scope, *).row-sm,
   :where(:scope, *).row-md,
-  :where(:scope, *).row-lg,
-  :where(:scope, *).row-xl {
+  .row-lg,
+  .row-xl {
     display: flex;
     align-items: center;
   }
 
-  :where(:scope, *).row-xs {
+  .row-xs {
     gap: var(--space-xs);
   }
 
@@ -378,11 +384,11 @@
     gap: var(--space-md);
   }
 
-  :where(:scope, *).row-lg {
+  .row-lg {
     gap: var(--space-lg);
   }
 
-  :where(:scope, *).row-xl {
+  .row-xl {
     gap: var(--space-xl);
   }
 
@@ -390,7 +396,7 @@
     justify-content: space-between;
   }
 
-  :where(:scope, *).row-center {
+  .row-center {
     justify-content: center;
   }
 
@@ -1138,118 +1144,116 @@
 
 /* App composition from libras-new: one column, shared page gutters, a fixed
  * sidebar, and an intrinsically sized bottom-sticky player in normal flow.
- * This layout opt-in is separate from .ui-edgerunner during route migration. */
-@scope (.app-shell) {
-  :scope {
-    --sidebar-width: 280px;
-    position: relative;
-    isolation: isolate;
-    min-block-size: 100dvh;
-    display: flex;
-    flex-direction: column;
-    container: navigation / inline-size;
-    anchor-name: --app-shell;
-    anchor-scope: --app-shell, --mini-player, --app-status-actions;
-  }
+ * App-* classes already namespace these placement rules; no extra scope is needed. */
+.app-shell {
+  --sidebar-width: 280px;
+  position: relative;
+  isolation: isolate;
+  min-block-size: 100dvh;
+  display: flex;
+  flex-direction: column;
+  container: navigation / inline-size;
+  anchor-name: --app-shell;
+  anchor-scope: --app-shell, --mini-player, --app-status-actions;
+}
 
+.app-page {
+  box-sizing: border-box;
+  flex: 1;
+  inline-size: 100%;
+  min-inline-size: 0;
+  margin: 0;
+  padding: var(--content-padding-block) var(--content-padding-inline);
+  overflow-wrap: anywhere;
+}
+
+/* Route boundaries supply type and controls, not independent page canvases. */
+.app-page > .ui-edgerunner {
+  background: transparent;
+}
+
+.app-sidebar {
+  position: fixed;
+  inset: 0 auto
+    calc(anchor-size(--mini-player height, 0px) + anchor-size(--app-status-actions height, 0px)) 0;
+  inline-size: var(--sidebar-width);
+}
+
+.app-player {
+  position: sticky;
+  bottom: 0;
+  anchor-name: --mini-player;
+  z-index: var(--layer-player);
+}
+
+.app-shell > .app-status-actions {
+  display: none;
+}
+
+@container navigation (width <= 600px) {
   .app-page {
-    box-sizing: border-box;
-    flex: 1;
-    inline-size: 100%;
-    min-inline-size: 0;
-    margin: 0;
-    padding: var(--content-padding-block) var(--content-padding-inline);
-    overflow-wrap: anywhere;
+    padding-block-end: calc(var(--content-padding-block) + var(--space-md));
   }
+}
 
-  /* Route boundaries supply type and controls, not independent page canvases. */
-  .app-page > .ui-edgerunner {
-    background: transparent;
-  }
-
-  .app-sidebar {
-    position: fixed;
-    inset: 0 auto
-      calc(anchor-size(--mini-player height, 0px) + anchor-size(--app-status-actions height, 0px)) 0;
-    inline-size: var(--sidebar-width);
-  }
-
-  .app-player {
-    position: sticky;
-    bottom: 0;
-    anchor-name: --mini-player;
-    z-index: var(--layer-player);
-  }
-
-  :scope > .app-status-actions {
+@container navigation (width < 64rem) {
+  .app-shell > .app-sidebar {
     display: none;
   }
+}
 
-  @container navigation (width <= 600px) {
-    .app-page {
-      padding-block-end: calc(var(--content-padding-block) + var(--space-md));
-    }
+@container navigation (width >= 64rem) {
+  .app-page {
+    padding-inline-start: calc(var(--sidebar-width) + var(--content-padding-inline));
   }
 
-  @container navigation (width < 64rem) {
-    :scope > .app-sidebar {
-      display: none;
-    }
+  .app-shell > .app-header {
+    display: none;
   }
+  /* Separate desktop invokers share the same native notification popovers.
+   * Reserve the controls' intrinsic height above the player. */
+  .app-shell > .app-status-actions {
+    display: flex;
+    position: fixed;
+    inset: auto auto anchor-size(--mini-player height, 0px) 0;
+    anchor-name: --app-status-actions;
+    inline-size: var(--sidebar-width);
+    box-sizing: border-box;
+    padding: var(--space-sm) var(--content-padding-inline);
+    background: var(--surface-bg);
+    border-inline-end: var(--border-width) solid var(--shell-border);
+    z-index: var(--layer-header);
+  }
+}
 
+/* Embedded variant: the host supplies a viewport, without body-owned layout.
+ * Native top-layer overlays remain bounded to that same app viewport. */
+.app-shell[data-embedded] {
+  min-block-size: 100%;
+  block-size: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--canvas-bg);
+  background-attachment: local;
+
+  .app-sidebar {
+    position: absolute;
+  }
   @container navigation (width >= 64rem) {
-    .app-page {
-      padding-inline-start: calc(var(--sidebar-width) + var(--content-padding-inline));
-    }
-
-    :scope > .app-header {
-      display: none;
-    }
-    /* Separate desktop invokers share the same native notification popovers.
-     * Reserve the controls' intrinsic height above the player. */
-    :scope > .app-status-actions {
-      display: flex;
-      position: fixed;
-      inset: auto auto anchor-size(--mini-player height, 0px) 0;
-      anchor-name: --app-status-actions;
-      inline-size: var(--sidebar-width);
-      box-sizing: border-box;
-      padding: var(--space-sm) var(--content-padding-inline);
-      background: var(--surface-bg);
-      border-inline-end: var(--border-width) solid var(--shell-border);
-      z-index: var(--layer-header);
-    }
-  }
-
-  /* Embedded variant: the host supplies a viewport, without body-owned layout.
-   * Native top-layer overlays remain bounded to that same app viewport. */
-  :scope[data-embedded] {
-    min-block-size: 100%;
-    block-size: 100%;
-    overflow: auto;
-    overscroll-behavior: contain;
-    background: var(--canvas-bg);
-    background-attachment: local;
-
-    .app-sidebar {
+    .app-status-actions {
       position: absolute;
     }
-    @container navigation (width >= 64rem) {
-      .app-status-actions {
-        position: absolute;
-      }
-    }
-    .right-sheet {
-      position-anchor: --app-shell;
-      inset: anchor(top) anchor(right) auto auto;
-      inline-size: min(360px, calc(anchor-size(width) - 2 * var(--space-md)));
-      block-size: anchor-size(height);
-    }
-    .notification-popover {
-      position-anchor: --app-shell;
-      inset: calc(anchor(top) + var(--space-md)) calc(anchor(right) + var(--space-md)) auto auto;
-      inline-size: min(26rem, calc(anchor-size(width) - 2 * var(--space-md)));
-      max-block-size: calc(anchor-size(height) - 2 * var(--space-md));
-    }
+  }
+  .right-sheet {
+    position-anchor: --app-shell;
+    inset: anchor(top) anchor(right) auto auto;
+    inline-size: min(360px, calc(anchor-size(width) - 2 * var(--space-md)));
+    block-size: anchor-size(height);
+  }
+  .notification-popover {
+    position-anchor: --app-shell;
+    inset: calc(anchor(top) + var(--space-md)) calc(anchor(right) + var(--space-md)) auto auto;
+    inline-size: min(26rem, calc(anchor-size(width) - 2 * var(--space-md)));
+    max-block-size: calc(anchor-size(height) - 2 * var(--space-md));
   }
 }

@@ -51,6 +51,12 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     await page.setViewportSize({ width: 768, height: 800 });
     assert.equal(await sidebar.isVisible(), false, "the mobile breakpoint hides even a focused sidebar");
     assert.equal(await menu.isVisible(), true);
+    assert.deepEqual(await page.locator(".app-header").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { display: style.display, position: style.position, gap: style.gap,
+        justify: style.justifyContent, wrap: style.flexWrap };
+    }), { display: "flex", position: "sticky", gap: "16px", justify: "space-between", wrap: "wrap" },
+    "shared chrome and row utilities must also style the ui-edgerunner boundary itself");
     await menu.click();
     const drawer = page.getByRole("dialog", { name: "Navigation", exact: true });
     await drawer.waitFor({ state: "visible" });

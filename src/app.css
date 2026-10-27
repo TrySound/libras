@@ -668,10 +668,6 @@
       overflow: visible;
       container-type: inline-size;
     }
-
-    &:not(.standalone) {
-      overflow: clip;
-    }
   }
 
   /* Temporary bridge: retain the legacy mini-player surface inside the shared
@@ -688,14 +684,10 @@
   }
 
   /* The shared page now owns outer gutters; preserve padding inside overlays. */
-  @scope (.app-page) to (.ui-edgerunner, dialog, [popover]) {
+  @scope (.app-page) to (dialog, [popover]) {
     .view {
       padding: 0;
     }
-  }
-
-  :scope:has(.standalone) {
-    scrollbar-gutter: stable;
   }
 
   .visually-hidden {
@@ -721,10 +713,7 @@
   }
 
   .view {
-    padding: 1.5rem max(1.5rem, env(safe-area-inset-left), env(safe-area-inset-right));
-    @container app (width <= 600px) {
-      padding-inline: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
-    }
+    padding: var(--space-md);
   }
 
   a {
@@ -1266,9 +1255,9 @@
     view-transition-name: mini-player;
     position: absolute;
     z-index: 20;
-    right: max(var(--space-sm), env(safe-area-inset-right));
+    right: var(--space-sm);
     bottom: max(var(--space-sm), env(safe-area-inset-bottom));
-    left: max(var(--space-sm), env(safe-area-inset-left));
+    left: var(--space-sm);
     border: var(--surface-floating-border);
     border-radius: var(--radius-sm);
     text-align: left;

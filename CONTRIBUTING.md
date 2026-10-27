@@ -203,7 +203,10 @@ helper for active navigation, matching the resolved page or a parent section at 
 Its shell stays outside routed content, without location listeners or a layout wrapper.
 Host-only anchors and aborted navigations leave the last resolved app route unchanged.
 `src/edgerunner.css` owns the prototype-derived `.app-shell` composition as well as `.topbar`,
-`.sidebar`, `.right-sheet`, `.button-quiet`, and flow primitives. Main owns shared page gutters;
+`.sidebar`, `.right-sheet`, `.button-quiet`, and flow primitives. The namespaced `app-*` placement
+rules use ordinary selectors. Keep the appearance/migration scopes to isolate legacy rules;
+`:where(:scope, *)` is only needed when a component or utility must style the `.ui-edgerunner`
+boundary itself without adding specificity. Main owns shared page gutters;
 routes must not duplicate them. The player stays in normal flow in the bottom-sticky `.app-player`
 slot, and CSS anchor sizing supplies sidebar/status clearance without JavaScript measurements.
 The styleguide exercises the same full composition in a bounded embedded frame. Only the legacy
