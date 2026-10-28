@@ -1,957 +1,472 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="ui-edgerunner">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Libras typography and layout style guide" />
-    <title>Libras Style Guide</title>
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#130000" />
+    <meta name="description" content="Libras Edgerunner design foundations and native controls" />
+    <title>Libras — Edgerunner styleguide</title>
+    <link
+      rel="preload"
+      href="/src/fonts/rajdhani-500-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <link rel="stylesheet" href="/src/app.css" />
     <style>
+      /* Reference arrangement only. All specimens consume production styles. */
+      :root {
+        scrollbar-gutter: stable;
+      }
       body {
         margin: 0;
-        background:
-          radial-gradient(
-            circle at top,
-            rgb(from var(--color-control-primary) r g b / 16%),
-            transparent 26rem
-          ),
-          var(--surface-page-background);
       }
-
       .styleguide {
-        width: min(100% - 2rem, 48rem);
+        box-sizing: border-box;
+        max-inline-size: 88rem;
         margin-inline: auto;
-        padding-block: var(--space-xl) 4rem;
+        padding: var(--space-lg);
       }
-
-      .styleguide-intro {
-        max-width: 38rem;
-      }
-
-      .surface-example-base {
-        background: var(--surface-page-background);
-      }
-
-      .surface-example-raised {
-        border: var(--surface-raised-border);
-        background: var(--surface-raised-background);
-        box-shadow: var(--surface-raised-shadow);
-        backdrop-filter: blur(var(--surface-raised-blur));
-      }
-
-      .surface-example-floating {
-        border: var(--surface-floating-border);
-        background: var(--surface-floating-background);
-        box-shadow: var(--surface-floating-shadow);
-        backdrop-filter: blur(var(--surface-floating-blur));
-      }
-
-      .example-grid {
+      .specimen-board {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+        gap: var(--space-lg);
+        align-items: start;
+      }
+      .swatch-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
         gap: var(--space-md);
       }
-
-      code {
-        width: fit-content;
-        padding: 0.15rem 0.4rem;
-        border-radius: 0.3rem;
-        color: var(--color-text-accent);
-        background: var(--surface-accent-background);
-        font-family: ui-monospace, monospace;
-        font-size: var(--caption-size);
-        line-height: var(--caption-leading);
-        letter-spacing: var(--caption-tracking);
+      .swatch {
+        block-size: 4rem;
+        border: var(--border-width) solid var(--shell-border);
+        border-radius: var(--radius-sm);
+        corner-shape: var(--corner-shape);
       }
-
-      .input-example {
-        width: min(100%, 20rem);
+      .control-example {
+        overflow-x: auto;
+        padding: var(--space-sm);
       }
-
-      .track-demo {
-        max-width: 32rem;
+      .cover-example {
+        inline-size: min(100%, 14rem);
       }
-
-      .stack-example span {
-        display: block;
-        min-height: 1.25rem;
-        border-radius: 0.3rem;
-        background: linear-gradient(90deg, var(--color-control-primary), var(--color-accent));
+      .overlay-example {
+        box-sizing: border-box;
+        max-inline-size: min(30rem, calc(100% - 2rem));
+        max-block-size: calc(100dvh - 2rem);
+        overflow: auto;
       }
-
-      .stack-example span:nth-child(2) {
-        width: 72%;
+      .overlay-example::backdrop {
+        background: rgb(0 0 0 / 65%);
       }
-
-      .stack-example span:nth-child(3) {
-        width: 45%;
+      @media (max-width: 600px) {
+        .styleguide {
+          padding: var(--space-md);
+        }
       }
     </style>
   </head>
   <body>
-    <svg xmlns="http://www.w3.org/2000/svg" style="display: none" aria-hidden="true">
-      <symbol
-        id="guide-plus"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <path d="M12 5v14M5 12h14" />
-      </symbol>
-      <symbol
-        id="guide-music"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M9 18V5l11-2v13M9 9l11-2" />
-        <circle cx="6" cy="18" r="3" />
-        <circle cx="17" cy="16" r="3" />
-      </symbol>
-    </svg>
     <main class="styleguide stack-xl">
-      <header class="styleguide-intro stack-sm">
-        <span class="type-eyebrow text-muted">Libras design system</span>
-        <h1 class="type-heading">Typography and vertical rhythm</h1>
-        <p class="type-body text-muted">
-          A reference for the semantic type roles and stack spacing used throughout the application.
+      <header class="stack-md">
+        <div class="stack-sm">
+          <span class="brand uppercase">Libras</span>
+          <div class="row-sm">
+            <a class="button" data-size="text" href="./">Back to Libras</a>
+          </div>
+        </div>
+        <h1 class="heading-xl">Edgerunner foundations</h1>
+        <p class="body">
+          The visual reference for the gradual Libras redesign. These specimens use shared
+          production styles inside a .ui-edgerunner boundary; unmigrated screens keep their existing
+          appearance. Highrider themes and appearance selection will follow separately.
+        </p>
+        <p class="caption text-secondary">
+          Controls demonstrate native interaction only. No credentials are saved, files downloaded,
+          music played, or requests simulated. Long-press and swipe-to-dismiss remain app features
+          and will be preserved as their consuming views migrate.
         </p>
       </header>
 
-      <section class="card stack-lg" aria-labelledby="tokens-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="tokens-heading">Token structure</h2>
-          <p class="type-body text-muted">
-            Foundations define raw values; semantic roles describe their purpose. Components consume
-            semantic colors, typography, and surfaces directly, while keeping local configuration
-            scoped.
+      <div class="specimen-board">
+        <section class="card stack-lg" aria-labelledby="type-heading">
+          <h2 class="heading-md uppercase" id="type-heading">Typography</h2>
+          <div class="stack-md">
+            <p class="heading-xl">Music comes first</p>
+            <p class="heading-lg">Your library</p>
+            <p class="heading-md">Now playing</p>
+            <p class="heading-sm">Collection title</p>
+            <p class="body">System UI for readable body text and music metadata.</p>
+            <p class="label">Track title · label</p>
+            <p class="caption text-secondary">Artist name · supporting caption</p>
+            <p class="metadata text-subtle">03:42 / 48:16 · 14 tracks</p>
+          </div>
+          <p class="caption">
+            Rajdhani is self-hosted with a system fallback. Supporting text is at least 14px at the
+            default root size. Names retain natural case; uppercase is opt-in.
           </p>
-        </header>
-        <div class="example-grid">
-          <div class="stack-sm">
-            <strong class="type-title">Foundations</strong>
-            <p class="type-small text-muted">Palette, spacing, radius, and font scales.</p>
-            <code>--palette-* · --space-* · --radius-*</code>
-          </div>
-          <div class="stack-sm">
-            <strong class="type-title">Semantic roles</strong>
-            <p class="type-small text-muted">
-              Text, surfaces, borders, controls, status colors, and typography.
-            </p>
-            <code>--color-text-accent · --body-size · --body-leading · --eyebrow-tracking</code>
-            <p class="type-small text-muted">
-              Page and card surfaces use <code>--surface-page-background</code> and
-              <code>--surface-card-background</code>. Control fills use
-              <code>--color-control-*</code>; inactive switch and progress tracks use
-              <code>--color-track</code>, independently of borders. Artwork colors share the
-              <code>--color-artwork-*</code> prefix.
-            </p>
-          </div>
-          <div class="stack-sm">
-            <strong class="type-title">Effects and semantic surfaces</strong>
-            <p class="type-small text-muted">
-              Surface backgrounds and borders reference the palette directly, without intermediate
-              color aliases. Shadows reuse elevation tokens. Raised and floating surfaces currently
-              match in material but remain independently tunable and differ in depth.
-            </p>
-            <code>--elevation-* · --surface-*</code>
-          </div>
-          <div class="stack-sm">
-            <strong class="type-title">Component configuration</strong>
-            <p class="type-small text-muted">
-              Control sizes and colors stay local. Dialog offsets are local, and swipe offsets are
-              supplied at runtime.
-            </p>
-            <code>--control-* · --swipe-offset</code>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="card stack-lg" aria-labelledby="surfaces-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="surfaces-heading">Surfaces and elevation</h2>
-          <p class="type-body text-muted">
-            Page, card, lifted, input, accent, danger, raised, and floating surfaces describe
-            material and depth. Lifted shares a shallow shadow between buttons, switches, and tiles,
-            below raised (topbar) and floating (mini-player). Each surface defines only the
-            properties it needs. These are tokens, not surface classes.
+        <section class="card stack-lg" aria-labelledby="colors-heading">
+          <h2 class="heading-md uppercase" id="colors-heading">Colors and surfaces</h2>
+          <p class="body">
+            Published Maroon and Gold primitives feed independently customizable semantic roles.
           </p>
-        </header>
-        <div class="example-grid">
-          <article class="card surface-example-base stack-sm">
-            <p class="type-title">Page</p>
-            <p class="type-small text-muted">Opaque page surface; no default shadow.</p>
-          </article>
-          <article class="card surface-example-raised stack-sm">
-            <p class="type-title">Raised</p>
-            <p class="type-small text-muted">
-              The sticky topbar uses medium elevation with its own background, border, and blur
-              tokens, currently matching the floating material.
-            </p>
-          </article>
-          <article class="card surface-example-floating stack-sm">
-            <p class="type-title">Floating</p>
-            <p class="type-small text-muted">
-              Shared translucent background, border, blur, and large elevation for the mini-player,
-              notifications, action sheets, and desktop player dialog.
-            </p>
-          </article>
-          <article
-            class="card surface-example-base stack-sm"
-            style="box-shadow: var(--surface-lifted-shadow)"
-          >
-            <code>--surface-lifted-shadow</code>
-            <p class="type-small text-muted">
-              Shared shallow depth for buttons, switches, and tiles.
-            </p>
-          </article>
-          <article
-            class="card surface-example-base stack-sm"
-            style="box-shadow: var(--elevation-md)"
-          >
-            <code>--elevation-md</code>
-            <p class="type-small text-muted">Raised depth for the topbar and artwork.</p>
-          </article>
-          <article
-            class="card surface-example-base stack-sm"
-            style="box-shadow: var(--elevation-lg)"
-          >
-            <code>--elevation-lg</code>
-            <p class="type-small text-muted">
-              Floating depth, also usable independently of material.
-            </p>
-          </article>
-        </div>
-        <p class="type-small text-muted">
-          Buttons, switches, and tiles share the same lifted shadow at rest and on hover, then lose
-          it when pressed. Try the library tile below: hover brightens it, while pressing dims and
-          scales it. Ghost and disabled controls, ordinary cards, and player background artwork
-          remain shadow-free. Scaling and transitions respect reduced motion; status glows are not
-          elevation.
-        </p>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="radius-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="radius-heading">Radius</h2>
-          <p class="type-body text-muted">Corner radii are independent of spacing.</p>
-        </header>
-        <div class="example-grid">
-          <div class="card stack-sm" style="border-radius: var(--radius-xs)">
-            <code>--radius-xs · 0.25rem</code>
-            <span class="type-small text-muted">Small artwork</span>
-          </div>
-          <div class="card stack-sm" style="border-radius: var(--radius-sm)">
-            <code>--radius-sm · 0.5rem</code>
-            <span class="type-small text-muted">Cards, tiles, and floating panels</span>
-          </div>
-          <div class="card stack-sm" style="border-radius: var(--radius-md)">
-            <code>--radius-md · 0.7rem</code>
-            <span class="type-small text-muted">Text inputs</span>
-          </div>
-          <div class="card stack-sm" style="border-radius: var(--radius-lg)">
-            <code>--radius-lg · 1.4rem</code>
-            <span class="type-small text-muted">Large rounded corners</span>
-          </div>
-          <div class="stack-sm">
-            <code>--radius-pill · 999px</code>
-            <div class="row-sm"><span class="chip type-caption">Pill</span></div>
-          </div>
-          <div class="stack-sm">
-            <code>--radius-circle · 50%</code>
-            <div class="row-sm">
-              <span class="status" data-variant="success" aria-hidden="true"></span> Circle
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="transitions-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="transitions-heading">Transitions</h2>
-          <p class="type-body text-muted">
-            Transition tokens combine duration and easing; reduced-motion behavior stays with the
-            component.
-          </p>
-        </header>
-        <div class="example-grid">
-          <div class="stack-sm">
-            <code>--transition-fast · 50ms ease-out</code>
-            <p class="type-small text-muted">Immediate hover and press feedback.</p>
-            <code>--transition-control · 160ms ease-out</code>
-            <p class="type-small text-muted">Control, link, and tile transitions.</p>
-            <code>--transition-switch · 160ms ease</code>
-            <p class="type-small text-muted">Switch background and thumb movement.</p>
-          </div>
-          <div class="stack-sm">
-            <code>--transition-overlay · 180ms ease</code>
-            <p class="type-small text-muted">Overlay opacity and discrete transitions.</p>
-            <code>--transition-slide · 180ms ease-out</code>
-            <p class="type-small text-muted">Dialog movement.</p>
-            <div class="row-sm">
-              <button class="button" data-size="md" data-variant="neutral">Hover or press</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="typography-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="typography-heading">Typography</h2>
-        </header>
-
-        <div class="example-grid">
-          <article class="stack-sm">
-            <code>.type-title</code>
-            <p class="type-title">A compact prominent title</p>
-          </article>
-          <article class="stack-sm">
-            <code>.type-heading</code>
-            <p class="type-heading">A balanced heading that can wrap across lines</p>
-          </article>
-          <article class="stack-sm">
-            <code>.type-body</code>
-            <p class="type-body">
-              Body copy uses comfortable spacing and pretty wrapping for longer explanatory text.
-            </p>
-          </article>
-          <article class="stack-sm">
-            <code>.type-small</code>
-            <p class="type-small">Supporting information, statuses, and album details</p>
-          </article>
-          <article class="stack-sm">
-            <code>.type-caption</code>
-            <p class="type-caption">03:24 · FLAC · Downloaded</p>
-          </article>
-          <article class="stack-sm">
-            <code>.type-eyebrow</code>
-            <p class="type-eyebrow">Your music</p>
-          </article>
-          <article class="stack-sm">
-            <code>.truncate</code>
-            <div class="card stack-xs">
-              <strong class="type-title truncate"
-                >A very long track title that stays on one line and ends with an ellipsis</strong
-              >
-              <small class="type-small text-muted truncate"
-                >A long artist credit with several collaborators that also stays on one line</small
-              >
-            </div>
-          </article>
-        </div>
-
-        <div class="stack-sm">
-          <p class="type-title">Control typography</p>
-          <p class="type-small text-muted">
-            Buttons and inputs consume their typography tokens through <code>.button</code> and
-            <code>.input</code>.
-          </p>
-          <div class="row-wrap-sm">
-            <button class="button" data-size="md" data-variant="neutral">Connect server</button>
-            <input
-              class="input input-example"
-              aria-label="Server address example"
-              value="music.example.com"
-              readonly
-            />
-          </div>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="inputs-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="inputs-heading">Inputs</h2>
-          <p class="type-body text-muted">
-            Use <code>.input</code> to opt text controls into shared typography, surface, and focus
-            styles. Hover to highlight the border; use Tab to see the focus outline. Disabled inputs
-            are dimmed and ignore hover. Invalid borders use <code>:user-invalid</code> or
-            <code>aria-invalid="true"</code>, so untouched required fields are not marked as errors.
-            Switches and sliders keep their own styles.
-          </p>
-        </header>
-        <div class="example-grid">
-          <label class="stack-xs">
-            <span class="type-small">Server address</span>
-            <input class="input" type="text" placeholder="https://music.example.com" />
-          </label>
-          <label class="stack-xs">
-            <span class="type-small">Read-only server address</span>
-            <input class="input" type="text" value="music.example.com" readonly />
-          </label>
-          <label class="stack-xs">
-            <span class="type-small">Disabled username</span>
-            <input class="input" type="text" value="alex" disabled />
-          </label>
-          <div class="stack-xs">
-            <label class="type-small" for="invalid-server-example">Invalid server address</label>
-            <input
-              class="input"
-              id="invalid-server-example"
-              type="text"
-              value="not a server address"
-              aria-invalid="true"
-              aria-describedby="invalid-server-help"
-            />
-            <small id="invalid-server-help" class="type-small text-danger"
-              >Enter a valid server address.</small
-            >
-          </div>
-          <label class="stack-xs">
-            <span class="type-small">Native validation</span>
-            <input
-              class="input"
-              type="email"
-              placeholder="alex@example.com"
-              required
-              aria-describedby="native-validation-help"
-            />
-            <small id="native-validation-help" class="type-small text-muted"
-              >Type an invalid email address, then move focus away to see the error state.</small
-            >
-          </label>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="switches-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="switches-heading">Switches</h2>
-          <p class="type-body text-muted">
-            Native checkboxes styled with <code>.switch</code>. Click or press Space to toggle. Like
-            buttons, enabled switches brighten on hover and dim and shrink when pressed. Reduced
-            motion disables animation and scaling; disabled switches have no feedback.
-          </p>
-        </header>
-        <div class="example-grid">
-          <article class="stack-sm">
-            <p class="type-title">Off</p>
-            <label class="switch">
-              <input type="checkbox" aria-label="Initially off example" />
-            </label>
-          </article>
-          <article class="stack-sm">
-            <p class="type-title">On</p>
-            <label class="switch">
-              <input type="checkbox" aria-label="Initially on example" checked />
-            </label>
-          </article>
-          <article class="stack-sm">
-            <p class="type-title">Disabled off</p>
-            <label class="switch">
-              <input type="checkbox" aria-label="Disabled off example" disabled />
-            </label>
-          </article>
-          <article class="stack-sm">
-            <p class="type-title">Disabled on</p>
-            <label class="switch">
-              <input type="checkbox" aria-label="Disabled on example" checked disabled />
-            </label>
-          </article>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="status-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="status-heading">Status</h2>
-          <p class="type-body text-muted">
-            Decorative <code>.status</code> indicators use <code>data-variant</code>. Hide them from
-            assistive technology with <code>aria-hidden="true"</code>
-            and provide accompanying text to convey meaning.
-          </p>
-        </header>
-        <div class="example-grid">
-          <div class="row-sm">
-            <span class="status" data-variant="neutral" aria-hidden="true"></span> Neutral
-          </div>
-          <div class="row-sm">
-            <span class="status" data-variant="success" aria-hidden="true"></span> Success
-          </div>
-          <div class="row-sm">
-            <span class="status" data-variant="warning" aria-hidden="true"></span> Warning
-          </div>
-          <div class="row-sm">
-            <span class="status" data-variant="danger" aria-hidden="true"></span> Danger
-          </div>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="cards-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="cards-heading">Cards</h2>
-          <p class="type-body text-muted">
-            Use <code>.card</code> for a padded surface. Compose its contents with stack and row
-            utilities; add <code>.grow</code> beside actions and <code>.truncate</code>
-            only to text that should stay on one line. Cards are neutral by default;
-            <code>data-variant="danger"</code> adds error colors. Add <code>role="alert"</code>
-            only for dynamic messages requiring immediate announcement, not static examples.
-          </p>
-        </header>
-        <div class="example-grid">
-          <div class="card row-md">
-            <div class="stack-xs grow">
-              <strong class="type-title">Offline library</strong>
-              <small class="type-small text-muted"
-                >Show only music downloaded to this device.</small
-              >
-            </div>
-            <label class="switch">
-              <input type="checkbox" aria-label="Offline library example" />
-            </label>
-          </div>
-          <div class="card stack-md">
+          <div class="swatch-grid">
             <div class="stack-xs">
-              <strong class="type-title">Card with content</strong>
-              <small class="type-small text-muted">Supporting information</small>
+              <div class="swatch" style="background: var(--canvas-bg)"></div>
+              <span class="caption">Canvas background</span>
             </div>
-            <p class="type-body">Optional content shares the card's padding.</p>
+            <div class="stack-xs">
+              <div class="swatch" style="background: var(--surface-bg)"></div>
+              <span class="caption">Surface background</span>
+            </div>
+            <div class="stack-xs">
+              <div class="swatch" style="background: var(--shell-bg)"></div>
+              <span class="caption">Shell background</span>
+            </div>
+            <div class="stack-xs">
+              <div class="swatch" style="background: var(--primary-bg)"></div>
+              <span class="caption">Primary · #810000</span>
+            </div>
+            <div class="stack-xs">
+              <div class="swatch" style="background: var(--accent)"></div>
+              <span class="caption">Accent · #efbf04</span>
+            </div>
+            <div class="stack-xs">
+              <div class="swatch" style="background: var(--error-text)"></div>
+              <span class="caption">Error · #ff8d8d</span>
+            </div>
           </div>
-          <p class="card type-small">
-            Downloaded music stays available when you switch to offline mode.
+          <p class="caption text-subtle">
+            Gold communicates focus and positive status, not a button fill.
           </p>
-          <p class="card type-small" data-variant="danger">
-            Could not connect to the server. Check your connection and try again.
-          </p>
-        </div>
-      </section>
+        </section>
 
-      <section class="card stack-lg" aria-labelledby="containers-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="containers-heading">Content containers</h2>
-          <p class="type-body text-muted">
-            Use <code>.container</code> on a block to center content with a maximum width of 40rem.
-            It adds no padding or gaps; compose with <code>.view</code>, <code>.card</code>, or
-            stacks as needed. Settings and collection pages share this width limit.
+        <section class="card stack-lg" aria-labelledby="controls-heading">
+          <h2 class="heading-md uppercase" id="controls-heading">Buttons</h2>
+          <p class="caption">
+            Tab through controls to inspect focus. Text buttons size to their labels; icon buttons
+            use 24px glyphs.
           </p>
-        </header>
-        <div class="example-grid">
-          <div>
-            <div class="container card stack-sm">
-              <strong class="type-title">Constrained content</strong>
-              <p class="type-body text-muted">
-                Fills narrower parents and stays centered in wider ones.
+          <div class="control-example row-md">
+            <button class="button" data-size="text" data-variant="primary">Play</button>
+            <button class="button" data-size="text" data-variant="secondary">Download</button>
+            <button class="button" data-size="text">Dismiss</button>
+          </div>
+          <div class="control-example row-md">
+            <button class="button" data-variant="primary" aria-label="Play specimen">
+              <svg width="24" height="24" aria-hidden="true"><use href="#icon-play"></use></svg>
+            </button>
+            <button
+              class="button"
+              data-size="lg"
+              data-variant="primary"
+              aria-label="Pause specimen"
+            >
+              <svg width="24" height="24" aria-hidden="true"><use href="#icon-pause"></use></svg>
+            </button>
+            <button class="button" data-variant="secondary" aria-label="Download specimen">
+              <svg width="24" height="24" aria-hidden="true"><use href="#icon-download"></use></svg>
+            </button>
+            <button class="button" data-size="text" data-variant="secondary" disabled>
+              Unavailable
+            </button>
+          </div>
+          <div class="row-sm">
+            <button class="button-quiet label">Quiet control</button>
+          </div>
+        </section>
+
+        <section class="card stack-lg" aria-labelledby="inputs-heading">
+          <h2 class="heading-md uppercase" id="inputs-heading">Inputs</h2>
+          <p class="caption">
+            Use fictional values only. These native fields do not connect to a server or submit
+            data.
+          </p>
+          <div class="stack-md">
+            <div class="stack-xs">
+              <label class="label" for="guide-host">Server URL (required)</label>
+              <p class="caption" id="guide-host-hint">
+                Include https:// before the server address.
+              </p>
+              <input
+                class="input"
+                id="guide-host"
+                type="url"
+                placeholder="https://music.example.com"
+                required
+                autocomplete="off"
+                aria-describedby="guide-host-hint"
+                aria-errormessage="guide-host-error"
+              />
+              <p class="input-error caption" id="guide-host-error">
+                Enter a complete URL, such as https://music.example.com.
               </p>
             </div>
+            <div class="stack-xs">
+              <label class="label" for="guide-search">Search</label>
+              <input
+                class="input"
+                id="guide-search"
+                type="search"
+                placeholder="Artists, albums, and tracks"
+                autocomplete="off"
+              />
+            </div>
+            <div class="stack-xs">
+              <label class="label" for="guide-password">Demo password</label>
+              <input
+                class="input"
+                id="guide-password"
+                type="password"
+                value="fictional-password"
+                autocomplete="off"
+              />
+            </div>
+            <div class="stack-xs">
+              <label class="label" for="guide-invalid">Explicit application error</label>
+              <input
+                class="input"
+                id="guide-invalid"
+                type="text"
+                value="Unavailable server"
+                aria-invalid="true"
+                aria-errormessage="guide-invalid-error"
+              />
+              <p class="input-error caption" id="guide-invalid-error">
+                The server could not be reached. Check the address.
+              </p>
+            </div>
+            <div class="stack-xs">
+              <label class="label" for="guide-disabled">Disabled field</label>
+              <input class="input" id="guide-disabled" type="text" value="Demo listener" disabled />
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="card stack-lg" aria-labelledby="section-headers-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="section-headers-heading">Section headers</h2>
-          <p class="type-body text-muted">
-            Compose <code>.row-md</code> with <code>.stack-xs.grow</code> for text and a trailing
-            action. The parent stack owns spacing to the content below.
-          </p>
-        </header>
-        <div class="example-grid">
-          <div class="card stack-md">
-            <div class="row-md">
-              <div class="stack-xs grow">
-                <span class="type-eyebrow text-muted">Your music</span>
-                <h3 class="type-heading">24 artists</h3>
-              </div>
-              <a
-                class="icon-button"
-                data-size="md"
-                data-variant="ghost"
-                href="#buttons-heading"
-                aria-label="Explore actions"
-              >
-                <svg aria-hidden="true" width="20" height="20"><use href="#guide-plus"></use></svg>
-              </a>
-            </div>
-            <p class="type-body text-muted">Content follows with the parent stack's spacing.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="connection-headers-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="connection-headers-heading">Connection headers</h2>
-          <p class="type-body text-muted">
-            Proposed layout: a shared dot-and-label status row above server details.
-          </p>
-        </header>
-        <div class="example-grid">
-          <div class="card stack-xs">
-            <div class="row-sm">
-              <span class="status" data-variant="neutral" aria-hidden="true"></span>
-              <span class="type-small text-muted">Disconnected</span>
-            </div>
-            <strong class="type-title">Add a server</strong>
-          </div>
-          <div class="card stack-xs">
-            <div class="row-sm">
-              <span class="status" data-variant="warning" aria-hidden="true"></span>
-              <span class="type-small text-muted">Connecting…</span>
-            </div>
-            <strong class="type-title">Add a server</strong>
-          </div>
-          <div class="card stack-xs">
-            <div class="row-sm">
-              <span class="status" data-variant="success" aria-hidden="true"></span>
-              <span class="type-small text-muted">Connected</span>
-            </div>
-            <strong class="type-title truncate">alex · music.example.com</strong>
-          </div>
-          <div class="card stack-xs">
-            <div class="row-sm">
-              <span class="status" data-variant="neutral" aria-hidden="true"></span>
-              <span class="type-small text-muted">Offline mode</span>
-            </div>
-            <strong class="type-title truncate">alex · music.example.com</strong>
-          </div>
-          <div class="card stack-xs">
-            <div class="row-sm">
-              <span class="status" data-variant="danger" aria-hidden="true"></span>
-              <span class="type-small text-muted">Connection failed</span>
-            </div>
-            <strong class="type-title truncate">alex · music.example.com</strong>
-          </div>
-          <div class="card stack-xs">
-            <div class="row-sm">
-              <span class="status" data-variant="warning" aria-hidden="true"></span>
-              <span class="type-small text-muted">Refreshing…</span>
-            </div>
-            <strong class="type-title truncate">alex · music.example.com</strong>
-            <small class="type-small text-muted">500 albums · 1,000 tracks</small>
-          </div>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="buttons-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="buttons-heading">Buttons</h2>
-          <p class="type-body text-muted">
-            Text and icon buttons share size, variant, focus, and disabled behavior. Non-ghost
-            buttons share lifted elevation until pressed; ghost and disabled buttons stay flat.
-          </p>
-        </header>
-
-        <div class="example-grid">
-          <article class="stack-md">
-            <p class="type-title">Text variants</p>
-            <div class="row-wrap-sm">
-              <button class="button" data-size="md" data-variant="neutral">Neutral</button>
-            </div>
-          </article>
-
-          <article class="stack-md">
-            <p class="type-title">Text sizes</p>
-            <div class="row-wrap-sm">
-              <button class="button" data-size="sm" data-variant="neutral">Small</button>
-              <button class="button" data-size="md" data-variant="neutral">Medium</button>
-            </div>
-          </article>
-
-          <article class="stack-md">
-            <p class="type-title">Icon variants</p>
-            <div class="row-wrap-sm">
-              <button
-                class="icon-button"
-                data-size="md"
-                data-variant="primary"
-                aria-label="Primary icon"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-              <button
-                class="icon-button"
-                data-size="md"
-                data-variant="neutral"
-                aria-label="Neutral icon"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-              <button
-                class="icon-button"
-                data-size="md"
-                data-variant="ghost"
-                aria-label="Ghost icon"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-              <button
-                class="icon-button"
-                data-size="md"
-                data-variant="overlay"
-                aria-label="Overlay icon"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-            </div>
-          </article>
-
-          <article class="stack-md">
-            <p class="type-title">Icon sizes</p>
-            <div class="row-wrap-sm">
-              <button
-                class="icon-button"
-                data-size="sm"
-                data-variant="primary"
-                aria-label="Small icon"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-              <button
-                class="icon-button"
-                data-size="md"
-                data-variant="primary"
-                aria-label="Medium icon"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-              <button
-                class="icon-button"
-                data-size="lg"
-                data-variant="primary"
-                aria-label="Large icon"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-            </div>
-          </article>
-
-          <article class="stack-md">
-            <p class="type-title">States and links</p>
-            <div class="row-wrap-sm">
-              <button class="button" data-size="md" data-variant="neutral" disabled>
-                Disabled
-              </button>
-              <button
-                class="icon-button"
-                data-size="md"
-                data-variant="neutral"
-                disabled
-                aria-label="Disabled icon"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-              <a class="button" data-size="md" data-variant="neutral" href="#buttons-heading"
-                >Button link</a
-              >
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="focus-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="focus-heading">Keyboard focus</h2>
-          <p class="type-body text-muted">
-            Use Tab and Shift+Tab throughout this page. Links, tiles, sliders, buttons, and text
-            fields share a visible outline. Switches and full-row controls highlight their visible
-            container; secondary row actions highlight only themselves.
-          </p>
-        </header>
-        <a class="text-link" href="#switches-heading">Jump to switches</a>
-        <div class="tiles-grid">
-          <a class="tile" href="#tracks-heading">
-            <span class="artwork" data-size="stretch" aria-hidden="true"></span>
-            <strong class="tile-name type-small truncate">Library tile</strong>
-          </a>
-        </div>
-        <label class="stack-xs">
-          <span class="type-small">Playback position</span>
-          <input class="playback-slider" type="range" min="0" max="120" value="45" />
-        </label>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="tracks-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="tracks-heading">Track lists</h2>
-          <p class="type-body text-muted">
-            Albums, tracks, and queue items share synchronized columns. Empty overlay links or
-            buttons make each row clickable; secondary links and controls remain above the overlay.
-            Track numbers are padded to at least two digits. Album tracks show an artist credit only
-            when it differs from the album artist; queue rows show the artist without an album name.
-            Durations are right-aligned and omitted when unknown.
-          </p>
-        </header>
-
-        <div class="wings track-demo">
-          <article class="wings-item row-button">
-            <a class="linkarea" href="#tracks-heading" aria-label="Open album item"></a>
-            <span class="artwork" data-size="md" aria-hidden="true"></span>
-            <span class="track-content stack-xs">
-              <strong class="type-title">Album item</strong>
-              <small class="type-small text-muted"
-                >2025 · <a class="text-link" href="#typography-heading">12 tracks</a></small
-              >
-            </span>
-            <span class="row-sm">
-              <button
-                class="icon-button"
-                data-size="sm"
-                data-variant="ghost"
-                aria-label="Play album"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-              <button
-                class="icon-button"
-                data-size="sm"
-                data-variant="ghost"
-                aria-label="Add album"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-            </span>
-          </article>
-          <article class="wings-item row-button">
-            <button
-              class="linkarea"
-              aria-label="Play a track with a longer title that truncates"
-            ></button>
-            <span class="track-leading">01</span>
-            <span class="stack-xs grow">
-              <span class="truncate">A track with a longer title that truncates</span>
-              <small class="type-small text-muted truncate">Guest artist</small>
-            </span>
-            <span class="row-sm">
-              <span class="type-small text-muted text-right">4:32</span>
-              <button
-                class="icon-button"
-                data-size="sm"
-                data-variant="ghost"
-                aria-label="Download track"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-              <button
-                class="icon-button"
-                data-size="sm"
-                data-variant="ghost"
-                aria-label="Add track"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-            </span>
-          </article>
-          <article class="wings-item row-button">
-            <button class="linkarea" aria-label="Play another album track"></button>
-            <span class="track-leading">02</span>
-            <span class="truncate">Another album track</span>
-            <span class="row-sm">
-              <span class="type-small text-muted text-right">3:08</span>
-              <button
-                class="icon-button"
-                data-size="sm"
-                data-variant="ghost"
-                aria-label="Download another album track"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-              <button
-                class="icon-button"
-                data-size="sm"
-                data-variant="ghost"
-                aria-label="Add another album track"
-              >
-                <svg width="20" height="20"><use href="#guide-plus" /></svg>
-              </button>
-            </span>
-          </article>
-        </div>
-
-        <h3 class="type-title">Queue</h3>
-        <div class="wings track-demo">
-          <article class="wings-item row-button">
-            <button class="linkarea" aria-label="Play queue item"></button>
-            <span class="track-leading">01</span>
-            <span class="stack-xs grow">
-              <span class="truncate">Queue item</span>
-              <small class="type-small text-muted truncate">Artist name</small>
-            </span>
-            <span class="type-small text-muted text-right">4:32</span>
-          </article>
-          <article class="wings-item row-button">
-            <button class="linkarea" aria-label="Play the next queue item"></button>
-            <span class="track-leading">02</span>
-            <span class="stack-xs grow">
-              <span class="truncate">The next queue item</span>
-              <small class="type-small text-muted truncate">Another artist featuring a guest</small>
-            </span>
-            <span class="type-small text-muted text-right">12:06</span>
-          </article>
-          <article class="wings-item row-button">
-            <button class="linkarea" aria-label="Play a track with unknown duration"></button>
-            <span class="track-leading">03</span>
-            <span class="stack-xs grow">
-              <span class="truncate">A track with unknown duration</span>
-              <small class="type-small text-muted truncate">Artist name</small>
-            </span>
-          </article>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="empty-states-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="empty-states-heading">Empty states</h2>
-          <p class="type-body text-muted">
-            Compose <code>.stack-md</code> with explicit typography and text colors.
-            <code>.empty-state</code> supplies centering, page padding, and minimum height; the
-            optional decorative artwork uses <code>Artwork</code> without an image ID, reusing its
-            music placeholder.
-          </p>
-        </header>
-        <div class="example-grid">
-          <div class="card empty-state stack-md">
-            <span class="artwork" data-size="md" aria-hidden="true">
-              <svg width="20" height="20"><use href="#guide-music"></use></svg>
-            </span>
-            <h3 class="type-heading">Connect your library</h3>
-            <p class="type-body text-muted">Add your music server to start listening.</p>
-            <a class="button" data-size="md" data-variant="neutral" href="#inputs-heading"
-              >Open settings</a
+        <section class="card stack-lg" aria-labelledby="switches-heading">
+          <h2 class="heading-md uppercase" id="switches-heading">Switches</h2>
+          <div class="stack-md">
+            <label class="row-sm label"
+              ><input class="switch" type="checkbox" role="switch" />Initially off</label
+            >
+            <label class="row-sm label"
+              ><input class="switch" type="checkbox" role="switch" checked />Initially on</label
+            >
+            <label class="row-sm label"
+              ><input class="switch" type="checkbox" role="switch" disabled />Disabled off</label
+            >
+            <label class="row-sm label"
+              ><input class="switch" type="checkbox" role="switch" checked disabled />Disabled
+              on</label
             >
           </div>
-          <div class="card empty-state stack-md">
-            <span class="artwork" data-size="md" aria-hidden="true">
-              <svg width="20" height="20"><use href="#guide-music"></use></svg>
-            </span>
-            <p class="type-body text-muted">No downloaded artists.</p>
-          </div>
-          <div class="card empty-state stack-md">
-            <p class="type-body text-muted">No tracks found.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="card stack-lg" aria-labelledby="stacks-heading">
-        <header class="stack-xs">
-          <h2 class="type-heading" id="stacks-heading">Vertical stacks</h2>
-          <p class="type-body text-muted">
-            Stacks use max-content grid rows and own the gap between their children.
+          <p class="caption">
+            Native checkboxes own state and Space activation. No application preferences change.
           </p>
-        </header>
+        </section>
 
-        <div class="example-grid">
-          <article class="stack-sm">
-            <code>.stack-xs · 0.25rem</code>
-            <div class="card stack-example stack-xs"><span></span><span></span><span></span></div>
-          </article>
-          <article class="stack-sm">
-            <code>.stack-sm · 0.5rem</code>
-            <div class="card stack-example stack-sm"><span></span><span></span><span></span></div>
-          </article>
-          <article class="stack-sm">
-            <code>.stack-md · 1rem</code>
-            <div class="card stack-example stack-md"><span></span><span></span><span></span></div>
-          </article>
-          <article class="stack-sm">
-            <code>.stack-lg · 1.5rem</code>
-            <div class="card stack-example stack-lg"><span></span><span></span><span></span></div>
-          </article>
-          <article class="stack-sm">
-            <code>.stack-xl · 2rem</code>
-            <div class="card stack-example stack-xl"><span></span><span></span><span></span></div>
-          </article>
-        </div>
-      </section>
+        <section class="card stack-lg" aria-labelledby="artwork-heading">
+          <h2 class="heading-md uppercase" id="artwork-heading">Artwork</h2>
+          <p class="caption">
+            Shared thumbnail sizes are 38, 48, and 52px. Missing artwork reserves the same space.
+            The sample image is the Libras app icon, not an album cover.
+          </p>
+          <div class="row-md">
+            <span class="artwork" data-size="sm">
+              <img src="/icon.svg" alt="" />
+              <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+                <use href="#icon-music"></use>
+              </svg>
+            </span>
+            <span class="artwork">
+              <img hidden alt="" />
+              <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+                <use href="#icon-music"></use>
+              </svg>
+            </span>
+            <span class="artwork" data-size="lg">
+              <img hidden alt="" />
+              <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+                <use href="#icon-music"></use>
+              </svg>
+            </span>
+          </div>
+          <div class="cover-example">
+            <span class="artwork" data-size="cover">
+              <img hidden alt="" />
+              <svg class="artwork-placeholder" width="96" height="96" aria-hidden="true">
+                <use href="#icon-music"></use>
+              </svg>
+            </span>
+          </div>
+        </section>
+
+        <section class="card stack-lg" aria-labelledby="loading-heading">
+          <h2 class="heading-md uppercase" id="loading-heading">Loading and status</h2>
+          <div class="control-example row-md">
+            <button class="button" data-variant="secondary" data-size="text" aria-busy="true">
+              <span class="loader" aria-hidden="true"
+                ><span class="loader-bar"></span><span class="loader-bar"></span
+                ><span class="loader-bar"></span><span class="loader-bar"></span
+                ><span class="loader-bar"></span
+              ></span>
+              Loading…
+            </button>
+            <span class="loader" data-size="lg" role="img" aria-label="Large loading specimen"
+              ><span class="loader-bar"></span><span class="loader-bar"></span
+              ><span class="loader-bar"></span><span class="loader-bar"></span
+              ><span class="loader-bar"></span
+            ></span>
+          </div>
+          <div class="stack-sm">
+            <p class="row-sm label">
+              <svg width="24" height="24" color="var(--accent)" aria-hidden="true">
+                <use href="#icon-check"></use></svg
+              >Downloaded
+            </p>
+            <p class="row-sm label">
+              <svg width="24" height="24" color="var(--text-subtle)" aria-hidden="true">
+                <use href="#icon-clock"></use></svg
+              >Queued
+            </p>
+            <p class="row-sm label">
+              <svg width="24" height="24" color="var(--error-text)" aria-hidden="true">
+                <use href="#icon-cross"></use></svg
+              >Connection failed
+            </p>
+          </div>
+          <p class="caption">
+            Loading motion is opt-in. Reduced motion keeps a static five-bar wave; statuses remain
+            distinguishable by shape and wording.
+          </p>
+        </section>
+
+        <section class="card stack-lg" aria-labelledby="states-heading">
+          <h2 class="heading-md uppercase" id="states-heading">Empty and unavailable content</h2>
+          <div class="stack-md">
+            <h3 class="heading-sm">No downloads yet</h3>
+            <p class="body">Downloaded music will be available here for offline listening.</p>
+          </div>
+          <div class="stack-md">
+            <h3 class="heading-sm">Content unavailable</h3>
+            <p class="body">
+              This collection could not be loaded. Your existing library is still available.
+            </p>
+            <div class="row-sm">
+              <button class="button" data-variant="secondary" data-size="text">Open library</button>
+            </div>
+          </div>
+          <p class="caption">
+            Unframed compositions replace missing content. The enclosing card belongs only to this
+            reference board.
+          </p>
+        </section>
+
+        <section class="card stack-lg" aria-labelledby="notices-heading">
+          <h2 class="heading-md uppercase" id="notices-heading">Persistent notices</h2>
+          <div class="card stack-md">
+            <h3 class="heading-sm">Library refresh failed</h3>
+            <p class="body">
+              Your cached music remains available. Try refreshing again when connected.
+            </p>
+            <div class="row-sm">
+              <button class="button" data-size="text" data-variant="secondary">Retry</button>
+            </div>
+          </div>
+          <div class="card stack-md">
+            <h3 class="heading-sm">Update available</h3>
+            <p class="body">Update when you are ready. This reference performs no action.</p>
+            <div class="row-sm">
+              <button class="button" data-size="text" data-variant="secondary">Update now</button>
+            </div>
+          </div>
+          <p class="caption">Static specimens are not live regions and never auto-dismiss.</p>
+        </section>
+
+        <section class="card stack-lg" aria-labelledby="overlay-heading">
+          <h2 class="heading-md uppercase" id="overlay-heading">Native overlay isolation</h2>
+          <p class="body">
+            Dialogs and popovers keep native visibility and focus behavior. Give overlays outside a
+            migrated route their own .ui-edgerunner boundary.
+          </p>
+          <div class="control-example row-sm">
+            <button
+              class="button"
+              data-variant="secondary"
+              data-size="text"
+              commandfor="guide-dialog"
+              command="show-modal"
+            >
+              Open dialog
+            </button>
+            <button
+              class="button"
+              data-variant="secondary"
+              data-size="text"
+              commandfor="guide-popover"
+              command="toggle-popover"
+            >
+              Open popover
+            </button>
+          </div>
+          <p class="caption">
+            Only isolation and shared card/control styles are demonstrated here. Responsive overlay
+            shells and app gestures arrive with their consuming views.
+          </p>
+        </section>
+      </div>
+
+      <footer class="stack-sm">
+        <h2 class="heading-md uppercase">Spacing and ownership</h2>
+        <p class="body">
+          Containers own padding and gaps: 4, 8, 16, 24, and 48px. Compose stack and row utilities
+          with appearance primitives; ordinary unclassed HTML retains browser defaults.
+        </p>
+        <p class="caption">
+          Color and typography consume semantic roles. Geometry and ordinary spacing consume
+          primitives directly. Components own configuration; the design system does not own
+          application state.
+        </p>
+      </footer>
     </main>
+
+    <dialog
+      id="guide-dialog"
+      class="ui-edgerunner card overlay-example"
+      aria-labelledby="guide-dialog-title"
+      closedby="any"
+    >
+      <div class="stack-lg">
+        <h2 class="heading-md" id="guide-dialog-title">Native dialog</h2>
+        <p class="body">Escape or Close dismisses this dialog and restores focus to its invoker.</p>
+        <div class="row-sm">
+          <button
+            class="button"
+            data-size="text"
+            data-variant="secondary"
+            commandfor="guide-dialog"
+            command="close"
+          >
+            Close dialog
+          </button>
+        </div>
+      </div>
+    </dialog>
+    <div id="guide-popover" class="ui-edgerunner card overlay-example" popover="auto">
+      <div class="stack-md">
+        <h2 class="heading-md">Native popover</h2>
+        <p class="body">This nonmodal specimen leaves the page interactive.</p>
+        <div class="row-sm">
+          <button class="button" data-size="text" commandfor="guide-popover" command="hide-popover">
+            Close popover
+          </button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

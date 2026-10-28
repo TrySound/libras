@@ -1,0 +1,875 @@
+/* Edgerunner foundations, ported from the libras-new design study.
+ * Published Figma Maroon/Gold palettes retain their source values and order.
+ * Palette → semantic roles; color/type roles are consumed by components.
+ * Opt in with .ui-edgerunner on a route or overlay. Legacy CSS stops there.
+ * Keep components opt-in, sizing local, and spacing owned by containers.
+ * Only cards, stacks, and [hidden] also target the boundary itself using
+ * :where(:scope, *), without increasing specificity. Other classes style descendants.
+ * Highrider themes and selection are intentionally deferred to issue #54.
+ */
+@import "./edgerunner-fonts.css";
+
+@scope (.ui-edgerunner) {
+  :scope {
+    /* Color primitives: literal palette values, including published anchors and scales. */
+    --palette-maroon: #550000;
+
+    /* Figma shades: higher indices are darker. */
+    --palette-maroon-shade-0: #550000;
+    --palette-maroon-shade-1: #4c0000;
+    --palette-maroon-shade-2: #420000;
+    --palette-maroon-shade-3: #390000;
+    --palette-maroon-shade-4: #2f0000;
+    --palette-maroon-shade-5: #260000;
+    --palette-maroon-shade-6: #1c0000;
+    --palette-maroon-shade-7: #130000;
+
+    /* Figma tints: copied as published; tint-0 supplies shell/scrollbar styling. */
+    --palette-maroon-tint-0: #550000;
+    --palette-maroon-tint-1: #810000;
+    --palette-maroon-tint-2: #ae0000;
+    --palette-maroon-tint-3: #da0000;
+    --palette-maroon-tint-4: #ff0808;
+    --palette-maroon-tint-5: #ff3434;
+    --palette-maroon-tint-6: #ff6060;
+    --palette-maroon-tint-7: #ff8d8d;
+
+    /* Figma tones: source order is not monotonic in lightness. */
+    --palette-maroon-tone-0: #550000;
+    --palette-maroon-tone-1: #ef1014;
+    --palette-maroon-tone-2: #df2026;
+    --palette-maroon-tone-3: #cf3038;
+    --palette-maroon-tone-4: #bf4048;
+    --palette-maroon-tone-5: #af5058;
+    --palette-maroon-tone-6: #9f6066;
+    --palette-maroon-tone-7: #8f7073;
+
+    /* Figma Gold anchor and published tint scale, in source order. */
+    --palette-gold: #efbf04;
+    --palette-gold-tint-0: #efbf04;
+    --palette-gold-tint-1: #fbcc13;
+    --palette-gold-tint-2: #fbd12d;
+    --palette-gold-tint-3: #fcd748;
+    --palette-gold-tint-4: #fcdd62;
+    --palette-gold-tint-5: #fde37c;
+    --palette-gold-tint-6: #fde897;
+    --palette-gold-tint-7: #feeeb1;
+
+    /* Neutral references; white supplies ordinary text and icon foregrounds. */
+    --palette-white: #ffffff;
+    --palette-black: #000000;
+
+    /* Color roles: customization grouped as <group>-<property>[-<state>].
+   * Every color recipe references palette literals directly, never another role.
+   * Backgrounds are complete CSS backgrounds: replace with a color or layers.
+   * No scoped palette overrides: editing this block updates all consumers.
+   */
+    --canvas-bg:
+      repeating-linear-gradient(
+        135deg in oklab,
+        transparent 0 47px,
+        alpha(from var(--palette-maroon-tone-7) / 7%) 47px 48px
+      ),
+      radial-gradient(
+          ellipse at 100% 0% in oklab,
+          alpha(from var(--palette-maroon-shade-3) / 80%),
+          transparent 75%
+        )
+        var(--palette-maroon-shade-7);
+    --surface-bg: linear-gradient(
+      135deg in oklab,
+      alpha(from var(--palette-maroon-shade-4) / 80%),
+      alpha(from var(--palette-maroon-shade-6) / 72%)
+    );
+    --shell-bg: linear-gradient(
+      135deg in oklab,
+      alpha(from var(--palette-maroon-shade-3) / 92%),
+      alpha(from var(--palette-maroon-shade-5) / 88%)
+    );
+
+    --tile-text: var(--palette-white);
+    --text-primary: var(--palette-white);
+    --text-secondary: var(--palette-white);
+    --text-subtle: var(--palette-gold-tint-7);
+    --error-text: var(--palette-maroon-tint-7);
+    --loader-bg: var(--palette-maroon-tone-7);
+
+    --primary-bg: var(--palette-maroon-tint-1);
+    --primary-bg-hover: var(--palette-maroon-tint-2);
+    --primary-bg-active: var(--palette-maroon-shade-2);
+    --primary-text: var(--palette-white);
+
+    --secondary-bg: alpha(from var(--palette-maroon-shade-0) / 72%);
+    --secondary-bg-hover: var(--palette-maroon-shade-0);
+    --secondary-bg-active: var(--palette-maroon-shade-0);
+    --secondary-text: var(--palette-white);
+
+    --ghost-bg: transparent;
+    --ghost-bg-hover: var(--palette-maroon-shade-0);
+    --ghost-bg-active: var(--palette-maroon-shade-0);
+    --ghost-text: var(--palette-white);
+
+    --item-bg: transparent;
+    --item-bg-hover: alpha(from var(--palette-maroon-shade-2) / 72%);
+    --item-bg-active: alpha(from var(--palette-maroon-shade-2) / 72%);
+    --item-text: var(--palette-white);
+    --item-border: var(--palette-maroon-tone-5);
+    --item-border-hover: var(--palette-maroon-tone-4);
+    --item-border-active: var(--palette-maroon-tone-4);
+
+    --surface-border: var(--palette-maroon-tone-5);
+    --shell-border: var(--palette-maroon-tint-0);
+    --scrollbar-bg: var(--palette-maroon-shade-7);
+    --accent: var(--palette-gold-tint-0);
+
+    /* Shape primitives: literal values, consumed directly. */
+    --corner-shape: square bevel;
+    --radius-xs: 2px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+
+    /* Typography primitives. */
+    --font-sans: system-ui, sans-serif;
+    --font-display: "Rajdhani", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+    --font-size-xs: 0.875rem;
+    --font-size-sm: 1rem;
+    --font-size-md: 1.25rem;
+    --font-size-lg: 1.5rem;
+    --font-size-xl: 1.75rem;
+    --font-size-2xl: 2.5rem;
+    --font-weight-regular: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+    --leading-tight: 1.2;
+    --leading-compact: 1.35;
+    --leading-body: 1.5;
+    --tracking-tight: -0.4px;
+    --tracking-tighter: -0.8px;
+    --tracking-wide: 0.05rem;
+
+    /* Typography roles: complete recipes, independent of color. */
+    --brand-font: var(--font-display);
+    --brand-size: var(--font-size-xl);
+    --brand-weight: var(--font-weight-bold);
+    --brand-leading: var(--leading-body);
+    --brand-tracking: var(--tracking-wide);
+
+    --heading-xl-font: var(--font-display);
+    --heading-xl-size: clamp(var(--font-size-lg), 1.2rem + 1.5vw, var(--font-size-2xl));
+    --heading-xl-weight: var(--font-weight-medium);
+    --heading-xl-leading: var(--leading-body);
+    --heading-xl-tracking: var(--tracking-tighter);
+
+    --heading-lg-font: var(--font-display);
+    --heading-lg-size: var(--font-size-xl);
+    --heading-lg-weight: var(--font-weight-semibold);
+    --heading-lg-leading: var(--leading-body);
+    --heading-lg-tracking: var(--tracking-tight);
+
+    --heading-md-font: var(--font-display);
+    --heading-md-size: var(--font-size-md);
+    --heading-md-weight: var(--font-weight-semibold);
+    --heading-md-leading: normal;
+    --heading-md-tracking: var(--tracking-tight);
+
+    --heading-sm-font: var(--font-display);
+    --heading-sm-size: clamp(var(--font-size-sm), 1.7vw, var(--font-size-lg));
+    --heading-sm-weight: var(--font-weight-semibold);
+    --heading-sm-leading: var(--leading-tight);
+    --heading-sm-tracking: var(--tracking-tight);
+
+    --body-font: var(--font-sans);
+    --body-size: var(--font-size-sm);
+    --body-weight: var(--font-weight-regular);
+    --body-leading: var(--leading-body);
+    --body-tracking: normal;
+
+    --label-font: var(--font-sans);
+    --label-size: var(--font-size-sm);
+    --label-weight: var(--font-weight-medium);
+    --label-leading: var(--leading-body);
+    --label-tracking: normal;
+
+    --caption-font: var(--font-sans);
+    --caption-size: var(--font-size-xs);
+    --caption-weight: var(--font-weight-regular);
+    --caption-leading: var(--leading-body);
+    --caption-tracking: normal;
+
+    --metadata-font: var(--font-mono);
+    --metadata-size: var(--font-size-xs);
+    --metadata-weight: var(--font-weight-regular);
+    --metadata-leading: normal;
+    --metadata-tracking: normal;
+
+    /* Spacing primitives: ordinary component gaps and padding consume these directly. */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 48px;
+
+    /* Border/focus geometry; the outline deliberately composes geometry and color. */
+    --border-width: 2px;
+    --focus-ring: 4px solid var(--accent);
+    --focus-ring-offset: 4px;
+
+    /* Shared motion values; component-specific loops and artwork zoom stay local. */
+    --motion-duration-press: 80ms;
+    --motion-duration-feedback: 120ms;
+    --motion-duration-enter: 280ms;
+    --motion-duration-exit: 160ms;
+    --motion-ease-enter: ease-out;
+    --motion-ease-exit: ease-in;
+    --press-offset: 1px;
+    --press-scale: 0.995;
+    --press-scale-compact: 0.96;
+
+    /* Document defaults. */
+    color-scheme: dark;
+  }
+
+  /* A boundary is a canvas/type context, not a layout container. Place the same
+   * boundary on overlays mounted outside a migrated route. No root-size reset. */
+  :scope {
+    background: var(--canvas-bg);
+    background-attachment: local;
+    color: var(--text-primary);
+    font-family: var(--body-font);
+    font-weight: var(--body-weight);
+    line-height: var(--body-leading);
+    letter-spacing: var(--body-tracking);
+  }
+
+  /* Keep browser root sizing independent of the body typography role. */
+  :scope:not(:root),
+  :scope:root > body {
+    font-size: var(--body-size);
+  }
+
+  :scope,
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--shell-border) var(--scrollbar-bg);
+  }
+
+  :where(:scope, *)[hidden] {
+    display: none !important;
+  }
+
+  @media (max-width: 600px) {
+    :scope {
+      --heading-xl-leading: var(--leading-compact);
+    }
+  }
+
+  .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Vertical flow utilities: one column, intrinsic rows, container-owned spacing. */
+  :where(:scope, *).stack-xs,
+  :where(:scope, *).stack-sm,
+  :where(:scope, *).stack-md,
+  :where(:scope, *).stack-lg,
+  :where(:scope, *).stack-xl {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: max-content;
+    align-content: start;
+  }
+
+  :where(:scope, *).stack-xs {
+    gap: var(--space-xs);
+  }
+
+  :where(:scope, *).stack-sm {
+    gap: var(--space-sm);
+  }
+
+  :where(:scope, *).stack-md {
+    gap: var(--space-md);
+  }
+
+  :where(:scope, *).stack-lg {
+    gap: var(--space-lg);
+  }
+
+  :where(:scope, *).stack-xl {
+    gap: var(--space-xl);
+  }
+
+  /* Center-aligned, single-line horizontal flow; components own sizing. */
+  .row-xs,
+  .row-sm,
+  .row-md,
+  .row-lg,
+  .row-xl {
+    display: flex;
+    align-items: center;
+  }
+
+  .row-xs {
+    gap: var(--space-xs);
+  }
+
+  .row-sm {
+    gap: var(--space-sm);
+  }
+
+  .row-md {
+    gap: var(--space-md);
+  }
+
+  .row-lg {
+    gap: var(--space-lg);
+  }
+
+  .row-xl {
+    gap: var(--space-xl);
+  }
+
+  .row-justify {
+    justify-content: space-between;
+  }
+
+  .row-center {
+    justify-content: center;
+  }
+
+  .uppercase {
+    text-transform: uppercase;
+  }
+
+  .text-secondary {
+    color: var(--text-secondary);
+  }
+
+  .text-subtle {
+    color: var(--text-subtle);
+  }
+
+  /* Visibility utilities override component display without retaining focus. */
+  .only-mobile {
+    @media (width > 600px) {
+      display: none !important;
+    }
+  }
+
+  .only-desktop {
+    @media (max-width: 600px) {
+      display: none !important;
+    }
+  }
+
+  .visually-hidden {
+    position: absolute;
+    clip-path: inset(50%);
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  /* Typography classes */
+
+  /* Visual roles are independent of HTML heading level, layout, and casing. */
+  .brand {
+    margin: 0;
+    font-size-adjust: from-font;
+    font-family: var(--brand-font);
+    font-size: var(--brand-size);
+    font-weight: var(--brand-weight);
+    line-height: var(--brand-leading);
+    letter-spacing: var(--brand-tracking);
+  }
+
+  .heading-xl {
+    margin: 0;
+    font-size-adjust: from-font;
+    font-family: var(--heading-xl-font);
+    font-size: var(--heading-xl-size);
+    font-weight: var(--heading-xl-weight);
+    line-height: var(--heading-xl-leading);
+    letter-spacing: var(--heading-xl-tracking);
+  }
+
+  .heading-lg {
+    margin: 0;
+    font-size-adjust: from-font;
+    font-family: var(--heading-lg-font);
+    font-size: var(--heading-lg-size);
+    font-weight: var(--heading-lg-weight);
+    line-height: var(--heading-lg-leading);
+    letter-spacing: var(--heading-lg-tracking);
+  }
+
+  .heading-md {
+    margin: 0;
+    font-size-adjust: from-font;
+    font-family: var(--heading-md-font);
+    font-size: var(--heading-md-size);
+    font-weight: var(--heading-md-weight);
+    line-height: var(--heading-md-leading);
+    letter-spacing: var(--heading-md-tracking);
+  }
+
+  .heading-sm {
+    margin: 0;
+    font-size-adjust: from-font;
+    font-family: var(--heading-sm-font);
+    font-size: var(--heading-sm-size);
+    font-weight: var(--heading-sm-weight);
+    line-height: var(--heading-sm-leading);
+    letter-spacing: var(--heading-sm-tracking);
+  }
+
+  .body {
+    margin: 0;
+    font-family: var(--body-font);
+    font-size: var(--body-size);
+    font-weight: var(--body-weight);
+    line-height: var(--body-leading);
+    letter-spacing: var(--body-tracking);
+  }
+
+  .label {
+    margin: 0;
+    font-family: var(--label-font);
+    font-size: var(--label-size);
+    font-weight: var(--label-weight);
+    line-height: var(--label-leading);
+    letter-spacing: var(--label-tracking);
+  }
+
+  .caption {
+    margin: 0;
+    font-family: var(--caption-font);
+    font-size: var(--caption-size);
+    font-weight: var(--caption-weight);
+    line-height: var(--caption-leading);
+    letter-spacing: var(--caption-tracking);
+  }
+
+  .metadata {
+    margin: 0;
+    font-family: var(--metadata-font);
+    font-size: var(--metadata-size);
+    font-weight: var(--metadata-weight);
+    line-height: var(--metadata-leading);
+    letter-spacing: var(--metadata-tracking);
+  }
+
+  :where(:scope, *).card {
+    min-inline-size: 0;
+    padding: var(--space-lg);
+    border: var(--border-width) solid var(--shell-border);
+    border-radius: var(--radius-xl);
+    corner-shape: var(--corner-shape);
+    background: var(--surface-bg);
+  }
+
+  .loader {
+    display: inline-grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: center;
+    gap: 2px;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    flex-shrink: 0;
+
+    &[data-size="lg"] {
+      inline-size: 5rem;
+      block-size: 3rem;
+      gap: var(--space-xs);
+    }
+
+    & > .loader-bar {
+      block-size: 100%;
+      background: var(--loader-bg);
+      scale: 1 0.35;
+
+      &:nth-child(2),
+      &:nth-child(4) {
+        scale: 1 0.65;
+      }
+
+      &:nth-child(3) {
+        scale: 1;
+        background: var(--accent);
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        animation: --edgerunner-loader-wave 1.5s ease-in-out infinite backwards;
+
+        &:nth-child(2) {
+          animation-delay: 0.2s;
+        }
+
+        &:nth-child(3) {
+          animation-delay: 0.4s;
+        }
+
+        &:nth-child(4) {
+          animation-delay: 0.6s;
+        }
+
+        &:nth-child(5) {
+          animation-delay: 0.8s;
+        }
+      }
+    }
+  }
+
+  @keyframes --edgerunner-loader-wave {
+    0%,
+    50%,
+    100% {
+      scale: 1 0.2;
+      background: var(--loader-bg);
+    }
+
+    25% {
+      scale: 1;
+      background: var(--accent);
+    }
+  }
+
+  .input {
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-inline-size: 0;
+    margin: 0;
+    padding: var(--space-sm) var(--space-md);
+    border: var(--border-width) solid var(--surface-border);
+    border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
+    background: var(--surface-bg);
+    color: var(--text-primary);
+    font-family: var(--body-font);
+    font-size: var(--body-size);
+    font-weight: var(--body-weight);
+    line-height: var(--body-leading);
+    letter-spacing: var(--body-tracking);
+
+    &::placeholder {
+      color: var(--text-secondary);
+      opacity: 0.65;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      transition: border-color var(--motion-duration-feedback);
+    }
+
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+    }
+
+    &:user-invalid:not(:disabled),
+    &[aria-invalid="true"]:not(:disabled) {
+      border-color: var(--error-text);
+    }
+
+    &:focus:not(:disabled) {
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+    }
+  }
+
+  .input-error {
+    color: var(--error-text);
+  }
+
+  .input:not(:user-invalid, [aria-invalid="true"]) + .input-error,
+  .input:disabled + .input-error {
+    display: none;
+  }
+
+  /* Native checkbox behavior; a fixed gold thumb slides between grid cells. */
+  .switch {
+    --press-scale: var(--press-scale-compact);
+    appearance: none;
+    box-sizing: border-box;
+    display: inline-grid;
+    grid-template-columns: repeat(2, 1.5rem);
+    gap: var(--space-xs);
+    inline-size: max-content;
+    block-size: max-content;
+    flex-shrink: 0;
+    margin: 0;
+    padding: var(--space-xs);
+    border: var(--border-width) solid var(--item-border);
+    border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
+    background: var(--secondary-bg);
+    cursor: pointer;
+    translate: 0;
+    scale: 1;
+
+    &::before {
+      content: "";
+      inline-size: 1.5rem;
+      block-size: 1.5rem;
+      border-radius: 4px;
+      corner-shape: var(--corner-shape);
+      background: var(--accent);
+      translate: 0;
+    }
+
+    &:checked {
+      background: var(--primary-bg);
+
+      &::before {
+        translate: calc(100% + var(--space-xs)) 0;
+      }
+    }
+
+    &:focus-visible {
+      outline: var(--focus-ring);
+      outline-offset: var(--focus-ring-offset);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      transition:
+        background-color var(--motion-duration-feedback),
+        translate var(--motion-duration-press),
+        scale var(--motion-duration-press);
+
+      &:active:not(:disabled) {
+        translate: 0 var(--press-offset);
+        scale: var(--press-scale);
+      }
+
+      &::before {
+        transition: translate var(--motion-duration-feedback);
+      }
+    }
+  }
+
+  /* Unfilled native links/buttons; row/stack utilities own content layout. */
+  .button-quiet {
+    position: relative;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    text-decoration: none;
+    text-align: start;
+    border: 0;
+    border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
+    background: none;
+    -webkit-tap-highlight-color: transparent;
+    margin: 0;
+    padding: 0;
+    min-inline-size: 0;
+    translate: 0;
+    scale: 1;
+
+    @media (prefers-reduced-motion: no-preference) {
+      transition:
+        translate var(--motion-duration-press),
+        scale var(--motion-duration-press);
+
+      &:active:not(:disabled) {
+        translate: 0 var(--press-offset);
+        scale: var(--press-scale);
+      }
+    }
+
+    &:focus-visible {
+      outline: var(--focus-ring);
+      outline-offset: var(--focus-ring-offset);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  }
+
+  /* Content + padding determine size. Omitted size is md and omitted variant is
+   ghost. SVG dimensions are authored on each inline SVG, never inferred here. */
+  .button {
+    --button-padding-block: var(--space-sm);
+    --button-padding-inline: var(--space-sm);
+    --press-scale: var(--press-scale-compact);
+    position: relative;
+    cursor: pointer;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    gap: var(--space-sm);
+    padding: var(--button-padding-block) var(--button-padding-inline);
+    max-inline-size: 100%;
+    border: 0;
+    border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
+    font-family: var(--label-font);
+    font-size: var(--label-size);
+    font-weight: var(--label-weight);
+    line-height: var(--label-leading);
+    letter-spacing: var(--label-tracking);
+    overflow-wrap: anywhere;
+    color: var(--ghost-text);
+    background: var(--ghost-bg);
+    translate: 0;
+    scale: 1;
+
+    @media (prefers-reduced-motion: no-preference) {
+      transition:
+        background-color var(--motion-duration-feedback),
+        translate var(--motion-duration-press),
+        scale var(--motion-duration-press);
+
+      &:active:not(:disabled) {
+        translate: 0 var(--press-offset);
+        scale: var(--press-scale);
+      }
+    }
+
+    &:focus-visible {
+      outline: var(--focus-ring);
+      outline-offset: var(--focus-ring-offset);
+    }
+
+    &[data-size="lg"] {
+      --button-padding-block: var(--space-md);
+      --button-padding-inline: var(--space-md);
+      border-radius: var(--radius-md);
+    }
+
+    &[data-size="text"] {
+      --button-padding-inline: var(--space-md);
+    }
+
+    &:not(:disabled) {
+      &:hover,
+      &:focus-visible {
+        background: var(--ghost-bg-hover);
+      }
+
+      &:active {
+        background: var(--ghost-bg-active);
+      }
+    }
+
+    &[data-variant="primary"] {
+      background: var(--primary-bg);
+      color: var(--primary-text);
+
+      &:not(:disabled) {
+        &:focus-visible {
+          background: var(--primary-bg-hover);
+        }
+
+        &:active {
+          background: var(--primary-bg-active);
+        }
+
+        /* Preserve pointer-hover precedence, including while pressed. */
+        &:hover {
+          background: var(--primary-bg-hover);
+        }
+      }
+    }
+
+    &[data-variant="secondary"] {
+      color: var(--secondary-text);
+      background: var(--secondary-bg);
+
+      &:not(:disabled) {
+        &:hover,
+        &:focus-visible {
+          background: var(--secondary-bg-hover);
+        }
+
+        &:active {
+          background: var(--secondary-bg-active);
+        }
+      }
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
+
+  /* Foreground artwork shares surfaces, crop, geometry and missing-cover state. */
+  .artwork {
+    box-sizing: border-box;
+    position: relative;
+    display: block;
+    inline-size: 48px;
+    block-size: 48px;
+    aspect-ratio: 1;
+    flex-shrink: 0;
+    overflow: clip;
+    border: var(--border-width) solid var(--shell-border);
+    border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
+    background: var(--surface-bg);
+
+    &[data-size="sm"] {
+      inline-size: 38px;
+      block-size: 38px;
+    }
+
+    &[data-size="lg"] {
+      inline-size: 52px;
+      block-size: 52px;
+    }
+
+    &[data-size="cover"] {
+      inline-size: auto;
+      block-size: auto;
+      border-radius: var(--radius-xl);
+    }
+
+    &[data-size="fill"] {
+      inline-size: 100%;
+      block-size: 100%;
+      border: 0;
+      border-radius: 0;
+    }
+
+    & > img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    &:has(> img:not([hidden])) > .artwork-placeholder {
+      display: none;
+    }
+  }
+
+  .artwork-placeholder {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    color: var(--text-primary);
+    pointer-events: none;
+  }
+}

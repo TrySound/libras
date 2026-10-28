@@ -1,0 +1,79 @@
+// Optional real-browser coverage. Run against the website server, not the app.
+// See CONTRIBUTING.md for external Playwright setup and PREVIEW_URL.
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
+const { chromium } = require("playwright");
+
+const base = `${(process.env.PREVIEW_URL ?? "http://127.0.0.1:5180").replace(/\/$/, "")}/`;
+
+test("website overrides coexist with scoped legacy and Edgerunner styles", async (t) => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+    reducedMotion: "reduce",
+  });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  try {
+    await page.goto(base);
+    const demo = page.locator("#live-demo-dialog");
+    await demo.locator(".app-root").waitFor();
+    const app = await demo.locator(".app-root").elementHandle();
+
+    await t.test("website layout overrides shared utilities on desktop", async () => {
+      const hero = await page.locator(".site-hero").evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { display: style.display, direction: style.flexDirection };
+      });
+      assert.deepEqual(hero, { display: "flex", direction: "column" });
+      assert.equal(await page.locator(".site-demo-launch").isVisible(), false);
+      assert.equal(await demo.isVisible(), true);
+      assert.equal(await demo.evaluate((element) => element.matches(":modal")), false);
+    });
+
+    await t.test("mobile launch and modal preserve the mounted demo across resizing", async () => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.waitForFunction(() => !document.querySelector("#live-demo-dialog").open);
+      assert.equal(await demo.isVisible(), false);
+      assert.equal(await page.locator(".site-demo-launch").isVisible(), true);
+      await page.locator(".site-demo-launch").click();
+      assert.equal(await demo.evaluate((element) => element.matches(":modal")), true);
+      await page.getByRole("button", { name: "Close demo", exact: true }).click();
+      assert.equal(await demo.isVisible(), false);
+
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.waitForFunction(() => document.querySelector("#live-demo-dialog").open);
+      assert.equal(await demo.isVisible(), true);
+      assert.equal(await page.locator(".site-demo-launch").isVisible(), false);
+      assert.equal(
+        await app.evaluate((element) => element === document.querySelector("#demo .app-root")),
+        true,
+      );
+    });
+
+    await t.test("website extensions stop at an Edgerunner boundary", async () => {
+      await page.evaluate(() => {
+        const island = document.createElement("section");
+        island.id = "edgerunner-website-fixture";
+        // Deliberately overlap a website class and a shared flow utility.
+        island.className = "ui-edgerunner site-hero stack-lg";
+        island.innerHTML = '<button class="button" data-variant="primary">New control</button>';
+        document.querySelector(".website").append(island);
+      });
+      const island = await page.locator("#edgerunner-website-fixture").evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { display: style.display, minHeight: style.minHeight, gap: style.gap };
+      });
+      assert.deepEqual(island, { display: "grid", minHeight: "0px", gap: "24px" });
+      assert.equal(
+        await page
+          .locator("#edgerunner-website-fixture .button")
+          .evaluate((element) => getComputedStyle(element).backgroundColor),
+        "rgb(129, 0, 0)",
+      );
+    });
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+  }
+});
