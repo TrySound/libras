@@ -29,8 +29,13 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
         fillsViewport:
           document.querySelector(".app-shell").getBoundingClientRect().bottom >= innerHeight,
         documentCanvas:
-          rootStyle.backgroundImage.includes("repeating-linear-gradient") &&
+          !rootStyle.backgroundImage.includes("repeating-linear-gradient") &&
           rootStyle.backgroundImage.includes("radial-gradient"),
+        layeredLines:
+          document.querySelectorAll(".app-page .atmosphere-frame").length === 1 &&
+          getComputedStyle(
+            document.querySelector(".app-page .atmosphere-lines"),
+          ).backgroundImage.includes("repeating-linear-gradient"),
         routeTransparent:
           routeStyle.backgroundImage === "none" &&
           routeStyle.backgroundColor === "rgba(0, 0, 0, 0)",
@@ -40,6 +45,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     assert.deepEqual(background, {
       fillsViewport: true,
       documentCanvas: true,
+      layeredLines: true,
       routeTransparent: true,
       color: "rgb(19, 0, 0)",
     });

@@ -116,6 +116,15 @@ It uses the same styles as production, not a separate component library.
   typography roles.
   Consume roles for colors/type, primitives for ordinary spacing/shape, and keep component
   configuration local. Containers own gaps/padding. Avoid global element resets.
+- `src/ui/atmosphere.svelte` owns the shared backdrop: optional distorted artwork behind
+  always-present diagonal lines. Render one per route and one in the player, inside a
+  content-sized `.app-stage` or `.large-player-stage`. The canvas token supplies
+  only the base color/glow, avoiding duplicate lines. CSS scroll timelines compensate
+  85% of scrolling for artwork and 45% for lines (15%/55% apparent speeds), using the
+  stage height minus its viewport height. Keep these layers equal in height to their
+  stage so percentage translations stay proportional, including on barely overflowing
+  pages. No observers or scroll handlers are needed; unsupported browsers and reduced
+  motion retain a static backdrop.
 - Downloads (`src/_downloads.svelte`) reads real
   jobs and saved records, retains ordering and format-specific identities, and adds no fake
   progress or per-file failure records. Transfer/storage notices do not discard saved rows.

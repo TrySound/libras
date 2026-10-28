@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "../icon.svelte";
   import Artwork from "./artwork.svelte";
+  import Atmosphere from "./atmosphere.svelte";
   import Loader from "./loader.svelte";
   import type { Covers } from "../covers.svelte";
   import type { Cache } from "../cache.svelte";
@@ -120,14 +121,7 @@
   aria-labelledby="playing-title"
 >
   <div class="large-player-stage">
-    <img
-      class="atmosphere"
-      src={atmosphere?.source}
-      hidden={!atmosphere?.source}
-      alt=""
-      aria-hidden="true"
-      draggable="false"
-    />
+    <Atmosphere src={atmosphere?.source} />
     <header class="topbar row-md row-justify">
       <span class="dialog-handle only-mobile" aria-hidden="true"></span>
       <h2 id="playing-title" class="heading-md uppercase">Now Playing</h2>

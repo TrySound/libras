@@ -3,6 +3,7 @@
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
+  import Atmosphere from "./ui/atmosphere.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -59,16 +60,9 @@
   }
 </script>
 
+<Atmosphere src={libraryAvailable && artist ? atmosphere?.source : undefined} />
 <section class="split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
-    <img
-      class="atmosphere"
-      src={atmosphere?.source}
-      hidden={!atmosphere?.source}
-      alt=""
-      aria-hidden="true"
-      draggable="false"
-    />
     <div class="viewport-panel">
       <Artwork
         {covers}

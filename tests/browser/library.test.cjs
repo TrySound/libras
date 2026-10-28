@@ -107,7 +107,9 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     }
     assert.equal(await sheet.getAttribute("data-dragging"), "");
     assert.ok(
-      await sheet.evaluate((node) => parseFloat(getComputedStyle(node).translate.split(" ")[1]) > 0),
+      await sheet.evaluate(
+        (node) => parseFloat(getComputedStyle(node).translate.split(" ")[1]) > 0,
+      ),
       "the tile menu follows the swipe",
     );
     await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
@@ -295,7 +297,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       });
       assert.equal(
         await background.evaluate((node) => {
-          const box = node.getBoundingClientRect();
+          const box = node.closest(".atmosphere-frame").getBoundingClientRect();
           const shell = node.closest(".app-shell").getBoundingClientRect();
           return Math.abs(box.height - shell.height) < 1 && Math.abs(box.width - shell.width) < 1;
         }),
@@ -310,7 +312,8 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     assert.notEqual(await checkAtmosphere(), artistBackground);
     await page.locator('a[href="#/library"]').filter({ visible: true }).first().click();
     await page.locator(".library-view").waitFor();
-    assert.equal(await page.locator(".app-page .atmosphere").count(), 0);
+    assert.equal(await page.locator(".app-page .atmosphere").isVisible(), false);
+    assert.equal(await page.locator(".app-page .atmosphere-lines").count(), 1);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

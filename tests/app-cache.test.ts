@@ -564,6 +564,10 @@ it.each([
   flushSync();
   const topbar = target.querySelector(".app-header")!;
   expect(target.querySelectorAll(".app-header")).toHaveLength(1);
+  expect(target.querySelectorAll(".app-page .atmosphere-frame")).toHaveLength(1);
+  expect(target.querySelectorAll(".app-page .atmosphere-lines")).toHaveLength(1);
+  expect(target.querySelectorAll("#player-dialog .atmosphere-frame")).toHaveLength(1);
+  expect(target.querySelectorAll("#player-dialog .atmosphere-lines")).toHaveLength(1);
   const links = topbar.querySelectorAll("a");
   expect([...links].map((link) => link.getAttribute("href"))).toEqual(["#/library", "#/search"]);
   for (const nav of target.querySelectorAll('nav[aria-label="Main navigation"]')) {

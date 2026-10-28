@@ -36,6 +36,9 @@
       }
       body {
         margin: 0;
+        position: relative;
+        isolation: isolate;
+        min-block-size: 100dvh;
         container: app / inline-size;
       }
       .styleguide {
@@ -110,6 +113,9 @@
     </style>
   </head>
   <body>
+    <div class="atmosphere-frame" aria-hidden="true">
+      <div class="atmosphere-lines"></div>
+    </div>
     <main class="styleguide stack-xl">
       <header class="stack-md">
         <div class="stack-sm">
@@ -770,102 +776,112 @@
         <section class="card stack-lg specimen-wide" aria-labelledby="shell-heading">
           <h2 class="heading-md uppercase" id="shell-heading">Shared shell composition</h2>
           <p class="body">
-            This bounded embedded specimen uses the same app-shell, app-page, app-sidebar, and
-            app-player composition as the app. Only the reference frame's size is local. CSS anchor
-            sizing reserves the player's intrinsic height without script measurements.
+            This bounded embedded specimen uses the same app-shell, app-stage, app-page,
+            app-sidebar, and app-player composition as the app. Only the reference frame's size is
+            local. CSS anchor sizing reserves the player's intrinsic height without script
+            measurements.
           </p>
           <div class="shell-example">
             <div class="app-shell" data-embedded id="guide-shell">
-              <aside class="sidebar app-sidebar stack-lg" aria-label="Shell specimen navigation">
-                <span class="brand uppercase">Libras</span>
-                <nav class="stack-sm" aria-label="Shell specimen links">
-                  <a class="menu-item" href="#shell-heading" aria-current="page">Your library</a>
-                  <a class="menu-item" href="#shell-heading">Search</a>
-                </nav>
-              </aside>
-              <header class="topbar app-header row-md row-justify">
-                <span class="brand uppercase">Libras</span>
-                <button
-                  class="button"
-                  commandfor="guide-navigation"
-                  command="show-modal"
-                  aria-label="Open shell specimen menu"
-                >
-                  <svg width="24" height="24" aria-hidden="true">
-                    <use href="#icon-menu-lines"></use>
-                  </svg>
-                </button>
-              </header>
-              <div class="app-page">
-                <div class="stack-lg scroll-runway">
-                  <h3 class="heading-lg">Content with shared gutters</h3>
-                  <p class="body">
-                    The main region grows above the player. A wide container reserves the sidebar; a
-                    narrow container exposes the sticky topbar instead.
-                  </p>
-                  <p class="body">
-                    Scroll this frame to see native content scrolling while the player remains
-                    visible. The sidebar has its own scroll region and ends above the actual player
-                    height.
-                  </p>
+              <div class="app-stage">
+                <div class="atmosphere-frame" aria-hidden="true">
+                  <div class="atmosphere-lines"></div>
                 </div>
+                <aside class="sidebar app-sidebar stack-lg" aria-label="Shell specimen navigation">
+                  <span class="brand uppercase">Libras</span>
+                  <nav class="stack-sm" aria-label="Shell specimen links">
+                    <a class="menu-item" href="#shell-heading" aria-current="page">Your library</a>
+                    <a class="menu-item" href="#shell-heading">Search</a>
+                  </nav>
+                </aside>
+                <header class="topbar app-header row-md row-justify">
+                  <span class="brand uppercase">Libras</span>
+                  <button
+                    class="button"
+                    commandfor="guide-navigation"
+                    command="show-modal"
+                    aria-label="Open shell specimen menu"
+                  >
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-menu-lines"></use>
+                    </svg>
+                  </button>
+                </header>
+                <div class="app-page">
+                  <div class="stack-lg scroll-runway">
+                    <h3 class="heading-lg">Content with shared gutters</h3>
+                    <p class="body">
+                      The main region grows above the player. A wide container reserves the sidebar;
+                      a narrow container exposes the sticky topbar instead.
+                    </p>
+                    <p class="body">
+                      Scroll this frame to see native content scrolling while the player remains
+                      visible. The sidebar has its own scroll region and ends above the actual
+                      player height.
+                    </p>
+                  </div>
+                </div>
+                <footer class="mini-player app-player" aria-label="Music player specimen">
+                  <input
+                    class="seek mini-player-seek"
+                    type="range"
+                    min="0"
+                    max="200"
+                    value="102"
+                    style="--progress: 51%"
+                    aria-label="Playback position specimen"
+                    aria-valuetext="1:42 of 3:20"
+                  />
+                  <progress
+                    class="playback-progress mini-player-progress"
+                    max="200"
+                    value="102"
+                    aria-label="Playback progress specimen"
+                  ></progress>
+                  <button
+                    class="button-quiet row-sm"
+                    commandfor="guide-player"
+                    command="show-modal"
+                    aria-label="Open Now Playing specimen"
+                    aria-describedby="guide-track-title guide-track-artist"
+                  >
+                    <span class="artwork" data-size="md" aria-hidden="true">
+                      <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+                        <use href="#icon-music"></use>
+                      </svg>
+                    </span>
+                    <span class="stack-xs">
+                      <strong id="guide-track-title" class="label truncate"
+                        >A long track title with missing artwork</strong
+                      >
+                      <small id="guide-track-artist" class="caption text-secondary truncate"
+                        >Artist and guest artist</small
+                      >
+                    </span>
+                  </button>
+                  <div class="row-md">
+                    <button
+                      class="button only-desktop"
+                      aria-label="Previous track specimen"
+                      disabled
+                    >
+                      <svg width="24" height="24" aria-hidden="true">
+                        <use href="#icon-previous"></use>
+                      </svg>
+                    </button>
+                    <button class="button" data-variant="primary" aria-label="Play specimen">
+                      <svg width="24" height="24" aria-hidden="true">
+                        <use href="#icon-play"></use>
+                      </svg>
+                    </button>
+                    <button class="button only-desktop" aria-label="Next track specimen">
+                      <svg width="24" height="24" aria-hidden="true">
+                        <use href="#icon-next"></use>
+                      </svg>
+                    </button>
+                  </div>
+                </footer>
               </div>
-              <footer class="mini-player app-player" aria-label="Music player specimen">
-                <input
-                  class="seek mini-player-seek"
-                  type="range"
-                  min="0"
-                  max="200"
-                  value="102"
-                  style="--progress: 51%"
-                  aria-label="Playback position specimen"
-                  aria-valuetext="1:42 of 3:20"
-                />
-                <progress
-                  class="playback-progress mini-player-progress"
-                  max="200"
-                  value="102"
-                  aria-label="Playback progress specimen"
-                ></progress>
-                <button
-                  class="button-quiet row-sm"
-                  commandfor="guide-player"
-                  command="show-modal"
-                  aria-label="Open Now Playing specimen"
-                  aria-describedby="guide-track-title guide-track-artist"
-                >
-                  <span class="artwork" data-size="md" aria-hidden="true">
-                    <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
-                      <use href="#icon-music"></use>
-                    </svg>
-                  </span>
-                  <span class="stack-xs">
-                    <strong id="guide-track-title" class="label truncate"
-                      >A long track title with missing artwork</strong
-                    >
-                    <small id="guide-track-artist" class="caption text-secondary truncate"
-                      >Artist and guest artist</small
-                    >
-                  </span>
-                </button>
-                <div class="row-md">
-                  <button class="button only-desktop" aria-label="Previous track specimen" disabled>
-                    <svg width="24" height="24" aria-hidden="true">
-                      <use href="#icon-previous"></use>
-                    </svg>
-                  </button>
-                  <button class="button" data-variant="primary" aria-label="Play specimen">
-                    <svg width="24" height="24" aria-hidden="true">
-                      <use href="#icon-play"></use>
-                    </svg>
-                  </button>
-                  <button class="button only-desktop" aria-label="Next track specimen">
-                    <svg width="24" height="24" aria-hidden="true">
-                      <use href="#icon-next"></use>
-                    </svg>
-                  </button>
-                </div>
-              </footer>
             </div>
           </div>
         </section>

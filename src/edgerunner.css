@@ -62,18 +62,17 @@
    * Backgrounds are complete CSS backgrounds: replace with a color or layers.
    * No scoped palette overrides: editing this block updates all consumers.
    */
-  --canvas-bg:
-    repeating-linear-gradient(
-      135deg in oklab,
-      transparent 0 47px,
-      alpha(from var(--palette-maroon-tone-7) / 7%) 47px 48px
-    ),
-    radial-gradient(
-        ellipse at 100% 0% in oklab,
-        alpha(from var(--palette-maroon-shade-3) / 80%),
-        transparent 75%
-      )
-      var(--palette-maroon-shade-7);
+  --atmosphere-lines-bg: repeating-linear-gradient(
+    135deg in oklab,
+    transparent 0 47px,
+    alpha(from var(--palette-maroon-tone-7) / 7%) 47px 48px
+  );
+  --canvas-bg: radial-gradient(
+      ellipse at 100% 0% in oklab,
+      alpha(from var(--palette-maroon-shade-3) / 80%),
+      transparent 75%
+    )
+    var(--palette-maroon-shade-7);
 
   --surface-bg: linear-gradient(
     135deg in oklab,
@@ -1641,9 +1640,15 @@
     }
   }
 
+  /* Content-sized backdrop stages share a positioning and stacking boundary. */
+  .app-stage,
   .large-player-stage {
     position: relative;
     isolation: isolate;
+  }
+
+  .large-player-stage {
+    --atmosphere-viewport-height: 100cqh;
     min-block-size: 100%;
   }
 
@@ -1661,18 +1666,39 @@
       var(--large-player-padding-end);
   }
 
-  /* Route-owned decoration fills the positioned shell behind content and chrome. */
-  .atmosphere {
+  /* Each frame fills a content-sized stage, not the bounded scroll viewport.
+   * Clipping prevents transformed decoration from creating more scroll travel. */
+  .atmosphere-frame {
     position: absolute;
     inset: 0;
     z-index: -1;
-    opacity: 0.12;
+    overflow: clip;
+    pointer-events: none;
+  }
+
+  .atmosphere,
+  .atmosphere-lines {
+    position: absolute;
+    inset: 0;
     inline-size: 100%;
     block-size: 100%;
+
+    @supports ((animation-timeline: scroll()) and (animation-range: entry)) {
+      @media (prefers-reduced-motion: no-preference) {
+        animation: atmosphere-parallax linear both;
+        animation-timeline: scroll(nearest block);
+        animation-range: 0% 100%;
+      }
+    }
+  }
+
+  .atmosphere {
+    --atmosphere-compensation: 0.85;
     object-fit: cover;
     object-position: 65% top;
-    filter: blur(4px);
-    pointer-events: none;
+    opacity: 0.1;
+    scale: 1.06;
+    filter: var(--atmosphere-filter, blur(0)) blur(6px);
     mask-mode: alpha;
     mask-image: radial-gradient(
       ellipse at 85% 15%,
@@ -1680,6 +1706,26 @@
       alpha(from black / 16%) 65%,
       transparent
     );
+  }
+
+  .atmosphere-lines {
+    --atmosphere-compensation: 0.45;
+    background: var(--atmosphere-lines-bg);
+  }
+
+  @keyframes atmosphere-parallax {
+    from {
+      translate: 0 0;
+    }
+    to {
+      /* 100% is the layer/stage height. Subtract its actual scroll viewport:
+       * compensation = (1 - depth ratio) * scroll distance, with no JS or cap. */
+      translate: 0
+        max(
+          0px,
+          calc((100% - var(--atmosphere-viewport-height, 100dvh)) * var(--atmosphere-compensation))
+        );
+    }
   }
 }
 
@@ -1727,11 +1773,16 @@
   position: relative;
   isolation: isolate;
   min-block-size: 100dvh;
-  display: flex;
-  flex-direction: column;
   container: navigation / inline-size;
   anchor-name: --app-shell;
   anchor-scope: --app-shell, --mini-player, --app-status-actions;
+}
+
+.app-stage {
+  --atmosphere-viewport-height: var(--app-viewport-height, 100dvh);
+  display: flex;
+  flex-direction: column;
+  min-block-size: var(--app-viewport-height, 100dvh);
 }
 
 .app-page {
@@ -1761,7 +1812,7 @@
   z-index: var(--layer-player);
 }
 
-.app-shell > .app-status-actions {
+.app-stage > .app-status-actions {
   display: none;
 }
 
@@ -1772,7 +1823,7 @@
 }
 
 @container navigation (width <= 50rem) {
-  .app-shell > .app-sidebar {
+  .app-stage > .app-sidebar {
     display: none;
   }
 }
@@ -1782,12 +1833,12 @@
     padding-inline-start: calc(var(--sidebar-width) + var(--content-padding-inline));
   }
 
-  .app-shell > .app-header {
+  .app-stage > .app-header {
     display: none;
   }
   /* Separate desktop invokers share the same native notification popovers.
    * Reserve the controls' intrinsic height above the player. */
-  .app-shell > .app-status-actions {
+  .app-stage > .app-status-actions {
     display: flex;
     position: fixed;
     inset: auto auto anchor-size(--mini-player height, 0px) 0;
@@ -1816,10 +1867,19 @@
 
   .app-sidebar {
     position: absolute;
+    inset-block-end: auto;
+    block-size: calc(
+      var(--app-viewport-height) - anchor-size(--mini-player height, 0px) -
+        anchor-size(--app-status-actions height, 0px)
+    );
   }
   @container navigation (width > 50rem) {
     .app-status-actions {
       position: absolute;
+      /* The stage can exceed the viewport; keep chrome in its original budget. */
+      inset-block-end: calc(
+        100% - var(--app-viewport-height) + anchor-size(--mini-player height, 0px)
+      );
     }
   }
   .large-player {

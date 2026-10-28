@@ -6,6 +6,7 @@
   import { Playlists } from "./playlists.svelte";
   import AudioPlayer from "./audio-player.svelte";
   import Player from "./ui/player.svelte";
+  import Atmosphere from "./ui/atmosphere.svelte";
   import Loader from "./ui/loader.svelte";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
@@ -140,18 +141,22 @@
 />
 
 {#snippet settingsRoute()}
+  <Atmosphere />
   <Settings {session} />
 {/snippet}
 
 {#snippet downloadsRoute()}
+  <Atmosphere />
   <Downloads {cache} {covers} {trackEngine} {loading} />
 {/snippet}
 
 {#snippet libraryRoute()}
+  <Atmosphere />
   <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} />
 {/snippet}
 
 {#snippet searchRoute()}
+  <Atmosphere />
   <SearchRoute {cache} {covers} {trackEngine} {session} {playback} state={searchState} />
 {/snippet}
 
@@ -262,105 +267,107 @@
 
 <div class="app-root" class:standalone={!embedded}>
   <div class="app-shell" data-embedded={embedded || undefined}>
-    {#snippet actions()}
-      {#if hasErrors}
-        <button
-          class="button"
-          data-variant="ghost"
-          commandfor="error-popover"
-          command="toggle-popover"
-          aria-label="Show errors"
-          title="Show errors"
-        >
-          <Icon name="error" color="var(--error-text)" />
-        </button>
-      {/if}
-    {/snippet}
-    <aside class="sidebar app-sidebar stack-lg" aria-label="Navigation">
-      {@render brand()}
-      {@render navigation()}
-    </aside>
-    <header class="topbar app-header row-md row-justify row-wrap">
-      {@render brand()}
-      <div class="row-sm">
-        {@render actions()}
-        <a class="button" href="#/search" aria-label="Search"><Icon name="search" size={24} /></a>
-        <button
-          class="button"
-          data-size={appUpdate?.hasUpdate ? "text" : undefined}
-          data-variant={appUpdate?.hasUpdate ? "secondary" : undefined}
-          aria-label="Open menu"
-          aria-describedby={appUpdate?.hasUpdate ? "navigation-update-hint" : undefined}
-          aria-controls="navigation-dialog"
-          aria-expanded={navigationOpen}
-          commandfor="navigation-dialog"
-          command="show-modal"
-        >
-          {#if appUpdate?.hasUpdate}
-            <span id="navigation-update-hint" class="caption text-subtle">Update</span>
-          {/if}
-          <Icon name="menu-lines" size={24} />
-        </button>
-      </div>
-    </header>
-    {#if hasErrors}
-      <div class="row-sm app-status-actions">{@render actions()}</div>
-    {/if}
-    <main class="app-page">
-      <Router
-        {embedded}
-        routes={[
-          { pattern: "/library", render: libraryRoute },
-          { pattern: "/search", render: searchRoute },
-          { pattern: "/library/artist/:artistId/album/:albumId", render: albumRoute },
-          { pattern: "/library/artist/:artistId", render: artistRoute },
-          { pattern: "/settings", render: settingsRoute },
-          { pattern: "/downloads", render: downloadsRoute },
-        ]}
-      />
-    </main>
-    <Player {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
-    {#if hasErrors}
-      <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
-        <div class="stack-sm">
-          {#each alerts as alert (alert.id)}
-            {#if alert.message}
-              <p class="card caption" role="alert">{alert.message}</p>
-            {/if}
-          {/each}
-        </div>
-        <button
-          class="button"
-          data-variant="ghost"
-          aria-label="Close errors"
-          commandfor="error-popover"
-          command="hide-popover"><Icon name="cross" /></button
-        >
-      </div>
-    {/if}
-    <dialog
-      class="right-sheet"
-      id="navigation-dialog"
-      aria-label="Navigation"
-      closedby="any"
-      bind:this={navigationDrawer}
-      ontoggle={() => {
-        navigationOpen = navigationDrawer.open;
-      }}
-    >
-      <div class="stack-lg">
-        <header class="row-md row-justify">
-          {@render brand()}
+    <div class="app-stage">
+      {#snippet actions()}
+        {#if hasErrors}
           <button
             class="button"
-            aria-label="Close menu"
-            commandfor="navigation-dialog"
-            command="close"><Icon name="cross" size={24} /></button
+            data-variant="ghost"
+            commandfor="error-popover"
+            command="toggle-popover"
+            aria-label="Show errors"
+            title="Show errors"
           >
-        </header>
+            <Icon name="error" color="var(--error-text)" />
+          </button>
+        {/if}
+      {/snippet}
+      <aside class="sidebar app-sidebar stack-lg" aria-label="Navigation">
+        {@render brand()}
         {@render navigation()}
-      </div>
-    </dialog>
+      </aside>
+      <header class="topbar app-header row-md row-justify row-wrap">
+        {@render brand()}
+        <div class="row-sm">
+          {@render actions()}
+          <a class="button" href="#/search" aria-label="Search"><Icon name="search" size={24} /></a>
+          <button
+            class="button"
+            data-size={appUpdate?.hasUpdate ? "text" : undefined}
+            data-variant={appUpdate?.hasUpdate ? "secondary" : undefined}
+            aria-label="Open menu"
+            aria-describedby={appUpdate?.hasUpdate ? "navigation-update-hint" : undefined}
+            aria-controls="navigation-dialog"
+            aria-expanded={navigationOpen}
+            commandfor="navigation-dialog"
+            command="show-modal"
+          >
+            {#if appUpdate?.hasUpdate}
+              <span id="navigation-update-hint" class="caption text-subtle">Update</span>
+            {/if}
+            <Icon name="menu-lines" size={24} />
+          </button>
+        </div>
+      </header>
+      {#if hasErrors}
+        <div class="row-sm app-status-actions">{@render actions()}</div>
+      {/if}
+      <main class="app-page">
+        <Router
+          {embedded}
+          routes={[
+            { pattern: "/library", render: libraryRoute },
+            { pattern: "/search", render: searchRoute },
+            { pattern: "/library/artist/:artistId/album/:albumId", render: albumRoute },
+            { pattern: "/library/artist/:artistId", render: artistRoute },
+            { pattern: "/settings", render: settingsRoute },
+            { pattern: "/downloads", render: downloadsRoute },
+          ]}
+        />
+      </main>
+      <Player {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
+      {#if hasErrors}
+        <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
+          <div class="stack-sm">
+            {#each alerts as alert (alert.id)}
+              {#if alert.message}
+                <p class="card caption" role="alert">{alert.message}</p>
+              {/if}
+            {/each}
+          </div>
+          <button
+            class="button"
+            data-variant="ghost"
+            aria-label="Close errors"
+            commandfor="error-popover"
+            command="hide-popover"><Icon name="cross" /></button
+          >
+        </div>
+      {/if}
+      <dialog
+        class="right-sheet"
+        id="navigation-dialog"
+        aria-label="Navigation"
+        closedby="any"
+        bind:this={navigationDrawer}
+        ontoggle={() => {
+          navigationOpen = navigationDrawer.open;
+        }}
+      >
+        <div class="stack-lg">
+          <header class="row-md row-justify">
+            {@render brand()}
+            <button
+              class="button"
+              aria-label="Close menu"
+              commandfor="navigation-dialog"
+              command="close"><Icon name="cross" size={24} /></button
+            >
+          </header>
+          {@render navigation()}
+        </div>
+      </dialog>
+    </div>
   </div>
 
   {#if Updater}
