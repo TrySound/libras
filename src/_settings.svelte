@@ -93,9 +93,11 @@
               </span>
             {:else}
               <span>
-                {connectionLabel}
+                {#if connectionState !== "connected"}{connectionLabel}{/if}
                 {#if session.auth && !connectionLoading}
-                  {connectionState === "offline" || connectionFailed ? " · " : " to "}
+                  {#if connectionState === "offline" || connectionFailed}
+                    ·
+                  {/if}
                   <span id="settings-server-identity">{session.auth.username}@{serverAddress}</span>
                 {/if}
               </span>

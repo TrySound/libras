@@ -121,7 +121,7 @@ describe("app settings", () => {
     modified.resolve(100);
     await vi.waitFor(() => expect(session.syncing).toBe(false));
     flushSync();
-    expect(status.textContent).toContain("Connected");
+    expect(status.textContent?.trim()).toBe("listener@music.example");
     expect(status.querySelector(".loader")).toBeNull();
   });
 
@@ -270,7 +270,7 @@ describe("app settings", () => {
         expect(status.querySelector(".loader")).not.toBeNull();
       }
     };
-    expectStatus("check", "Connected");
+    expectStatus("check", "listener@music.example");
     session.status = "error";
     expectStatus("cross", "Connection failed");
     await session.setOfflineMode(true);
@@ -451,7 +451,7 @@ describe("app settings", () => {
       if (saved) {
         flushSync();
         const status = target.querySelector("#settings-connection-status")!;
-        expect(status.textContent).toContain("Connected");
+        expect(status.textContent?.trim()).toBe("listener@music.example");
         expect(status.textContent).not.toContain("Synchronizing");
         expect(status.querySelector(".loader")).toBeNull();
         expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refreshing…");
@@ -502,7 +502,7 @@ describe("app settings", () => {
       await loading;
       await vi.waitFor(() => expect(session.syncing).toBe(false));
       flushSync();
-      expect(status.textContent).toContain("Connected");
+      expect(status.textContent?.trim()).toBe("listener@music.example");
       expect(status.querySelector("#settings-library-progress")).toBeNull();
       expect(status.querySelector(".loader")).toBeNull();
       expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-check");
@@ -515,7 +515,9 @@ describe("app settings", () => {
     expect(server.querySelector("#settings-server-identity")?.textContent).toBe(
       `${credentials.username}@${new URL(credentials.host).host}`,
     );
-    expect(server.querySelector("#settings-connection-status")?.textContent).toContain("Connected");
+    expect(server.querySelector("#settings-connection-status")?.textContent?.trim()).toBe(
+      "listener@music.example",
+    );
     expect(server.querySelectorAll("button")).toHaveLength(2);
     expect(button("Refresh library")).toBeDefined();
     expect(button("Disconnect")).toBeDefined();
