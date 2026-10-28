@@ -380,8 +380,11 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
     await page.keyboard.press("Home");
     await page.waitForFunction(() => document.querySelector(".mini-player progress").value === 0);
     await page.keyboard.press("ArrowRight");
-    await page.waitForFunction(() => document.querySelector(".mini-player progress").value > 0);
-    assert.ok(Number(await fullscreenSeek.inputValue()) > 0);
+    await page.waitForFunction(
+      () =>
+        Number(document.querySelector("#player-dialog .seek").value) > 0 &&
+        document.querySelector(".mini-player progress").value > 0,
+    );
     await dialog.getByRole("button", { name: "Play", exact: true }).click();
     await page.waitForFunction(() => !window.__audioInstances[0].paused);
 

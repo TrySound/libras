@@ -140,7 +140,8 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
 - Artist and album routes keep their markup inline, sharing layout and overlay styles.
   Preserve offline filtering, ordered playback, and collection/track action scope.
   Cover height budgeting and route-owned atmosphere are CSS-only.
-- Now Playing (`src/ui/now-playing.svelte`) is a native fullscreen dialog using the shared
+- `src/ui/player.svelte` owns both mini-player and Now Playing presentation, sharing
+  derived playback state. Now Playing is a native fullscreen dialog using the shared
   split layout, artwork budget, seek, transports, and queue rows. The dialog alone scrolls;
   embedded instances stay anchored and budgeted to their app viewport. Queue selection uses
   original occurrence indexes, not filtered row indexes. App retains Session/AudioPlayer ownership;

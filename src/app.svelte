@@ -6,7 +6,6 @@
   import { Playlists } from "./playlists.svelte";
   import AudioPlayer from "./audio-player.svelte";
   import Player from "./ui/player.svelte";
-  import NowPlaying from "./ui/now-playing.svelte";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
@@ -301,7 +300,7 @@
         ]}
       />
     </main>
-    <Player {cache} {covers} {playback} audio={player} />
+    <Player {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
     {#if hasErrors}
       <div
         id="error-popover"
@@ -380,7 +379,6 @@
         {@render navigation()}
       </div>
     </dialog>
-    <NowPlaying {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
   </div>
 
   {#if Updater}
