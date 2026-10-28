@@ -8,7 +8,9 @@ it("serves the complete landing page without executing JavaScript", () => {
   const page = new DOMParser().parseFromString(html, "text/html");
 
   expect(page.querySelectorAll("h1")).toHaveLength(1);
-  expect(page.querySelector("h1")?.textContent).toContain("Your own music library.");
+  expect(page.querySelector("h1")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+    "Connect your music library and listen anywhere.",
+  );
   expect(page.querySelectorAll(".site-feature")).toHaveLength(5);
   expect(page.querySelectorAll(".site-faq-list details[name=faq]")).toHaveLength(5);
   expect(page.querySelector(".site-faq-list")?.textContent).toContain(
@@ -19,6 +21,13 @@ it("serves the complete landing page without executing JavaScript", () => {
   expect(page.querySelector('a[href="/demo/"]')?.textContent).toContain("Try live demo");
   expect(page.querySelectorAll(".app-root")).toHaveLength(0);
   expect(page.querySelectorAll('a[href="/webapp/"]')).toHaveLength(2);
+  expect(page.querySelectorAll('a[data-variant="primary"][href="/webapp/"]')).toHaveLength(2);
+  expect(page.querySelectorAll('.button[data-size="text"]')).toHaveLength(3);
+  expect(page.querySelector('a[href="/demo/"]')?.getAttribute("data-variant")).toBe("secondary");
+  expect(page.querySelector('meta[name="theme-color"]')?.getAttribute("content")).toBe("#2f0000");
+  expect(page.querySelector('link[rel="preload"][as="font"]')?.getAttribute("href")).toBe(
+    "../src/fonts/rajdhani-700-latin.woff2",
+  );
   expect(page.querySelector('a[href="/catalog/credits.html"]')).not.toBeNull();
   expect(page.querySelectorAll(".site-waveform span")).toHaveLength(25);
 

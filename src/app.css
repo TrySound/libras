@@ -1,30 +1,12 @@
-/* Legacy website foundations. The music application uses edgerunner.css.
- * Keep website rules out of the embedded application. */
+@import "./edgerunner.css";
+
+/* Website foundations share Edgerunner tokens without exposing host styles
+ * to the embedded music application. */
 @scope (.website) to (.app-root) {
   :scope {
-    /* Palette, spacing, shape, and typography primitives. */
     --palette-transparent: transparent;
-    --palette-black: #000;
-    --palette-white: #fff;
-    --palette-gray-100: #f5f6f8;
-    --palette-gray-300: #979ead;
-    --palette-gray-600: #292f3c;
-    --palette-gray-900: #10131a;
-    --palette-crimson-300: #c94d60;
-    --palette-crimson-500: #9f2940;
-    --palette-crimson-700: #341c24;
-    --palette-green-500: #53d58b;
-
-    --space-sm: 0.5rem;
-    --space-md: 1rem;
-    --space-lg: 1.5rem;
-    --space-xl: 2rem;
-    --radius-xs: 0.25rem;
-    --radius-sm: 0.5rem;
     --radius-pill: 999px;
     --radius-circle: 50%;
-
-    --font-sans: system-ui, sans-serif;
     --text-sm: 0.875rem;
     --text-md: 1rem;
     --weight-regular: 400;
@@ -33,11 +15,11 @@
     --tracking-normal: normal;
 
     /* Semantic roles shared by website controls and marketing layout. */
-    --color-text-primary: var(--palette-gray-100);
-    --color-text-muted: var(--palette-gray-300);
-    --color-text-accent: var(--palette-crimson-300);
-    --color-status-success: var(--palette-green-500);
-    --surface-page-background: var(--palette-gray-900);
+    --color-text-primary: var(--text-primary);
+    --color-text-muted: var(--text-subtle);
+    --color-text-accent: var(--accent);
+    --color-status-success: var(--accent);
+    --surface-page-background: var(--surface-bg);
     --surface-lifted-shadow: 0 0 0.5rem rgb(from var(--palette-black) r g b / 50%);
     --body-size: var(--text-md);
     --body-weight: var(--weight-regular);
@@ -47,8 +29,8 @@
     --control-tracking: var(--tracking-normal);
     --transition-control: 160ms ease-out;
     --transition-overlay: 180ms ease;
-    --focus-outline: 2px solid var(--color-text-accent);
-    --focus-outline-offset: 2px;
+    --focus-outline: var(--focus-ring);
+    --focus-outline-offset: var(--focus-ring-offset);
 
     font-family: var(--font-sans);
     font-size: var(--body-size);
@@ -115,46 +97,6 @@
     border: 0;
   }
 
-  .button {
-    --control-dimension: 3rem;
-    --control-padding: 1.2rem;
-    --control-background: rgb(from var(--palette-white) r g b / 3%);
-    --control-border: rgb(from var(--palette-white) r g b / 9%);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.65rem;
-    box-sizing: border-box;
-    min-height: var(--control-dimension);
-    padding: 0.4rem var(--control-padding);
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-sm);
-    color: var(--color-text-primary);
-    background: var(--control-background);
-    box-shadow: var(--surface-lifted-shadow);
-    font-family: var(--font-sans);
-    font-size: var(--text-sm);
-    font-weight: var(--control-weight);
-    line-height: 1.5;
-    letter-spacing: var(--control-tracking);
-    text-align: center;
-    text-decoration: none;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-
-    @media (hover: hover) {
-      &:hover:not(:active) {
-        background: color-mix(in srgb, var(--control-background) 94%, var(--color-text-primary) 6%);
-        border-color: color-mix(in srgb, var(--control-border) 88%, var(--color-text-primary) 12%);
-      }
-    }
-    @media (prefers-reduced-motion: no-preference) {
-      transition:
-        background-color var(--transition-control),
-        border-color var(--transition-control);
-    }
-  }
-
   .icon-button {
     --control-dimension: 2.25rem;
     display: inline-grid;
@@ -177,7 +119,6 @@
     }
   }
 
-  .button:focus-visible,
   .icon-button:focus-visible,
   .text-link:focus-visible {
     outline: var(--focus-outline);

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  <title>Libras — Your own music library. Listen anywhere.</title>
+  <title>Libras — Connect your music library and listen anywhere.</title>
   <!-- Project palette from src/edgerunner.css, with stronger contrast for social artwork. -->
   <defs>
     <radialGradient id="glow" cx="100%" cy="0%" r="100%">

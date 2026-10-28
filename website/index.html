@@ -3,10 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#090b10" />
+    <meta name="theme-color" content="#2f0000" />
+    <link
+      rel="preload"
+      href="../src/fonts/rajdhani-700-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <meta
       name="description"
-      content="Your own music library. Listen anywhere. Libras is a free, open-source player for your own music server. Listen in your browser, take music offline, and make yourself at home."
+      content="Connect your music library and listen anywhere. Libras is a free, open-source player for your own music server. Listen in your browser, take music offline, and make yourself at home."
     />
     <link rel="canonical" href="https://libras-music.app/" />
     <meta property="og:type" content="website" />
@@ -23,7 +30,7 @@
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="Libras scales logo. Your own music library. Listen anywhere."
+      content="Libras scales logo. Connect your music library and listen anywhere."
     />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Libras — A free, open-source music player" />
@@ -34,7 +41,7 @@
     <meta name="twitter:image" content="https://libras-music.app/webapp/og.png" />
     <meta
       name="twitter:image:alt"
-      content="Libras scales logo. Your own music library. Listen anywhere."
+      content="Libras scales logo. Connect your music library and listen anywhere."
     />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <title>Libras — A free, open-source music player</title>
@@ -42,7 +49,7 @@
     <style>
       body {
         margin: 0;
-        background: #090b10;
+        background: #130000;
       }
     </style>
   </head>
@@ -62,16 +69,20 @@
           <span>Libras</span>
         </a>
         <h1 class="display-xl container-md" id="hero-title">
-          <span>Your own music library.</span>
-          <span>Listen anywhere.</span>
+          <span>Connect your music library</span>
+          <span>and listen anywhere.</span>
         </h1>
         <p class="site-hero-description text-muted">
           A music player for Navidrome and OpenSubsonic-compatible servers. Stream your library or
           download music for offline listening.
         </p>
         <div class="site-actions">
-          <a class="button" href="/webapp/">Connect your server</a>
-          <a class="button" href="%BASE_URL%demo/">Try live demo</a>
+          <a class="button" data-size="text" data-variant="primary" href="/webapp/"
+            >Connect your server</a
+          >
+          <a class="button" data-size="text" data-variant="secondary" href="%BASE_URL%demo/"
+            >Try live demo</a
+          >
         </div>
       </section>
 
@@ -282,7 +293,9 @@
         <h2 class="display-lg container-md" id="cta-title">
           Your favorite songs are already in your library.
         </h2>
-        <a class="button" href="/webapp/">Start listening</a>
+        <a class="button" data-size="text" data-variant="primary" href="/webapp/"
+          >Start listening</a
+        >
       </section>
       <footer class="site-footer site-container">
         <div>

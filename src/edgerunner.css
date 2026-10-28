@@ -783,7 +783,10 @@
       cursor: default;
     }
   }
+}
 
+/* Buttons share one implementation across the player and marketing website. */
+@scope (.app-root, .design-reference, .website) {
   /* Content + padding determine size. Omitted size is md and omitted variant is
    ghost. SVG dimensions are authored on each inline SVG, never inferred here. */
   .button {
@@ -889,7 +892,9 @@
       cursor: not-allowed;
     }
   }
+}
 
+@scope (.app-root, .design-reference) {
   /* Foreground artwork shares surfaces, crop, geometry and missing-cover state. */
   .artwork {
     box-sizing: border-box;

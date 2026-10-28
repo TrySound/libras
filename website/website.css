@@ -1,19 +1,19 @@
 @import "../src/app.css";
 
-/* Website layout extends its legacy foundations. */
-@scope (.website) {
+/* Marketing composition uses the player's shared Edgerunner palette and roles. */
+@scope (.website) to (.app-root) {
   :scope {
-    --site-background: #090b10;
-    --site-border: rgb(from var(--palette-white) r g b / 9%);
-    --site-faint: #6d7585;
-    --site-accent: #f294a4;
-    --site-accent-glow: rgb(from var(--palette-crimson-500) r g b / 20%);
-    --site-radius: 1rem;
+    --site-background: var(--palette-maroon-shade-7);
+    --site-border: var(--shell-border);
+    --site-faint: var(--text-subtle);
+    --site-accent: var(--accent);
+    --site-accent-glow: rgb(from var(--palette-maroon-tint-1) r g b / 35%);
+    --site-radius: var(--radius-xl);
     --site-max-width: 1120px;
     --site-gutter: clamp(1.25rem, 4vw, 3rem);
     --site-section-space: clamp(5rem, 10vw, 8rem);
-    --site-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
-    background: var(--site-background);
+    --site-font-mono: var(--font-mono);
+    background: var(--atmosphere-lines-bg), var(--canvas-bg);
     color: var(--color-text-primary);
     overflow: clip;
     -webkit-font-smoothing: antialiased;
@@ -48,8 +48,9 @@
   .display-xl {
     margin: 0;
     font-size: clamp(3rem, 7.6vw, 6.4rem);
-    font-weight: 650;
-    letter-spacing: -0.04em;
+    font-family: var(--font-display);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: var(--tracking-tighter);
     line-height: 1.04;
     text-wrap: balance;
   }
@@ -57,17 +58,19 @@
   .display-lg {
     margin: 0;
     font-size: clamp(2rem, 4vw, 3rem);
-    font-weight: 550;
-    letter-spacing: -0.04em;
+    font-family: var(--font-display);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: var(--tracking-tight);
     line-height: 1.15;
     text-wrap: balance;
   }
 
   .display-md {
     margin: 0;
-    font-size: 1.1rem;
-    font-weight: 550;
-    letter-spacing: -0.025em;
+    font-family: var(--heading-md-font);
+    font-size: var(--heading-md-size);
+    font-weight: var(--heading-md-weight);
+    letter-spacing: var(--heading-md-tracking);
     line-height: 1.4;
     text-wrap: balance;
   }
@@ -106,9 +109,28 @@
   }
 
   .site-hero h1 {
-    background: linear-gradient(120deg, #faf0f1 30%, #a49ba7 70%, #626779);
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--text-primary);
+  }
+
+  .site-hero h1 span {
+    display: block;
+  }
+
+  .site-hero h1 span + span {
+    color: var(--site-accent);
+  }
+
+  .site-hero > a,
+  .site-footer > div a {
+    font-family: var(--brand-font);
+    font-weight: var(--brand-weight);
+    letter-spacing: var(--brand-tracking);
+    text-transform: uppercase;
+  }
+
+  a:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
   }
 
   .site-hero-description {
@@ -116,6 +138,13 @@
     font-size: clamp(1rem, 2vw, 1.125rem);
     line-height: 1.8;
     text-wrap: balance;
+  }
+
+  /* Only marketing typography differs; shape and states use the shared button. */
+  .button {
+    font-family: var(--font-display);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-semibold);
   }
 
   .site-actions {
@@ -142,9 +171,10 @@
     grid-column: span 2;
     overflow: hidden;
     padding: 2rem;
-    border: 1px solid var(--site-border);
+    border: var(--border-width) solid var(--site-border);
     border-radius: var(--site-radius);
-    background: linear-gradient(135deg, #ffffff03, transparent 60%), var(--surface-page-background);
+    corner-shape: var(--corner-shape);
+    background: var(--surface-bg);
   }
 
   .site-feature-library {
@@ -162,9 +192,10 @@
     height: 2.3rem;
     flex: none;
     border: 1px solid var(--site-border);
-    border-radius: 0.65rem;
-    color: var(--color-text-muted);
-    background: #ffffff03;
+    border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
+    color: var(--site-accent);
+    background: var(--secondary-bg);
   }
 
   .site-record-scene {
@@ -183,8 +214,16 @@
     width: 14rem;
     aspect-ratio: 1;
     padding: 1rem;
-    border: 1px solid #ffffff30;
-    background: linear-gradient(155deg, #c17b83, #74313e 50%, #311e2a);
+    border: var(--border-width) solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    corner-shape: var(--corner-shape);
+    color: var(--site-accent);
+    background: linear-gradient(
+      155deg,
+      var(--palette-maroon-tint-1),
+      var(--palette-maroon-shade-0) 50%,
+      var(--palette-maroon-shade-6)
+    );
     box-shadow: 4px 8px 30px #0008;
   }
 
@@ -202,9 +241,13 @@
     place-items: center;
     width: 13rem;
     height: 13rem;
-    border: 1px solid #ffffff20;
+    border: 1px solid var(--surface-border);
     border-radius: 50%;
-    background: repeating-radial-gradient(circle, #18181d 0 1px, #09090e 2px 3px);
+    background: repeating-radial-gradient(
+      circle,
+      var(--palette-maroon-shade-5) 0 1px,
+      var(--palette-maroon-shade-7) 2px 3px
+    );
     box-shadow: 8px 10px 30px #0005;
   }
 
@@ -214,7 +257,7 @@
     width: 4rem;
     height: 4rem;
     border-radius: 50%;
-    background: var(--palette-crimson-700);
+    background: var(--palette-maroon-shade-0);
     color: var(--site-accent);
   }
 
@@ -226,7 +269,7 @@
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    font-size: 0.65rem;
+    font-size: var(--caption-size);
   }
 
   .site-download-art {
@@ -236,13 +279,14 @@
     width: 2.2rem;
     height: 2.2rem;
     border-radius: var(--radius-xs);
-    background: linear-gradient(135deg, #48695f, #1f3238);
+    color: var(--site-accent);
+    background: var(--shell-bg);
   }
 
   .site-install-visual small {
     display: block;
     color: var(--site-faint);
-    font-size: 0.6rem;
+    font-size: var(--caption-size);
   }
 
   .site-download-check {
@@ -254,7 +298,7 @@
     height: 3px;
     margin-top: 1rem;
     border-radius: var(--radius-pill);
-    background: linear-gradient(90deg, #52776d, #83b39f);
+    background: var(--site-accent);
   }
 
   .site-waveform {
@@ -269,12 +313,12 @@
   .site-waveform > span {
     flex: 1;
     border-radius: 2px;
-    background: var(--palette-gray-600);
+    background: var(--palette-maroon-tone-7);
   }
 
   .site-waveform > .site-waveform-played {
     background: var(--site-accent);
-    opacity: 0.65;
+    opacity: 1;
   }
 
   .site-install-visual {
@@ -284,8 +328,9 @@
     margin-top: var(--space-md);
     padding: 0.75rem;
     border: 1px solid var(--site-border);
-    border-radius: 0.75rem;
-    background: #ffffff02;
+    border-radius: var(--radius-md);
+    corner-shape: var(--corner-shape);
+    background: var(--surface-bg);
     font-size: 0.8rem;
   }
 
@@ -296,8 +341,10 @@
     height: 2.5rem;
     flex: none;
     border: 1px solid var(--site-border);
-    border-radius: 0.5rem;
-    background: linear-gradient(150deg, #2b2b35, #12141b);
+    border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
+    color: var(--site-accent);
+    background: var(--shell-bg);
   }
 
   .site-code-icon {
@@ -381,8 +428,10 @@
     height: 5rem;
     margin-inline: auto;
     border: 1px solid var(--site-border);
-    border-radius: 1.5rem;
-    background: linear-gradient(145deg, #28212b, #11131b);
+    border-radius: var(--radius-xl);
+    corner-shape: var(--corner-shape);
+    color: var(--site-accent);
+    background: var(--shell-bg);
     box-shadow: 0 5px 30px #0006;
   }
 
@@ -399,6 +448,22 @@
     gap: 2rem;
     padding-block: 2.5rem;
     border-top: 1px solid var(--site-border);
+  }
+
+  @media (forced-colors: active) {
+    :scope {
+      --site-background: Canvas;
+      --site-border: CanvasText;
+      --site-faint: CanvasText;
+      --site-accent: LinkText;
+      --color-text-primary: CanvasText;
+      --color-text-muted: CanvasText;
+      --color-text-accent: LinkText;
+      --text-primary: CanvasText;
+      --surface-border: ButtonText;
+      --focus-ring: 4px solid Highlight;
+      background: Canvas;
+    }
   }
 
   @media (hover: hover) {
