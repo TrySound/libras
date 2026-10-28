@@ -178,15 +178,7 @@
 {/snippet}
 
 {#snippet searchRoute()}
-  <SearchRoute
-    {cache}
-    {covers}
-    {trackEngine}
-    {session}
-    {playback}
-    playbackState={playbackLoading ? "loading" : player?.playing ? "playing" : "paused"}
-    state={searchState}
-  />
+  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} state={searchState} />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}

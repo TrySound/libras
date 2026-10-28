@@ -31,7 +31,6 @@ it("focuses the input, expands results, retains route state, and uses album play
       artistAlbums: new Map([["artist", [{ id: "album" }]]]),
     },
     session: { localReady: true, offlineMode: false, refreshError: "Synchronization failed." },
-    playbackState: "playing",
     trackEngine: { getStatus: () => "downloaded", downloadMany },
     covers: {
       ensureCover: () => cover,
@@ -57,9 +56,8 @@ it("focuses the input, expands results, retains route state, and uses album play
     expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(3);
     expect(target.querySelectorAll("section .track-row")).toHaveLength(3);
     expect(target.querySelector("search label")?.getAttribute("for")).toBe(input.id);
-    expect(
-      target.querySelector('.track-row[aria-current="true"] [aria-label="Playing"]'),
-    ).not.toBeNull();
+    expect(target.querySelector('.track-row[aria-current="true"]')).not.toBeNull();
+    expect(target.querySelectorAll(".track-row-number")).toHaveLength(0);
     expect(target.querySelectorAll("dialog")).toHaveLength(1);
     match.mockClear();
     button("Show more tracks").click();

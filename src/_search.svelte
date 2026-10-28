@@ -141,7 +141,6 @@
     trackEngine,
     session,
     playback,
-    playbackState = "paused",
     state: searchState,
   }: {
     cache: Cache;
@@ -149,7 +148,6 @@
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
-    playbackState?: "loading" | "playing" | "paused";
     state: SearchState;
   } = $props();
 
@@ -347,30 +345,12 @@
               <span class="metadata text-subtle">{total}</span>
             </header>
             <div class="stack-sm">
-              {#each records as record, index (record.id)}
+              {#each records as record (record.id)}
                 {@const track = group === "Tracks" ? cache.tracks.get(record.id) : undefined}
-                {@const downloadStatus = track ? trackEngine.getStatus(track.id) : undefined}
                 <div
                   class="menu-item track-row"
                   aria-current={track && currentTrackId === track.id ? "true" : undefined}
                 >
-                  {#if track}
-                    <span class="track-row-number metadata text-subtle">
-                      {#if currentTrackId === track.id && playbackState === "loading"}
-                        <span role="img" aria-label="Loading playback"><Loader /></span>
-                      {:else if currentTrackId === track.id && playbackState === "playing"}
-                        <span role="img" aria-label="Playing"
-                          ><Icon name="sound-bars" size={24} color="var(--accent)" /></span
-                        >
-                      {:else if downloadStatus === "downloading"}
-                        <span role="img" aria-label="Downloading"><Loader /></span>
-                      {:else if downloadStatus === "queued"}
-                        <span role="img" aria-label="Queued for download"
-                          ><Icon name="clock" size={24} /></span
-                        >
-                      {:else}{String(index + 1).padStart(2, "0")}{/if}
-                    </span>
-                  {/if}
                   <div class="row-sm">
                     <Artwork {covers} id={record.artworkId} size="sm" />
                     <div>
