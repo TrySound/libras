@@ -107,6 +107,9 @@
   --ghost-bg-active: var(--palette-maroon-shade-0);
   --ghost-text: var(--palette-white);
 
+  --quiet-text-hover: var(--palette-gold-tint-7);
+  --quiet-text-active: var(--palette-gold-tint-4);
+
   --item-bg: transparent;
   --item-bg-hover: alpha(from var(--palette-maroon-shade-2) / 72%);
   --item-bg-active: alpha(from var(--palette-maroon-shade-2) / 72%);
@@ -734,12 +737,32 @@
     translate: 0;
     scale: 1;
 
+    @media (hover: hover) {
+      &:hover:not(:disabled, [aria-disabled="true"]) {
+        color: var(--quiet-text-hover);
+
+        /* Explicit caption/label colors must not hide interaction feedback. */
+        :is(.label, .caption) {
+          color: inherit;
+        }
+      }
+    }
+
+    &:active:not(:disabled, [aria-disabled="true"]) {
+      color: var(--quiet-text-active);
+
+      :is(.label, .caption) {
+        color: inherit;
+      }
+    }
+
     @media (prefers-reduced-motion: no-preference) {
       transition:
+        color var(--motion-duration-feedback),
         translate var(--motion-duration-press),
         scale var(--motion-duration-press);
 
-      &:active:not(:disabled) {
+      &:active:not(:disabled, [aria-disabled="true"]) {
         translate: 0 var(--press-offset);
         scale: var(--press-scale);
       }

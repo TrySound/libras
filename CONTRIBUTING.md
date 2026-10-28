@@ -61,6 +61,8 @@ Explicit login validation uses its existing authenticated `ping()` request to ve
 
 Library synchronization reads OpenSubsonic structured `genres` on albums and tracks. Names and their order are preserved as supplied, including duplicates; delimiters such as `|` remain part of a name. Missing genres become empty arrays, without falling back to legacy `genre` strings. ArtistID3 has no genre fields, so artist records do not store genres. The artist page derives its genres from the artist's albums.
 
+Genre lists render on their own caption row, joined with ` · `, separate from counts, years, durations, and artist/album credits. Omit the row when genres are absent. Other metadata fields also use middle dots as separators; preserve punctuation inside supplied names and display credits.
+
 ### Artist credits
 
 Library synchronization reads OpenSubsonic `artists` and `displayArtist` on albums and tracks, without falling back to legacy `artist` or `artistId` response fields. Artist records and structured credits require IDs and names. Albums and tracks store ordered `artistIds` arrays. Every referenced artist, including track-only contributors, is retained once in the artist collection. Albums are indexed under each credited album artist and track contributor, deduplicated per artist; stored album credits are unchanged, and primary navigation links still use the first album credit.
@@ -116,6 +118,9 @@ It uses the same styles as production, not a separate component library.
   typography roles.
   Consume roles for colors/type, primitives for ordinary spacing/shape, and keep component
   configuration local. Containers own gaps/padding. Avoid global element resets.
+  Quiet controls remain unfilled: use the quiet text tokens for warm hover/pressed
+  feedback, including nested labels/captions. Hover applies only on hover-capable
+  devices; disabled controls keep their resting colors and keyboard focus stays visible.
 - `src/ui/atmosphere.svelte` owns the shared backdrop: optional distorted artwork behind
   always-present diagonal lines. Render one per route and one in the player, inside a
   content-sized `.app-stage` or `.large-player-stage`. The canvas token supplies

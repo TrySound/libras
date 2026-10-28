@@ -731,13 +731,16 @@ it("derives artist genres from albums and reacts to library updates", async () =
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const labels = () =>
-    target
-      .querySelector(".viewport-panel > .stack-sm > .caption")
-      ?.textContent?.trim()
-      .split(" · ")
-      .slice(1);
+  const genreRow = () => target.querySelector('.viewport-panel [aria-label="Genres"]');
+  const labels = () => genreRow()?.textContent?.trim().split(" · ") ?? [];
   expect(labels()).toEqual(["Rock", "Jazz", "Soul"]);
+  expect(genreRow()?.tagName).toBe("P");
+  expect(genreRow()?.textContent).toBe("Rock · Jazz · Soul");
+  expect(genreRow()?.previousElementSibling?.textContent?.trim()).toBe("2 albums");
+  expect(genreRow()?.previousElementSibling?.classList.contains("text-subtle")).toBe(true);
+  expect(
+    target.querySelector("article.track-row .caption")?.classList.contains("text-subtle"),
+  ).toBe(true);
   expect(cache.artists.get("artist")).not.toHaveProperty("genres");
 
   await cache.replaceLibrary({
@@ -750,6 +753,7 @@ it("derives artist genres from albums and reacts to library updates", async () =
   await cache.replaceLibrary({ ...snapshot, albums: [{ ...snapshot.albums[0], genres: [] }] });
   flushSync();
   expect(labels()).toEqual([]);
+  expect(genreRow()).toBeNull();
 });
 
 it.each([
@@ -789,6 +793,10 @@ it.each([
   const artistLink = target.querySelector("#player-dialog .viewport-panel a");
   expect(artistLink?.textContent?.trim()).toBe(expected);
   expect(artistLink?.getAttribute("href")).toBe("#/library/artist/artist");
+  expect(artistLink?.querySelector("span.label")?.textContent).toBe(expected);
+  const albumLink = target.querySelectorAll("#player-dialog .viewport-panel a")[1];
+  expect(albumLink?.querySelector("span.label")?.textContent).toBe("Album");
+  expect(albumLink?.getAttribute("href")).toBe("#/library/artist/artist/album/album");
 });
 
 it("shows current track genres in the player without album fallbacks", async () => {
@@ -803,7 +811,7 @@ it("shows current track genres in the player without album fallbacks", async () 
         albumId: "album",
         artistIds: ["artist"],
         title: "First",
-        genres: ["Soul", "Jazz|Fusion"],
+        genres: ["Soul", "Jazz|Fusion", "Soul"],
       },
       { id: "second", albumId: "album", artistIds: ["artist"], title: "Second", genres: ["Rock"] },
       { id: "third", albumId: "album", artistIds: ["artist"], title: "Third", genres: [] },
@@ -817,11 +825,14 @@ it("shows current track genres in the player without album fallbacks", async () 
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const labels = () =>
-    [...target.querySelectorAll('#player-dialog [aria-label="Genres"] > span')].map((node) =>
-      node.textContent?.trim(),
-    );
-  expect(labels()).toEqual(["Soul", "Jazz|Fusion"]);
+  const genreRow = () => target.querySelector('#player-dialog [aria-label="Genres"]');
+  const labels = () => genreRow()?.textContent?.trim().split(" · ") ?? [];
+  expect(labels()).toEqual(["Soul", "Jazz|Fusion", "Soul"]);
+  expect(genreRow()?.tagName).toBe("P");
+  expect(genreRow()?.textContent?.trim()).toBe("Soul · Jazz|Fusion · Soul");
+  expect(genreRow()?.previousElementSibling?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+    "Artist · Album",
+  );
 
   cache.setQueue({ tracks, index: 1, position: 0 });
   flushSync();
@@ -865,41 +876,54 @@ it("shows the album display credit without changing its artist link", async () =
   const credit = target.querySelector(".viewport-panel a");
   expect(credit?.textContent?.trim()).toBe("Lead & Guest");
   expect(credit?.getAttribute("href")).toBe("#/library/artist/artist");
+  expect(credit?.className).toBe("button-quiet");
+  const label = credit?.querySelector("span.label");
+  expect(label?.textContent).toBe("Lead & Guest");
+  expect(label?.classList.contains("text-secondary")).toBe(true);
 });
 
-it("shows only album genres on the album route", async () => {
-  installDisk();
-  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
-  await cache.replaceLibrary({
-    ...library("Artist", 1),
-    albums: [{ id: "album", artistIds: ["artist"], title: "Album", genres: ["Jazz"] }],
-    tracks: [
-      {
-        id: "track",
-        albumId: "album",
-        artistIds: ["artist"],
-        title: "Track",
-        genres: ["Track-only genre"],
-      },
-    ],
-  });
-  mocks.cache = cache;
-  installNavigation("/library/artist/artist/album/album", mocks.navigate);
-  const target = document.createElement("main");
-  document.body.append(target);
-  const component = mount(App, { target });
-  cleanups.push(() => unmount(component));
-  flushSync();
-  expect(target.querySelector(".viewport-panel > .stack-sm > .caption")?.textContent).toContain(
-    "Jazz",
-  );
-  expect(target.querySelector(".viewport-panel > .stack-sm > .caption")?.textContent).not.toContain(
-    "Track-only genre",
-  );
-  expect(target.querySelector(".viewport-panel a")?.getAttribute("href")).toBe(
-    "#/library/artist/artist",
-  );
-});
+it.each([{ genres: ["Jazz", "Soul"] }, { genres: [] }])(
+  "shows only album genres on a separate row: $genres",
+  async ({ genres }) => {
+    installDisk();
+    const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+    await cache.replaceLibrary({
+      ...library("Artist", 1),
+      albums: [{ id: "album", artistIds: ["artist"], title: "Album", genres }],
+      tracks: [
+        {
+          id: "track",
+          albumId: "album",
+          artistIds: ["artist"],
+          title: "Track",
+          genres: ["Track-only genre"],
+        },
+      ],
+    });
+    mocks.cache = cache;
+    installNavigation("/library/artist/artist/album/album", mocks.navigate);
+    const target = document.createElement("main");
+    document.body.append(target);
+    const component = mount(App, { target });
+    cleanups.push(() => unmount(component));
+    flushSync();
+    const metadata = target.querySelector(".viewport-panel > .stack-sm > .caption");
+    const genreRow = target.querySelector('.viewport-panel [aria-label="Genres"]');
+    expect(metadata?.textContent?.trim()).toBe("Unknown year · 1 track");
+    expect(metadata?.classList.contains("text-subtle")).toBe(true);
+    if (genres.length) {
+      expect(genreRow?.tagName).toBe("P");
+      expect(genreRow?.textContent).toBe("Jazz · Soul");
+      expect(genreRow?.previousElementSibling).toBe(metadata);
+    } else {
+      expect(genreRow).toBeNull();
+    }
+    expect(target.querySelector(".viewport-panel")?.textContent).not.toContain("Track-only genre");
+    expect(target.querySelector(".viewport-panel a")?.getAttribute("href")).toBe(
+      "#/library/artist/artist",
+    );
+  },
+);
 
 it("renders the selected cache, reacts to replacements, and stops observing a previous account", async () => {
   installDisk();

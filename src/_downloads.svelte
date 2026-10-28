@@ -105,7 +105,7 @@
               />
               <div>
                 <p class="label">{entry.track.title}</p>
-                <p class="caption text-secondary">{entry.track.artist} — {entry.track.album}</p>
+                <p class="caption text-secondary">{entry.track.artist} · {entry.track.album}</p>
                 {#if entry.status === "downloaded"}
                   <p class="caption text-subtle">
                     Downloaded

@@ -55,6 +55,9 @@ it("focuses the input, expands results, retains route state, and uses album play
     flushSync();
     expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(3);
     expect(target.querySelectorAll("section .track-row")).toHaveLength(3);
+    expect(
+      target.querySelector('section[aria-label="Tracks"] .track-row .caption')?.textContent,
+    ).toBe("Artist · Album");
     expect(target.querySelector("search label")?.getAttribute("for")).toBe(input.id);
     expect(target.querySelector('.track-row[aria-current="true"]')).not.toBeNull();
     expect(target.querySelectorAll(".track-row-number")).toHaveLength(0);

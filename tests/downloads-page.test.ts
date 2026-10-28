@@ -131,7 +131,7 @@ it("preserves active-job precedence and newest-first saved files, including orph
   ]);
   expect(rows[0].querySelectorAll(".loader-bar")).toHaveLength(5);
   expect(rows[0].querySelector("time")).toBeNull();
-  expect(rows[2].textContent).toContain("newer artist — newer album");
+  expect(rows[2].textContent).toContain("newer artist · newer album");
   expect(rows[2].textContent).toContain("audio/flac");
   expect(rows[2].querySelector("time")?.getAttribute("datetime")).toBe(
     new Date(2000).toISOString(),

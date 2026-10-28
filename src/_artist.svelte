@@ -101,12 +101,14 @@
             >
           </div>
         </div>
-        <p class="caption text-secondary">
-          {[
-            `${visibleAlbums.length} album${visibleAlbums.length === 1 ? "" : "s"}`,
-            ...genres,
-          ].join(" · ")}
+        <p class="caption text-subtle">
+          {visibleAlbums.length} album{visibleAlbums.length === 1 ? "" : "s"}
         </p>
+        {#if genres.length}
+          <p class="caption text-secondary" role="group" aria-label="Genres">
+            {genres.join(" · ")}
+          </p>
+        {/if}
       </div>
     </div>
     <div class="stack-lg scroll-runway">
@@ -119,7 +121,7 @@
               <Artwork {covers} id={album.artworkId} size="sm" />
               <div>
                 <p class="label">{album.title}</p>
-                <p class="caption text-secondary">
+                <p class="caption text-subtle">
                   {album.year ?? "Unknown year"} · {ids.length} track{ids.length === 1 ? "" : "s"}
                 </p>
               </div>

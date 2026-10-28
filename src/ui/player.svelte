@@ -155,32 +155,30 @@
                     href={`#/library/artist/${encodeURIComponent(artist.id)}`}
                     onclick={(event) => event.currentTarget.closest("dialog")?.close()}
                   >
-                    {artistName}
+                    <span class="label">{artistName}</span>
                   </a>
                 {:else}
-                  {artistName ?? ""}
+                  <span class="label">{artistName ?? ""}</span>
                 {/if}
                 {#if album}
-                  —
+                  ·
                   {#if albumArtist}
                     <a
                       class="button-quiet"
                       href={`#/library/artist/${encodeURIComponent(albumArtist.id)}/album/${encodeURIComponent(album.id)}`}
                       onclick={(event) => event.currentTarget.closest("dialog")?.close()}
                     >
-                      {album.title}
+                      <span class="label">{album.title}</span>
                     </a>
                   {:else}
-                    {album.title}
+                    <span class="label">{album.title}</span>
                   {/if}
                 {/if}
               </p>
               {#if track.genres.length}
-                <div class="row-wrap caption text-secondary" aria-label="Genres">
-                  {#each track.genres as genre}
-                    <span>{genre}</span>
-                  {/each}
-                </div>
+                <p class="caption text-secondary" role="group" aria-label="Genres">
+                  {track.genres.join(" · ")}
+                </p>
               {/if}
             {/if}
           </div>

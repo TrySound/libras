@@ -221,7 +221,10 @@
             </button>
           </div>
           <div class="row-sm">
-            <button class="button-quiet label">Quiet control</button>
+            <button class="button-quiet"><span class="label">Quiet control</span></button>
+            <button class="button-quiet" disabled>
+              <span class="label">Quiet disabled</span>
+            </button>
           </div>
         </section>
 
@@ -440,7 +443,7 @@
                   <p class="label">
                     A long track title that wraps instead of shrinking or truncating
                   </p>
-                  <p class="caption text-secondary">Artist name — Album title</p>
+                  <p class="caption text-secondary">Artist name · Album title</p>
                 </div>
               </div>
             </div>
@@ -459,7 +462,7 @@
                 </span>
                 <div>
                   <p class="label">Saved track</p>
-                  <p class="caption text-secondary">Artist name — Album title</p>
+                  <p class="caption text-secondary">Artist name · Album title</p>
                   <p class="caption text-subtle">
                     Downloaded <time datetime="2026-01-01T12:00:00Z">January 1, 2026</time> · MP3 ·
                     7.2 MB
@@ -964,7 +967,10 @@
             <div class="stack-lg">
               <div class="stack-xs">
                 <h2 class="heading-xl">A long track title with missing artwork</h2>
-                <p class="caption text-secondary">Artist and guest artist — Album title</p>
+                <p class="caption text-secondary">Artist and guest artist · Album title</p>
+                <p class="caption text-secondary" role="group" aria-label="Genres">
+                  Soul · Jazz|Fusion
+                </p>
               </div>
               <div class="stack-md">
                 <div>

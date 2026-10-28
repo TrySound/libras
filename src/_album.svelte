@@ -82,10 +82,8 @@
         <div class="row-md row-justify">
           <div class="stack-xs">
             <h1 class="heading-xl">{album.title}</h1>
-            <a
-              class="button-quiet caption text-secondary"
-              href={`#/library/artist/${encodeURIComponent(artist.id)}`}
-              >{album.displayArtist ?? artist.name}</a
+            <a class="button-quiet" href={`#/library/artist/${encodeURIComponent(artist.id)}`}
+              ><span class="label text-secondary">{album.displayArtist ?? artist.name}</span></a
             >
           </div>
           <div class="row-sm">
@@ -115,14 +113,18 @@
             >
           </div>
         </div>
-        <p class="caption text-secondary">
+        <p class="caption text-subtle">
           {[
             album.year ?? "Unknown year",
-            ...album.genres,
             `${visibleTracks.length} track${visibleTracks.length === 1 ? "" : "s"}`,
             ...(totalDuration ? [`${Math.ceil(totalDuration / 60)} min`] : []),
           ].join(" · ")}
         </p>
+        {#if album.genres.length}
+          <p class="caption text-secondary" role="group" aria-label="Genres">
+            {album.genres.join(" · ")}
+          </p>
+        {/if}
       </div>
     </div>
     <div class="stack-lg scroll-runway">

@@ -245,7 +245,7 @@
         .filter((value) => value !== undefined && value !== "")
         .join(" · ");
     }
-    return [record.artist, record.album].filter(Boolean).join(" — ");
+    return [record.artist, record.album].filter(Boolean).join(" · ");
   }
 
   function playMenu() {
