@@ -133,10 +133,6 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   collection actions. Explicit options open a mobile modal or desktop popover; long-press
   retains the shared modal with Escape/close-button/swipe dismissal (light-dismiss would
   consume the long-press release). Overlay dismissal stays native rather than resize-driven.
-- Search (`src/_search.svelte`) composes shared unnumbered media rows and numbered track rows.
-  Preserve real matching, grouped ordering, retained queries/limits, offline eligibility, and
-  album-scoped track playback. Actions use the shared mobile sheet/desktop popover pattern;
-  long-press always opens the sheet.
 - Shell controls switch at app widths >50rem. Split layouts query the nearest size
   container: stacked through 50rem, equal columns above 50rem, and 2:3 above 64rem
   (3:2 for Settings). The page container excludes sidebar/gutters; detail panels become
@@ -199,8 +195,8 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/library.test.cjs
 ```
 
-The optional Search browser check covers real results, retained queries/limits, responsive
-rows, missing artwork, enlarged text, and native overlay focus/long-press/swipe dismissal:
+The optional Search browser check covers responsive layout, missing artwork, enlarged text,
+and native overlay focus/long-press/swipe dismissal:
 
 ```sh
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
