@@ -110,8 +110,8 @@ It uses the same styles as production, not a separate component library.
   hidden behavior. Standalone documents paint the app canvas; embedded apps never repaint
   their host. `website/website.css` owns marketing typography, controls, and colors under
   `.website`, stopping at `.app-root` so the live demo keeps its own presentation.
-- Edgerunner ports the Original visual system from the `libras-new` design study:
-  published Figma Maroon/Gold primitives → semantic color and complete typography roles.
+- Edgerunner uses published Figma Maroon/Gold primitives → semantic color and complete
+  typography roles.
   Consume roles for colors/type, primitives for ordinary spacing/shape, and keep component
   configuration local. Containers own gaps/padding. Avoid global element resets.
 - Downloads (`src/_downloads.svelte`) reads real

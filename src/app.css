@@ -1,4 +1,4 @@
-/* Edgerunner design system, ported from libras-new.
+/* Edgerunner design system.
  * Published Maroon/Gold primitives → semantic color and typography roles.
  * Components opt in by class; containers own spacing and layout.
  * Additional themes and selection are separate work in #54.
@@ -1045,8 +1045,7 @@
     }
   }
 
-  /* Navigation components from libras-new. Appearance is independent of app
-   * placement, and these primitives also work on an Edgerunner boundary. */
+  /* Navigation appearance is independent of app placement. */
   .topbar {
     position: sticky;
     top: 0;
@@ -1541,7 +1540,7 @@
     }
   }
 
-  /* Fullscreen presentation from libras-new. Only the native dialog scrolls;
+  /* Fullscreen presentation. Only the native dialog scrolls;
    * the embedded variant below keeps the host's viewport and size budget. */
   .large-player {
     box-sizing: border-box;
@@ -1680,7 +1679,7 @@
   }
 }
 
-/* App composition from libras-new: one column, shared page gutters, a fixed
+/* App composition: one column, shared page gutters, a fixed
  * sidebar, and an intrinsically sized bottom-sticky player in normal flow.
  * App-* classes already namespace these placement rules; no extra scope is needed. */
 .app-shell {
