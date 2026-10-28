@@ -323,10 +323,7 @@
         </div>
       {/if}
     {:else if !matches.query}
-      <div class="stack-md">
-        <h2 class="heading-sm">Start typing</h2>
-        <p class="body">Type to find music in your library.</p>
-      </div>
+      <p class="body text-secondary">Type to find music in your library.</p>
     {:else if results.every((result) => result.total === 0)}
       <div class="stack-md">
         <h2 class="heading-sm">No matches found.</h2>
