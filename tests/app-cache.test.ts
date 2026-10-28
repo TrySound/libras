@@ -136,7 +136,7 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   cleanups.push(() => unmount(component));
   flushSync();
   const albumRows = [...target.querySelectorAll('[aria-label="Album details"] .track-row')];
-  const queueRows = [...target.querySelectorAll(".player-queue .wings > .wings-item")];
+  const queueRows = [...target.querySelectorAll('[aria-label="Queue"] .track-row')];
   expect(albumRows).toHaveLength(3);
   expect(queueRows).toHaveLength(3);
   const subtitle = (row: Element) =>
@@ -164,6 +164,40 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   expect(queueRows[0].querySelector('[aria-label="Current track, not playing"]')).not.toBeNull();
   for (const row of queueRows) expect(row.textContent).not.toContain("Album title");
   expect(albumRows[1].querySelector('[aria-label="Actions for Second track"]')).not.toBeNull();
+});
+
+it("keeps queue occurrence indexes when offline rows are filtered", async () => {
+  installDisk();
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+  await cache.replaceLibrary({
+    ...library("Artist", 1),
+    tracks: ["one", "two"].map((id) => ({
+      id,
+      title: id,
+      artistIds: ["artist"],
+      albumId: "album",
+      duration: 120,
+      genres: [],
+    })),
+  });
+  cache.setQueue({ tracks: ["missing", "one", "two", "one"], index: 3, position: 15 });
+  mocks.cache = cache;
+  mocks.isOffline = () => true;
+  vi.spyOn(TrackEngine.prototype, "getStatus").mockImplementation((id) =>
+    id === "one" ? "downloaded" : "idle",
+  );
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const playIndex = vi.spyOn(mocks.options!.playback, "playIndex").mockResolvedValue();
+  const rows = [...target.querySelectorAll('[aria-label="Queue"] .track-row')];
+  expect(rows).toHaveLength(2);
+  expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual([null, "true"]);
+  (rows[1].querySelector("button") as HTMLButtonElement).click();
+  expect(playIndex).toHaveBeenCalledWith(3);
+  expect(cache.queue.tracks).toEqual(["missing", "one", "two", "one"]);
 });
 
 it("restores downloads silently without flashing the empty state", () => {
@@ -484,7 +518,9 @@ it("restores the large player slider when queue hydration finishes before metada
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const slider = target.querySelector<HTMLInputElement>(".playback-slider")!;
+  const slider = target.querySelector<HTMLInputElement>(
+    '#player-dialog input[aria-label="Playback position"]',
+  )!;
   expect(slider.max).toBe("0");
   expect(slider.valueAsNumber).toBe(0);
   await cache.replaceLibrary({
@@ -503,7 +539,7 @@ it("restores the large player slider when queue hydration finishes before metada
   flushSync();
   expect(slider.max).toBe("120");
   expect(slider.valueAsNumber).toBe(45.5);
-  expect(target.querySelector(".playback-time")?.textContent).toContain("0:45");
+  expect(target.querySelector("#player-dialog .metadata")?.textContent).toContain("0:45");
   const progress = target.querySelector<HTMLProgressElement>(
     'progress[aria-label="Playback progress"]',
   )!;
@@ -536,16 +572,11 @@ it.each([
     );
   }
   expect(target.querySelector("#player-dialog .topbar-brand")).toBeNull();
-  expect(target.querySelector(".player-queue")!.closest(".view")).toBeNull();
-  expect(target.querySelector(".player-main")!.classList.contains("view")).toBe(false);
-  expect(target.querySelector(".player-main > .artwork")!.closest(".view")).toBeNull();
-  expect(target.querySelector(".player-main > .player-content.view .controls")).not.toBeNull();
-  expect(target.querySelector(".player-content .playback-slider")).not.toBeNull();
-  const queue = target.querySelector(".player-queue")!;
-  expect(queue.classList.contains("stack-md")).toBe(true);
-  const heading = queue.querySelector(":scope > .view.row-md")!;
-  expect(heading).not.toBeNull();
-  expect(heading.querySelector(":scope > .stack-xs.grow h2")).not.toBeNull();
+  const dialog = target.querySelector("#player-dialog")!;
+  expect(dialog.getAttribute("aria-labelledby")).toBe("playing-title");
+  expect(dialog.querySelector("#playing-title")?.textContent).toBe("Now Playing");
+  expect(dialog.querySelector('input[aria-label="Playback position"]')).not.toBeNull();
+  expect(dialog.querySelector('[aria-label="Queue"] h2')?.textContent).toBe("Up next");
   const controls = target.querySelectorAll(
     "#player-dialog .topbar a, #player-dialog .topbar button",
   );
@@ -751,7 +782,7 @@ it.each([
     .map((id) => document.getElementById(id)?.textContent)
     .join(" ");
   expect(description).toBe(`Track ${expected}`);
-  const artistLink = target.querySelector("#player-dialog .player-content a");
+  const artistLink = target.querySelector("#player-dialog .viewport-panel a");
   expect(artistLink?.textContent?.trim()).toBe(expected);
   expect(artistLink?.getAttribute("href")).toBe("#/library/artist/artist");
 });
@@ -783,7 +814,7 @@ it("shows current track genres in the player without album fallbacks", async () 
   cleanups.push(() => unmount(component));
   flushSync();
   const labels = () =>
-    [...target.querySelectorAll("#player-dialog .row-wrap-sm > .chip")].map((node) =>
+    [...target.querySelectorAll('#player-dialog [aria-label="Genres"] > span')].map((node) =>
       node.textContent?.trim(),
     );
   expect(labels()).toEqual(["Soul", "Jazz|Fusion"]);
@@ -794,11 +825,11 @@ it("shows current track genres in the player without album fallbacks", async () 
 
   cache.setQueue({ tracks, index: 2, position: 0 });
   flushSync();
-  expect(target.querySelector("#player-dialog .chip")).toBeNull();
+  expect(target.querySelector('#player-dialog [aria-label="Genres"]')).toBeNull();
 
   cache.setQueue({ tracks: [], index: 0, position: 0 });
   flushSync();
-  expect(target.querySelector("#player-dialog .chip")).toBeNull();
+  expect(target.querySelector('#player-dialog [aria-label="Genres"]')).toBeNull();
 });
 
 it("shows the album display credit without changing its artist link", async () => {
