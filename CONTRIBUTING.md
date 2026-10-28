@@ -103,13 +103,14 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
 `styleguide.html` is the visual reference; run `pnpm dev` and open `/styleguide.html`.
 It uses the same styles as production, not a separate component library.
 
-- `src/app.css` owns the shared foundations, components, and app layout. Tokens live on
+- `src/edgerunner.css` owns the theme foundations, components, and music-app layout. Tokens live on
   `:root`; component classes are scoped to `.app-root` and the styleguide document
   (`.design-reference`) to keep app presentation out of host pages. Routes and native
   overlays need no opt-in classes; keep overlays inside the app's DOM and preserve native
   hidden behavior. Standalone documents paint the app canvas; embedded apps never repaint
-  their host. `website/website.css` owns marketing typography, controls, and colors under
-  `.website`, stopping at `.app-root` so the live demo keeps its own presentation.
+  their host. `src/app.css` retains the website's legacy foundations, typography, and controls;
+  `website/website.css` adds marketing layout. Both stop at `.app-root` so the live demo
+  keeps its own Edgerunner presentation.
 - Edgerunner uses published Figma Maroon/Gold primitives → semantic color and complete
   typography roles.
   Consume roles for colors/type, primitives for ordinary spacing/shape, and keep component
@@ -227,7 +228,7 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/navigation.test.cjs
 ```
 
-`src/app.svelte` owns shell markup, Session, and AudioPlayer; `src/app.css` owns shared
+`src/app.svelte` owns shell markup, Session, and AudioPlayer; `src/edgerunner.css` owns shared
 placement and page gutters. Container queries switch navigation without remounting playback.
 Standalone apps scroll the document; embedded apps retain host-owned sizing and local scrolling.
 Router exports reactive `route` metadata (`url`, resolved `pattern`) and `isCurrentPage(path)`
