@@ -2,7 +2,7 @@
 import { flushSync, mount, unmount } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import Player, { type PlayerTrack } from "../src/player.svelte";
+import Player, { type PlayerTrack } from "../src/audio-player.svelte";
 
 const cleanups: (() => Promise<void>)[] = [];
 function setup(unsupported = false, available = true) {

@@ -2,8 +2,8 @@ import { getAccountKey } from "./auth";
 import type { Covers } from "./covers.svelte";
 import type { Cache, CachedQueue, CacheSelection, Immutable } from "./cache.svelte";
 import type { QueueConnection, RemoteQueue } from "./network.svelte";
-import type Player from "./player.svelte";
-import type { PlayerState, PlayerTrack } from "./player.svelte";
+import type AudioPlayer from "./audio-player.svelte";
+import type { PlayerState, PlayerTrack } from "./audio-player.svelte";
 import type { TrackEngine } from "./track.svelte";
 
 type PlaybackActivity = "active" | "paused" | "inactive";
@@ -57,7 +57,7 @@ export class Playback {
   #selection: CacheSelection;
   #covers: Covers;
   #tracks: TrackEngine;
-  #player?: ReturnType<typeof Player>;
+  #player?: ReturnType<typeof AudioPlayer>;
   #isAvailable: (id: string) => boolean;
   #cleanup?: () => void;
   #selectedTrackId?: string;
@@ -136,7 +136,7 @@ export class Playback {
     void this.next();
   }
 
-  attach(player: ReturnType<typeof Player>) {
+  attach(player: ReturnType<typeof AudioPlayer>) {
     if (this.#destroyed) return () => {};
     this.#cleanup?.();
     this.#player = player;

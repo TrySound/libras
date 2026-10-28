@@ -22,6 +22,7 @@
       }
       body {
         margin: 0;
+        container: app / inline-size;
       }
       .styleguide {
         box-sizing: border-box;
@@ -627,12 +628,62 @@
                   </p>
                 </div>
               </div>
-              <div class="app-player card row-md row-justify">
-                <p class="body">Intrinsic player slot</p>
-                <button class="button" aria-label="Player slot specimen">
-                  <svg width="24" height="24" aria-hidden="true"><use href="#icon-play"></use></svg>
+              <footer class="mini-player app-player" aria-label="Music player specimen">
+                <input
+                  class="seek mini-player-seek"
+                  type="range"
+                  min="0"
+                  max="200"
+                  value="102"
+                  style="--progress: 51%"
+                  aria-label="Playback position specimen"
+                  aria-valuetext="1:42 of 3:20"
+                />
+                <progress
+                  class="playback-progress mini-player-progress"
+                  max="200"
+                  value="102"
+                  aria-label="Playback progress specimen"
+                ></progress>
+                <button
+                  class="button-quiet row-sm"
+                  commandfor="guide-dialog"
+                  command="show-modal"
+                  aria-label="Open Now Playing specimen"
+                  aria-describedby="guide-track-title guide-track-artist"
+                >
+                  <span class="artwork" data-size="md" aria-hidden="true">
+                    <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+                      <use href="#icon-music"></use>
+                    </svg>
+                  </span>
+                  <span class="stack-xs">
+                    <strong id="guide-track-title" class="label truncate"
+                      >A long track title with missing artwork</strong
+                    >
+                    <small id="guide-track-artist" class="caption text-secondary truncate"
+                      >Artist and guest artist</small
+                    >
+                  </span>
                 </button>
-              </div>
+                <div class="row-md">
+                  <button class="button only-desktop" aria-label="Previous track specimen" disabled>
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-previous"></use>
+                    </svg>
+                  </button>
+                  <button class="button" data-variant="primary" aria-label="Play specimen">
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-play"></use>
+                    </svg>
+                  </button>
+                  <button class="button only-desktop" aria-label="Next track specimen">
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-next"></use>
+                    </svg>
+                  </button>
+                </div>
+              </footer>
             </div>
           </div>
         </section>

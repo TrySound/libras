@@ -4,7 +4,9 @@
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import { Playlists } from "./playlists.svelte";
-  import Player from "./player.svelte";
+  import AudioPlayer from "./audio-player.svelte";
+  import Player from "./ui/player.svelte";
+  import { formatTime } from "./time";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
@@ -35,19 +37,6 @@
 
   let navigationDrawer: HTMLDialogElement;
   let navigationOpen = $state(false);
-
-  const durationFormatter = new Intl.DurationFormat("en", {
-    minutes: "numeric",
-    seconds: "2-digit",
-  });
-
-  function formatTime(value: number) {
-    const seconds = Number.isFinite(value) ? Math.floor(value) : 0;
-    return durationFormatter.format({
-      minutes: Math.floor(seconds / 60),
-      seconds: seconds % 60,
-    });
-  }
 
   type Album = Immutable<AlbumRecord>;
   type Artist = Immutable<ArtistRecord>;
@@ -86,7 +75,7 @@
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
   const trackEngine = new TrackEngine({ selection });
-  let player = $state<ReturnType<typeof Player>>();
+  let player = $state<ReturnType<typeof AudioPlayer>>();
   const playback: Playback = new Playback({
     selection,
     tracks: trackEngine,
@@ -163,14 +152,9 @@
   function albumPath(artist: Artist, album: Album) {
     return `${artistPath(artist)}/album/${encodeURIComponent(album.id)}`;
   }
-
-  function playbackPercent() {
-    if (!Number.isFinite(playbackDuration) || playbackDuration <= 0) return 0;
-    return Math.min(100, Math.max(0, (cache.queue.position / playbackDuration) * 100));
-  }
 </script>
 
-<Player
+<AudioPlayer
   bind:this={player}
   hasPrevious={hasPreviousTrack || (cache.queue.index >= 0 && cache.queue.position > 0)}
   hasNext={hasNextTrack}
@@ -343,45 +327,7 @@
         ]}
       />
     </main>
-    {#if currentTrack}
-      <div class="app-player">
-        <div class="mini-player wings">
-          <button
-            class="linkarea"
-            commandfor="player-dialog"
-            command="show-modal"
-            aria-label="Open player"
-          ></button>
-          <Artwork {covers} id={currentTrack.artworkId} size="sm" loading="eager" />
-          <span class="mini-copy stack-xs">
-            <strong class="type-title truncate">
-              {currentTrack.title}
-            </strong>
-            <small class="type-small text-muted truncate">
-              {currentTrack.displayArtist ?? cache.artists.get(currentTrack.artistIds[0])?.name}
-            </small>
-          </span>
-          <button
-            class="icon-button"
-            data-size="md"
-            data-variant="primary"
-            onclick={() => playback.toggle()}
-            title={player?.playing ? "Pause" : "Play"}
-          >
-            {#if playbackLoading}
-              <Icon name="loading" />
-            {:else if player?.playing}
-              <Icon name="pause" />
-            {:else}
-              <Icon name="play" />
-            {/if}
-          </button>
-          <span class="mini-progress">
-            <span style:width={`${playbackPercent()}%`}></span>
-          </span>
-        </div>
-      </div>
-    {/if}
+    <Player {cache} {covers} {playback} audio={player} />
     {#if hasErrors}
       <div
         id="error-popover"

@@ -177,13 +177,17 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
       assert.equal(before.sidebarVisible, true);
       assert.equal(before.padding, before.sidebarWidth + before.gutter);
       assert.ok(Math.abs(before.clearance) <= 1);
-      await shell.locator(".app-player .body").evaluate((element) => {
-        element.textContent = "Intrinsic player content grows with its text. ".repeat(20);
+      await shell.locator(".app-player .label").evaluate((element) => {
+        element.style.whiteSpace = "normal";
+        element.textContent = "Intrinsic player content grows with its text. ".repeat(4);
       });
       const after = await geometry();
       assert.ok(after.playerHeight > before.playerHeight);
       assert.ok(Math.abs(after.clearance) <= 1, "CSS anchors follow intrinsic player growth");
-      await shell.locator(".app-player .body").evaluate((element) => { element.textContent = "Intrinsic player slot"; });
+      await shell.locator(".app-player .label").evaluate((element) => {
+        element.style.whiteSpace = "";
+        element.textContent = "A long track title with missing artwork";
+      });
       await page.setViewportSize({ width: 375, height: 900 });
       const mobile = await geometry();
       assert.equal(mobile.sidebarVisible, false);

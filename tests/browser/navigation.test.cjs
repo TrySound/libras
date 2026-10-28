@@ -133,12 +133,13 @@ test("navigation and resizing retain real playback and the queue", async () => {
   const album = { id: "shell-album", name: "Shell album", artists: [artist] };
   const song = {
     id: "shell-track",
-    title: "Shell track",
+    title: "Shell track with a long title that must leave space for intrinsic playback controls",
     albumId: album.id,
     artists: [artist],
     duration: 60,
     contentType: "audio/wav",
   };
+  const nextSong = { ...song, id: "shell-track-2", title: "Track two" };
   // One minute of valid silent PCM, played through the actual browser transport.
   const audio = Buffer.alloc(44 + 8000 * 2 * 60);
   audio.write("RIFF");
@@ -171,7 +172,7 @@ test("navigation and resizing retain real playback and the queue", async () => {
         searchResult3: {
           artist: Number(url.searchParams.get("artistOffset")) === 0 ? [artist] : [],
           album: Number(url.searchParams.get("albumOffset")) === 0 ? [album] : [],
-          song: Number(url.searchParams.get("songOffset")) === 0 ? [song] : [],
+          song: Number(url.searchParams.get("songOffset")) === 0 ? [song, nextSong] : [],
         },
       };
     await route.fulfill({
@@ -181,6 +182,7 @@ test("navigation and resizing retain real playback and the queue", async () => {
   });
   try {
     await page.goto(base);
+    assert.equal(await page.getByRole("contentinfo", { name: "Music player", exact: true }).count(), 0);
     await page.getByLabel("Host", { exact: true }).fill("https://shell.example.test");
     await page.getByLabel("Username", { exact: true }).fill("listener");
     await page.getByLabel("Password", { exact: true }).fill("test-password");
@@ -199,6 +201,25 @@ test("navigation and resizing retain real playback and the queue", async () => {
         window.__audioInstances[0].currentTime > 0,
     );
     const transport = await page.evaluateHandle(() => window.__audioInstances[0]);
+    const mini = page.getByRole("contentinfo", { name: "Music player", exact: true });
+    await mini.getByRole("button", { name: "Next track", exact: true }).click();
+    await page.waitForFunction((title) => document.querySelector(".mini-player strong")?.textContent === title, nextSong.title);
+    await mini.getByRole("button", { name: "Previous track", exact: true }).click();
+    await page.waitForFunction((title) => document.querySelector(".mini-player strong")?.textContent === title, song.title);
+    await page.waitForFunction(() => !window.__audioInstances[0].paused);
+    await mini.getByRole("button", { name: "Pause", exact: true }).click();
+    await page.waitForFunction(() => window.__audioInstances[0].paused);
+    assert.equal(await mini.isVisible(), true, "pausing retains the active player");
+    const seek = mini.getByRole("slider", { name: "Playback position", exact: true });
+    const pausedPosition = Number(await seek.inputValue());
+    await seek.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.waitForFunction((position) => document.querySelector('.mini-player progress').value > position, pausedPosition);
+    await page.keyboard.press("Home");
+    await page.waitForFunction(() => document.querySelector('.mini-player progress').value === 0);
+    assert.match(await seek.getAttribute("aria-valuetext"), /of 1:00/);
+    await mini.getByRole("button", { name: "Play", exact: true }).click();
+    await page.waitForFunction(() => !window.__audioInstances[0].paused);
     const before = await transport.evaluate((audio) => audio.currentTime);
     for (const width of [375, 768, 1280, 320, 1280]) {
       await page.setViewportSize({ width, height: 800 });
@@ -215,18 +236,37 @@ test("navigation and resizing retain real playback and the queue", async () => {
         true,
       );
       assert.equal(await page.evaluate(() => window.__audioInstances.length), 1);
+      assert.equal(await seek.isVisible(), width > 600);
+      assert.equal(await mini.getByRole("progressbar").isVisible(), width <= 600);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      const expandBox = await mini.getByRole("button", { name: "Open Now Playing", exact: true }).boundingBox();
+      const toggleBox = await mini.getByRole("button", { name: "Pause", exact: true }).boundingBox();
+      assert.ok(toggleBox.x >= expandBox.x + expandBox.width && toggleBox.y < expandBox.y + expandBox.height,
+        "metadata and transports share a row without overlapping");
     }
+    // A narrow host on a desktop browser must use phone controls too.
+    await page.locator(".app-root").evaluate((element) => element.style.inlineSize = "400px");
+    assert.equal(await seek.isVisible(), false);
+    assert.equal(await mini.getByRole("button", { name: "Next track", exact: true }).isVisible(), false);
+    assert.equal(await mini.getByRole("progressbar").isVisible(), true);
+    await page.locator(".app-root").evaluate((element) => element.style.inlineSize = "");
+
+    await mini.getByRole("button", { name: "Open Now Playing", exact: true }).click();
+    await page.locator("#player-dialog").waitFor();
+    await page.keyboard.press("Escape");
+    await page.locator("#player-dialog").waitFor({ state: "hidden" });
+    assert.equal(await mini.getByRole("button", { name: "Open Now Playing", exact: true }).evaluate((element) => element === document.activeElement), true);
     assert.ok((await transport.evaluate((audio) => audio.currentTime)) >= before);
     const sidebar = await page.locator(".app-sidebar").boundingBox();
     const player = await page.locator(".mini-player").boundingBox();
-    assert.ok(sidebar.y + sidebar.height <= player.y, "the legacy player does not overlap navigation");
+    assert.ok(sidebar.y + sidebar.height <= player.y, "the player does not overlap navigation");
     await page.locator('.app-sidebar a[href="#/downloads"]').click();
     await page.locator(".downloads-view").waitFor();
     assert.equal(await transport.evaluate((audio) => !audio.paused), true);
     await page.setViewportSize({ width: 1280, height: 200 });
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     assert.ok(await page.evaluate(() => window.scrollY) > 0);
-    await page.getByRole("button", { name: "Open player", exact: true }).click();
+    await page.getByRole("button", { name: "Open Now Playing", exact: true }).click();
     await page.locator("#player-dialog").waitFor();
     assert.equal(await page.locator("#player-dialog").evaluate((element) => {
       const box = element.getBoundingClientRect();
@@ -237,7 +277,7 @@ test("navigation and resizing retain real playback and the queue", async () => {
         .locator(".player-queue h2")
         .textContent()
         .then((text) => text.trim()),
-      "1 track",
+      "2 tracks",
     );
   } finally {
     await browser.close();

@@ -35,7 +35,7 @@ pnpm build
 | `MetadataEngine`              | Library fetching and refresh cancellation                                                  |
 | `QueueEngine`                 | Queue edits, server synchronization, and playback protection                               |
 | `PlaybackController`          | Queue navigation and playback orchestration                                                |
-| `Player`                      | Audio transport, seeking, keyboard shortcuts, and Media Session                            |
+| `AudioPlayer`                 | Audio transport, seeking, keyboard shortcuts, and Media Session                            |
 | `CoverEngine` / `TrackEngine` | On-demand resources, download scheduling, and object URL lifetimes                         |
 
 Keep these boundaries in mind:
@@ -193,7 +193,7 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/navigation.test.cjs
 ```
 
-`src/app.svelte` owns shell markup, Session, and Player; `src/edgerunner.css` owns shared
+`src/app.svelte` owns shell markup, Session, and AudioPlayer; `src/edgerunner.css` owns shared
 placement and page gutters. Container queries switch navigation without remounting playback.
 Standalone apps scroll the document; embedded apps retain host-owned sizing and local scrolling.
 Router exports reactive `route` metadata (`url`, resolved `pattern`) and `isCurrentPage(path)`
