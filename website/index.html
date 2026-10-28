@@ -62,21 +62,21 @@
         tabindex="-1"
         aria-labelledby="hero-title"
       >
-        <a class="row-sm display-lg" href="%BASE_URL%" aria-label="Libras home">
+        <a class="row-sm brand uppercase" href="%BASE_URL%" aria-label="Libras home">
           <svg aria-hidden="true" width="32" height="32">
             <use href="#icon-brand"></use>
           </svg>
           <span>Libras</span>
         </a>
-        <h1 class="display-xl container-md" id="hero-title">
+        <h1 class="heading-xl container-md" id="hero-title">
           <span>Connect your music library</span>
           <span>and listen anywhere.</span>
         </h1>
-        <p class="site-hero-description text-muted">
+        <p class="site-hero-description body text-subtle">
           A music player for Navidrome and OpenSubsonic-compatible servers. Stream your library or
           download music for offline listening.
         </p>
-        <div class="site-actions">
+        <div class="row-md row-wrap row-center">
           <a class="button" data-size="text" data-variant="primary" href="/webapp/"
             >Connect your server</a
           >
@@ -91,9 +91,9 @@
         id="features"
         aria-labelledby="features-title"
       >
-        <h2 class="display-lg" id="features-title">Everything you need.</h2>
+        <h2 class="heading-lg" id="features-title">Everything you need.</h2>
         <div class="site-feature-grid">
-          <article class="site-feature site-feature-library">
+          <article class="card site-feature site-feature-library">
             <div class="site-feature-copy stack-md">
               <div class="row-sm">
                 <span class="site-feature-icon">
@@ -101,9 +101,9 @@
                     <use href="#icon-music"></use>
                   </svg>
                 </span>
-                <h3 class="display-md">Your collection.</h3>
+                <h3 class="heading-md">Your collection.</h3>
               </div>
-              <p class="type-body text-muted">
+              <p class="body text-subtle">
                 Browse artists, explore albums, and search for the track stuck in your head.
               </p>
             </div>
@@ -122,21 +122,21 @@
               </div>
             </div>
           </article>
-          <article class="site-feature site-feature-offline stack-md">
+          <article class="card site-feature stack-md">
             <div class="row-sm">
               <span class="site-feature-icon">
                 <svg aria-hidden="true" width="20" height="20">
                   <use href="#icon-download"></use>
                 </svg>
               </span>
-              <h3 class="display-md">Take the long way home.</h3>
+              <h3 class="heading-md">Take the long way home.</h3>
             </div>
-            <p class="type-body text-muted">
+            <p class="body text-subtle">
               Download your favorites, switch to Offline Library, and keep listening when the
               connection doesn’t come along.
             </p>
             <div class="site-download-visual" aria-hidden="true">
-              <div>
+              <div class="row-sm caption">
                 <span class="site-download-art">
                   <svg aria-hidden="true" width="20" height="20">
                     <use href="#icon-music"></use>
@@ -152,19 +152,19 @@
               <div class="site-download-line"></div>
             </div>
           </article>
-          <article class="site-feature stack-md">
+          <article class="card site-feature stack-md">
             <div class="row-sm">
               <span class="site-feature-icon">
                 <svg aria-hidden="true" width="20" height="20">
                   <use href="#icon-clock"></use>
                 </svg>
               </span>
-              <h3 class="display-md">Right where you left off.</h3>
+              <h3 class="heading-md">Right where you left off.</h3>
             </div>
-            <p class="type-body text-muted">
+            <p class="body text-subtle">
               Your queue and playback position are saved between sessions.
             </p>
-            <div class="site-waveform" aria-hidden="true">
+            <div class="site-waveform row-xs row-justify" aria-hidden="true">
               <span class="site-waveform-played" style="height: 18%"></span>
               <span class="site-waveform-played" style="height: 32%"></span>
               <span class="site-waveform-played" style="height: 24%"></span>
@@ -187,34 +187,36 @@
               <span style="height: 18%"></span>
             </div>
           </article>
-          <article class="site-feature stack-md">
+          <article class="card site-feature stack-md">
             <div class="row-sm">
               <span class="site-feature-icon">
                 <svg aria-hidden="true" width="20" height="20">
                   <use href="#icon-home"></use>
                 </svg>
               </span>
-              <h3 class="display-md">Browser or app.</h3>
+              <h3 class="heading-md">Browser or app.</h3>
             </div>
-            <p class="type-body text-muted">
+            <p class="body text-subtle">
               Listen right in your browser, or install Libras as a standalone web app. No app store
               required.
             </p>
-            <div class="site-install-visual" aria-hidden="true">
+            <div class="site-install-visual card row-sm caption" aria-hidden="true">
               <span class="site-app-icon">
                 <svg aria-hidden="true" width="32" height="32">
                   <use href="#icon-brand"></use>
                 </svg>
               </span>
-              <span>Libras<small>Make room for your music.</small></span>
+              <span
+                >Libras<small class="caption text-subtle">Make room for your music.</small></span
+              >
             </div>
           </article>
-          <article class="site-feature site-feature-open stack-md">
+          <article class="card site-feature stack-md">
             <div class="row-sm">
-              <span class="site-feature-icon site-code-icon" aria-hidden="true"> &lt;/&gt; </span>
-              <h3 class="display-md">Open, in every sense.</h3>
+              <span class="site-feature-icon metadata" aria-hidden="true"> &lt;/&gt; </span>
+              <h3 class="heading-md">Open, in every sense.</h3>
             </div>
-            <p class="type-body text-muted">
+            <p class="body text-subtle">
               Your server holds the music. You hold the keys. Libras is free, MIT-licensed, and open
               for you to explore or make your own.
             </p>
@@ -235,11 +237,11 @@
       </section>
 
       <section class="site-section site-faq site-container" aria-labelledby="faq-title">
-        <h2 class="display-lg" id="faq-title">Before you press play.</h2>
+        <h2 class="heading-lg" id="faq-title">Before you press play.</h2>
         <div class="site-faq-list">
           <details name="faq">
             <summary>Is Libras a music streaming service?</summary>
-            <p class="type-body text-muted">
+            <p class="body text-subtle">
               Libras is a player, not a music hosting service. Bring your own music library on a
               compatible server. The live demo lets you try it with a small, openly licensed
               collection before connecting your own.
@@ -247,21 +249,21 @@
           </details>
           <details name="faq">
             <summary>Is it really free?</summary>
-            <p class="type-body text-muted">
+            <p class="body text-subtle">
               Yes. Libras is free and open source under the MIT license, with no Libras
               subscription. You’re responsible for your own music server and any hosting costs.
             </p>
           </details>
           <details name="faq">
             <summary>How does offline listening work?</summary>
-            <p class="type-body text-muted">
+            <p class="body text-subtle">
               Download tracks while online, then turn on Offline Library. Downloads are stored on
               your device. Clearing site data deletes your saved music.
             </p>
           </details>
           <details name="faq">
             <summary>Can I use it on my phone?</summary>
-            <p class="type-body text-muted">
+            <p class="body text-subtle">
               Yes, use it in your browser or add it to your home screen. On iPhone and iPad, use
               Safari’s Share → Add to Home Screen. Installation varies by browser; offline storage
               and background playback have not yet been verified on iOS.
@@ -269,7 +271,7 @@
           </details>
           <details name="faq">
             <summary>Which servers are supported?</summary>
-            <p class="type-body text-muted">
+            <p class="body text-subtle">
               Use a reachable HTTPS server with a Subsonic-compatible API, such as Navidrome. It
               needs OpenSubsonic empty-query search3 support and CORS configured to allow requests
               from the Libras origin.
@@ -290,23 +292,23 @@
             <use href="#icon-brand"></use>
           </svg>
         </div>
-        <h2 class="display-lg container-md" id="cta-title">
+        <h2 class="heading-lg container-md" id="cta-title">
           Your favorite songs are already in your library.
         </h2>
         <a class="button" data-size="text" data-variant="primary" href="/webapp/"
           >Start listening</a
         >
       </section>
-      <footer class="site-footer site-container">
+      <footer class="site-footer site-container row-lg row-wrap row-justify">
         <div>
-          <a class="row-sm display-md" href="%BASE_URL%">
+          <a class="row-sm brand uppercase" href="%BASE_URL%">
             <svg aria-hidden="true" width="20" height="20">
               <use href="#icon-brand"></use>
             </svg>
             <span>Libras</span>
           </a>
         </div>
-        <nav class="row-lg text-muted type-body" aria-label="Footer navigation">
+        <nav class="row-lg text-subtle body" aria-label="Footer navigation">
           <a class="text-link" href="https://github.com/TrySound/libras" target="_blank">GitHub</a>
           <a
             class="text-link"

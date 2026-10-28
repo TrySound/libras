@@ -1,22 +1,53 @@
-@import "../src/app.css";
+@import "../src/edgerunner.css";
 
-/* Marketing composition uses the player's shared Edgerunner palette and roles. */
+/* Edgerunner owns typography, utilities, cards and buttons. Only marketing
+ * sizing, composition and decorative illustrations belong here. */
 @scope (.website) to (.app-root) {
   :scope {
-    --site-background: var(--palette-maroon-shade-7);
-    --site-border: var(--shell-border);
-    --site-faint: var(--text-subtle);
-    --site-accent: var(--accent);
+    --heading-xl-size: clamp(3rem, 7.6vw, 6.4rem);
+    --heading-xl-weight: var(--font-weight-bold);
+    --heading-xl-leading: 1.04;
+    --heading-lg-size: clamp(2rem, 4vw, 3rem);
+    --heading-lg-leading: 1.15;
+    --heading-md-leading: 1.4;
+    --brand-size: var(--heading-lg-size);
+    --brand-leading: 1.15;
     --site-accent-glow: rgb(from var(--palette-maroon-tint-1) r g b / 35%);
-    --site-radius: var(--radius-xl);
     --site-max-width: 1120px;
     --site-gutter: clamp(1.25rem, 4vw, 3rem);
     --site-section-space: clamp(5rem, 10vw, 8rem);
-    --site-font-mono: var(--font-mono);
     background: var(--atmosphere-lines-bg), var(--canvas-bg);
-    color: var(--color-text-primary);
     overflow: clip;
     -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  :is(a, summary):focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .text-link {
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+
+    @media (hover: hover) {
+      &:hover {
+        color: var(--quiet-text-hover);
+      }
+    }
+  }
+
+  :is(.heading-xl, .heading-lg, .heading-md) {
+    text-wrap: balance;
+  }
+
+  .body {
+    text-wrap: pretty;
   }
 
   .site-container {
@@ -35,44 +66,14 @@
     left: 0.5rem;
     z-index: 100;
     padding: 0.75rem 1rem;
-    background: var(--color-text-primary);
-    color: var(--site-background);
+    background: var(--text-primary);
+    color: var(--palette-maroon-shade-7);
     border-radius: var(--radius-sm);
     translate: 0 -200%;
   }
 
   .site-skip-link:focus {
     translate: 0;
-  }
-
-  .display-xl {
-    margin: 0;
-    font-size: clamp(3rem, 7.6vw, 6.4rem);
-    font-family: var(--font-display);
-    font-weight: var(--font-weight-bold);
-    letter-spacing: var(--tracking-tighter);
-    line-height: 1.04;
-    text-wrap: balance;
-  }
-
-  .display-lg {
-    margin: 0;
-    font-size: clamp(2rem, 4vw, 3rem);
-    font-family: var(--font-display);
-    font-weight: var(--font-weight-semibold);
-    letter-spacing: var(--tracking-tight);
-    line-height: 1.15;
-    text-wrap: balance;
-  }
-
-  .display-md {
-    margin: 0;
-    font-family: var(--heading-md-font);
-    font-size: var(--heading-md-size);
-    font-weight: var(--heading-md-weight);
-    letter-spacing: var(--heading-md-tracking);
-    line-height: 1.4;
-    text-wrap: balance;
   }
 
   .site-hero {
@@ -102,14 +103,10 @@
     pointer-events: none;
   }
 
-  .site-hero .row-sm svg {
-    color: var(--site-accent);
+  .site-hero .brand svg {
+    color: var(--accent);
     width: 1em;
     height: 1em;
-  }
-
-  .site-hero h1 {
-    color: var(--text-primary);
   }
 
   .site-hero h1 span {
@@ -117,20 +114,7 @@
   }
 
   .site-hero h1 span + span {
-    color: var(--site-accent);
-  }
-
-  .site-hero > a,
-  .site-footer > div a {
-    font-family: var(--brand-font);
-    font-weight: var(--brand-weight);
-    letter-spacing: var(--brand-tracking);
-    text-transform: uppercase;
-  }
-
-  a:focus-visible {
-    outline: var(--focus-ring);
-    outline-offset: var(--focus-ring-offset);
+    color: var(--accent);
   }
 
   .site-hero-description {
@@ -140,18 +124,11 @@
     text-wrap: balance;
   }
 
-  /* Only marketing typography differs; shape and states use the shared button. */
+  /* Keep the larger marketing button type; shared styles own all states. */
   .button {
     font-family: var(--font-display);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-semibold);
-  }
-
-  .site-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: var(--space-md);
   }
 
   .site-section {
@@ -162,19 +139,13 @@
   .site-feature-grid {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 1rem;
+    gap: var(--space-md);
   }
 
   .site-feature {
-    position: relative;
-    isolation: isolate;
     grid-column: span 2;
     overflow: hidden;
     padding: 2rem;
-    border: var(--border-width) solid var(--site-border);
-    border-radius: var(--site-radius);
-    corner-shape: var(--corner-shape);
-    background: var(--surface-bg);
   }
 
   .site-feature-library {
@@ -191,10 +162,10 @@
     width: 2.3rem;
     height: 2.3rem;
     flex: none;
-    border: 1px solid var(--site-border);
+    border: 1px solid var(--shell-border);
     border-radius: var(--radius-sm);
     corner-shape: var(--corner-shape);
-    color: var(--site-accent);
+    color: var(--accent);
     background: var(--secondary-bg);
   }
 
@@ -217,7 +188,7 @@
     border: var(--border-width) solid var(--surface-border);
     border-radius: var(--radius-lg);
     corner-shape: var(--corner-shape);
-    color: var(--site-accent);
+    color: var(--accent);
     background: linear-gradient(
       155deg,
       var(--palette-maroon-tint-1),
@@ -258,18 +229,11 @@
     height: 4rem;
     border-radius: 50%;
     background: var(--palette-maroon-shade-0);
-    color: var(--site-accent);
+    color: var(--accent);
   }
 
   .site-download-visual {
     margin-top: var(--space-md);
-  }
-
-  .site-download-visual > div:first-child {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-size: var(--caption-size);
   }
 
   .site-download-art {
@@ -279,59 +243,45 @@
     width: 2.2rem;
     height: 2.2rem;
     border-radius: var(--radius-xs);
-    color: var(--site-accent);
+    color: var(--accent);
     background: var(--shell-bg);
-  }
-
-  .site-install-visual small {
-    display: block;
-    color: var(--site-faint);
-    font-size: var(--caption-size);
   }
 
   .site-download-check {
     margin-left: auto;
-    color: var(--color-status-success);
+    color: var(--accent);
   }
 
   .site-download-line {
     height: 3px;
     margin-top: 1rem;
-    border-radius: var(--radius-pill);
-    background: var(--site-accent);
+    border-radius: var(--radius-xs);
+    background: var(--accent);
   }
 
   .site-waveform {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 4px;
     height: 3rem;
     margin-top: var(--space-md);
   }
 
   .site-waveform > span {
     flex: 1;
-    border-radius: 2px;
+    border-radius: var(--radius-xs);
     background: var(--palette-maroon-tone-7);
   }
 
   .site-waveform > .site-waveform-played {
-    background: var(--site-accent);
-    opacity: 1;
+    background: var(--accent);
   }
 
   .site-install-visual {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
     margin-top: var(--space-md);
     padding: 0.75rem;
-    border: 1px solid var(--site-border);
     border-radius: var(--radius-md);
-    corner-shape: var(--corner-shape);
-    background: var(--surface-bg);
-    font-size: 0.8rem;
+  }
+
+  .site-install-visual small {
+    display: block;
   }
 
   .site-app-icon {
@@ -340,16 +290,11 @@
     width: 2.5rem;
     height: 2.5rem;
     flex: none;
-    border: 1px solid var(--site-border);
+    border: 1px solid var(--shell-border);
     border-radius: var(--radius-sm);
     corner-shape: var(--corner-shape);
-    color: var(--site-accent);
+    color: var(--accent);
     background: var(--shell-bg);
-  }
-
-  .site-code-icon {
-    font-family: var(--site-font-mono);
-    font-size: 0.85rem;
   }
 
   .site-faq {
@@ -362,23 +307,17 @@
   }
 
   .site-faq-list details + details {
-    border-top: 1px solid var(--site-border);
+    border-top: 1px solid var(--shell-border);
   }
 
   .site-faq-list summary {
     padding-block: 1.25rem;
     list-style: none;
     cursor: pointer;
-    font-size: var(--text-md);
   }
 
   .site-faq-list summary::-webkit-details-marker {
     display: none;
-  }
-
-  .site-faq-list summary:focus-visible {
-    outline: var(--focus-outline);
-    outline-offset: var(--focus-outline-offset);
   }
 
   .site-faq-list details p {
@@ -394,8 +333,8 @@
       height: 0;
       overflow: hidden;
       transition:
-        height var(--transition-overlay),
-        content-visibility var(--transition-overlay) allow-discrete;
+        height var(--motion-duration-enter),
+        content-visibility var(--motion-duration-enter) allow-discrete;
     }
 
     .site-faq-list details[open]::details-content {
@@ -427,10 +366,10 @@
     width: 5rem;
     height: 5rem;
     margin-inline: auto;
-    border: 1px solid var(--site-border);
+    border: 1px solid var(--shell-border);
     border-radius: var(--radius-xl);
     corner-shape: var(--corner-shape);
-    color: var(--site-accent);
+    color: var(--accent);
     background: var(--shell-bg);
     box-shadow: 0 5px 30px #0006;
   }
@@ -441,34 +380,33 @@
   }
 
   .site-footer {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 2rem;
     padding-block: 2.5rem;
-    border-top: 1px solid var(--site-border);
+    border-top: 1px solid var(--shell-border);
+  }
+
+  .site-footer .brand {
+    font-size: var(--heading-md-size);
   }
 
   @media (forced-colors: active) {
     :scope {
-      --site-background: Canvas;
-      --site-border: CanvasText;
-      --site-faint: CanvasText;
-      --site-accent: LinkText;
-      --color-text-primary: CanvasText;
-      --color-text-muted: CanvasText;
-      --color-text-accent: LinkText;
+      --accent: LinkText;
       --text-primary: CanvasText;
+      --text-subtle: CanvasText;
+      --shell-border: CanvasText;
       --surface-border: ButtonText;
       --focus-ring: 4px solid Highlight;
       background: Canvas;
+    }
+
+    .site-skip-link {
+      color: Canvas;
     }
   }
 
   @media (hover: hover) {
     .site-faq-list summary:hover {
-      color: var(--site-accent);
+      color: var(--accent);
     }
   }
 
@@ -501,12 +439,12 @@
     }
 
     .site-feature {
-      padding: 1.5rem;
+      padding: var(--space-lg);
     }
 
     .site-feature-library {
       grid-template-columns: 1fr;
-      gap: 1.5rem;
+      gap: var(--space-lg);
       padding-bottom: 3rem;
     }
 

@@ -282,7 +282,8 @@
 
 /* Type contexts never reset the browser's root font size or paint an embed's host. */
 .app-root,
-.design-reference {
+.design-reference,
+.website {
   color: var(--text-primary);
   font-family: var(--body-font);
   font-weight: var(--body-weight);
@@ -292,7 +293,8 @@
 
 /* Keep browser root sizing independent of the body typography role. */
 .app-root,
-.design-reference > body {
+.design-reference > body,
+.website {
   font-size: var(--body-size);
 }
 
@@ -305,9 +307,9 @@
   display: none !important;
 }
 
-/* Keep reusable app classes out of host documents. This is the application
- * boundary, not a per-route opt-in; every route and overlay shares these rules. */
-@scope (.app-root, .design-reference) {
+/* Shared utilities, typography and cards opt in at an explicit design-system
+ * boundary. App-only components and layout remain in their own scopes below. */
+@scope (.app-root, .design-reference, .website) {
   .scroll-runway {
     padding-block-end: var(--content-end-space);
   }
@@ -529,7 +531,9 @@
     corner-shape: var(--corner-shape);
     background: var(--surface-bg);
   }
+}
 
+@scope (.app-root, .design-reference) {
   .loader {
     display: inline-grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));

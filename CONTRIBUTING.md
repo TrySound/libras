@@ -107,13 +107,15 @@ It uses the same styles as production, not a separate component library.
 
 - `src/edgerunner.css` owns the theme foundations, components, and music-app layout. Tokens live on
   `:root` and are re-established at `.app-root` so inherited website variables cannot
-  override the embedded theme. Component classes are scoped to `.app-root` and the styleguide document
-  (`.design-reference`) to keep app presentation out of host pages. Routes and native
+  override the embedded theme. Shared utilities, typography, cards, and buttons are scoped to
+  `.app-root`, the styleguide document (`.design-reference`), and `.website`. App-only components
+  stay scoped to `.app-root` and `.design-reference` to keep player presentation out of host pages. Routes and native
   overlays need no opt-in classes; keep overlays inside the app's DOM and preserve native
   hidden behavior. Standalone documents paint the app canvas; embedded apps never repaint
-  their host. `src/app.css` retains the website's legacy foundations, typography, and controls;
-  `website/website.css` adds marketing layout. Both stop at `.app-root` so the live demo
-  keeps its own Edgerunner presentation.
+  their host. `website/website.css` owns marketing layout, decorative illustrations, and
+  website-specific sizing overrides; reuse Edgerunner classes and semantic roles instead of
+  duplicating foundations or aliasing theme tokens. Website-only rules
+  stop at `.app-root` so the live demo keeps its own Edgerunner presentation.
 - Edgerunner uses published Figma Maroon/Gold primitives → semantic color and complete
   typography roles.
   Consume roles for colors/type, primitives for ordinary spacing/shape, and keep component
