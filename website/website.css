@@ -1,9 +1,9 @@
+@import "../src/edgerunner.css";
 @import "../src/app.css";
 
-/* Match the legacy scope so equal-specificity website extensions keep their
- * later source-order precedence. Both stop at migrated Edgerunner islands. */
-@scope (:root:not(.ui-edgerunner)) to (.ui-edgerunner) {
-  .website {
+/* Website layout extends its legacy foundations, never the embedded application. */
+@scope (.website) to (.app-root) {
+  :scope {
     --site-background: #090b10;
     --site-border: rgb(from var(--palette-white) r g b / 9%);
     --site-faint: #6d7585;
@@ -201,10 +201,6 @@
 
   .site-demo-launch {
     display: none;
-  }
-
-  body:has(.site-demo-dialog:modal) {
-    overflow: hidden;
   }
 
   .site-section {
@@ -593,4 +589,8 @@
       align-items: flex-start;
     }
   }
+}
+
+body:has(.site-demo-dialog:modal) {
+  overflow: hidden;
 }

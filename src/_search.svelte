@@ -262,7 +262,7 @@
   }
 </script>
 
-<section class="ui-edgerunner stack-lg scroll-runway">
+<section class="stack-lg scroll-runway">
   <h1 class="heading-xl">Search</h1>
   <search class="stack-xs">
     <label class="label" for="library-search">Search library</label>
@@ -417,7 +417,7 @@
 <dialog
   bind:this={sheet}
   id="search-menu"
-  class="ui-edgerunner bottom-sheet"
+  class="bottom-sheet"
   aria-labelledby="search-menu-title"
   closedby="closerequest"
   data-swipedown="close"
@@ -428,7 +428,7 @@
 <div
   bind:this={popover}
   id="search-menu-popover"
-  class="ui-edgerunner popover"
+  class="popover"
   popover="auto"
   role="dialog"
   aria-labelledby="search-menu-popover-title"

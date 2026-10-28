@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="ui-edgerunner">
+<html lang="en" class="design-reference">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -14,7 +14,7 @@
       type="font/woff2"
       crossorigin
     />
-    <link rel="stylesheet" href="/src/app.css" />
+    <link rel="stylesheet" href="/src/edgerunner.css" />
     <style>
       /* Reference arrangement only. All specimens consume production styles. */
       :root {
@@ -97,14 +97,12 @@
         </div>
         <h1 class="heading-xl">Edgerunner foundations</h1>
         <p class="body">
-          The visual reference for the gradual Libras redesign. These specimens use shared
-          production styles inside a .ui-edgerunner boundary; unmigrated screens keep their existing
-          appearance. Highrider themes and appearance selection will follow separately.
+          The visual reference for Libras. These specimens use the same Edgerunner styles as the
+          application. Additional themes and appearance selection are separate work.
         </p>
         <p class="caption text-secondary">
           Controls demonstrate native interaction only. No credentials are saved, files downloaded,
-          music played, or requests simulated. Long-press and swipe-to-dismiss remain app features
-          and will be preserved as their consuming views migrate.
+          music played, or requests simulated. Long-press and swipe-to-dismiss are app features.
         </p>
       </header>
 
@@ -744,10 +742,10 @@
         </section>
 
         <section class="card stack-lg" aria-labelledby="overlay-heading">
-          <h2 class="heading-md uppercase" id="overlay-heading">Native overlay isolation</h2>
+          <h2 class="heading-md uppercase" id="overlay-heading">Native overlays</h2>
           <p class="body">
-            Dialogs and popovers keep native visibility and focus behavior. Give overlays outside a
-            migrated route their own .ui-edgerunner boundary.
+            Dialogs and popovers share application styles and keep native visibility and focus
+            behavior, including while closed.
           </p>
           <div class="control-example row-sm">
             <button
@@ -770,8 +768,8 @@
             </button>
           </div>
           <p class="caption">
-            Only isolation and shared card/control styles are demonstrated here. Responsive overlay
-            shells and app gestures arrive with their consuming views.
+            These specimens demonstrate shared card/control styles. The navigation and player
+            specimens above use the application's responsive overlay shells.
           </p>
         </section>
       </div>
@@ -792,7 +790,7 @@
 
     <dialog
       id="guide-player"
-      class="ui-edgerunner large-player"
+      class="large-player"
       closedby="any"
       aria-labelledby="guide-playing-title"
     >
@@ -897,7 +895,7 @@
 
     <dialog
       id="guide-navigation"
-      class="ui-edgerunner right-sheet"
+      class="right-sheet"
       aria-label="Navigation specimen"
       closedby="any"
     >
@@ -921,7 +919,7 @@
     </dialog>
     <dialog
       id="guide-dialog"
-      class="ui-edgerunner card overlay-example"
+      class="card overlay-example"
       aria-labelledby="guide-dialog-title"
       closedby="any"
     >
@@ -941,7 +939,7 @@
         </div>
       </div>
     </dialog>
-    <div id="guide-popover" class="ui-edgerunner card overlay-example" popover="auto">
+    <div id="guide-popover" class="card overlay-example" popover="auto">
       <div class="stack-md">
         <h2 class="heading-md">Native popover</h2>
         <p class="body">This nonmodal specimen leaves the page interactive.</p>

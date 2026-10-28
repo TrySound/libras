@@ -6,7 +6,7 @@ const { chromium } = require("playwright");
 
 const base = `${(process.env.PREVIEW_URL ?? "http://127.0.0.1:5180").replace(/\/$/, "")}/`;
 
-test("website overrides coexist with scoped legacy and Edgerunner styles", async (t) => {
+test("website and embedded app own their presentation", async (t) => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
     viewport: { width: 1440, height: 900 },
@@ -36,10 +36,8 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
       );
       assert.equal(await page.locator(".site-skip-link").getAttribute("href"), "#main-content");
       assert.equal(
-        await page.evaluate(() =>
-          getComputedStyle(document.documentElement).getPropertyValue("--canvas-bg").trim(),
-        ),
-        "",
+        await page.evaluate(() => getComputedStyle(document.documentElement).backgroundImage),
+        "none",
         "the embedded canvas must not repaint the host document",
       );
     });
@@ -137,25 +135,38 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
       await page.keyboard.press("Escape");
     });
 
-    await t.test("website extensions stop at an Edgerunner boundary", async () => {
+    await t.test("website tokens and styles stop at the embedded application", async () => {
       await page.evaluate(() => {
+        document.querySelector(".website").style.setProperty("--space-lg", "40px");
         const island = document.createElement("section");
-        island.id = "edgerunner-website-fixture";
-        // Deliberately overlap a website class and a shared flow utility.
-        island.className = "ui-edgerunner site-hero stack-lg";
-        island.innerHTML = '<button class="button" data-variant="primary">New control</button>';
+        island.id = "app-website-fixture";
+        island.className = "app-root";
+        // Website selectors must not reach any app content, even with shared class names.
+        island.innerHTML =
+          '<div class="site-hero stack-lg"><button class="button" data-variant="primary">App control</button></div>';
         document.querySelector(".website").append(island);
       });
-      const island = await page.locator("#edgerunner-website-fixture").evaluate((element) => {
+      const island = await page.locator("#app-website-fixture > div").evaluate((element) => {
         const style = getComputedStyle(element);
         return { display: style.display, minHeight: style.minHeight, gap: style.gap };
       });
       assert.deepEqual(island, { display: "grid", minHeight: "0px", gap: "24px" });
       assert.equal(
         await page
-          .locator("#edgerunner-website-fixture .button")
+          .locator(".site-hero")
+          .first()
+          .evaluate((element) => getComputedStyle(element).gap),
+        "40px",
+        "website token customization must not change the embedded theme",
+      );
+      assert.equal(
+        await page
+          .locator("#app-website-fixture .button")
           .evaluate((element) => getComputedStyle(element).backgroundColor),
         "rgb(129, 0, 0)",
+      );
+      await page.evaluate(() =>
+        document.querySelector(".website").style.removeProperty("--space-lg"),
       );
     });
     assert.deepEqual(errors, []);

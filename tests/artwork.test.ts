@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync, mount, unmount, type ComponentProps } from "svelte";
 import { fromStore, writable } from "svelte/store";
 import { SvelteMap } from "svelte/reactivity";
-import Artwork from "../src/artwork.svelte";
+import Artwork from "../src/ui/artwork.svelte";
 import { Covers } from "../src/covers.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
 
@@ -66,6 +66,9 @@ function setup(overrides: Partial<Props> = {}, observation = true) {
       get size() {
         return state.current.size;
       },
+      get class() {
+        return state.current.class;
+      },
     },
   });
   flushSync();
@@ -105,17 +108,20 @@ function setup(overrides: Partial<Props> = {}, observation = true) {
 }
 
 describe("Artwork", () => {
-  it.each(["sm", "md", "stretch"] as const)("uses the shared artwork class for %s", (size) => {
+  it.each(["sm", "md", "cover"] as const)("uses the shared artwork class for %s", (size) => {
     const { target } = setup({ size });
     const root = target.firstElementChild!;
     expect(root.className).toBe("artwork");
     expect(root.getAttribute("data-size")).toBe(size);
-    expect(root.querySelector("svg")?.getAttribute("width")).toBe(size === "stretch" ? "64" : "20");
+    expect(root.querySelector("svg")?.getAttribute("width")).toBe(size === "cover" ? "96" : "20");
   });
 
   it("lazily acquires an artwork ID and reacts to its source without reobserving", () => {
     const { target, loads, sources, observe, intersect } = setup();
     const load = loads.get("a")!;
+    const image = target.querySelector("img")!;
+    expect(image.hidden).toBe(true);
+    expect(image.hasAttribute("src")).toBe(false);
     expect(load).not.toHaveBeenCalled();
     expect(target.querySelector("svg")).not.toBeNull();
     expect(target.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
@@ -125,9 +131,11 @@ describe("Artwork", () => {
     expect(load).toHaveBeenCalledOnce();
     sources.set("a", "blob:cover");
     flushSync();
-    expect(target.querySelector("img")?.getAttribute("src")).toBe("blob:cover");
-    expect(target.querySelector("img")?.getAttribute("alt")).toBe("");
-    expect(target.querySelector("svg")).toBeNull();
+    expect(target.querySelector("img")).toBe(image);
+    expect(image.getAttribute("src")).toBe("blob:cover");
+    expect(image.getAttribute("alt")).toBe("");
+    expect(image.hidden).toBe(false);
+    expect(target.querySelector("svg")).not.toBeNull();
     expect(observe).toHaveBeenCalledOnce();
     intersect(false);
     intersect(true);
@@ -135,8 +143,8 @@ describe("Artwork", () => {
   });
 
   it("loads prominent artwork immediately without observing", () => {
-    const { target, loads, sources, observer } = setup({ loading: "eager", size: "stretch" });
-    expect(target.querySelector(".artwork svg")?.getAttribute("width")).toBe("64");
+    const { target, loads, sources, observer } = setup({ loading: "eager", size: "cover" });
+    expect(target.querySelector(".artwork svg")?.getAttribute("width")).toBe("96");
     sources.set("a", "blob:cover");
     flushSync();
     expect(target.querySelector("img")?.getAttribute("src")).toBe("blob:cover");
@@ -150,14 +158,24 @@ describe("Artwork", () => {
   });
 
   it("renders an empty player placeholder without requesting or observing a missing ID", () => {
-    const { target, ensureCover, observer } = setup({ id: undefined, size: "stretch" });
-    expect(target.querySelector("svg")).not.toBeNull();
+    const { target, ensureCover, observer } = setup({
+      id: undefined,
+      size: "cover",
+      class: "only-desktop",
+    });
+    const root = target.querySelector(".artwork")!;
+    expect(root.classList.contains("only-desktop")).toBe(true);
+    expect(root.getAttribute("aria-hidden")).toBe("true");
+    expect(root.querySelector("img")?.hidden).toBe(true);
+    expect(root.querySelector("img")?.hasAttribute("src")).toBe(false);
+    expect(root.querySelector("svg")?.classList.contains("artwork-placeholder")).toBe(true);
     expect(ensureCover).not.toHaveBeenCalled();
     expect(observer).not.toHaveBeenCalled();
   });
 
   it("rebinds acquisition on artwork ID changes and cleans up on teardown", async () => {
     const { set, intersect, loads, sources, target, unobserve, destroy, disconnect } = setup();
+    const image = target.querySelector("img")!;
     intersect(true);
     sources.set("a", "blob:old");
     flushSync();
@@ -165,10 +183,14 @@ describe("Artwork", () => {
     sources.set("a", "blob:late");
     flushSync();
     expect(unobserve).toHaveBeenCalledOnce();
-    expect(target.querySelector("img")).toBeNull();
+    expect(target.querySelector("img")?.hidden).toBe(true);
     expect(loads.get("b")).not.toHaveBeenCalled();
     intersect(true);
     expect(loads.get("b")).toHaveBeenCalledOnce();
+    sources.set("b", "blob:new");
+    flushSync();
+    expect(target.querySelector("img")).toBe(image);
+    expect(image.getAttribute("src")).toBe("blob:new");
     expect(loads.get("a")).toHaveBeenCalledOnce();
     await destroy();
     expect(unobserve).toHaveBeenCalledTimes(2);
@@ -183,7 +205,8 @@ describe("Artwork", () => {
     sources.set("a", "blob:old");
     flushSync();
     set({ id: undefined });
-    expect(target.querySelector("img")).toBeNull();
+    expect(target.querySelector("img")?.hidden).toBe(true);
+    expect(target.querySelector("img")?.hasAttribute("src")).toBe(false);
     expect(target.querySelector("svg")).not.toBeNull();
     expect(loads.get("a")).toHaveBeenCalledOnce();
     set({ id: "b" });
@@ -191,12 +214,12 @@ describe("Artwork", () => {
   });
 
   it("preserves styling without shared-element transitions", () => {
-    const { target, set } = setup({ size: "stretch" });
+    const { target, set } = setup({ size: "cover" });
     const root = target.firstElementChild as HTMLElement;
     expect(root.className).toBe("artwork");
-    expect(root.dataset.size).toBe("stretch");
+    expect(root.dataset.size).toBe("cover");
     expect(root.style.viewTransitionName).toBe("");
-    expect(root.querySelector("svg")?.getAttribute("width")).toBe("64");
+    expect(root.querySelector("svg")?.getAttribute("width")).toBe("96");
     set({ size: "sm" });
     expect(root.className).toBe("artwork");
     expect(root.dataset.size).toBe("sm");

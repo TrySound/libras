@@ -98,25 +98,25 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
 
 ## UI conventions
 
-### Gradual Edgerunner redesign
+### Edgerunner design system
 
-[Migration tracker #55](https://github.com/TrySound/libras/issues/55) owns the sequence.
-`styleguide.html` is the existing, evolving visual reference; run `pnpm dev` and open
-`/styleguide.html`. It uses the same styles as production, not a separate component library.
+`styleguide.html` is the visual reference; run `pnpm dev` and open `/styleguide.html`.
+It uses the same styles as production, not a separate component library.
 
-- `src/app.css` retains legacy styles behind a temporary scope boundary and imports
-  `src/edgerunner.css`. Opt a migrated route into the new design with `.ui-edgerunner`.
-  Appearance rules opt in there; legacy selectors stop at that boundary.
-  Do not mix legacy and new component markup within a migrated subtree.
-  `website/website.css` uses the same bounded scope so equally specific website
-  extensions still override shared rules by source order, without leaking into migrated islands.
-- Give any dialog/popover mounted outside that subtree its own `.ui-edgerunner` class.
-  It must inherit the new foundations even while closed; preserve native hidden behavior.
-- Edgerunner ports the Original visual system from the `libras-new` design study:
-  published Figma Maroon/Gold primitives → semantic color and complete typography roles.
+- `src/edgerunner.css` owns the theme foundations, components, and music-app layout. Tokens live on
+  `:root` and are re-established at `.app-root` so inherited website variables cannot
+  override the embedded theme. Component classes are scoped to `.app-root` and the styleguide document
+  (`.design-reference`) to keep app presentation out of host pages. Routes and native
+  overlays need no opt-in classes; keep overlays inside the app's DOM and preserve native
+  hidden behavior. Standalone documents paint the app canvas; embedded apps never repaint
+  their host. `src/app.css` retains the website's legacy foundations, typography, and controls;
+  `website/website.css` adds marketing layout. Both stop at `.app-root` so the live demo
+  keeps its own Edgerunner presentation.
+- Edgerunner uses published Figma Maroon/Gold primitives → semantic color and complete
+  typography roles.
   Consume roles for colors/type, primitives for ordinary spacing/shape, and keep component
   configuration local. Containers own gaps/padding. Avoid global element resets.
-- Downloads (`src/_downloads.svelte`) is the first migrated route. It reads real
+- Downloads (`src/_downloads.svelte`) reads real
   jobs and saved records, retains ordering and format-specific identities, and adds no fake
   progress or per-file failure records. Transfer/storage notices do not discard saved rows.
 - Settings (`src/_settings.svelte`) uses shared cards and an app-container-based 3:2 split;
@@ -146,11 +146,10 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   embedded instances stay anchored and budgeted to their app viewport. Queue selection uses
   original occurrence indexes, not filtered row indexes. App retains Session/AudioPlayer ownership;
   opening, dismissal, navigation, and resizing must not restart audio.
-- Edgerunner components live in `src/ui/`; legacy components remain in place until their
-  consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
-  and resolves optional IDs from the current library without changing saved download metadata.
-  The shared Icon accepts explicit numeric dimensions and semantic colors; legacy sizes/defaults
-  are unchanged. Readonly download rows have no hover/press feedback or Tab stops.
+- Shared presentation components live in `src/ui/`. Artwork delegates loading/URL ownership
+  to Covers and resolves optional IDs from the current library without changing saved download
+  metadata. Icon uses numeric dimensions (24px by default) and optional semantic colors.
+  Readonly download rows have no hover/press feedback or Tab stops.
 - Introduce compound components with their first consumer, not all at once. Preserve real
   application behavior, long-press, and swipe-to-dismiss; do not port the prototype runtime.
   Additional Highrider themes/selection are separate work in #54.
@@ -158,13 +157,13 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   Google Fonts, with Latin-only subsets and `font-display: optional`. Other characters
   use system-font fallbacks rather than additional bundled subsets. A short browser-managed
   loading window allows a fast font load; otherwise the page keeps its system fallback without
-  a late swap. The styleguide preloads the Latin 500 heading face; add critical-font preloads
-  to production entry points only when they start using the new typography.
+  a late swap. The styleguide preloads the Latin 500 heading face; production entry points
+  retain optional loading without font preloads.
   Fonts and the SIL OFL license
   live in `src/fonts/`; unsupported glyphs and unavailable fonts use system fallbacks.
   Relative asset URLs support both the app and embedded website builds.
 
-The optional real-browser foundation suite checks scoped coexistence, native controls,
+The optional real-browser foundation suite checks shared styles, native controls,
 focus, overlays, responsive sizing, local fonts, artwork, and reduced motion. With a dev
 or preview server running and Playwright/Chromium installed externally:
 
@@ -176,7 +175,7 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
 
 The website cascade suite uses the website server (`pnpm --filter @libras/website dev`)
 with its own URL. It checks desktop overrides, mobile demo launch/dismissal, mounted-node
-preservation on resize, and isolation from Edgerunner islands:
+preservation on resize, and isolation between marketing and app styles:
 
 ```sh
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5180 \
@@ -238,8 +237,8 @@ for active navigation. Drawer links close it; route changes and resizing do not.
 
 For a subpath deployment, include the base path in `PREVIEW_URL`. These optional suites are
 not part of `pnpm test`; DOM emulation does not validate CSS scope, layout, or native overlays.
-Review the styleguide visually as well, including long labels and enlarged text. During
-coexistence, check a migrated island inside the legacy shell, not only the all-new reference.
+Review the styleguide visually as well, including long labels and enlarged text. Check both
+standalone app journeys and the embedded website demo, not only the reference.
 
 - Store all UI icons in `src/sprite.svg` as `<symbol id="name">` elements. Render them with the typed `Icon` component from `src/icon.svelte`, rather than embedding icon geometry in components. Keep its `IconName` union in sync with the sprite. The sprite is emitted as a separate asset, not embedded in JavaScript. Use `currentColor` for themeable fills and strokes, and give icon-only controls accessible labels.
 - Prefer native invoker commands for popovers and dialogs: use `commandfor="element-id"` with `command="toggle-popover"`, `"show-popover"`, `"hide-popover"`, `"show-modal"`, or `"close"`. Prefer these over `popovertarget`/`popovertargetaction` and JavaScript click handlers that only open or close an overlay. Reserve imperative APIs for behavior that cannot be expressed declaratively, such as swipe-to-dismiss.

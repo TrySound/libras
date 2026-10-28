@@ -65,7 +65,7 @@
   }
 </script>
 
-<section class="ui-edgerunner library-view" aria-labelledby="library-heading">
+<section class="library-view" aria-labelledby="library-heading">
   <div class="stack-lg scroll-runway">
     <h1 class="visually-hidden" id="library-heading">Your library</h1>
     {#if libraryError && libraryAvailable}
@@ -160,7 +160,7 @@
 
 <dialog
   id="artist-menu"
-  class="ui-edgerunner bottom-sheet"
+  class="bottom-sheet"
   aria-labelledby="artist-menu-title"
   closedby="closerequest"
   data-swipedown="close"
@@ -171,7 +171,7 @@
 
 <div
   id="artist-popover"
-  class="ui-edgerunner popover"
+  class="popover"
   popover="auto"
   role="dialog"
   aria-labelledby="artist-popover-title"

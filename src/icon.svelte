@@ -2,13 +2,10 @@
   export type IconName =
     | "brand"
     | "search"
-    | "back"
     | "check"
-    | "chevron-down"
     | "clock"
     | "download"
     | "refresh"
-    | "disconnect"
     | "home"
     | "loading"
     | "menu"
@@ -31,17 +28,14 @@
 <script lang="ts">
   interface Props {
     name: IconName;
-    size?: "md" | "lg" | "xl" | number;
+    size?: number;
     class?: string;
     color?: string;
   }
 
-  const sizes = { md: 20, lg: 32, xl: 64 };
-
-  let { name, size = "md", class: className, color }: Props = $props();
-  const pixels = $derived(typeof size === "number" ? size : sizes[size]);
+  let { name, size = 24, class: className, color }: Props = $props();
 </script>
 
-<svg class={className} {color} aria-hidden="true" width={pixels} height={pixels}>
+<svg class={className} {color} aria-hidden="true" width={size} height={size}>
   <use href={`#icon-${name}`}></use>
 </svg>

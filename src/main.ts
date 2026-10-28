@@ -3,7 +3,7 @@ import App from "./app.svelte";
 import WebappUpdater from "./webapp-updater.svelte";
 import { Network } from "./network.svelte";
 import { AuthStore } from "./auth";
-import "./app.css";
+import "./edgerunner.css";
 
 const target = document.getElementById("app");
 

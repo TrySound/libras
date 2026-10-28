@@ -18,17 +18,6 @@
     <path d="m16 16 5 5" />
   </symbol>
   <symbol
-    id="icon-back"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <path d="m15 18-6-6 6-6" />
-  </symbol>
-  <symbol
     id="icon-check"
     viewBox="0 0 24 24"
     fill="none"
@@ -38,17 +27,6 @@
     stroke-linejoin="round"
   >
     <path d="m5 12 4 4L19 6" />
-  </symbol>
-  <symbol
-    id="icon-chevron-down"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <path d="m6 9 6 6 6-6" />
   </symbol>
   <symbol
     id="icon-clock"
@@ -84,18 +62,6 @@
   >
     <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
     <path d="M21 3v5h-5" />
-  </symbol>
-  <symbol
-    id="icon-disconnect"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <path d="M12 2v10" />
-    <path d="M18.36 5.64a9 9 0 1 1-12.72 0" />
   </symbol>
   <symbol
     id="icon-home"
