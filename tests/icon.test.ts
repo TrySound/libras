@@ -8,13 +8,13 @@ it("renders a decorative icon using the inline sprite", async () => {
   const target = document.createElement("div");
   const component = mount(Icon, {
     target,
-    props: { name: "play", size: 32, class: "text-subtle" },
+    props: { name: "play", size: "lg", class: "text-subtle" },
   });
   try {
     flushSync();
     const svg = target.querySelector("svg")!;
-    expect(svg.getAttribute("width")).toBe("32");
-    expect(svg.getAttribute("height")).toBe("32");
+    expect(svg.getAttribute("width")).toBe("40");
+    expect(svg.getAttribute("height")).toBe("40");
     expect(svg.getAttribute("class")).toBe("text-subtle");
     expect(svg.getAttribute("aria-hidden")).toBe("true");
     expect(svg.querySelector("use")?.getAttribute("href")).toBe("#icon-play");
@@ -26,10 +26,9 @@ it("renders a decorative icon using the inline sprite", async () => {
 
 it.each([
   [undefined, "24"],
-  [24, "24"],
-  [32, "32"],
-  [64, "64"],
-  [96, "96"],
+  ["md", "24"],
+  ["lg", "40"],
+  ["xl", "96"],
 ] as const)("renders size %s at %s pixels", async (size, pixels) => {
   const target = document.createElement("div");
   const component = mount(Icon, { target, props: { name: "music", size } });
@@ -47,7 +46,7 @@ it("allows a semantic status color", async () => {
   const target = document.createElement("div");
   const component = mount(Icon, {
     target,
-    props: { name: "check", size: 24, color: "var(--accent)" },
+    props: { name: "check", color: "var(--accent)" },
   });
   try {
     flushSync();

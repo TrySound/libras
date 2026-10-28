@@ -194,7 +194,7 @@
           <h2 class="heading-md uppercase" id="controls-heading">Buttons</h2>
           <p class="caption">
             Tab through controls to inspect focus. Text buttons size to their labels; icon buttons
-            use 24px glyphs.
+            use 24px glyphs, or 40px for prominent playback controls.
           </p>
           <div class="control-example row-md">
             <button class="button" data-size="text" data-variant="primary">Play</button>
@@ -203,18 +203,19 @@
           </div>
           <div class="control-example row-md">
             <button class="button" data-variant="primary" aria-label="Play specimen">
-              <svg width="24" height="24" aria-hidden="true"><use href="#icon-play"></use></svg>
+              <svg width="24" height="24" aria-hidden="true">
+                <use href="#icon-play"></use>
+              </svg>
             </button>
-            <button
-              class="button"
-              data-size="lg"
-              data-variant="primary"
-              aria-label="Pause specimen"
-            >
-              <svg width="24" height="24" aria-hidden="true"><use href="#icon-pause"></use></svg>
+            <button class="button" data-variant="primary" aria-label="Pause specimen">
+              <svg width="40" height="40" aria-hidden="true">
+                <use href="#icon-pause"></use>
+              </svg>
             </button>
             <button class="button" data-variant="secondary" aria-label="Download specimen">
-              <svg width="24" height="24" aria-hidden="true"><use href="#icon-download"></use></svg>
+              <svg width="24" height="24" aria-hidden="true">
+                <use href="#icon-download"></use>
+              </svg>
             </button>
             <button class="button" data-size="text" data-variant="secondary" disabled>
               Unavailable
@@ -319,19 +320,19 @@
           <div class="row-md">
             <span class="artwork" data-size="sm">
               <img src="/icon.svg" alt="" />
-              <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+              <svg class="artwork-placeholder" width="24" height="24" aria-hidden="true">
                 <use href="#icon-music"></use>
               </svg>
             </span>
             <span class="artwork">
               <img hidden alt="" />
-              <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+              <svg class="artwork-placeholder" width="24" height="24" aria-hidden="true">
                 <use href="#icon-music"></use>
               </svg>
             </span>
             <span class="artwork" data-size="lg">
               <img hidden alt="" />
-              <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+              <svg class="artwork-placeholder" width="24" height="24" aria-hidden="true">
                 <use href="#icon-music"></use>
               </svg>
             </span>
@@ -348,20 +349,32 @@
 
         <section class="card stack-lg" aria-labelledby="loading-heading">
           <h2 class="heading-md uppercase" id="loading-heading">Loading and status</h2>
+          <p class="caption">Icons and loaders use md (24px), lg (40px), and xl (96px) sizes.</p>
           <div class="control-example row-md">
             <button class="button" data-variant="secondary" data-size="text" aria-busy="true">
-              <span class="loader" aria-hidden="true"
-                ><span class="loader-bar"></span><span class="loader-bar"></span
-                ><span class="loader-bar"></span><span class="loader-bar"></span
-                ><span class="loader-bar"></span
-              ></span>
+              <span class="loader" aria-hidden="true">
+                <span class="loader-bar"></span>
+                <span class="loader-bar"></span>
+                <span class="loader-bar"></span>
+                <span class="loader-bar"></span>
+                <span class="loader-bar"></span>
+              </span>
               Loading…
             </button>
-            <span class="loader" data-size="lg" role="img" aria-label="Large loading specimen"
-              ><span class="loader-bar"></span><span class="loader-bar"></span
-              ><span class="loader-bar"></span><span class="loader-bar"></span
-              ><span class="loader-bar"></span
-            ></span>
+            <span class="loader" data-size="lg" role="img" aria-label="Large loading specimen">
+              <span class="loader-bar"></span>
+              <span class="loader-bar"></span>
+              <span class="loader-bar"></span>
+              <span class="loader-bar"></span>
+              <span class="loader-bar"></span>
+            </span>
+            <span class="loader" data-size="xl" role="img" aria-label="Extra large loading specimen">
+              <span class="loader-bar"></span>
+              <span class="loader-bar"></span>
+              <span class="loader-bar"></span>
+              <span class="loader-bar"></span>
+              <span class="loader-bar"></span>
+            </span>
           </div>
           <div class="stack-sm">
             <p class="row-sm label">
@@ -435,7 +448,7 @@
               <div class="row-sm">
                 <span class="artwork only-desktop" data-size="sm" aria-hidden="true">
                   <img hidden alt="" />
-                  <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+                  <svg class="artwork-placeholder" width="24" height="24" aria-hidden="true">
                     <use href="#icon-music"></use>
                   </svg>
                 </span>
@@ -456,7 +469,7 @@
               <div class="row-sm">
                 <span class="artwork only-desktop" data-size="sm" aria-hidden="true">
                   <img hidden alt="" />
-                  <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+                  <svg class="artwork-placeholder" width="24" height="24" aria-hidden="true">
                     <use href="#icon-music"></use>
                   </svg>
                 </span>
@@ -519,7 +532,9 @@
                   data-variant="secondary"
                   aria-label="Actions for Artist with artwork"
                 >
-                  <svg width="24" height="24" aria-hidden="true"><use href="#icon-menu" /></svg>
+                  <svg width="24" height="24" aria-hidden="true">
+                    <use href="#icon-menu" />
+                  </svg>
                 </button>
               </div>
             </article>
@@ -541,7 +556,9 @@
                   data-variant="secondary"
                   aria-label="Actions for An artist with a long name and no artwork"
                 >
-                  <svg width="24" height="24" aria-hidden="true"><use href="#icon-menu" /></svg>
+                  <svg width="24" height="24" aria-hidden="true">
+                    <use href="#icon-menu" />
+                  </svg>
                 </button>
               </div>
             </article>
@@ -607,7 +624,7 @@
                 href="#navigation-heading"
                 aria-label="Libras specimen home"
               >
-                <svg width="32" height="32" color="var(--accent)" aria-hidden="true">
+                <svg width="40" height="40" color="var(--accent)" aria-hidden="true">
                   <use href="#icon-brand"></use>
                 </svg>
                 <span class="brand uppercase">Libras</span>
@@ -849,7 +866,7 @@
                     aria-describedby="guide-track-title guide-track-artist"
                   >
                     <span class="artwork" data-size="md" aria-hidden="true">
-                      <svg class="artwork-placeholder" width="20" height="20" aria-hidden="true">
+                      <svg class="artwork-placeholder" width="24" height="24" aria-hidden="true">
                         <use href="#icon-music"></use>
                       </svg>
                     </span>
@@ -988,24 +1005,23 @@
                     <span>1:42</span><span>3:20</span>
                   </div>
                 </div>
-                <div class="row-md row-center">
-                  <button class="button" data-size="lg" aria-label="Previous specimen" disabled>
-                    <svg width="24" height="24" aria-hidden="true">
+                <div class="player-controls row-md row-center">
+                  <button class="button" aria-label="Previous specimen" disabled>
+                    <svg width="40" height="40" aria-hidden="true">
                       <use href="#icon-previous"></use>
                     </svg>
                   </button>
                   <button
                     class="button"
-                    data-size="lg"
                     data-variant="primary"
                     aria-label="Play fullscreen specimen"
                   >
-                    <svg width="24" height="24" aria-hidden="true">
+                    <svg width="40" height="40" aria-hidden="true">
                       <use href="#icon-play"></use>
                     </svg>
                   </button>
-                  <button class="button" data-size="lg" aria-label="Next specimen">
-                    <svg width="24" height="24" aria-hidden="true">
+                  <button class="button" aria-label="Next specimen">
+                    <svg width="40" height="40" aria-hidden="true">
                       <use href="#icon-next"></use>
                     </svg>
                   </button>
@@ -1059,7 +1075,9 @@
             command="close"
             aria-label="Close navigation specimen"
           >
-            <svg width="24" height="24" aria-hidden="true"><use href="#icon-cross"></use></svg>
+            <svg width="24" height="24" aria-hidden="true">
+              <use href="#icon-cross"></use>
+            </svg>
           </button>
         </header>
         <p class="body">

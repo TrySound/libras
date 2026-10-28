@@ -1,9 +1,9 @@
 <script lang="ts">
   interface Props {
-    size?: "lg";
+    size?: "md" | "lg" | "xl";
   }
 
-  let { size }: Props = $props();
+  let { size = "md" }: Props = $props();
 </script>
 
 <!-- Consumers provide the visible loading label or accessible control name. -->

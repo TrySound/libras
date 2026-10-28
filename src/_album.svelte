@@ -93,24 +93,29 @@
               aria-label={`Play ${album.title}`}
               disabled={!visibleTrackIds.length}
               onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
-              ><Icon name="play" size={24} /></button
             >
+              <Icon name="play" />
+            </button>
             <button
               class="button only-mobile"
               data-variant="secondary"
               commandfor="album-detail-menu"
               command="show-modal"
               aria-label={`Actions for ${album.title}`}
-              onclick={() => (menuTrackId = undefined)}><Icon name="menu" size={24} /></button
+              onclick={() => (menuTrackId = undefined)}
             >
+              <Icon name="menu" />
+            </button>
             <button
               class="button only-desktop"
               data-variant="secondary"
               commandfor="album-detail-menu-popover"
               command="toggle-popover"
               aria-label={`Actions for ${album.title}`}
-              onclick={() => (menuTrackId = undefined)}><Icon name="menu" size={24} /></button
+              onclick={() => (menuTrackId = undefined)}
             >
+              <Icon name="menu" />
+            </button>
           </div>
         </div>
         <p class="caption text-subtle">
@@ -144,18 +149,24 @@
           >
             <span class="track-row-number metadata text-subtle">
               {#if currentTrack?.id === track.id && playbackState === "loading"}
-                <span role="img" aria-label="Loading playback"><Loader /></span>
+                <span role="img" aria-label="Loading playback">
+                  <Loader />
+                </span>
               {:else if currentTrack?.id === track.id && playbackState === "playing"}
-                <span role="img" aria-label="Playing"
-                  ><Icon name="sound-bars" size={24} color="var(--accent)" /></span
-                >
+                <span role="img" aria-label="Playing">
+                  <Icon name="sound-bars" color="var(--accent)" />
+                </span>
               {:else if downloadStatus === "downloading"}
-                <span role="img" aria-label="Downloading"><Loader /></span>
+                <span role="img" aria-label="Downloading">
+                  <Loader />
+                </span>
               {:else if downloadStatus === "queued"}
-                <span role="img" aria-label="Queued for download"
-                  ><Icon name="clock" size={24} /></span
-                >
-              {:else}{String(track.number ?? index + 1).padStart(2, "0")}{/if}
+                <span role="img" aria-label="Queued for download">
+                  <Icon name="clock" />
+                </span>
+              {:else}
+                {String(track.number ?? index + 1).padStart(2, "0")}
+              {/if}
             </span>
             <div>
               <p class="label">{track.title}</p>
@@ -181,16 +192,20 @@
                 commandfor="album-detail-menu"
                 command="show-modal"
                 aria-label={`Actions for ${track.title}`}
-                onclick={() => (menuTrackId = track.id)}><Icon name="menu" size={24} /></button
+                onclick={() => (menuTrackId = track.id)}
               >
+                <Icon name="menu" />
+              </button>
               <button
                 class="button only-desktop"
                 data-variant="secondary"
                 commandfor="album-detail-menu-popover"
                 command="toggle-popover"
                 aria-label={`Actions for ${track.title}`}
-                onclick={() => (menuTrackId = track.id)}><Icon name="menu" size={24} /></button
+                onclick={() => (menuTrackId = track.id)}
               >
+                <Icon name="menu" />
+              </button>
             </div>
           </div>
         {:else}
@@ -250,8 +265,10 @@
         class="button"
         commandfor={target}
         command={isPopover ? "hide-popover" : "close"}
-        aria-label="Close menu"><Icon name="cross" size={24} /></button
+        aria-label="Close menu"
       >
+        <Icon name="cross" />
+      </button>
     </header>
     <div class="stack-sm">
       <button
@@ -261,24 +278,33 @@
           if (menuTrack) playTrack(menuTrack);
           else void playback.replaceQueueAndPlay(menuTrackIds);
           dismissActions();
-        }}><Icon name="play" size={24} /><span>Play</span></button
+        }}
       >
+        <Icon name="play" />
+        <span>Play</span>
+      </button>
       <button
         class="menu-item"
         disabled={!menuTrackIds.length}
         onclick={() => {
           void playback.enqueue(menuTrackIds, "next");
           dismissActions();
-        }}><Icon name="next" size={24} /><span>Play next</span></button
+        }}
       >
+        <Icon name="next" />
+        <span>Play next</span>
+      </button>
       <button
         class="menu-item"
         disabled={!menuTrackIds.length}
         onclick={() => {
           void playback.enqueue(menuTrackIds, "last");
           dismissActions();
-        }}><Icon name="plus" size={24} /><span>Play last</span></button
+        }}
       >
+        <Icon name="plus" />
+        <span>Play last</span>
+      </button>
       <button
         class="menu-item"
         disabled={!menuDownloadIds.length ||
@@ -297,18 +323,17 @@
               : menuDownloadStatus === "queued"
                 ? "clock"
                 : "download"}
-            size={24}
           />
         {/if}
-        <span
-          >{menuDownloadStatus === "downloaded"
+        <span>
+          {menuDownloadStatus === "downloaded"
             ? "Downloaded"
             : menuDownloadStatus === "queued"
               ? "Queued"
               : menuDownloadStatus === "downloading"
                 ? "Downloading…"
-                : "Download"}</span
-        >
+                : "Download"}
+        </span>
       </button>
     </div>
   </div>

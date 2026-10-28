@@ -86,7 +86,7 @@
         disabled={cache.queue.index <= 0 && position <= 0}
         onclick={() => playback.previous()}
       >
-        <Icon name="previous" size={24} />
+        <Icon name="previous" />
       </button>
       <button
         class="button"
@@ -98,7 +98,7 @@
         {#if loading}
           <Loader />
         {:else}
-          <Icon name={playing ? "pause" : "play"} size={24} />
+          <Icon name={playing ? "pause" : "play"} />
         {/if}
       </button>
       <button
@@ -107,7 +107,7 @@
         disabled={cache.queue.index >= cache.queue.tracks.length - 1}
         onclick={() => playback.next()}
       >
-        <Icon name="next" size={24} />
+        <Icon name="next" />
       </button>
     </div>
   </footer>
@@ -132,7 +132,7 @@
         command="close"
         aria-label="Close player"
       >
-        <Icon name="cross" size={24} />
+        <Icon name="cross" />
       </button>
     </header>
     <section class="split-layout large-player-content" aria-label="Playback and queue">
@@ -203,19 +203,17 @@
                 <span>{formatDuration(duration)}</span>
               </div>
             </div>
-            <div class="row-md row-center">
+            <div class="player-controls row-md row-center">
               <button
                 class="button"
-                data-size="lg"
                 aria-label="Previous"
                 disabled={cache.queue.index <= 0 && position <= 0}
                 onclick={() => playback.previous()}
               >
-                <Icon name="previous" size={24} />
+                <Icon name="previous" size="lg" />
               </button>
               <button
                 class="button"
-                data-size="lg"
                 data-variant="primary"
                 aria-label={playing ? "Pause" : "Play"}
                 aria-busy={loading}
@@ -223,20 +221,19 @@
                 onclick={() => playback.toggle()}
               >
                 {#if loading}
-                  <Loader />
+                  <Loader size="lg" />
                 {:else}
-                  <Icon name={playing ? "pause" : "play"} size={24} />
+                  <Icon name={playing ? "pause" : "play"} size="lg" />
                 {/if}
               </button>
               <button
                 class="button"
-                data-size="lg"
                 aria-label="Next"
                 disabled={cache.queue.index < 0 ||
                   cache.queue.index >= cache.queue.tracks.length - 1}
                 onclick={() => playback.next()}
               >
-                <Icon name="next" size={24} />
+                <Icon name="next" size="lg" />
               </button>
             </div>
           </div>
@@ -282,11 +279,11 @@
                   </span>
                 {:else if index === cache.queue.index && playing}
                   <span role="img" aria-label="Playing">
-                    <Icon name="sound-bars" size={24} color="var(--accent)" />
+                    <Icon name="sound-bars" color="var(--accent)" />
                   </span>
                 {:else if index === cache.queue.index}
                   <span role="img" aria-label="Current track, not playing">
-                    <Icon name="pause" size={24} color="var(--accent)" />
+                    <Icon name="pause" color="var(--accent)" />
                   </span>
                 {:else if downloadStatus === "downloading"}
                   <span role="img" aria-label="Downloading">
@@ -294,7 +291,7 @@
                   </span>
                 {:else if downloadStatus === "queued"}
                   <span role="img" aria-label="Queued for download">
-                    <Icon name="clock" size={24} />
+                    <Icon name="clock" />
                   </span>
                 {:else}
                   {String(visibleIndex + 1).padStart(2, "0")}

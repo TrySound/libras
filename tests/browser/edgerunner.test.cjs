@@ -404,6 +404,93 @@ test("Edgerunner foundations and native controls", async (t) => {
       }
     });
 
+    await t.test("loaders use square md, lg, and xl sizes", async () => {
+      for (const [selector, size] of [
+        ["#loading-heading + .caption + .control-example .button .loader", 24],
+        ['.loader[aria-label="Large loading specimen"]', 40],
+        ['.loader[aria-label="Extra large loading specimen"]', 96],
+      ]) {
+        const dimensions = await page.locator(selector).evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          return [box.width, box.height];
+        });
+        assert.deepEqual(dimensions, [size, size]);
+      }
+    });
+
+    await t.test(
+      "40px transport icons retain the 56px button footprint while loading",
+      async () => {
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        const player = page.locator("#guide-player");
+        await player.evaluate((node) => node.showModal());
+        try {
+          const controls = player.locator(".player-controls > .button");
+          const sizes = () =>
+            controls.evaluateAll((buttons) =>
+              buttons.map((button) => {
+                const box = button.getBoundingClientRect();
+                return [box.width, box.height];
+              }),
+            );
+          assert.deepEqual(await sizes(), [
+            [56, 56],
+            [56, 56],
+            [56, 56],
+          ]);
+          assert.deepEqual(
+            await controls
+              .locator("svg")
+              .evaluateAll((icons) =>
+                icons.map((icon) => [
+                  icon.getBoundingClientRect().width,
+                  icon.getBoundingClientRect().height,
+                ]),
+              ),
+            [
+              [40, 40],
+              [40, 40],
+              [40, 40],
+            ],
+          );
+          const play = player.getByRole("button", {
+            name: "Play fullscreen specimen",
+            exact: true,
+          });
+          const original = await play.innerHTML();
+          await play.evaluate((button) => {
+            button.setAttribute("aria-busy", "true");
+            button.innerHTML = `<span class="loader" data-size="lg" aria-hidden="true">${'<span class="loader-bar"></span>'.repeat(
+              5,
+            )}</span>`;
+          });
+          assert.deepEqual(
+            await play.locator(".loader").evaluate((node) => {
+              const box = node.getBoundingClientRect();
+              return [box.width, box.height];
+            }),
+            [40, 40],
+          );
+          assert.deepEqual(await sizes(), [
+            [56, 56],
+            [56, 56],
+            [56, 56],
+          ]);
+          await play.evaluate((button, original) => {
+            button.removeAttribute("aria-busy");
+            button.innerHTML = original;
+          }, original);
+          assert.deepEqual(await sizes(), [
+            [56, 56],
+            [56, 56],
+            [56, 56],
+          ]);
+        } finally {
+          await player.evaluate((node) => node.close());
+        }
+      },
+    );
+
     await t.test("missing artwork and reduced-motion loading", async () => {
       const artwork = page.locator(".artwork");
       assert.equal(await artwork.first().locator(".artwork-placeholder").isVisible(), false);

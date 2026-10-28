@@ -81,24 +81,29 @@
               aria-label={`Play ${artist.name}`}
               disabled={!availableTrackIds(tracks).length}
               onclick={() => void playback.replaceQueueAndPlay(availableTrackIds(tracks))}
-              ><Icon name="play" size={24} /></button
             >
+              <Icon name="play" />
+            </button>
             <button
               class="button only-mobile"
               data-variant="secondary"
               commandfor="artist-detail-menu"
               command="show-modal"
               aria-label={`Actions for ${artist.name}`}
-              onclick={() => (menuAlbumId = undefined)}><Icon name="menu" size={24} /></button
+              onclick={() => (menuAlbumId = undefined)}
             >
+              <Icon name="menu" />
+            </button>
             <button
               class="button only-desktop"
               data-variant="secondary"
               commandfor="artist-detail-menu-popover"
               command="toggle-popover"
               aria-label={`Actions for ${artist.name}`}
-              onclick={() => (menuAlbumId = undefined)}><Icon name="menu" size={24} /></button
+              onclick={() => (menuAlbumId = undefined)}
             >
+              <Icon name="menu" />
+            </button>
           </div>
         </div>
         <p class="caption text-subtle">
@@ -141,16 +146,20 @@
                 commandfor="artist-detail-menu"
                 command="show-modal"
                 aria-label={`Actions for ${album.title}`}
-                onclick={() => (menuAlbumId = album.id)}><Icon name="menu" size={24} /></button
+                onclick={() => (menuAlbumId = album.id)}
               >
+                <Icon name="menu" />
+              </button>
               <button
                 class="button only-desktop"
                 data-variant="secondary"
                 commandfor="artist-detail-menu-popover"
                 command="toggle-popover"
                 aria-label={`Actions for ${album.title}`}
-                onclick={() => (menuAlbumId = album.id)}><Icon name="menu" size={24} /></button
+                onclick={() => (menuAlbumId = album.id)}
               >
+                <Icon name="menu" />
+              </button>
             </div>
           </article>
         {:else}
@@ -210,8 +219,10 @@
         class="button"
         commandfor={target}
         command={isPopover ? "hide-popover" : "close"}
-        aria-label="Close menu"><Icon name="cross" size={24} /></button
+        aria-label="Close menu"
       >
+        <Icon name="cross" />
+      </button>
     </header>
     <div class="stack-sm">
       <button
@@ -220,32 +231,44 @@
         onclick={() => {
           void playback.replaceQueueAndPlay(menuTrackIds);
           dismissActions();
-        }}><Icon name="play" size={24} /><span>Play</span></button
+        }}
       >
+        <Icon name="play" />
+        <span>Play</span>
+      </button>
       <button
         class="menu-item"
         disabled={!menuTrackIds.length}
         onclick={() => {
           void playback.enqueue(menuTrackIds, "next");
           dismissActions();
-        }}><Icon name="next" size={24} /><span>Play next</span></button
+        }}
       >
+        <Icon name="next" />
+        <span>Play next</span>
+      </button>
       <button
         class="menu-item"
         disabled={!menuTrackIds.length}
         onclick={() => {
           void playback.enqueue(menuTrackIds, "last");
           dismissActions();
-        }}><Icon name="plus" size={24} /><span>Play last</span></button
+        }}
       >
+        <Icon name="plus" />
+        <span>Play last</span>
+      </button>
       <button
         class="menu-item"
         disabled={!menuTracks.length}
         onclick={() => {
           trackEngine.downloadMany(menuTracks.map((track) => track.id));
           dismissActions();
-        }}><Icon name="download" size={24} /><span>Download</span></button
+        }}
       >
+        <Icon name="download" />
+        <span>Download</span>
+      </button>
     </div>
   </div>
 {/snippet}

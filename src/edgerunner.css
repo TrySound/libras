@@ -535,13 +535,18 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: center;
     gap: 2px;
-    inline-size: 1.5rem;
-    block-size: 1.5rem;
+    inline-size: 24px;
+    block-size: 24px;
     flex-shrink: 0;
 
     &[data-size="lg"] {
-      inline-size: 5rem;
-      block-size: 3rem;
+      inline-size: 40px;
+      block-size: 40px;
+    }
+
+    &[data-size="xl"] {
+      inline-size: 96px;
+      block-size: 96px;
       gap: var(--space-xs);
     }
 
@@ -826,12 +831,6 @@
     &:focus-visible {
       outline: var(--focus-ring);
       outline-offset: var(--focus-ring-offset);
-    }
-
-    &[data-size="lg"] {
-      --button-padding-block: var(--space-md);
-      --button-padding-inline: var(--space-md);
-      border-radius: var(--radius-md);
     }
 
     &[data-size="text"] {

@@ -78,7 +78,6 @@
                       : connectionState === "offline"
                         ? "offline"
                         : "unlink"}
-                  size={24}
                   color={connectionFailed
                     ? "var(--error-text)"
                     : connectionState === "connected"
@@ -184,7 +183,9 @@
                 aria-disabled={session.busy}
                 aria-busy={session.busy}
               >
-                {#if session.busy}<Loader />{/if}
+                {#if session.busy}
+                  <Loader />
+                {/if}
                 {session.busy ? "Connecting…" : "Connect"}
               </button>
             </div>

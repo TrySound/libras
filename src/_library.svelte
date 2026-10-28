@@ -110,16 +110,20 @@
                   commandfor="artist-menu"
                   command="show-modal"
                   aria-label={`Actions for ${artist.name}`}
-                  onclick={() => (menuArtistId = artist.id)}><Icon name="menu" size={24} /></button
+                  onclick={() => (menuArtistId = artist.id)}
                 >
+                  <Icon name="menu" />
+                </button>
                 <button
                   class="button only-desktop"
                   data-variant="secondary"
                   commandfor="artist-popover"
                   command="toggle-popover"
                   aria-label={`Actions for ${artist.name}`}
-                  onclick={() => (menuArtistId = artist.id)}><Icon name="menu" size={24} /></button
+                  onclick={() => (menuArtistId = artist.id)}
                 >
+                  <Icon name="menu" />
+                </button>
               </div>
             </article>
           {/each}
@@ -192,7 +196,7 @@
         command={popover ? "hide-popover" : "close"}
         aria-label="Close menu"
       >
-        <Icon name="cross" size={24} />
+        <Icon name="cross" />
       </button>
     </header>
     <div class="stack-sm">
@@ -204,7 +208,8 @@
           dismissActions();
         }}
       >
-        <Icon name="play" size={24} /><span>Play</span>
+        <Icon name="play" />
+        <span>Play</span>
       </button>
       <button
         class="menu-item"
@@ -214,7 +219,8 @@
           dismissActions();
         }}
       >
-        <Icon name="next" size={24} /><span>Play next</span>
+        <Icon name="next" />
+        <span>Play next</span>
       </button>
       <button
         class="menu-item"
@@ -224,7 +230,8 @@
           dismissActions();
         }}
       >
-        <Icon name="plus" size={24} /><span>Play last</span>
+        <Icon name="plus" />
+        <span>Play last</span>
       </button>
       <button
         class="menu-item"
@@ -234,7 +241,8 @@
           dismissActions();
         }}
       >
-        <Icon name="download" size={24} /><span>Download</span>
+        <Icon name="download" />
+        <span>Download</span>
       </button>
     </div>
   </div>

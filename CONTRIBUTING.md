@@ -167,7 +167,10 @@ It uses the same styles as production, not a separate component library.
   container height rather than the browser viewport.
 - `src/ui/player.svelte` owns both mini-player and Now Playing presentation, sharing
   derived playback state. Now Playing is a native fullscreen dialog using the shared
-  split layout, artwork budget, seek, transports, and queue rows. The dialog alone scrolls;
+  split layout, artwork budget, seek, transports, and queue rows. Fullscreen transports use
+  medium button padding with 40px icons, retaining a 56px footprint; `<Loader size="lg" />`
+  keeps that footprint while loading. Mini-player controls are unchanged.
+  The dialog alone scrolls;
   embedded instances stay anchored and budgeted to their app viewport. Queue selection uses
   original occurrence indexes, not filtered row indexes. App retains Session/AudioPlayer ownership;
   opening, dismissal, navigation, and resizing must not restart audio. Player minimum heights
@@ -178,7 +181,10 @@ It uses the same styles as production, not a separate component library.
   a separate intentional gesture and may move Now Playing to reveal the underlying page.
 - Shared presentation components live in `src/ui/`. Artwork delegates loading/URL ownership
   to Covers and resolves optional IDs from the current library without changing saved download
-  metadata. Icon uses numeric dimensions (24px by default) and optional semantic colors.
+  metadata. Icon and Loader independently define the same square sizes: `"md"` (default,
+  24px), `"lg"` (40px), and `"xl"` (96px), without shared types or a shared sizing module.
+  Logo icons use `"lg"`; small artwork placeholders use `"md"` and cover placeholders use
+  `"xl"`. Icon also accepts optional semantic colors.
   Readonly download rows have no hover/press feedback or Tab stops.
 - Introduce compound components with their first consumer, not all at once. Preserve real
   application behavior, long-press, and swipe-to-dismiss; do not port the prototype runtime.

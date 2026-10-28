@@ -49,7 +49,9 @@
     {#if downloadError}
       <div class="card stack-md">
         <h2 class="row-sm heading-sm">
-          <span class="row-sm"><Icon name="cross" size={24} color="var(--error-text)" /></span>
+          <span class="row-sm">
+            <Icon name="cross" color="var(--error-text)" />
+          </span>
           Download failed
         </h2>
         <p class="body">{downloadError}</p>
@@ -91,7 +93,6 @@
               {:else}
                 <Icon
                   name={entry.status === "queued" ? "clock" : "check"}
-                  size={24}
                   color={entry.status === "queued" ? "var(--text-subtle)" : "var(--accent)"}
                 />
               {/if}

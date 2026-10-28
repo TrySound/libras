@@ -26,5 +26,5 @@
 
 <span class={["artwork", className]} data-size={size} aria-hidden="true" {@attach acquire}>
   <img src={cover?.source} hidden={!cover?.source} alt="" />
-  <Icon name="music" size={size === "cover" ? 96 : 20} class="artwork-placeholder" />
+  <Icon name="music" size={size === "cover" ? "xl" : "md"} class="artwork-placeholder" />
 </span>

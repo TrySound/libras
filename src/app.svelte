@@ -183,7 +183,7 @@
     aria-label="Libras home"
     onclick={() => navigationDrawer?.close()}
   >
-    <Icon name="brand" size={32} color="var(--accent)" />
+    <Icon name="brand" size="lg" color="var(--accent)" />
     <span class="brand uppercase">Libras</span>
   </a>
 {/snippet}
@@ -196,7 +196,7 @@
       aria-current={isCurrentPage("/library") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
-      <Icon name="disc" size={24} color={isCurrentPage("/library") ? "var(--accent)" : undefined} />
+      <Icon name="disc" color={isCurrentPage("/library") ? "var(--accent)" : undefined} />
       Your library
     </a>
     <a
@@ -205,11 +205,7 @@
       aria-current={isCurrentPage("/search") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
-      <Icon
-        name="search"
-        size={24}
-        color={isCurrentPage("/search") ? "var(--accent)" : undefined}
-      />
+      <Icon name="search" color={isCurrentPage("/search") ? "var(--accent)" : undefined} />
       Search
     </a>
     <a
@@ -218,11 +214,7 @@
       aria-current={isCurrentPage("/downloads") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
-      <Icon
-        name="download"
-        size={24}
-        color={isCurrentPage("/downloads") ? "var(--accent)" : undefined}
-      />
+      <Icon name="download" color={isCurrentPage("/downloads") ? "var(--accent)" : undefined} />
       Downloads
     </a>
     <a
@@ -231,11 +223,7 @@
       aria-current={isCurrentPage("/settings") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
-      <Icon
-        name="settings"
-        size={24}
-        color={isCurrentPage("/settings") ? "var(--accent)" : undefined}
-      />
+      <Icon name="settings" color={isCurrentPage("/settings") ? "var(--accent)" : undefined} />
       Settings
     </a>
   </nav>
@@ -290,7 +278,9 @@
         {@render brand()}
         <div class="row-sm">
           {@render actions()}
-          <a class="button" href="#/search" aria-label="Search"><Icon name="search" size={24} /></a>
+          <a class="button" href="#/search" aria-label="Search">
+            <Icon name="search" />
+          </a>
           <button
             class="button"
             data-size={appUpdate?.hasUpdate ? "text" : undefined}
@@ -305,7 +295,7 @@
             {#if appUpdate?.hasUpdate}
               <span id="navigation-update-hint" class="caption text-subtle">Update</span>
             {/if}
-            <Icon name="menu-lines" size={24} />
+            <Icon name="menu-lines" />
           </button>
         </div>
       </header>
@@ -340,8 +330,10 @@
             data-variant="ghost"
             aria-label="Close errors"
             commandfor="error-popover"
-            command="hide-popover"><Icon name="cross" /></button
+            command="hide-popover"
           >
+            <Icon name="cross" />
+          </button>
         </div>
       {/if}
       <dialog
@@ -361,8 +353,10 @@
               class="button"
               aria-label="Close menu"
               commandfor="navigation-dialog"
-              command="close"><Icon name="cross" size={24} /></button
+              command="close"
             >
+              <Icon name="cross" />
+            </button>
           </header>
           {@render navigation()}
         </div>

@@ -113,7 +113,7 @@ describe("Artwork", () => {
     const root = target.firstElementChild!;
     expect(root.className).toBe("artwork");
     expect(root.getAttribute("data-size")).toBe(size);
-    expect(root.querySelector("svg")?.getAttribute("width")).toBe(size === "cover" ? "96" : "20");
+    expect(root.querySelector("svg")?.getAttribute("width")).toBe(size === "cover" ? "96" : "24");
   });
 
   it("lazily acquires an artwork ID and reacts to its source without reobserving", () => {
@@ -224,6 +224,6 @@ describe("Artwork", () => {
     expect(root.className).toBe("artwork");
     expect(root.dataset.size).toBe("sm");
     expect(root.style.viewTransitionName).toBe("");
-    expect(root.querySelector("svg")?.getAttribute("width")).toBe("20");
+    expect(root.querySelector("svg")?.getAttribute("width")).toBe("24");
   });
 });

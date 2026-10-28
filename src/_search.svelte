@@ -381,8 +381,9 @@
                       command="show-modal"
                       aria-label={`Open menu for ${record.title}`}
                       onclick={() => selectMenu(group, record.id)}
-                      ><Icon name="menu" size={24} /></button
                     >
+                      <Icon name="menu" />
+                    </button>
                     <button
                       class="button only-desktop"
                       data-variant="secondary"
@@ -390,8 +391,9 @@
                       command="toggle-popover"
                       aria-label={`Open menu for ${record.title}`}
                       onclick={() => selectMenu(group, record.id)}
-                      ><Icon name="menu" size={24} /></button
                     >
+                      <Icon name="menu" />
+                    </button>
                   </div>
                 </div>
               {/each}
@@ -447,8 +449,10 @@
         class="button"
         commandfor={target}
         command={isPopover ? "hide-popover" : "close"}
-        aria-label="Close menu"><Icon name="cross" size={24} /></button
+        aria-label="Close menu"
       >
+        <Icon name="cross" />
+      </button>
     </header>
     <div class="stack-sm">
       <button
@@ -457,24 +461,33 @@
         onclick={() => {
           playMenu();
           dismissActions();
-        }}><Icon name="play" size={24} /><span>Play</span></button
+        }}
       >
+        <Icon name="play" />
+        <span>Play</span>
+      </button>
       <button
         class="menu-item"
         disabled={!menuTrackIds.length}
         onclick={() => {
           void playback.enqueue(menuTrackIds, "next");
           dismissActions();
-        }}><Icon name="next" size={24} /><span>Play next</span></button
+        }}
       >
+        <Icon name="next" />
+        <span>Play next</span>
+      </button>
       <button
         class="menu-item"
         disabled={!menuTrackIds.length}
         onclick={() => {
           void playback.enqueue(menuTrackIds, "last");
           dismissActions();
-        }}><Icon name="plus" size={24} /><span>Play last</span></button
+        }}
       >
+        <Icon name="plus" />
+        <span>Play last</span>
+      </button>
       <button
         class="menu-item"
         disabled={!menuTracks.length || menuDownloadStatus !== "idle"}
@@ -483,10 +496,11 @@
           dismissActions();
         }}
       >
-        {#if menuDownloadStatus === "downloading"}<Loader />{:else}<Icon
-            name={downloadPresentation[menuDownloadStatus].icon}
-            size={24}
-          />{/if}
+        {#if menuDownloadStatus === "downloading"}
+          <Loader />
+        {:else}
+          <Icon name={downloadPresentation[menuDownloadStatus].icon} />
+        {/if}
         <span>{downloadPresentation[menuDownloadStatus].label}</span>
       </button>
     </div>

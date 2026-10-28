@@ -224,8 +224,8 @@ it("uses the empty fallback before account selection and when selection is clear
   expect(target.textContent).toContain("Connect your library");
   const brand = target.querySelector('.app-header a[aria-label="Libras home"] svg');
   expect(brand?.getAttribute("aria-hidden")).toBe("true");
-  expect(brand?.getAttribute("width")).toBe("32");
-  expect(brand?.getAttribute("height")).toBe("32");
+  expect(brand?.getAttribute("width")).toBe("40");
+  expect(brand?.getAttribute("height")).toBe("40");
   expect(brand?.querySelectorAll("path")).toHaveLength(0);
   expect(brand?.querySelector("use")?.getAttribute("href")).toBe("#icon-brand");
   expect(target.querySelector('.app-header a[aria-label="Libras home"]')?.textContent?.trim()).toBe(
@@ -481,6 +481,8 @@ it("renders the cache stress fixture with unique tiles and one shared menu", asy
     const artwork = tile.parentElement!.querySelector(".artwork")!;
     const label = tile.parentElement!.querySelector("h3")!;
     expect(artwork.parentElement).toBe(tile.parentElement);
+    expect(artwork.querySelector(".artwork-placeholder")?.getAttribute("width")).toBe("24");
+    expect(artwork.querySelector(".artwork-placeholder")?.getAttribute("height")).toBe("24");
     expect(label.parentElement?.classList.contains("tile-content")).toBe(true);
     expect(label.classList.contains("truncate")).toBe(false);
     expect((artwork as HTMLElement).style.viewTransitionName).toBe("");
@@ -581,6 +583,14 @@ it.each([
   expect(dialog.querySelector("#playing-title")?.textContent).toBe("Now Playing");
   expect(dialog.querySelector('input[aria-label="Playback position"]')).not.toBeNull();
   expect(dialog.querySelector('[aria-label="Queue"] h2')?.textContent).toBe("Up next");
+  const transportButtons = [...dialog.querySelectorAll(".player-controls > .button")];
+  expect(transportButtons).toHaveLength(3);
+  for (const button of transportButtons) {
+    expect(button.hasAttribute("data-size")).toBe(false);
+    expect(button.querySelector("svg")?.getAttribute("width")).toBe("40");
+    expect(button.querySelector("svg")?.getAttribute("height")).toBe("40");
+    expect(button.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  }
   const controls = target.querySelectorAll(
     "#player-dialog .topbar a, #player-dialog .topbar button",
   );
@@ -911,6 +921,12 @@ it.each([{ genres: ["Jazz", "Soul"] }, { genres: [] }])(
     const genreRow = target.querySelector('.viewport-panel [aria-label="Genres"]');
     expect(metadata?.textContent?.trim()).toBe("Unknown year · 1 track");
     expect(metadata?.classList.contains("text-subtle")).toBe(true);
+    expect(
+      target.querySelector(".viewport-panel .artwork-placeholder")?.getAttribute("width"),
+    ).toBe("96");
+    expect(
+      target.querySelector(".viewport-panel .artwork-placeholder")?.getAttribute("height"),
+    ).toBe("96");
     if (genres.length) {
       expect(genreRow?.tagName).toBe("P");
       expect(genreRow?.textContent).toBe("Jazz · Soul");

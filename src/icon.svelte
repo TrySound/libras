@@ -28,14 +28,15 @@
 <script lang="ts">
   interface Props {
     name: IconName;
-    size?: number;
+    size?: "md" | "lg" | "xl";
     class?: string;
     color?: string;
   }
 
-  let { name, size = 24, class: className, color }: Props = $props();
+  let { name, size = "md", class: className, color }: Props = $props();
+  const dimension = $derived({ md: 24, lg: 40, xl: 96 }[size]);
 </script>
 
-<svg class={className} {color} aria-hidden="true" width={size} height={size}>
+<svg class={className} {color} aria-hidden="true" width={dimension} height={dimension}>
   <use href={`#icon-${name}`}></use>
 </svg>
