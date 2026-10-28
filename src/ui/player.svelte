@@ -73,8 +73,9 @@
       <Artwork {covers} id={track.artworkId} loading="eager" />
       <span class="stack-xs">
         <strong id={`${id}-title`} class="label truncate">{track.title}</strong>
-        <small id={`${id}-artist`} class="caption text-secondary truncate">{artistName ?? ""}</small
-        >
+        <small id={`${id}-artist`} class="caption text-secondary truncate">
+          {artistName ?? ""}
+        </small>
       </span>
     </button>
     <div class="row-md">
@@ -135,8 +136,10 @@
         data-variant="ghost"
         commandfor="player-dialog"
         command="close"
-        aria-label="Close player"><Icon name="cross" size={24} /></button
+        aria-label="Close player"
       >
+        <Icon name="cross" size={24} />
+      </button>
     </header>
     <section class="split-layout large-player-content" aria-label="Playback and queue">
       <div class="viewport-panel">
@@ -157,9 +160,12 @@
                     class="button-quiet"
                     href={`#/library/artist/${encodeURIComponent(artist.id)}`}
                     onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-                    >{artistName}</a
                   >
-                {:else}{artistName ?? ""}{/if}
+                    {artistName}
+                  </a>
+                {:else}
+                  {artistName ?? ""}
+                {/if}
                 {#if album}
                   —
                   {#if albumArtist}
@@ -167,14 +173,19 @@
                       class="button-quiet"
                       href={`#/library/artist/${encodeURIComponent(albumArtist.id)}/album/${encodeURIComponent(album.id)}`}
                       onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-                      >{album.title}</a
                     >
-                  {:else}{album.title}{/if}
+                      {album.title}
+                    </a>
+                  {:else}
+                    {album.title}
+                  {/if}
                 {/if}
               </p>
               {#if track.genres.length}
                 <div class="row-wrap caption text-secondary" aria-label="Genres">
-                  {#each track.genres as genre}<span>{genre}</span>{/each}
+                  {#each track.genres as genre}
+                    <span>{genre}</span>
+                  {/each}
                 </div>
               {/if}
             {/if}
@@ -196,7 +207,8 @@
                 oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
               />
               <div class="row-sm row-justify metadata text-subtle">
-                <span>{formatDuration(position)}</span><span>{formatDuration(duration)}</span>
+                <span>{formatDuration(position)}</span>
+                <span>{formatDuration(duration)}</span>
               </div>
             </div>
             <div class="row-md row-center">
@@ -205,8 +217,10 @@
                 data-size="lg"
                 aria-label="Previous"
                 disabled={cache.queue.index <= 0 && position <= 0}
-                onclick={() => playback.previous()}><Icon name="previous" size={24} /></button
+                onclick={() => playback.previous()}
               >
+                <Icon name="previous" size={24} />
+              </button>
               <button
                 class="button"
                 data-size="lg"
@@ -216,10 +230,11 @@
                 disabled={!queue.length}
                 onclick={() => playback.toggle()}
               >
-                {#if loading}<Loader />{:else}<Icon
-                    name={playing ? "pause" : "play"}
-                    size={24}
-                  />{/if}
+                {#if loading}
+                  <Loader />
+                {:else}
+                  <Icon name={playing ? "pause" : "play"} size={24} />
+                {/if}
               </button>
               <button
                 class="button"
@@ -227,8 +242,10 @@
                 aria-label="Next"
                 disabled={cache.queue.index < 0 ||
                   cache.queue.index >= cache.queue.tracks.length - 1}
-                onclick={() => playback.next()}><Icon name="next" size={24} /></button
+                onclick={() => playback.next()}
               >
+                <Icon name="next" size={24} />
+              </button>
             </div>
           </div>
         </div>
@@ -247,8 +264,10 @@
               onclick={(event) => {
                 event.currentTarget.closest("dialog")?.close();
                 playback.clearQueue();
-              }}>Clear</button
+              }}
             >
+              Clear
+            </button>
           {/if}
         </div>
         <div class="stack-sm">
@@ -266,28 +285,36 @@
             >
               <span class="track-row-number metadata text-subtle">
                 {#if index === cache.queue.index && loading}
-                  <span role="img" aria-label="Loading playback"><Loader /></span>
+                  <span role="img" aria-label="Loading playback">
+                    <Loader />
+                  </span>
                 {:else if index === cache.queue.index && playing}
-                  <span role="img" aria-label="Playing"
-                    ><Icon name="sound-bars" size={24} color="var(--accent)" /></span
-                  >
+                  <span role="img" aria-label="Playing">
+                    <Icon name="sound-bars" size={24} color="var(--accent)" />
+                  </span>
                 {:else if index === cache.queue.index}
-                  <span role="img" aria-label="Current track, not playing"
-                    ><Icon name="pause" size={24} color="var(--accent)" /></span
-                  >
+                  <span role="img" aria-label="Current track, not playing">
+                    <Icon name="pause" size={24} color="var(--accent)" />
+                  </span>
                 {:else if downloadStatus === "downloading"}
-                  <span role="img" aria-label="Downloading"><Loader /></span>
+                  <span role="img" aria-label="Downloading">
+                    <Loader />
+                  </span>
                 {:else if downloadStatus === "queued"}
-                  <span role="img" aria-label="Queued for download"
-                    ><Icon name="clock" size={24} /></span
-                  >
-                {:else}{String(visibleIndex + 1).padStart(2, "0")}{/if}
+                  <span role="img" aria-label="Queued for download">
+                    <Icon name="clock" size={24} />
+                  </span>
+                {:else}
+                  {String(visibleIndex + 1).padStart(2, "0")}
+                {/if}
               </span>
               <div class="row-sm">
                 <Artwork {covers} id={track.artworkId} size="sm" />
                 <div>
                   <p class="label">{track.title}</p>
-                  {#if credit}<p class="caption text-secondary">{credit}</p>{/if}
+                  {#if credit}
+                    <p class="caption text-secondary">{credit}</p>
+                  {/if}
                 </div>
               </div>
               <button
@@ -296,9 +323,11 @@
                 onclick={() => playback.playIndex(index)}
               ></button>
               <div class="row-sm">
-                <span class="metadata text-subtle"
-                  >{#if track.duration !== undefined}{formatDuration(track.duration)}{/if}</span
-                >
+                <span class="metadata text-subtle">
+                  {#if track.duration !== undefined}
+                    {formatDuration(track.duration)}
+                  {/if}
+                </span>
               </div>
             </div>
           {:else}
