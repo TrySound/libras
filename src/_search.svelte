@@ -283,6 +283,7 @@
       autocapitalize="off"
       spellcheck="false"
       bind:value={searchState.query}
+      oninput={() => (searchState.limits = createSearchState().limits)}
       autofocus
     />
   </search>

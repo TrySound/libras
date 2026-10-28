@@ -103,6 +103,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     input.value = "Artist";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flushSync();
+    expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(3);
     for (const name of ["Artist", "Album"]) {
       button(`Open menu for ${name}`).click();
       flushSync();
@@ -131,6 +132,9 @@ it("focuses the input, expands results, retains route state, and uses album play
     input.value = "Song";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flushSync();
+    expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(3);
+    button("Show more tracks").click();
+    flushSync();
     button("Toggle route").click();
     flushSync();
     button("Toggle route").click();
@@ -145,6 +149,10 @@ it("focuses the input, expands results, retains route state, and uses album play
     expect(input.value).toBe("");
     expect(target.textContent).toContain("Type to find music");
     expect(document.activeElement).toBe(input);
+    input.value = "Song";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    flushSync();
+    expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(3);
     input.value = "zzzzzzzzzz";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flushSync();
