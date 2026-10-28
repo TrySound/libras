@@ -1199,6 +1199,19 @@
   }
 
   .right-sheet {
+    &[open] {
+      translate: var(--swipe-offset, 0px) 0;
+    }
+    &[data-dragging] {
+      transition: none;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      @starting-style {
+        &[open] {
+          translate: var(--sheet-closed-translate);
+        }
+      }
+    }
     --sheet-closed-translate: 100% 0;
     inset: 0 0 0 auto;
     width: min(360px, calc(100dvw - 2 * var(--space-md)));
@@ -1425,6 +1438,15 @@
     block-size: 6px;
     background: var(--text-secondary);
     pointer-events: none;
+
+    &[data-side="left"] {
+      inset-block-start: 50%;
+      inset-inline-start: var(--space-sm);
+      translate: 0 -50%;
+      inline-size: 6px;
+      block-size: 40px;
+      opacity: 0.5;
+    }
   }
 
   .popover {

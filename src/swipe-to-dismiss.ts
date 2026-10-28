@@ -3,6 +3,7 @@ export function installSwipeToDismiss(root: Document = document) {
   let touchId: number | undefined;
   let startX = 0;
   let startY = 0;
+  let horizontal = false;
   let dragging = false;
   let threshold = 96;
   let suppressed: HTMLDialogElement | undefined;
@@ -20,18 +21,18 @@ export function installSwipeToDismiss(root: Document = document) {
     reset();
     if (event.touches.length !== 1 || !(event.target instanceof Element)) return;
     const target = event.target.closest("dialog");
-    if (
-      !(target instanceof HTMLDialogElement) ||
-      !target.open ||
-      target.dataset.swipedown !== "close"
-    )
-      return;
+    if (!(target instanceof HTMLDialogElement) || !target.open) return;
+    const down = target.dataset.swipedown === "close";
+    const right = target.dataset.swiperight === "close";
+    // Each dialog opts into exactly one dismissal direction.
+    if (down === right) return;
+    horizontal = right;
     // Inputs keep their native gestures, including the playback seek slider.
     if (event.target.closest("input, textarea, select, [contenteditable]")) return;
 
-    // Do not steal a gesture from content that can still scroll upward.
+    // Do not steal a gesture from content that can still scroll toward its start.
     for (let node: Element | null = event.target; node; node = node.parentElement) {
-      if (node.scrollTop > 0) return;
+      if ((horizontal ? node.scrollLeft : node.scrollTop) > 0) return;
       if (node === target) break;
     }
 
@@ -40,7 +41,8 @@ export function installSwipeToDismiss(root: Document = document) {
     touchId = touch.identifier;
     startX = touch.clientX;
     startY = touch.clientY;
-    threshold = Math.max(72, Math.min(160, dialog.getBoundingClientRect().height * 0.2));
+    const bounds = dialog.getBoundingClientRect();
+    threshold = Math.max(72, Math.min(160, (horizontal ? bounds.width : bounds.height) * 0.2));
   };
 
   const move = (event: TouchEvent) => {
@@ -53,10 +55,12 @@ export function installSwipeToDismiss(root: Document = document) {
     if (!touch) return;
     const dy = touch.clientY - startY;
     const dx = touch.clientX - startX;
+    const distance = horizontal ? dx : dy;
+    const perpendicular = horizontal ? dy : dx;
     if (!dragging) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
-      // Once scrolling or a horizontal gesture wins, leave the rest of it native.
-      if (dy <= 0 || Math.abs(dx) >= dy) {
+      // Once scrolling or a different direction wins, leave the rest of it native.
+      if (distance <= 0 || Math.abs(perpendicular) >= distance) {
         reset();
         return;
       }
@@ -70,15 +74,15 @@ export function installSwipeToDismiss(root: Document = document) {
     suppressed = dialog;
     suppressClickUntil = Date.now() + 750;
     dialog.setAttribute("data-dragging", "");
-    dialog.style.setProperty("--swipe-offset", `${Math.max(0, dy)}px`);
+    dialog.style.setProperty("--swipe-offset", `${Math.max(0, distance)}px`);
   };
 
   const end = (event: TouchEvent) => {
     const touch = Array.from(event.changedTouches).find((touch) => touch.identifier === touchId);
     if (!touch || !dialog) return;
     const target = dialog;
-    const dismiss =
-      target.isConnected && target.open && dragging && touch.clientY - startY >= threshold;
+    const distance = horizontal ? touch.clientX - startX : touch.clientY - startY;
+    const dismiss = target.isConnected && target.open && dragging && distance >= threshold;
     if (dragging) {
       if (event.cancelable) event.preventDefault();
       suppressClickUntil = Date.now() + 750;

@@ -339,6 +339,7 @@
       <dialog
         class="right-sheet"
         id="navigation-dialog"
+        data-swiperight="close"
         aria-label="Navigation"
         closedby="any"
         bind:this={navigationDrawer}
@@ -346,6 +347,7 @@
           navigationOpen = navigationDrawer.open;
         }}
       >
+        <span class="dialog-handle" data-side="left" aria-hidden="true"></span>
         <div class="stack-lg">
           <header class="row-md row-justify">
             {@render brand()}
