@@ -24,8 +24,8 @@ album/tracks, with cancellation and a timeout. No Libras credentials are sent.
 `getStreamUrl` looks up the selected track on each playback request and returns its
 current preview URL. Audio plays directly from Deezer's CDN; URLs are not saved in
 the library or queue. The player measures clip duration rather than using the full
-song's duration. Downloads and application-managed audio caching are disabled;
-metadata/artwork retain the shared app's normal caching behavior.
+song's duration. Download actions and caching retain the shared app's normal
+behavior; downloads may not work with Deezer preview URLs.
 
 Approval is reported in #79; detailed conditions are not recorded here. JSONP access,
 metadata/artwork storage, and attribution requirements still need confirmation for
@@ -34,7 +34,7 @@ the full rollout. The Pages workflow still uses the old static catalog export.
 ## Verification
 
 Synthetic tests cover the adapter, demo UI, cancellation, retries, URL validation,
-and download/cache boundaries. A live headless Chromium check played all three
+and network integration. A live headless Chromium check played all three
 clips (29.988563s each), sought The Hollow to 10s, and checked queue advancement after
 seeking near a clip's end. This does not establish other browser/device behavior.
 

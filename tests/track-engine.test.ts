@@ -61,22 +61,6 @@ afterEach(() => {
 });
 
 describe("TrackEngine using Cache", () => {
-  it("never reads cached audio or schedules downloads for a streaming-only provider", async () => {
-    install("probably");
-    const { cache, engine } = setup({ cache: await seed() });
-    const read = vi.spyOn(cache, "readDownload");
-    const write = vi.spyOn(cache, "saveDownload");
-    const url = vi.fn(async () => "https://media.example.test/preview.mp3");
-    engine.setConnection({ ...connection(), downloadsAllowed: false, url });
-    expect(engine.downloadsAllowed).toBe(false);
-    const source = await engine.getSource({ id: track.id, contentType: "audio/mpeg" });
-    expect(source.cached).toBe(false);
-    expect(source.url).toBe("https://media.example.test/preview.mp3");
-    await expect(engine.download(track.id)).rejects.toThrow("disabled");
-    expect(engine.downloadJobs).toHaveLength(0);
-    expect(read).not.toHaveBeenCalled();
-    expect(write).not.toHaveBeenCalled();
-  });
   it("batches only missing tracks, skipping either saved format and pending jobs in input order", async () => {
     install();
     const { cache, engine } = setup({ online: true, concurrency: 1 });

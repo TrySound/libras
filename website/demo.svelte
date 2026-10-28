@@ -51,7 +51,7 @@
   {#snippet settingsContent()}
     <article class="card stack-md" aria-labelledby="demo-credits-title">
       <h2 class="heading-md uppercase" id="demo-credits-title">Demo music credits</h2>
-      <p class="body">Previews provided by Deezer. Downloads and offline audio are disabled.</p>
+      <p class="body">Previews provided by Deezer. Downloads may not work in this demo.</p>
       <p class="body">
         <a href="https://www.deezer.com/album/302117" rel="noreferrer"
           >A Perfect Circle — Mer De Noms</a

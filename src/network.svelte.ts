@@ -161,9 +161,7 @@ export type PlaylistConnection = ReturnType<typeof playlistAccess>;
 
 type AudioFormat = "raw" | "mp3";
 
-export type AudioConnection = Omit<ReturnType<typeof audioAccess>, "downloadsAllowed"> & {
-  readonly downloadsAllowed?: boolean;
-};
+export type AudioConnection = ReturnType<typeof audioAccess>;
 
 /** HTTP freshness metadata shared by responses and the local image catalog. */
 type ArtworkCachePolicy = Pick<ImageMetadata, "cacheControl" | "expires" | "freshUntil">;
@@ -512,11 +510,8 @@ function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: R
   return Object.freeze({
     account,
     signal: client.signal,
-    downloadsAllowed: client.audioDownloads !== false,
     url,
     async read(id: string, options: { format: AudioFormat; signal: AbortSignal }) {
-      if (client.audioDownloads === false)
-        throw new Error("Audio downloads are disabled for this source.");
       const signal = AbortSignal.any([client.signal, options.signal]);
       signal.throwIfAborted();
       let response: Response | undefined;

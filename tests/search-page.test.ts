@@ -31,7 +31,7 @@ it("focuses the input, expands results, retains route state, and uses album play
       artistAlbums: new Map([["artist", [{ id: "album" }]]]),
     },
     session: { localReady: true, offlineMode: false, refreshError: "Synchronization failed." },
-    trackEngine: { downloadsAllowed: true, getStatus: () => "downloaded", downloadMany },
+    trackEngine: { getStatus: () => "downloaded", downloadMany },
     covers: {
       ensureCover: () => cover,
     },

@@ -307,8 +307,7 @@
       </button>
       <button
         class="menu-item"
-        disabled={!trackEngine.downloadsAllowed ||
-          !menuDownloadIds.length ||
+        disabled={!menuDownloadIds.length ||
           (menuDownloadStatus !== undefined && menuDownloadStatus !== "idle")}
         onclick={() => {
           trackEngine.downloadMany(menuDownloadIds);

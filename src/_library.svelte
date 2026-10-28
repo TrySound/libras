@@ -235,7 +235,7 @@
       </button>
       <button
         class="menu-item"
-        disabled={!trackEngine.downloadsAllowed || !tracks.length}
+        disabled={!tracks.length}
         onclick={() => {
           trackEngine.downloadMany(tracks.map((track) => track.id));
           dismissActions();

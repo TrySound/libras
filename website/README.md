@@ -33,11 +33,8 @@ approval, and remaining test limitations.
   with allowlisted paths; this is a third-party script trust boundary, not pure JSON.
 - Playback resolves a fresh URL per source request. Signed URLs stay in memory, never
   in saved library/queue records. MP3 previews play directly from Deezer's CDN.
-- The adapter disables audio downloads and application-managed offline audio caching.
-  The engine skips existing audio cache reads and refuses download scheduling; network
-  download reads are also blocked. Download menu actions are disabled. Metadata and
-  artwork still use the shared app's normal caches; ordinary browser media buffering
-  is not application-managed offline storage.
+- Download actions and caching use the shared app's normal behavior. Downloads may
+  not work with Deezer preview URLs; there is no demo-specific capability check.
 - Attribution and source links are rendered as an HTML card in Settings, supplied by
   the demo through App's optional `settingsContent` snippet. Track labels identify
   previews and explicit content. Actual clip duration comes from the audio element,
@@ -61,6 +58,6 @@ no longer reads that export.
 
 `pnpm check` and `pnpm test` cover both workspaces. Deezer tests use synthetic metadata,
 not live API/CDN requests, and cover pagination, cancellation, retries, fresh URL
-resolution, restricted media origins, download/cache boundaries, account isolation,
+resolution, restricted media origins, account isolation,
 attribution, and the normal preconnected demo UI. Other browser/device playback still
 requires manual verification.

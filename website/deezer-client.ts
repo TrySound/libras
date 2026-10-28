@@ -37,7 +37,6 @@ type Catalog = ReturnType<DeezerSubsonicClient["parse"]>;
 export class DeezerSubsonicClient implements SubsonicApi {
   readonly host: string;
   readonly username: string;
-  readonly audioDownloads = false;
   private controller = new AbortController();
   private catalog?: Catalog;
   private pending?: Promise<Catalog>;

@@ -99,15 +99,10 @@ it("retries failed catalog loads and rejects stale responses after disconnect", 
   await expect(stale.ping()).rejects.toMatchObject({ name: "AbortError" });
 });
 
-it("blocks download reads before requesting a preview and supports async playback through Network", async () => {
+it("supports async playback URLs through Network", async () => {
   const read = vi.fn().mockResolvedValue({ ...album.tracks.data[0], album: { id: 302117 } });
   const network = new Network((identity) => new DeezerSubsonicClient(identity, read));
   const connection = network.accept(network.prepare(auth));
-  expect(connection.audio.downloadsAllowed).toBe(false);
-  await expect(
-    connection.audio.read("3135439", { format: "raw", signal: new AbortController().signal }),
-  ).rejects.toThrow("disabled");
-  expect(read).not.toHaveBeenCalled();
   expect(await connection.audio.url("3135439", { format: "raw" })).toContain(
     "https://cdnt-preview.dzcdn.net/",
   );

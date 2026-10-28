@@ -78,10 +78,6 @@ export class TrackEngine {
   get error() {
     return this.#error;
   }
-  get downloadsAllowed() {
-    this.#version;
-    return this.#connection?.downloadsAllowed !== false;
-  }
 
   #describe(track: SourceTrack, options: TrackSourceOptions = {}): Descriptor {
     const cache = this.#selection.cache;
@@ -201,7 +197,6 @@ export class TrackEngine {
   }
 
   #queueDownload(trackId: string, options: TrackSourceOptions) {
-    if (!this.downloadsAllowed) throw new Error("Audio downloads are disabled for this source.");
     const selected = this.#selection.cache;
     const record = selected?.tracks.get(trackId);
     const track: DownloadTrack = {
@@ -273,9 +268,7 @@ export class TrackEngine {
     signal.throwIfAborted();
     const descriptor = this.#describe(track, options);
     const cache = this.#selection.cache!;
-    const cached = this.downloadsAllowed
-      ? await this.#cached(cache, track, descriptor, signal)
-      : undefined;
+    const cached = await this.#cached(cache, track, descriptor, signal);
     signal.throwIfAborted();
     if (this.#destroyed || cache !== this.#selection.cache)
       throw new DOMException("Source request superseded.", "AbortError");

@@ -79,7 +79,7 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
   );
   expect(card?.querySelector("h2")?.textContent).toBe("Demo music credits");
   expect(card?.textContent).toContain("Previews provided by Deezer");
-  expect(card?.textContent).toContain("Downloads and offline audio are disabled");
+  expect(card?.textContent).toContain("Downloads may not work in this demo");
   expect(card?.querySelectorAll("li")).toHaveLength(3);
   expect(Array.from(card!.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual([
     "https://www.deezer.com/album/302117",
