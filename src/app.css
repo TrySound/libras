@@ -660,7 +660,34 @@
     width: 100%;
     height: 100%;
     overflow: clip;
-    background: var(--surface-page-background);
+    background: transparent;
+
+    &.standalone {
+      height: auto;
+      min-height: 100%;
+      overflow: visible;
+      container-type: inline-size;
+    }
+  }
+
+  /* Temporary bridge: retain the legacy mini-player surface inside the shared
+   * shell's normal-flow, bottom-sticky player slot. Remove with player migration. */
+  .app-player {
+    padding: var(--space-sm) max(var(--space-sm), env(safe-area-inset-right))
+      max(var(--space-sm), env(safe-area-inset-bottom))
+      max(var(--space-sm), env(safe-area-inset-left));
+  }
+
+  .app-player > .mini-player {
+    position: relative;
+    inset: auto;
+  }
+
+  /* The shared page now owns outer gutters; preserve padding inside overlays. */
+  @scope (.app-page) to (dialog, [popover]) {
+    .view {
+      padding: 0;
+    }
   }
 
   .visually-hidden {
@@ -675,16 +702,6 @@
     border: 0;
   }
 
-  .app-shell {
-    position: relative;
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    overscroll-behavior: contain;
-    padding-bottom: 5.5rem;
-  }
-
   .topbar {
     position: sticky;
     z-index: 30;
@@ -693,12 +710,6 @@
     background: var(--surface-raised-background);
     backdrop-filter: blur(var(--surface-raised-blur));
     box-shadow: var(--surface-raised-shadow);
-  }
-
-  .topbar-brand {
-    display: flex;
-    justify-content: center;
-    align-items: center;
   }
 
   .view {
@@ -916,6 +927,20 @@
     position: fixed;
     position-anchor: --libras-app;
     inset: anchor(top) anchor(right) anchor(bottom) anchor(left);
+  }
+
+  /* Standalone routes scroll with the document; their overlays belong to the
+   * viewport, not the now document-tall app anchor. Embedded bounds stay anchored. */
+  .standalone .player-dialog,
+  .standalone .player-dialog::backdrop,
+  .standalone .action-menu::backdrop {
+    position-anchor: auto;
+    inset: 0;
+  }
+
+  .standalone .action-menu {
+    position-anchor: auto;
+    inset: auto 0 0;
   }
 
   .player-dialog::backdrop {
@@ -1164,6 +1189,8 @@
 
   .player-dialog::backdrop,
   .action-menu::backdrop {
+    overflow: hidden;
+    overscroll-behavior: contain;
     opacity: 0;
 
     @media (prefers-reduced-motion: no-preference) {

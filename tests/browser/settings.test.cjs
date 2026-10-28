@@ -114,6 +114,16 @@ test("Settings native controls, layout, and persistence", async (t) => {
       },
     );
 
+    await t.test("error controls work on desktop and mobile", async () => {
+      for (const width of [1280, 375]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.getByRole("button", { name: "Show errors", exact: true }).click();
+        await page.locator("#error-popover").waitFor();
+        await page.getByRole("button", { name: "Close errors", exact: true }).click();
+      }
+      await page.setViewportSize({ width: 1280, height: 900 });
+    });
+
     // Connect once to exercise the populated card and persist a real library snapshot.
     pingFailure = false;
     pingGate = undefined;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Router, { type RouteParams } from "../src/router.svelte";
+  import Router, { route, type RouteParams } from "../src/router.svelte";
 
   let { embedded = false }: { embedded?: boolean } = $props();
 </script>
@@ -20,6 +20,7 @@
   {@render page("player", params)}
 {/snippet}
 
+<output data-route-pattern={route.pattern} data-route-url={route.url?.href}></output>
 <Router
   {embedded}
   routes={[

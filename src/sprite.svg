@@ -129,6 +129,14 @@
       />
     </g>
   </symbol>
+  <symbol id="icon-disc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M6 12a6 6 0 0 1 6-6m6 6a6 6 0 0 1-6 6" />
+  </symbol>
+  <symbol id="icon-menu-lines" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+    <path d="M4 6h16M4 12h16M4 18h16" />
+  </symbol>
   <symbol id="icon-menu" viewBox="0 0 24 24" fill="currentColor">
     <circle cx="5" cy="12" r="2" />
     <circle cx="12" cy="12" r="2" />

@@ -3,6 +3,17 @@
 
   export type RouteParams = Record<string, string | undefined>;
 
+  /** Current route metadata, published reactively by the page's Router. */
+  export const route = $state<{ url: URL | undefined; pattern: string | undefined }>({
+    url: undefined,
+    pattern: undefined,
+  });
+
+  /** Match a navigation destination to the resolved page or a parent section. */
+  export function isCurrentPage(path: string): boolean {
+    return route.pattern === path || (route.pattern?.startsWith(`${path}/`) ?? false);
+  }
+
   /** Paths are slash-prefixed, without a hash. */
   export function navigate(path: string, history: "push" | "replace" = "push") {
     void window.navigation.navigate(`#${path}`, { history }).finished?.catch(() => {});
@@ -58,6 +69,12 @@
     return { route: initial.fallback, params: {} };
   }
 
+  function updateRoute(url: URL) {
+    match = resolve(url);
+    route.url = url;
+    route.pattern = match.route.pattern;
+  }
+
   onMount(() => {
     const handleNavigation = (event: NavigateEvent) => {
       const destination = new URL(event.destination.url);
@@ -75,7 +92,7 @@
         handler: async () => {
           const update = async () => {
             if (event.signal?.aborted) return;
-            match = resolve(destination);
+            updateRoute(destination);
             await tick();
           };
           if (
@@ -101,11 +118,9 @@
       });
     };
     window.navigation.addEventListener("navigate", handleNavigation);
-    if (window.location.hash.startsWith("#/")) {
-      match = resolve(new URL(window.location.href));
-    } else if (!embedded) {
-      navigate(initial.fallback.pattern, "replace");
-    }
+    const url = new URL(window.location.href);
+    updateRoute(url);
+    if (!url.hash.startsWith("#/") && !embedded) navigate(initial.fallback.pattern, "replace");
     return () => window.navigation.removeEventListener("navigate", handleNavigation);
   });
 </script>

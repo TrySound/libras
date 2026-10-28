@@ -139,6 +139,63 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
       assert.equal(await page.locator("#guide-popover").isVisible(), false);
     });
 
+    await t.test("shared navigation primitives work outside the app shell", async () => {
+      await page.setViewportSize({ width: 320, height: 900 });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      const invoker = page.getByRole("button", { name: "Open navigation specimen", exact: true });
+      const sheet = page.locator("#guide-navigation");
+      assert.equal(await sheet.isVisible(), false);
+      await invoker.click();
+      assert.equal(await sheet.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return box.left >= 0 && box.right <= innerWidth;
+      }), true);
+      assert.equal(await sheet.evaluate((element) => getComputedStyle(element).transitionDuration), "0s");
+      await page.keyboard.press("Escape");
+      await sheet.waitFor({ state: "hidden" });
+      assert.equal(await invoker.evaluate((element) => element === document.activeElement), true);
+    });
+
+    await t.test("shared shell owns gutters, scrolling, and intrinsic player clearance", async () => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const shell = page.locator("#guide-shell");
+      await shell.scrollIntoViewIfNeeded();
+      const geometry = () => shell.evaluate((element) => {
+        const sidebar = element.querySelector(".app-sidebar");
+        const player = element.querySelector(".app-player");
+        const main = getComputedStyle(element.querySelector(".app-page"));
+        return {
+          sidebarVisible: getComputedStyle(sidebar).display !== "none",
+          sidebarWidth: sidebar.getBoundingClientRect().width,
+          padding: parseFloat(main.paddingInlineStart),
+          gutter: parseFloat(main.paddingInlineEnd),
+          clearance: sidebar.getBoundingClientRect().bottom - player.getBoundingClientRect().top,
+          playerHeight: player.getBoundingClientRect().height,
+        };
+      });
+      const before = await geometry();
+      assert.equal(before.sidebarVisible, true);
+      assert.equal(before.padding, before.sidebarWidth + before.gutter);
+      assert.ok(Math.abs(before.clearance) <= 1);
+      await shell.locator(".app-player .body").evaluate((element) => {
+        element.textContent = "Intrinsic player content grows with its text. ".repeat(20);
+      });
+      const after = await geometry();
+      assert.ok(after.playerHeight > before.playerHeight);
+      assert.ok(Math.abs(after.clearance) <= 1, "CSS anchors follow intrinsic player growth");
+      await shell.locator(".app-player .body").evaluate((element) => { element.textContent = "Intrinsic player slot"; });
+      await page.setViewportSize({ width: 375, height: 900 });
+      const mobile = await geometry();
+      assert.equal(mobile.sidebarVisible, false);
+      assert.equal(mobile.padding, mobile.gutter);
+      await shell.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+      assert.equal(await shell.evaluate((element) => {
+        const frame = element.getBoundingClientRect();
+        const player = element.querySelector(".app-player").getBoundingClientRect();
+        return element.scrollTop > 0 && player.bottom <= frame.bottom + 1;
+      }), true);
+    });
+
     await t.test("missing artwork and reduced-motion loading", async () => {
       const artwork = page.locator(".artwork");
       assert.equal(await artwork.first().locator(".artwork-placeholder").isVisible(), false);

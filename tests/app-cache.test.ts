@@ -183,19 +183,30 @@ it("uses the empty fallback before account selection and when selection is clear
   flushSync();
   expect(mocks.options!.selection.cache).toBeUndefined();
   expect(target.textContent).toContain("Connect your library");
-  const brand = target.querySelector(".topbar-brand svg");
+  const brand = target.querySelector('.app-header a[aria-label="Libras home"] svg');
   expect(brand?.getAttribute("aria-hidden")).toBe("true");
   expect(brand?.getAttribute("width")).toBe("32");
   expect(brand?.getAttribute("height")).toBe("32");
   expect(brand?.querySelectorAll("path")).toHaveLength(0);
   expect(brand?.querySelector("use")?.getAttribute("href")).toBe("#icon-brand");
-  expect(target.querySelector(".topbar-brand")?.textContent?.trim()).toBe("");
-  for (const link of target.querySelectorAll(".topbar-brand a")) {
+  expect(target.querySelector('.app-header a[aria-label="Libras home"]')?.textContent?.trim()).toBe(
+    "Libras",
+  );
+  for (const link of target.querySelectorAll('a[aria-label="Libras home"]')) {
     expect(link.getAttribute("href")).toBe("#/library");
     expect(link.getAttribute("aria-label")).toBe("Libras home");
-    expect(link.getAttribute("data-variant")).toBe("ghost");
-    expect(link.classList.contains("icon-button")).toBe(true);
   }
+  expect(
+    [...target.querySelectorAll(".app-sidebar nav a")].map((link) => [
+      link.textContent?.trim(),
+      link.getAttribute("href"),
+    ]),
+  ).toEqual([
+    ["Your library", "#/library"],
+    ["Search", "#/search"],
+    ["Downloads", "#/downloads"],
+    ["Settings", "#/settings"],
+  ]);
   const dialog = target.querySelector<HTMLDialogElement>("#player-dialog")!;
   expect(dialog.querySelector(".topbar-brand")).toBeNull();
   expect(mocks.navigate).toHaveBeenCalledWith("/settings", "replace");
@@ -504,7 +515,7 @@ it.each([
   "/downloads",
   "/library/artist/:artistId",
   "/library/artist/:artistId/album/:albumId",
-])("uses ghost controls in the topbars on %s", (route) => {
+])("keeps shell navigation and the legacy player on %s", (route) => {
   installDisk();
   window.history.replaceState(null, "", `#${route}`);
   const target = document.createElement("main");
@@ -512,10 +523,15 @@ it.each([
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const topbar = target.querySelector(".app-shell > .topbar")!;
-  expect(target.querySelectorAll(".app-shell > .topbar")).toHaveLength(1);
+  const topbar = target.querySelector(".app-header")!;
+  expect(target.querySelectorAll(".app-header")).toHaveLength(1);
   const links = topbar.querySelectorAll("a");
-  expect([...links].map((link) => link.getAttribute("href"))).toEqual(["#/library", "#/settings"]);
+  expect([...links].map((link) => link.getAttribute("href"))).toEqual(["#/library", "#/search"]);
+  for (const nav of target.querySelectorAll('nav[aria-label="Main navigation"]')) {
+    expect(nav.querySelector('[aria-current="page"]')?.getAttribute("href")).toBe(
+      route.startsWith("/library") ? "#/library" : `#${route}`,
+    );
+  }
   expect(target.querySelector("#player-dialog .topbar-brand")).toBeNull();
   expect(target.querySelector(".player-queue")!.closest(".view")).toBeNull();
   expect(target.querySelector(".player-main")!.classList.contains("view")).toBe(false);
@@ -527,7 +543,9 @@ it.each([
   const heading = queue.querySelector(":scope > .view.row-md")!;
   expect(heading).not.toBeNull();
   expect(heading.querySelector(":scope > .stack-xs.grow h2")).not.toBeNull();
-  const controls = target.querySelectorAll(".topbar a, .topbar button");
+  const controls = target.querySelectorAll(
+    "#player-dialog .topbar a, #player-dialog .topbar button",
+  );
   expect(controls.length).toBeGreaterThan(0);
   for (const control of controls) expect(control.getAttribute("data-variant")).toBe("ghost");
 });

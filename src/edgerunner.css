@@ -3,79 +3,132 @@
  * Palette → semantic roles; color/type roles are consumed by components.
  * Opt in with .ui-edgerunner on a route or overlay. Legacy CSS stops there.
  * Keep components opt-in, sizing local, and spacing owned by containers.
- * Only cards, stacks, and [hidden] also target the boundary itself using
- * :where(:scope, *), without increasing specificity. Other classes style descendants.
+ * Boundary-self rules use :where(:scope, *) only for current root consumers:
+ * cards/stacks, sm/md rows, row-justify/row-wrap, navigation chrome/overlays,
+ * and [hidden]. Other component selectors style descendants.
  * Highrider themes and selection are intentionally deferred to issue #54.
  */
 @import "./edgerunner-fonts.css";
 
-@scope (.ui-edgerunner) {
-  :scope {
-    /* Color primitives: literal palette values, including published anchors and scales. */
-    --palette-maroon: #550000;
+/* Share the canvas recipe with the standalone document so its overscroll area
+ * matches the shell. Embedded apps must never repaint their host document.
+ * Keep defaults at zero specificity so the :has() filter cannot outrank role overrides. */
+:where(.ui-edgerunner, .app-shell, :root:has(.app-root.standalone)) {
+  /* Color primitives: literal palette values, including published anchors and scales. */
+  --palette-maroon: #550000;
 
-    /* Figma shades: higher indices are darker. */
-    --palette-maroon-shade-0: #550000;
-    --palette-maroon-shade-1: #4c0000;
-    --palette-maroon-shade-2: #420000;
-    --palette-maroon-shade-3: #390000;
-    --palette-maroon-shade-4: #2f0000;
-    --palette-maroon-shade-5: #260000;
-    --palette-maroon-shade-6: #1c0000;
-    --palette-maroon-shade-7: #130000;
+  /* Figma shades: higher indices are darker. */
+  --palette-maroon-shade-0: #550000;
+  --palette-maroon-shade-1: #4c0000;
+  --palette-maroon-shade-2: #420000;
+  --palette-maroon-shade-3: #390000;
+  --palette-maroon-shade-4: #2f0000;
+  --palette-maroon-shade-5: #260000;
+  --palette-maroon-shade-6: #1c0000;
+  --palette-maroon-shade-7: #130000;
 
-    /* Figma tints: copied as published; tint-0 supplies shell/scrollbar styling. */
-    --palette-maroon-tint-0: #550000;
-    --palette-maroon-tint-1: #810000;
-    --palette-maroon-tint-2: #ae0000;
-    --palette-maroon-tint-3: #da0000;
-    --palette-maroon-tint-4: #ff0808;
-    --palette-maroon-tint-5: #ff3434;
-    --palette-maroon-tint-6: #ff6060;
-    --palette-maroon-tint-7: #ff8d8d;
+  /* Figma tints: copied as published; tint-0 supplies shell/scrollbar styling. */
+  --palette-maroon-tint-0: #550000;
+  --palette-maroon-tint-1: #810000;
+  --palette-maroon-tint-2: #ae0000;
+  --palette-maroon-tint-3: #da0000;
+  --palette-maroon-tint-4: #ff0808;
+  --palette-maroon-tint-5: #ff3434;
+  --palette-maroon-tint-6: #ff6060;
+  --palette-maroon-tint-7: #ff8d8d;
 
-    /* Figma tones: source order is not monotonic in lightness. */
-    --palette-maroon-tone-0: #550000;
-    --palette-maroon-tone-1: #ef1014;
-    --palette-maroon-tone-2: #df2026;
-    --palette-maroon-tone-3: #cf3038;
-    --palette-maroon-tone-4: #bf4048;
-    --palette-maroon-tone-5: #af5058;
-    --palette-maroon-tone-6: #9f6066;
-    --palette-maroon-tone-7: #8f7073;
+  /* Figma tones: source order is not monotonic in lightness. */
+  --palette-maroon-tone-0: #550000;
+  --palette-maroon-tone-1: #ef1014;
+  --palette-maroon-tone-2: #df2026;
+  --palette-maroon-tone-3: #cf3038;
+  --palette-maroon-tone-4: #bf4048;
+  --palette-maroon-tone-5: #af5058;
+  --palette-maroon-tone-6: #9f6066;
+  --palette-maroon-tone-7: #8f7073;
 
-    /* Figma Gold anchor and published tint scale, in source order. */
-    --palette-gold: #efbf04;
-    --palette-gold-tint-0: #efbf04;
-    --palette-gold-tint-1: #fbcc13;
-    --palette-gold-tint-2: #fbd12d;
-    --palette-gold-tint-3: #fcd748;
-    --palette-gold-tint-4: #fcdd62;
-    --palette-gold-tint-5: #fde37c;
-    --palette-gold-tint-6: #fde897;
-    --palette-gold-tint-7: #feeeb1;
+  /* Figma Gold anchor and published tint scale, in source order. */
+  --palette-gold: #efbf04;
+  --palette-gold-tint-0: #efbf04;
+  --palette-gold-tint-1: #fbcc13;
+  --palette-gold-tint-2: #fbd12d;
+  --palette-gold-tint-3: #fcd748;
+  --palette-gold-tint-4: #fcdd62;
+  --palette-gold-tint-5: #fde37c;
+  --palette-gold-tint-6: #fde897;
+  --palette-gold-tint-7: #feeeb1;
 
-    /* Neutral references; white supplies ordinary text and icon foregrounds. */
-    --palette-white: #ffffff;
-    --palette-black: #000000;
+  /* Neutral references; white supplies ordinary text and icon foregrounds. */
+  --palette-white: #ffffff;
+  --palette-black: #000000;
 
-    /* Color roles: customization grouped as <group>-<property>[-<state>].
+  /* Color roles: customization grouped as <group>-<property>[-<state>].
    * Every color recipe references palette literals directly, never another role.
    * Backgrounds are complete CSS backgrounds: replace with a color or layers.
    * No scoped palette overrides: editing this block updates all consumers.
    */
-    --canvas-bg:
-      repeating-linear-gradient(
-        135deg in oklab,
-        transparent 0 47px,
-        alpha(from var(--palette-maroon-tone-7) / 7%) 47px 48px
-      ),
-      radial-gradient(
-          ellipse at 100% 0% in oklab,
-          alpha(from var(--palette-maroon-shade-3) / 80%),
-          transparent 75%
-        )
-        var(--palette-maroon-shade-7);
+  --canvas-bg:
+    repeating-linear-gradient(
+      135deg in oklab,
+      transparent 0 47px,
+      alpha(from var(--palette-maroon-tone-7) / 7%) 47px 48px
+    ),
+    radial-gradient(
+        ellipse at 100% 0% in oklab,
+        alpha(from var(--palette-maroon-shade-3) / 80%),
+        transparent 75%
+      )
+      var(--palette-maroon-shade-7);
+}
+
+:root:has(.app-root.standalone) {
+  background: var(--canvas-bg);
+  background-attachment: local;
+  scrollbar-gutter: stable;
+}
+
+/* Shared layout roles belong to both the appearance boundary and the shell.
+ * The shell does not opt legacy route descendants into Edgerunner appearance. */
+.ui-edgerunner,
+.app-shell {
+  --content-padding-block: var(--space-lg);
+  --content-padding-inline: max(
+    var(--space-lg),
+    env(safe-area-inset-left),
+    env(safe-area-inset-right)
+  );
+  --content-end-space: 20dvh;
+  --topbar-min-height: 76px;
+  --layer-header: 10;
+  --layer-player: 20;
+}
+
+@media (width <= 600px) {
+  .ui-edgerunner,
+  .app-shell {
+    --content-padding-inline: max(
+      var(--space-md),
+      env(safe-area-inset-left),
+      env(safe-area-inset-right)
+    );
+    --topbar-min-height: 60px;
+  }
+}
+
+@container app (width <= 600px) {
+  .ui-edgerunner,
+  .app-shell {
+    --content-padding-inline: max(
+      var(--space-md),
+      env(safe-area-inset-left),
+      env(safe-area-inset-right)
+    );
+    --topbar-min-height: 60px;
+  }
+}
+
+@scope (.ui-edgerunner) {
+  :scope {
     --surface-bg: linear-gradient(
       135deg in oklab,
       alpha(from var(--palette-maroon-shade-4) / 80%),
@@ -213,11 +266,6 @@
     --space-lg: 24px;
     --space-xl: 48px;
 
-    /* Shared page gutters and permanent end-of-content scroll runway. */
-    --content-padding-block: var(--space-lg);
-    --content-padding-inline: var(--space-lg);
-    --content-end-space: 20dvh;
-
     /* Border/focus geometry; the outline deliberately composes geometry and color. */
     --border-width: 2px;
     --focus-ring: 4px solid var(--accent);
@@ -269,7 +317,6 @@
   @media (max-width: 600px) {
     :scope {
       --heading-xl-leading: var(--leading-compact);
-      --content-padding-inline: var(--space-md);
     }
   }
 
@@ -317,8 +364,8 @@
 
   /* Center-aligned horizontal flow; wrapping is explicit via row-wrap. */
   .row-xs,
-  .row-sm,
-  .row-md,
+  :where(:scope, *).row-sm,
+  :where(:scope, *).row-md,
   .row-lg,
   .row-xl {
     display: flex;
@@ -329,11 +376,11 @@
     gap: var(--space-xs);
   }
 
-  .row-sm {
+  :where(:scope, *).row-sm {
     gap: var(--space-sm);
   }
 
-  .row-md {
+  :where(:scope, *).row-md {
     gap: var(--space-md);
   }
 
@@ -345,7 +392,7 @@
     gap: var(--space-xl);
   }
 
-  .row-justify {
+  :where(:scope, *).row-justify {
     justify-content: space-between;
   }
 
@@ -353,7 +400,7 @@
     justify-content: center;
   }
 
-  .row-wrap {
+  :where(:scope, *).row-wrap {
     flex-wrap: wrap;
   }
 
@@ -870,6 +917,143 @@
     overflow-wrap: anywhere;
   }
 
+  a.menu-item {
+    &:hover,
+    &:focus-visible {
+      background: var(--item-bg-hover);
+      border-color: var(--item-border-hover);
+    }
+    &:active {
+      background: var(--item-bg-active);
+      border-color: var(--item-border-active);
+    }
+    &[aria-current="page"] {
+      border-color: var(--accent);
+    }
+    &:focus-visible {
+      outline: var(--focus-ring);
+      outline-offset: var(--focus-ring-offset);
+    }
+  }
+
+  /* Navigation components from libras-new. Appearance is independent of app
+   * placement, and these primitives also work on an Edgerunner boundary. */
+  :where(:scope, *).topbar {
+    position: sticky;
+    top: 0;
+    z-index: var(--layer-header);
+    box-sizing: border-box;
+    background: var(--shell-bg);
+    backdrop-filter: blur(4px);
+    border-bottom: var(--border-width) solid var(--shell-border);
+    min-height: var(--topbar-min-height);
+    padding: var(--space-sm) var(--content-padding-inline);
+    padding-block-start: max(var(--space-sm), env(safe-area-inset-top));
+  }
+
+  :where(:scope, *).sidebar {
+    box-sizing: border-box;
+    background: var(--surface-bg);
+    backdrop-filter: blur(4px);
+    padding: var(--content-padding-block) var(--content-padding-inline) 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border-right: var(--border-width) solid var(--shell-border);
+  }
+
+  /* Native right-sheet shell; inner content composes the ordinary flow utilities.
+   * Geometry, backdrop, and entry/exit timing follow the prototype, not the app. */
+  :where(:scope, *).right-sheet {
+    --sheet-closed-translate: 100% 0;
+    box-sizing: border-box;
+    position: fixed;
+    margin: 0;
+    max-width: none;
+    padding: var(--space-lg);
+    padding-block-start: max(var(--space-lg), env(safe-area-inset-top));
+    padding-block-end: max(var(--space-lg), env(safe-area-inset-bottom));
+    padding-inline-end: max(var(--space-lg), env(safe-area-inset-right));
+    border: 0;
+    border-radius: 0;
+    background: var(--shell-bg);
+    backdrop-filter: blur(4px);
+    color: var(--text-primary);
+    overflow: auto;
+    inset: 0 0 0 auto;
+    width: min(360px, calc(100dvw - 2 * var(--space-md)));
+    height: 100dvh;
+    max-height: none;
+
+    &:modal {
+      overscroll-behavior: contain;
+    }
+    &::backdrop {
+      background: var(--canvas-bg);
+      opacity: 0.65;
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      translate: var(--sheet-closed-translate);
+      pointer-events: none;
+      transition:
+        translate var(--motion-duration-exit) var(--motion-ease-exit),
+        display var(--motion-duration-exit),
+        overlay var(--motion-duration-exit);
+      transition-behavior: allow-discrete;
+      &::backdrop {
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity var(--motion-duration-exit) var(--motion-ease-exit),
+          display var(--motion-duration-exit),
+          overlay var(--motion-duration-exit);
+        transition-behavior: allow-discrete;
+      }
+      &[open] {
+        translate: 0;
+        pointer-events: auto;
+        transition-duration: var(--motion-duration-enter);
+        transition-timing-function: var(--motion-ease-enter);
+      }
+      &[open]::backdrop {
+        opacity: 0.65;
+        pointer-events: auto;
+        transition-duration: var(--motion-duration-enter);
+        transition-timing-function: var(--motion-ease-enter);
+      }
+      @starting-style {
+        &[open] {
+          translate: var(--sheet-closed-translate);
+        }
+        &[open]::backdrop {
+          opacity: 0;
+        }
+      }
+    }
+  }
+
+  :where(:scope, *).notification-popover {
+    box-sizing: border-box;
+    inset: 1rem 1rem auto auto;
+    margin: 0;
+    inline-size: min(26rem, calc(100dvw - 2rem));
+    max-block-size: calc(100dvh - 2rem);
+    overflow: auto;
+    padding: var(--space-lg);
+    color: var(--text-primary);
+    background: var(--shell-bg);
+    border: var(--border-width) solid var(--shell-border);
+    border-radius: var(--radius-lg);
+    corner-shape: var(--corner-shape);
+    &:popover-open {
+      display: flex;
+      align-items: start;
+      gap: var(--space-sm);
+    }
+  }
+
   .track-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) max-content;
@@ -955,5 +1139,121 @@
     margin: auto;
     color: var(--text-primary);
     pointer-events: none;
+  }
+}
+
+/* App composition from libras-new: one column, shared page gutters, a fixed
+ * sidebar, and an intrinsically sized bottom-sticky player in normal flow.
+ * App-* classes already namespace these placement rules; no extra scope is needed. */
+.app-shell {
+  --sidebar-width: 280px;
+  position: relative;
+  isolation: isolate;
+  min-block-size: 100dvh;
+  display: flex;
+  flex-direction: column;
+  container: navigation / inline-size;
+  anchor-name: --app-shell;
+  anchor-scope: --app-shell, --mini-player, --app-status-actions;
+}
+
+.app-page {
+  box-sizing: border-box;
+  flex: 1;
+  inline-size: 100%;
+  min-inline-size: 0;
+  margin: 0;
+  padding: var(--content-padding-block) var(--content-padding-inline);
+  overflow-wrap: anywhere;
+}
+
+/* Route boundaries supply type and controls, not independent page canvases. */
+.app-page > .ui-edgerunner {
+  background: transparent;
+}
+
+.app-sidebar {
+  position: fixed;
+  inset: 0 auto
+    calc(anchor-size(--mini-player height, 0px) + anchor-size(--app-status-actions height, 0px)) 0;
+  inline-size: var(--sidebar-width);
+}
+
+.app-player {
+  position: sticky;
+  bottom: 0;
+  anchor-name: --mini-player;
+  z-index: var(--layer-player);
+}
+
+.app-shell > .app-status-actions {
+  display: none;
+}
+
+@container navigation (width <= 600px) {
+  .app-page {
+    padding-block-end: calc(var(--content-padding-block) + var(--space-md));
+  }
+}
+
+@container navigation (width < 64rem) {
+  .app-shell > .app-sidebar {
+    display: none;
+  }
+}
+
+@container navigation (width >= 64rem) {
+  .app-page {
+    padding-inline-start: calc(var(--sidebar-width) + var(--content-padding-inline));
+  }
+
+  .app-shell > .app-header {
+    display: none;
+  }
+  /* Separate desktop invokers share the same native notification popovers.
+   * Reserve the controls' intrinsic height above the player. */
+  .app-shell > .app-status-actions {
+    display: flex;
+    position: fixed;
+    inset: auto auto anchor-size(--mini-player height, 0px) 0;
+    anchor-name: --app-status-actions;
+    inline-size: var(--sidebar-width);
+    box-sizing: border-box;
+    padding: var(--space-sm) var(--content-padding-inline);
+    background: var(--surface-bg);
+    border-inline-end: var(--border-width) solid var(--shell-border);
+    z-index: var(--layer-header);
+  }
+}
+
+/* Embedded variant: the host supplies a viewport, without body-owned layout.
+ * Native top-layer overlays remain bounded to that same app viewport. */
+.app-shell[data-embedded] {
+  min-block-size: 100%;
+  block-size: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--canvas-bg);
+  background-attachment: local;
+
+  .app-sidebar {
+    position: absolute;
+  }
+  @container navigation (width >= 64rem) {
+    .app-status-actions {
+      position: absolute;
+    }
+  }
+  .right-sheet {
+    position-anchor: --app-shell;
+    inset: anchor(top) anchor(right) auto auto;
+    inline-size: min(360px, calc(anchor-size(width) - 2 * var(--space-md)));
+    block-size: anchor-size(height);
+  }
+  .notification-popover {
+    position-anchor: --app-shell;
+    inset: calc(anchor(top) + var(--space-md)) calc(anchor(right) + var(--space-md)) auto auto;
+    inline-size: min(26rem, calc(anchor-size(width) - 2 * var(--space-md)));
+    max-block-size: calc(anchor-size(height) - 2 * var(--space-md));
   }
 }

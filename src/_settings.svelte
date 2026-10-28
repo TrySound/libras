@@ -256,13 +256,3 @@
     </div>
   </div>
 </section>
-
-<style>
-  /* Temporary page placement until the shell migration owns shared gutters. */
-  .settings-view {
-    box-sizing: border-box;
-    min-block-size: 100%;
-    padding: var(--content-padding-block) var(--content-padding-inline);
-    overflow-wrap: anywhere;
-  }
-</style>

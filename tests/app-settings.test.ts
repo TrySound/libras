@@ -287,7 +287,7 @@ describe("app settings", () => {
     expectStatus("unlink", "Disconnected");
   });
 
-  it("offers updates in a header popover without modifying Settings", async () => {
+  it("offers updates through a shared popover without modifying Settings", async () => {
     const { target, button } = await setup();
     expect(button("App update")).toBeUndefined();
     const callbacks = vi.mocked(registerSW).mock.calls.at(-1)![0]!;
@@ -298,13 +298,11 @@ describe("app settings", () => {
     expect(button("App update").getAttribute("commandfor")).toBe("update-popover");
     expect(button("App update").getAttribute("command")).toBe("toggle-popover");
     const popover = target.querySelector("#update-popover")!;
+    expect(target.querySelectorAll("#update-popover")).toHaveLength(1);
     expect(popover.getAttribute("popover")).toBe("auto");
     expect(popover.textContent).toContain("interrupts playback");
     expect(button("Close app update").getAttribute("command")).toBe("hide-popover");
     expect(target.querySelector('.settings-view [aria-label="App update"]')).toBeNull();
-    const settings = target.querySelector('a[aria-label="Settings"]')!;
-    expect(settings.getAttribute("title")).toBe("Settings");
-    expect(settings.querySelector("span")).toBeNull();
     expect(target.querySelector("#player-dialog #update-popover")).toBeNull();
     button("Update now").click();
     flushSync();
@@ -331,13 +329,12 @@ describe("app settings", () => {
     const trigger = button("Show errors");
     expect(trigger.getAttribute("commandfor")).toBe("error-popover");
     expect(trigger.getAttribute("command")).toBe("toggle-popover");
-    expect(trigger.nextElementSibling?.nextElementSibling?.getAttribute("href")).toBe("#/settings");
     const popover = target.querySelector("#error-popover")!;
+    expect(target.querySelectorAll("#error-popover")).toHaveLength(1);
     expect(popover.getAttribute("popover")).toBe("auto");
     expect(popover.querySelectorAll('[role="alert"]')).toHaveLength(1);
     const notice = popover.querySelector('[role="alert"]')!;
     expect(notice.classList.contains("card")).toBe(true);
-    expect(notice.getAttribute("data-variant")).toBe("danger");
     expect(notice.parentElement?.classList.contains("stack-sm")).toBe(true);
     expect(popover.textContent).toContain("Connection failed");
     expect(button("Close errors").getAttribute("commandfor")).toBe("error-popover");

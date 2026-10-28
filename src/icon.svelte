@@ -12,6 +12,8 @@
     | "home"
     | "loading"
     | "menu"
+    | "menu-lines"
+    | "disc"
     | "music"
     | "next"
     | "pause"

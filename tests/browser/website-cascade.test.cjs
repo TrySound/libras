@@ -29,6 +29,11 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
       assert.equal(await page.locator(".site-demo-launch").isVisible(), false);
       assert.equal(await demo.isVisible(), true);
       assert.equal(await demo.evaluate((element) => element.matches(":modal")), false);
+      assert.equal(await page.locator("#main-content").count(), 1, "only the host main owns the skip-link ID");
+      assert.equal(await page.locator(".site-skip-link").getAttribute("href"), "#main-content");
+      assert.equal(await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--canvas-bg").trim()
+      ), "", "the embedded canvas must not repaint the host document");
     });
 
     await t.test("mobile launch and modal preserve the mounted demo across resizing", async () => {
@@ -54,7 +59,12 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
     await t.test(
       "Settings adapts to the narrow embedded app, not the desktop browser",
       async () => {
-        await page.locator("#demo").getByRole("link", { name: "Settings", exact: true }).click();
+        assert.equal(await page.locator("#demo .app-sidebar").isVisible(), false);
+        await page.locator("#demo").getByRole("button", { name: "Open menu", exact: true }).click();
+        await page
+          .locator("#navigation-dialog")
+          .getByRole("link", { name: "Settings", exact: true })
+          .click();
         await page.locator("#demo .settings-view").waitFor();
         const geometry = await page.locator("#demo .settings-view").evaluate((element) => {
           const server = element.querySelector("#settings-server").getBoundingClientRect();
@@ -71,6 +81,16 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
         );
       },
     );
+
+    await t.test("host anchors do not change the embedded app's active route", async () => {
+      await page.locator(".site-skip-link").focus();
+      await page.keyboard.press("Enter");
+      await page.waitForURL("**/#main-content");
+      await page.locator("#demo .settings-view").waitFor();
+      await page.locator("#demo").getByRole("button", { name: "Open menu", exact: true }).click();
+      assert.equal(await page.locator("#navigation-dialog").getByRole("link", { name: "Settings", exact: true }).getAttribute("aria-current"), "page");
+      await page.keyboard.press("Escape");
+    });
 
     await t.test("website extensions stop at an Edgerunner boundary", async () => {
       await page.evaluate(() => {
@@ -94,6 +114,50 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
       );
     });
     assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("embedded error notifications stay inside the app on desktop and mobile", async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 1200 },
+    reducedMotion: "reduce",
+  });
+  await page.route("**/catalog/search3.json", (route) =>
+    route.fulfill({ status: 500, body: "Catalog unavailable" }),
+  );
+  const assertBounds = async () => {
+    const geometry = await page.locator("#error-popover").evaluate((popover) => {
+      const app = document.querySelector(".app-root").getBoundingClientRect();
+      const box = popover.getBoundingClientRect();
+      return {
+        inside: box.left >= app.left && box.right <= app.right &&
+          box.top >= app.top && box.bottom <= app.bottom,
+        scrolls: popover.scrollHeight > popover.clientHeight,
+      };
+    });
+    assert.deepEqual(geometry, { inside: true, scrolls: true });
+  };
+  try {
+    await page.goto(base);
+    await page.getByRole("button", { name: "Show errors", exact: true }).click();
+    await page.locator("#error-popover").waitFor();
+    // Exercise the app-height limit as well as its inline bounds.
+    await page.locator("#error-popover [role=alert]").evaluate((message) => {
+      message.textContent = "Long server failure details. ".repeat(200);
+    });
+    await assertBounds();
+    await page.getByRole("button", { name: "Close errors", exact: true }).click();
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.waitForFunction(() => !document.querySelector("#live-demo-dialog").open);
+    await page.locator(".site-demo-launch").click();
+    await page.getByRole("button", { name: "Show errors", exact: true }).click();
+    await page.locator("#error-popover").waitFor();
+    await assertBounds();
+    await page.getByRole("button", { name: "Close errors", exact: true }).click();
+    assert.equal(await page.locator("#error-popover").isVisible(), false);
   } finally {
     await browser.close();
   }

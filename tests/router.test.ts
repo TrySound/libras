@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { navigate } from "../src/router.svelte";
+import { route, isCurrentPage, navigate } from "../src/router.svelte";
 import RouterTestApp from "./router-test-app.svelte";
 import { installNavigation } from "./router-test-helpers";
 
@@ -157,7 +157,26 @@ describe("router", () => {
     navigation.dispatchEvent(event);
     expect(intercept).not.toHaveBeenCalled();
     expect(target.querySelector("p")!.textContent).toBe("library:{}");
+    expect(route.pattern).toBe("/library");
+    expect(route.url?.hash).toBe("#/library");
   });
+
+  it.each([
+    { path: "/library", current: ["/library"], other: ["/lib", "/library/artist", "/settings"] },
+    {
+      path: "/library/artist/artist-1",
+      current: ["/library", "/library/artist", "/library/artist/:artistId"],
+      other: ["/lib", "/library/art", "/library/artists", "/settings"],
+    },
+    { path: "/unknown", current: ["/library"], other: ["/unknown", "/settings"] },
+  ])(
+    "identifies the current page and its parent sections for $path",
+    ({ path, current, other }) => {
+      setup(path);
+      for (const destination of current) expect(isCurrentPage(destination)).toBe(true);
+      for (const destination of other) expect(isCurrentPage(destination)).toBe(false);
+    },
+  );
 
   it("handles rejected navigation promises", async () => {
     const navigation = installNavigation("/library");
@@ -167,6 +186,50 @@ describe("router", () => {
     navigate("/player");
     expect(caught).toHaveBeenCalledOnce();
     await expect(caught.mock.results[0].value).resolves.toBeUndefined();
+  });
+
+  it("publishes reactive metadata, including URL changes within the same pattern", async () => {
+    const { navigation, target } = setup("/unknown", true);
+    const summary = target.querySelector<HTMLElement>("[data-route-pattern]")!;
+    expect(summary.dataset.routePattern).toBe("/library");
+    expect(route.url?.hash).toBe("#/unknown");
+    for (const id of ["artist%201", "artist%202"]) {
+      const url = new URL(`#/library/artist/${id}`, window.location.href);
+      const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+      navigation.dispatchEvent(
+        Object.assign(new Event("navigate"), {
+          navigationType: "push",
+          canIntercept: true,
+          destination: { url: url.href },
+          intercept,
+        }),
+      );
+      await intercept.mock.results[0].value;
+      expect(summary.dataset.routePattern).toBe("/library/artist/:artistId");
+      expect(summary.dataset.routeUrl).toBe(url.href);
+    }
+  });
+
+  it("leaves route metadata unchanged for aborted navigation", async () => {
+    const { navigation, target } = setup("/library", true);
+    const summary = target.querySelector<HTMLElement>("[data-route-pattern]")!;
+    const committedUrl = route.url;
+    const controller = new AbortController();
+    controller.abort();
+    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+    navigation.dispatchEvent(
+      Object.assign(new Event("navigate"), {
+        navigationType: "push",
+        canIntercept: true,
+        signal: controller.signal,
+        destination: { url: new URL("#/player", window.location.href).href },
+        intercept,
+      }),
+    );
+    await intercept.mock.results[0].value;
+    expect(route.pattern).toBe("/library");
+    expect(route.url).toBe(committedUrl);
+    expect(summary.dataset.routeUrl).toBe(committedUrl?.href);
   });
 
   it("removes the navigation listener on unmount", async () => {
