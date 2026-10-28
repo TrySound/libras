@@ -235,9 +235,6 @@
       />
     </div>
   </div>
-  {#if !session.localReady}
-    <p class="view" role="status">Restoring local library…</p>
-  {/if}
   {#if index.size === 0}
     {#if session.localReady}
       <p class="view" role="status">

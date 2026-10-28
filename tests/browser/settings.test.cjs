@@ -133,7 +133,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
     await waitConnected();
 
     await t.test("cards respond to app width and controls fit at 200% text size", async () => {
-      for (const width of [320, 768, 1280]) {
+      for (const width of [320, 768, 800, 810, 811, 1280]) {
         await page.setViewportSize({ width, height: 900 });
         const geometry = await page.locator(".settings-view").evaluate((element) => {
           const server = element.querySelector("#settings-server").getBoundingClientRect();
@@ -144,7 +144,8 @@ test("Settings native controls, layout, and persistence", async (t) => {
             fits: element.scrollWidth <= element.clientWidth,
           };
         });
-        assert.equal(width >= 1024 ? geometry.separated : geometry.stacked, true);
+        const desktop = await page.locator(".app-root").evaluate((node) => node.clientWidth > 800);
+        assert.equal(desktop ? geometry.separated : geometry.stacked, true);
         assert.equal(geometry.fits, true);
       }
       await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));

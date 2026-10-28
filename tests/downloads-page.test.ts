@@ -92,7 +92,7 @@ async function save(cache: Cache, id: string, timestamp: number, format: "mp3" |
   flushSync();
 }
 
-it("uses an isolated route with a native heading, real loading, and an actionable empty state", () => {
+it("restores silently with a native heading and shows the empty state only once ready", () => {
   const { target, set } = setup();
   expect(target.querySelector("section.ui-edgerunner")?.getAttribute("aria-labelledby")).toBe(
     "downloads-heading",
@@ -102,8 +102,8 @@ it("uses an isolated route with a native heading, real loading, and an actionabl
   expect(target.querySelector('a[href="#/library"]')?.textContent).toBe("Open library");
   set({ loading: true });
   expect(target.textContent).not.toContain("No downloads yet");
-  expect(target.querySelector('[role="status"]')?.textContent).toContain("Restoring local library");
-  expect(target.querySelectorAll(".loader-bar")).toHaveLength(5);
+  expect(target.textContent).not.toContain("Restoring local library");
+  expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
   set({ loading: false });
   expect(target.querySelector('[role="status"]')).toBeNull();
   expect(target.textContent).toContain("No downloads yet");

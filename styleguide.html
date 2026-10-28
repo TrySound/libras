@@ -79,7 +79,7 @@
         block-size: 26rem;
         container: app / size;
       }
-      @media (max-width: 600px) {
+      @media (width <= 50rem) {
         .styleguide {
           padding: var(--space-md);
         }
@@ -464,6 +464,60 @@
           <p class="caption">Static specimens are not live regions and never auto-dismiss.</p>
         </section>
 
+        <section class="card stack-lg specimen-wide" aria-labelledby="collection-tiles-heading">
+          <h2 class="heading-md" id="collection-tiles-heading">Collection tiles</h2>
+          <p class="body">
+            Shared Library grid: labels wrap, missing artwork keeps the surface, and options are
+            independent of navigation. These controls are static specimens.
+          </p>
+          <div class="tile-grid">
+            <article class="tile tile-grid-item">
+              <span class="artwork tile-artwork" data-size="fill" aria-hidden="true"
+                ><img src="/icon.svg" alt=""
+              /></span>
+              <div class="tile-content stack-sm">
+                <h3 class="heading-sm">Artist with artwork</h3>
+              </div>
+              <a
+                class="link-target"
+                href="#collection-tiles-heading"
+                aria-label="Artist with artwork"
+              ></a>
+              <div class="row-sm tile-actions">
+                <button
+                  class="button"
+                  data-variant="secondary"
+                  aria-label="Actions for Artist with artwork"
+                >
+                  <svg width="24" height="24" aria-hidden="true"><use href="#icon-menu" /></svg>
+                </button>
+              </div>
+            </article>
+            <article class="tile tile-grid-item">
+              <span class="artwork tile-artwork" data-size="fill" aria-hidden="true"
+                ><img hidden alt=""
+              /></span>
+              <div class="tile-content stack-sm">
+                <h3 class="heading-sm">An artist with a long name and no artwork</h3>
+              </div>
+              <a
+                class="link-target"
+                href="#collection-tiles-heading"
+                aria-label="An artist with a long name and no artwork"
+              ></a>
+              <div class="row-sm tile-actions">
+                <button
+                  class="button"
+                  data-variant="secondary"
+                  aria-label="Actions for An artist with a long name and no artwork"
+                >
+                  <svg width="24" height="24" aria-hidden="true"><use href="#icon-menu" /></svg>
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+
         <section class="card stack-lg specimen-wide" aria-labelledby="settings-layout-heading">
           <h2 class="heading-md uppercase" id="settings-layout-heading">Settings composition</h2>
           <p class="caption">
@@ -510,10 +564,11 @@
         <section class="card stack-lg" aria-labelledby="navigation-heading">
           <h2 class="heading-md uppercase" id="navigation-heading">Navigation shell</h2>
           <p class="body">
-            A 280px independently scrolling sidebar at 64rem; below that, a sticky header and
-            right-side native modal drawer. Embedded apps respond to their own width. The document
-            owns standalone scrolling, and sidebar/content clearance follows the existing player's
-            actual height. The session, routes, and audio player remain mounted through resizing.
+            A 280px independently scrolling sidebar above 50rem; at or below that, a sticky header
+            and right-side native modal drawer. Embedded apps respond to their own width. The
+            document owns standalone scrolling, and sidebar/content clearance follows the existing
+            player's actual height. The session, routes, and audio player remain mounted through
+            resizing.
           </p>
           <div class="topbar-example">
             <header class="topbar row-md row-justify">

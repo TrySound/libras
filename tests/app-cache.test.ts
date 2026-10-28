@@ -162,7 +162,7 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   expect(albumRows[1].querySelector('[title="Open menu for Second track"]')).not.toBeNull();
 });
 
-it("uses session restoration state on the downloads page", () => {
+it("restores downloads silently without flashing the empty state", () => {
   mocks.localReady = false;
   installNavigation("/downloads", mocks.navigate);
   const target = document.createElement("main");
@@ -170,7 +170,8 @@ it("uses session restoration state on the downloads page", () => {
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  expect(target.textContent).toContain("Restoring local library…");
+  expect(target.textContent).not.toContain("Restoring local library…");
+  expect(target.querySelector(".downloads-view .loader")).toBeNull();
   expect(target.textContent).not.toContain("No downloads yet");
 });
 
@@ -220,25 +221,21 @@ it("uses the empty fallback before account selection and when selection is clear
   mocks.options!.covers.activate();
   mocks.options!.tracks.activate();
   flushSync();
-  const tile = target.querySelector(".tiles-grid > a.tile");
-  expect(tile?.querySelector(".tile-name")?.textContent).toBe("Selected artist");
-  expect(tile?.getAttribute("href")).toBe("#/library/artist/artist");
-  expect(tile?.getAttribute("data-longpress")).toBe("show-modal");
-  expect(tile?.querySelector("a, button")).toBeNull();
+  const tile = target.querySelector(".tile-grid > .tile");
+  expect(tile?.querySelector("h3")?.textContent).toBe("Selected artist");
+  expect(tile?.querySelector("a")?.getAttribute("href")).toBe("#/library/artist/artist");
+  expect(tile?.querySelector("a")?.getAttribute("data-longpress")).toBe("show-modal");
+  expect(tile?.querySelectorAll("button")).toHaveLength(2);
+  expect(tile?.querySelector("a button")).toBeNull();
   mocks.options!.selection.cache = undefined;
   mocks.options!.covers.activate();
   mocks.options!.tracks.activate();
   flushSync();
-  expect(target.querySelector(".tile-name")).toBeNull();
+  expect(target.querySelector(".tile-content")).toBeNull();
   expect(target.textContent).toContain("Connect your library");
-  const empty = target.querySelector(".empty-state")!;
+  const empty = target.querySelector(".library-view h2")!.parentElement!;
   expect(empty.classList.contains("stack-md")).toBe(true);
-  const artwork = empty.querySelector(".artwork")!;
-  expect(artwork.getAttribute("aria-hidden")).toBe("true");
-  expect(artwork.getAttribute("data-size")).toBe("md");
-  expect(artwork.querySelector("img")).toBeNull();
-  expect(artwork.querySelector("use")?.getAttribute("href")).toBe("#icon-music");
-  expect(empty.querySelector("p")?.classList.contains("text-muted")).toBe(true);
+  expect(empty.querySelector("p")?.classList.contains("body")).toBe(true);
   expect(empty.querySelector('a[href="#/settings"]')).not.toBeNull();
 });
 
@@ -280,7 +277,7 @@ it("automatically loads another batch each time the new sentinel is nearby", asy
   cleanups.push(() => unmount(component));
   flushSync();
   const assertCount = (count: number) => {
-    expect(target.querySelectorAll(".tiles-grid > .tile")).toHaveLength(count);
+    expect(target.querySelectorAll(".tile-grid > .tile")).toHaveLength(count);
     expect(target.querySelectorAll("#artist-menu")).toHaveLength(1);
   };
   assertCount(48);
@@ -402,7 +399,7 @@ it("preserves artist pagination when offline eligibility changes", async () => {
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const count = () => target.querySelectorAll("a.tile").length;
+  const count = () => target.querySelectorAll(".tile > a.link-target").length;
   const load = () => {
     const node = [...observed].find((node) => node.matches('.library-view [aria-hidden="true"]'))!;
     callback!(
@@ -440,14 +437,14 @@ it("renders the cache stress fixture with unique tiles and one shared menu", asy
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const tiles = [...target.querySelectorAll<HTMLAnchorElement>("a.tile")];
+  const tiles = [...target.querySelectorAll<HTMLAnchorElement>(".tile > a.link-target")];
   expect(tiles).toHaveLength(48);
   for (const tile of tiles) {
-    const artwork = tile.querySelector(".artwork")!;
-    const label = tile.querySelector(".tile-name")!;
-    expect(artwork.parentElement).toBe(tile);
-    expect(label.parentElement).toBe(tile);
-    expect(label.classList.contains("truncate")).toBe(true);
+    const artwork = tile.parentElement!.querySelector(".artwork")!;
+    const label = tile.parentElement!.querySelector("h3")!;
+    expect(artwork.parentElement).toBe(tile.parentElement);
+    expect(label.parentElement?.classList.contains("tile-content")).toBe(true);
+    expect(label.classList.contains("truncate")).toBe(false);
     expect((artwork as HTMLElement).style.viewTransitionName).toBe("");
     expect((label as HTMLElement).style.viewTransitionName).toBe("");
     expect(artwork.getAttribute("aria-hidden")).toBe("true");
@@ -553,7 +550,7 @@ it.each([
 });
 
 it.each([
-  { route: "/library", selector: ".tile", menu: "artist-menu" },
+  { route: "/library", selector: ".tile > a.link-target", menu: "artist-menu" },
   { route: "/library/artist/artist", selector: "a.linkarea", menu: "album-menu-0" },
   {
     route: "/library/artist/artist/album/album",
@@ -587,7 +584,8 @@ it.each([
     const component = mount(App, { target });
     cleanups.push(() => unmount(component));
     flushSync();
-    expect(target.textContent).toContain("Restoring local library…");
+    expect(target.textContent).not.toContain("Restoring local library…");
+    expect(target.querySelector(".library-view .loader, .scan-spinner")).toBeNull();
     expect(target.querySelector(selector)).not.toBeNull();
     if (route !== "/library") {
       expect(target.querySelector(selector)!.closest(".view")).toBeNull();
@@ -599,7 +597,15 @@ it.each([
     flushSync();
     const dialog = target.querySelector(`#${menu}`);
     expect(dialog).not.toBeNull();
-    expect(dialog?.querySelector(".wings-item")?.hasAttribute("disabled")).toBe(false);
+    expect(
+      dialog?.querySelector("button.menu-item, button.wings-item")?.hasAttribute("disabled"),
+    ).toBe(false);
+    if (route === "/library") {
+      expect(dialog?.classList.contains("ui-edgerunner")).toBe(true);
+      expect(dialog?.querySelectorAll("button.menu-item")).toHaveLength(4);
+      expect(dialog?.querySelector('[command="close"]')?.getAttribute("commandfor")).toBe(menu);
+      return;
+    }
     for (const menu of target.querySelectorAll<HTMLDialogElement>(".action-menu")) {
       const wings = menu.querySelector(":scope > .wings")!;
       expect(wings.querySelector(":scope > .topbar.wings-item")).not.toBeNull();
@@ -618,6 +624,28 @@ it.each([
       close.click();
       expect(menu.open).toBe(false);
     }
+  },
+);
+
+it.each([true, false])(
+  "reports Library storage failures without hiding available music (saved=%s)",
+  async (saved) => {
+    installDisk();
+    const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+    if (saved) await cache.replaceLibrary(library("Available artist", 1));
+    vi.spyOn(cache, "error", "get").mockReturnValue(
+      new AggregateError([new Error("Storage failed")]),
+    );
+    mocks.cache = cache;
+    const target = document.createElement("main");
+    document.body.append(target);
+    const component = mount(App, { target });
+    cleanups.push(() => unmount(component));
+    flushSync();
+    expect(target.textContent).toContain(saved ? "Library needs attention" : "Library unavailable");
+    expect(target.querySelectorAll(".tile")).toHaveLength(saved ? 1 : 0);
+    expect(target.textContent).not.toContain("No artists found.");
+    expect(target.querySelector('.library-view a[href="#/settings"]')).not.toBeNull();
   },
 );
 
@@ -648,7 +676,7 @@ it("reuses one library menu for the long-pressed artist", async () => {
   flushSync();
   expect(target.querySelectorAll(".action-menu")).toHaveLength(1);
   const menu = target.querySelector<HTMLDialogElement>("#artist-menu")!;
-  const tiles = target.querySelectorAll<HTMLElement>(".tile");
+  const tiles = target.querySelectorAll<HTMLElement>(".tile > a.link-target");
   for (const [index, id] of ["one", "two"].entries()) {
     expect(tiles[index].dataset.longpressfor).toBe(menu.id);
     const down = new Event("pointerdown", { bubbles: true });
@@ -866,7 +894,8 @@ it("renders the selected cache, reacts to replacements, and stops observing a pr
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const names = () => [...target.querySelectorAll(".tile-name")].map((node) => node.textContent);
+  const names = () =>
+    [...target.querySelectorAll(".tile-content h3")].map((node) => node.textContent);
   await vi.waitFor(() => expect(names()).toEqual(["First artist"]));
   expect(mocks.options!.selection.cache!.artists).toBe(first.artists);
 
@@ -996,7 +1025,7 @@ it.each([
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  target.querySelector<HTMLElement>(".tile")?.focus();
+  target.querySelector<HTMLElement>(".tile > a.link-target")?.focus();
   flushSync();
   const button = [...target.querySelectorAll<HTMLButtonElement>("button")].find(
     (button) => button.textContent?.trim() === "Download",
@@ -1109,15 +1138,15 @@ it("renders cached artwork only near the viewport and drops the previous account
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  expect(target.querySelector(".artwork img")).toBeNull();
+  expect(target.querySelector(".tile-artwork img:not([hidden])")).toBeNull();
 
   await first.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" });
   await mocks.options!.covers.refresh();
   flushSync();
   expect(mocks.options!.selection.cache!.images).toBe(first.images);
-  expect(target.querySelector(".artwork img")).toBeNull();
+  expect(target.querySelector(".tile-artwork img:not([hidden])")).toBeNull();
   expect(URL.createObjectURL).not.toHaveBeenCalled();
-  const tile = target.querySelector("a.tile")!;
+  const tile = target.querySelector(".tile > a.link-target")!;
   expect(tile.getAttribute("aria-label")).toBe("Artist");
   expect(tile.hasAttribute("data-viewport-hidden")).toBe(false);
   intersections[0](true);
@@ -1140,7 +1169,7 @@ it("renders cached artwork only near the viewport and drops the previous account
   flushSync();
   await mocks.options!.covers.refresh();
   flushSync();
-  expect(target.querySelector(".artwork img")).toBeNull();
+  expect(target.querySelector(".tile-artwork img:not([hidden])")).toBeNull();
   expect(revoke).toHaveBeenCalledWith("blob:artwork-1");
   expect(mocks.options!.selection.cache!.images).toBe(second.images);
   expect(mocks.options!.selection.cache!.images.size).toBe(0);
@@ -1148,7 +1177,7 @@ it("renders cached artwork only near the viewport and drops the previous account
   await first.saveImage("cover", { blob: new Blob(["late old image"]), type: "image/png" });
   await mocks.options!.covers.refresh();
   flushSync();
-  expect(target.querySelector(".artwork img")).toBeNull();
+  expect(target.querySelector(".tile-artwork img:not([hidden])")).toBeNull();
 });
 
 it("follows normalized album artwork IDs without publishing a late old image", async () => {
