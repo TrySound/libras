@@ -6,7 +6,7 @@
   import type { Cache } from "../cache.svelte";
   import type { Playback } from "../playback.svelte";
   import type AudioPlayer from "../audio-player.svelte";
-  import { formatTime } from "../time";
+  import { formatDuration } from "../time";
 
   interface Props {
     cache: Cache;
@@ -41,7 +41,7 @@
       disabled={!maximum}
       style:--progress={`${maximum ? (value / maximum) * 100 : 0}%`}
       aria-label="Playback position"
-      aria-valuetext={`${formatTime(position)} of ${formatTime(duration)}`}
+      aria-valuetext={`${formatDuration(position)} of ${formatDuration(duration)}`}
       oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
     />
     <progress

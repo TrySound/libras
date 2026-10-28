@@ -126,11 +126,7 @@
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
   import Loader from "./ui/loader.svelte";
-
-  const durationFormatter = new Intl.DurationFormat("en", {
-    minutes: "numeric",
-    seconds: "2-digit",
-  });
+  import { formatDuration } from "./time";
   import type { TrackEngine } from "./track.svelte";
   import type { Session } from "./session.svelte";
   import type { Playback } from "./playback.svelte";
@@ -379,12 +375,7 @@
                   {/if}
                   <div class="row-sm">
                     {#if track?.duration !== undefined}
-                      <span class="metadata text-subtle"
-                        >{durationFormatter.format({
-                          minutes: Math.floor(track.duration / 60),
-                          seconds: Math.floor(track.duration % 60),
-                        })}</span
-                      >
+                      <span class="metadata text-subtle">{formatDuration(track.duration)}</span>
                     {/if}
                     <button
                       class="button only-mobile"
