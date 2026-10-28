@@ -95,7 +95,24 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     await sheet.waitFor({ state: "visible" });
     assert.equal(await sheet.evaluate((node) => node.matches(":modal")), true);
     assert.notEqual(await sheet.evaluate((node) => getComputedStyle(node).backgroundImage), "none");
-    await page.keyboard.press("Escape");
+    const touch = await page.context().newCDPSession(page);
+    const bounds = await sheet.boundingBox();
+    const point = { x: bounds.x + 20, y: bounds.y + 20 };
+    await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+    for (const offset of [15, 40, 80, 120]) {
+      await touch.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ ...point, y: point.y + offset }],
+      });
+    }
+    assert.equal(await sheet.getAttribute("data-dragging"), "");
+    assert.ok(
+      await sheet.evaluate((node) => parseFloat(getComputedStyle(node).translate.split(" ")[1]) > 0),
+      "the tile menu follows the swipe",
+    );
+    await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await sheet.waitFor({ state: "hidden" });
+    await touch.detach();
     assert.equal(
       await options.filter({ visible: true }).evaluate((node) => node === document.activeElement),
       true,

@@ -1,3 +1,4 @@
+import "dialog-closedby-polyfill";
 import { mount } from "svelte";
 import App from "./app.svelte";
 import WebappUpdater from "./webapp-updater.svelte";

@@ -226,7 +226,7 @@
   id="album-detail-menu"
   class="bottom-sheet"
   aria-labelledby="album-detail-menu-title"
-  closedby="closerequest"
+  closedby="any"
   data-swipedown="close"
 >
   <span class="dialog-handle" aria-hidden="true"></span>

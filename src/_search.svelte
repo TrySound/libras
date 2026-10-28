@@ -419,7 +419,7 @@
   id="search-menu"
   class="bottom-sheet"
   aria-labelledby="search-menu-title"
-  closedby="closerequest"
+  closedby="any"
   data-swipedown="close"
 >
   <span class="dialog-handle" aria-hidden="true"></span>

@@ -15,11 +15,11 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
   try {
     await page.goto(base);
     await page.locator(".settings-view").waitFor();
-    // Headless Chromium cannot rubber-band; assert the scroll owner's policy
-    // directly as well as the canvas coverage for short routes.
+    // Keep native page overscroll (including pull-to-refresh) enabled.
+    // Headless Chromium can only verify the scroll owner's policy.
     assert.equal(
       await page.evaluate(() => getComputedStyle(document.scrollingElement).overscrollBehavior),
-      "none",
+      "auto",
     );
     await page.setViewportSize({ width: 1280, height: 1600 });
     const background = await page.evaluate(() => {
@@ -66,7 +66,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     await page.setViewportSize({ width: 768, height: 800 });
     assert.equal(
       await page.evaluate(() => getComputedStyle(document.scrollingElement).overscrollBehavior),
-      "none",
+      "auto",
     );
     assert.equal(
       await sidebar.isVisible(),

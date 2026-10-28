@@ -162,7 +162,7 @@
   id="artist-menu"
   class="bottom-sheet"
   aria-labelledby="artist-menu-title"
-  closedby="closerequest"
+  closedby="any"
   data-swipedown="close"
 >
   <span class="dialog-handle" aria-hidden="true"></span>

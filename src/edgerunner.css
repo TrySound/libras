@@ -252,12 +252,6 @@
   scrollbar-gutter: stable;
 }
 
-/* Standalone scrolling belongs to the document, not the app wrapper.
- * Suppress boundary bounce without changing sticky-player placement. */
-:root:has(.app-root.standalone) {
-  overscroll-behavior: none;
-}
-
 @media (width <= 50rem) {
   :root,
   .app-root {
@@ -1162,6 +1156,22 @@
         }
         &[open]::backdrop {
           opacity: 0;
+        }
+      }
+    }
+  }
+
+  .bottom-sheet {
+    &[open] {
+      translate: 0 var(--swipe-offset, 0px);
+    }
+    &[data-dragging] {
+      transition: none;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      @starting-style {
+        &[open] {
+          translate: var(--sheet-closed-translate);
         }
       }
     }
