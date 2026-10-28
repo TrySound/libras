@@ -135,8 +135,9 @@ test("website and embedded app own their presentation", async (t) => {
       await page.keyboard.press("Escape");
     });
 
-    await t.test("website styles stop at the embedded application", async () => {
+    await t.test("website tokens and styles stop at the embedded application", async () => {
       await page.evaluate(() => {
+        document.querySelector(".website").style.setProperty("--space-lg", "40px");
         const island = document.createElement("section");
         island.id = "app-website-fixture";
         island.className = "app-root";
@@ -152,9 +153,20 @@ test("website and embedded app own their presentation", async (t) => {
       assert.deepEqual(island, { display: "grid", minHeight: "0px", gap: "24px" });
       assert.equal(
         await page
+          .locator(".site-hero")
+          .first()
+          .evaluate((element) => getComputedStyle(element).gap),
+        "40px",
+        "website token customization must not change the embedded theme",
+      );
+      assert.equal(
+        await page
           .locator("#app-website-fixture .button")
           .evaluate((element) => getComputedStyle(element).backgroundColor),
         "rgb(129, 0, 0)",
+      );
+      await page.evaluate(() =>
+        document.querySelector(".website").style.removeProperty("--space-lg"),
       );
     });
     assert.deepEqual(errors, []);

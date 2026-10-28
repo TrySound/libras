@@ -5,7 +5,10 @@
  */
 @import "./edgerunner-fonts.css";
 
-:root {
+/* Re-establish the theme at the app root: scoped host declarations can still
+ * inherit custom properties into an embedded application. */
+:root,
+.app-root {
   /* Color primitives: literal palette values, including published anchors and scales. */
   --palette-maroon: #550000;
 
@@ -249,7 +252,8 @@
 }
 
 @media (width <= 50rem) {
-  :root {
+  :root,
+  .app-root {
     --content-padding-inline: max(
       var(--space-md),
       env(safe-area-inset-left),

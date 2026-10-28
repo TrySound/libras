@@ -2,27 +2,60 @@
  * Keep website rules out of the embedded application. */
 @scope (.website) to (.app-root) {
   :scope {
-    --site-background: #090b10;
-    --site-text: #f5f6f8;
-    --site-muted: #979ead;
-    --site-surface: #10131a;
-    --site-border: rgb(255 255 255 / 9%);
-    --site-focus: 2px solid #c94d60;
-    --site-faint: #6d7585;
-    --site-accent: #f294a4;
-    --site-accent-glow: rgb(159 41 64 / 20%);
-    --site-radius: 1rem;
-    --site-max-width: 1120px;
-    --site-gutter: clamp(1.25rem, 4vw, 3rem);
-    --site-section-space: clamp(5rem, 10vw, 8rem);
-    --site-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
-    background: var(--site-background);
-    color: var(--site-text);
-    font:
-      400 1rem / 1.5 system-ui,
-      sans-serif;
-    overflow: clip;
-    -webkit-font-smoothing: antialiased;
+    /* Palette, spacing, shape, and typography primitives. */
+    --palette-transparent: transparent;
+    --palette-black: #000;
+    --palette-white: #fff;
+    --palette-gray-100: #f5f6f8;
+    --palette-gray-300: #979ead;
+    --palette-gray-600: #292f3c;
+    --palette-gray-900: #10131a;
+    --palette-crimson-300: #c94d60;
+    --palette-crimson-500: #9f2940;
+    --palette-crimson-700: #341c24;
+    --palette-green-500: #53d58b;
+
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+    --radius-xs: 0.25rem;
+    --radius-sm: 0.5rem;
+    --radius-pill: 999px;
+    --radius-circle: 50%;
+
+    --font-sans: system-ui, sans-serif;
+    --text-sm: 0.875rem;
+    --text-md: 1rem;
+    --weight-regular: 400;
+    --weight-semibold: 600;
+    --leading-md: 1.5rem;
+    --tracking-normal: normal;
+
+    /* Semantic roles shared by website controls and marketing layout. */
+    --color-text-primary: var(--palette-gray-100);
+    --color-text-muted: var(--palette-gray-300);
+    --color-text-accent: var(--palette-crimson-300);
+    --color-status-success: var(--palette-green-500);
+    --surface-page-background: var(--palette-gray-900);
+    --surface-lifted-shadow: 0 0 0.5rem rgb(from var(--palette-black) r g b / 50%);
+    --body-size: var(--text-md);
+    --body-weight: var(--weight-regular);
+    --body-leading: var(--leading-md);
+    --body-tracking: var(--tracking-normal);
+    --control-weight: var(--weight-semibold);
+    --control-tracking: var(--tracking-normal);
+    --transition-control: 160ms ease-out;
+    --transition-overlay: 180ms ease;
+    --focus-outline: 2px solid var(--color-text-accent);
+    --focus-outline-offset: 2px;
+
+    font-family: var(--font-sans);
+    font-size: var(--body-size);
+    font-weight: var(--body-weight);
+    line-height: var(--body-leading);
+    letter-spacing: var(--body-tracking);
+    color: var(--color-text-primary);
   }
 
   a {
@@ -37,7 +70,7 @@
   }
 
   .text-muted {
-    color: var(--site-muted);
+    color: var(--color-text-muted);
   }
 
   .row-sm,
@@ -47,10 +80,10 @@
   }
 
   .row-sm {
-    gap: 0.5rem;
+    gap: var(--space-sm);
   }
   .row-lg {
-    gap: 1.5rem;
+    gap: var(--space-lg);
   }
 
   .stack-md,
@@ -61,13 +94,13 @@
   }
 
   .stack-md {
-    gap: 1rem;
+    gap: var(--space-md);
   }
   .stack-lg {
-    gap: 1.5rem;
+    gap: var(--space-lg);
   }
   .stack-xl {
-    gap: 2rem;
+    gap: var(--space-xl);
   }
 
   .visually-hidden {
@@ -83,23 +116,27 @@
   }
 
   .button {
-    --button-bg: rgb(255 255 255 / 3%);
-    --button-border: rgb(255 255 255 / 9%);
+    --control-dimension: 3rem;
+    --control-padding: 1.2rem;
+    --control-background: rgb(from var(--palette-white) r g b / 3%);
+    --control-border: rgb(from var(--palette-white) r g b / 9%);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.65rem;
     box-sizing: border-box;
-    min-height: 3rem;
-    padding: 0.4rem 1.2rem;
-    border: 1px solid var(--button-border);
-    border-radius: 0.5rem;
-    color: var(--site-text);
-    background: var(--button-bg);
-    box-shadow: 0 0 0.5rem #0008;
-    font:
-      600 0.875rem / 1.5 system-ui,
-      sans-serif;
+    min-height: var(--control-dimension);
+    padding: 0.4rem var(--control-padding);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    background: var(--control-background);
+    box-shadow: var(--surface-lifted-shadow);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    font-weight: var(--control-weight);
+    line-height: 1.5;
+    letter-spacing: var(--control-tracking);
     text-align: center;
     text-decoration: none;
     cursor: pointer;
@@ -107,43 +144,44 @@
 
     @media (hover: hover) {
       &:hover:not(:active) {
-        background: color-mix(in srgb, var(--button-bg) 94%, var(--site-text) 6%);
-        border-color: color-mix(in srgb, var(--button-border) 88%, var(--site-text) 12%);
+        background: color-mix(in srgb, var(--control-background) 94%, var(--color-text-primary) 6%);
+        border-color: color-mix(in srgb, var(--control-border) 88%, var(--color-text-primary) 12%);
       }
     }
     @media (prefers-reduced-motion: no-preference) {
       transition:
-        background-color 160ms ease-out,
-        border-color 160ms ease-out;
+        background-color var(--transition-control),
+        border-color var(--transition-control);
     }
   }
 
   .icon-button {
+    --control-dimension: 2.25rem;
     display: inline-grid;
     place-items: center;
     flex: none;
-    width: 2.25rem;
-    height: 2.25rem;
+    width: var(--control-dimension);
+    height: var(--control-dimension);
     padding: 0;
-    border: 1px solid transparent;
-    border-radius: 50%;
-    color: var(--site-text);
-    background: transparent;
+    border: 1px solid var(--palette-transparent);
+    border-radius: var(--radius-circle);
+    color: var(--color-text-primary);
+    background: var(--palette-transparent);
     cursor: pointer;
 
     &:hover {
-      background: rgb(245 246 248 / 10%);
+      background: rgb(from var(--color-text-primary) r g b / 10%);
     }
     &:active {
-      background: rgb(245 246 248 / 20%);
+      background: rgb(from var(--color-text-primary) r g b / 20%);
     }
   }
 
   .button:focus-visible,
   .icon-button:focus-visible,
   .text-link:focus-visible {
-    outline: var(--site-focus);
-    outline-offset: 2px;
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
   }
 
   .text-link {
@@ -151,7 +189,7 @@
     text-underline-offset: 0.3em;
     @media (hover: hover) {
       &:hover {
-        color: #c94d60;
+        color: var(--color-text-accent);
       }
     }
   }

@@ -104,7 +104,8 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
 It uses the same styles as production, not a separate component library.
 
 - `src/edgerunner.css` owns the theme foundations, components, and music-app layout. Tokens live on
-  `:root`; component classes are scoped to `.app-root` and the styleguide document
+  `:root` and are re-established at `.app-root` so inherited website variables cannot
+  override the embedded theme. Component classes are scoped to `.app-root` and the styleguide document
   (`.design-reference`) to keep app presentation out of host pages. Routes and native
   overlays need no opt-in classes; keep overlays inside the app's DOM and preserve native
   hidden behavior. Standalone documents paint the app canvas; embedded apps never repaint
