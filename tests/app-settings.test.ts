@@ -286,38 +286,123 @@ describe("app settings", () => {
     expectStatus("unlink", "Disconnected");
   });
 
-  it("offers updates through a shared popover without modifying Settings", async () => {
-    const { target, button } = await setup();
-    expect(button("App update")).toBeUndefined();
-    const callbacks = vi.mocked(registerSW).mock.calls.at(-1)![0]!;
-    callbacks.onRegisteredSW?.("/sw.js", {
-      waiting: Object.assign(new EventTarget(), { state: "installed" }),
-    } as unknown as ServiceWorkerRegistration);
+  it.each([".app-sidebar", "#navigation-dialog"])(
+    "offers updates directly in %s and synchronizes both navigation copies",
+    async (selector) => {
+      const apply = vi.fn(async () => {});
+      vi.mocked(registerSW).mockReturnValueOnce(apply);
+      const { target } = await setup();
+      expect(target.querySelector('[aria-label="App update"]')).toBeNull();
+      expect(target.querySelector(".separator")).toBeNull();
+      const menu = target.querySelector<HTMLButtonElement>('.app-header [aria-label="Open menu"]')!;
+      expect(menu.getAttribute("data-variant")).toBeNull();
+      expect(target.querySelector("#navigation-update-hint")).toBeNull();
+      const callbacks = vi.mocked(registerSW).mock.calls.at(-1)![0]!;
+      callbacks.onRegisteredSW?.("/sw.js", {
+        waiting: Object.assign(new EventTarget(), { state: "installed" }),
+      } as unknown as ServiceWorkerRegistration);
+      flushSync();
+      const notices = target.querySelectorAll('[aria-label="App update"]');
+      expect(notices).toHaveLength(2);
+      expect(menu.getAttribute("data-variant")).toBe("secondary");
+      expect(menu.getAttribute("aria-describedby")).toBe("navigation-update-hint");
+      expect(menu.getAttribute("data-size")).toBe("text");
+      expect(menu.firstElementChild?.matches(".caption.text-subtle")).toBe(true);
+      expect(menu.firstElementChild?.textContent).toBe("Update");
+      expect(menu.firstElementChild?.nextElementSibling?.tagName.toLowerCase()).toBe("svg");
+      for (const owner of [".app-sidebar", "#navigation-dialog"]) {
+        const notice = target.querySelector(`${owner} [aria-label="App update"]`)!;
+        expect(notice.previousElementSibling?.matches("hr.separator")).toBe(true);
+        expect(notice.previousElementSibling?.previousElementSibling?.tagName).toBe("NAV");
+        const action = notice.querySelector("button")!;
+        expect(action.title).toContain("A new version of Libras is available.");
+        expect(action.title).toContain("interrupts playback");
+        expect(action.classList.contains("menu-item")).toBe(true);
+        expect(action.querySelector(".label.text-subtle")?.textContent).toBe("Update Libras");
+        expect(action.querySelector("use")?.getAttribute("href")).toBe("#icon-refresh");
+        expect(action.querySelector("svg")?.getAttribute("color")).toBe("var(--text-subtle)");
+        expect(action.querySelector(".caption")).toBeNull();
+      }
+      expect(target.querySelector("#update-popover")).toBeNull();
+      expect(target.querySelector('[commandfor="update-popover"]')).toBeNull();
+      expect(target.querySelector(".app-status-actions")).toBeNull();
+      expect(target.querySelector('.settings-view [aria-label="App update"]')).toBeNull();
+      expect(target.querySelector('#player-dialog [aria-label="App update"]')).toBeNull();
+      target
+        .querySelector<HTMLButtonElement>(`${selector} [aria-label="App update"] button`)!
+        .click();
+      flushSync();
+      expect(apply).toHaveBeenCalledOnce();
+      for (const notice of notices) {
+        const action = notice.querySelector("button")!;
+        expect(action.disabled).toBe(false);
+        expect(action.getAttribute("aria-disabled")).toBe("true");
+        action.focus();
+        expect(document.activeElement).toBe(action);
+        action.click();
+        expect(apply).toHaveBeenCalledOnce();
+        expect(notice.querySelector("button")?.textContent).toContain("Updating…");
+        expect(notice.querySelector("button")?.title).toContain("Applying the update");
+        expect(notice.querySelector(".loader")?.getAttribute("aria-hidden")).toBe("true");
+        expect(notice.querySelectorAll(".loader-bar")).toHaveLength(5);
+        expect(notice.querySelector("svg")).toBeNull();
+      }
+    },
+  );
+
+  it("shows update failures below the retry action and clears them when retrying", async () => {
+    const apply = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Update failed. Please retry."))
+      .mockResolvedValue(undefined);
+    vi.mocked(registerSW).mockReturnValueOnce(apply);
+    const { target } = await setup();
+    vi.mocked(registerSW)
+      .mock.calls.at(-1)![0]!
+      .onRegisteredSW?.("/sw.js", {
+        waiting: Object.assign(new EventTarget(), { state: "installed" }),
+      } as unknown as ServiceWorkerRegistration);
     flushSync();
-    expect(button("App update").getAttribute("commandfor")).toBe("update-popover");
-    expect(button("App update").getAttribute("command")).toBe("toggle-popover");
-    const popover = target.querySelector("#update-popover")!;
-    expect(target.querySelectorAll("#update-popover")).toHaveLength(1);
-    expect(popover.getAttribute("popover")).toBe("auto");
-    expect(popover.textContent).toContain("interrupts playback");
-    expect(button("Close app update").getAttribute("command")).toBe("hide-popover");
-    expect(target.querySelector('.settings-view [aria-label="App update"]')).toBeNull();
-    expect(target.querySelector("#player-dialog #update-popover")).toBeNull();
-    button("Update now").click();
+    target
+      .querySelector<HTMLButtonElement>('.app-sidebar [aria-label="App update"] button')!
+      .click();
+    await vi.waitFor(() => {
+      for (const owner of [".app-sidebar", "#navigation-dialog"]) {
+        const notice = target.querySelector(`${owner} [aria-label="App update"]`)!;
+        expect(notice.querySelector("button + .caption.text-subtle")?.textContent).toBe(
+          "Update failed. Please retry.",
+        );
+        expect(notice.querySelector("button")?.hasAttribute("title")).toBe(false);
+        expect(notice.querySelector("button")?.getAttribute("aria-disabled")).toBe("false");
+      }
+    });
+    target
+      .querySelector<HTMLButtonElement>('#navigation-dialog [aria-label="App update"] button')!
+      .click();
     flushSync();
-    expect(button("Updating…").disabled).toBe(true);
-    expect(popover.textContent).toContain("Applying the update");
+    expect(apply).toHaveBeenCalledTimes(2);
+    for (const notice of target.querySelectorAll('[aria-label="App update"]')) {
+      expect(notice.querySelector(".caption")).toBeNull();
+      expect(notice.querySelector(".loader")).not.toBeNull();
+    }
   });
 
-  it("shows offline setup failures in the update popover without an update action", async () => {
+  it("shows offline setup failures in navigation without an update action", async () => {
     const { target, button } = await setup();
     vi.mocked(registerSW).mock.calls.at(-1)![0]!.onRegisterError?.(new Error("Failed"));
     flushSync();
-    expect(button("App update")).toBeDefined();
-    expect(target.querySelector("#update-popover")?.textContent).toContain(
-      "Offline app setup failed",
-    );
-    expect(button("Update now")).toBeUndefined();
+    for (const owner of [".app-sidebar", "#navigation-dialog"]) {
+      expect(target.querySelector(`${owner} [aria-label="App update"]`)?.textContent).toContain(
+        "Offline app setup failed",
+      );
+    }
+    expect(target.querySelector("#update-popover")).toBeNull();
+    expect(button("Update Libras")).toBeUndefined();
+    expect(target.querySelector('[aria-label="App update"] button')).toBeNull();
+    expect(target.querySelector("#navigation-update-hint")).toBeNull();
+    expect(
+      target.querySelector('.app-header [aria-label="Open menu"]')?.getAttribute("data-variant"),
+    ).toBeNull();
   });
 
   it("offers error details beside Settings, never inside the player", async () => {

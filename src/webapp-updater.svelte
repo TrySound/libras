@@ -24,7 +24,8 @@
       ? state.message
       : {
           idle: "",
-          ready: "An app update is ready. Updating reloads the app and interrupts playback.",
+          ready:
+            "A new version of Libras is available. Update now to reload the app. This interrupts playback.",
           updating: "Applying the update. The app will reload when it is ready.",
         }[state.status],
   );
@@ -117,7 +118,7 @@
   });
 
   export function getStatus() {
-    return { hasUpdate, busy, message };
+    return { hasUpdate, busy, message, failed: state.status === "error" };
   }
 
   export async function update() {

@@ -6,6 +6,7 @@
   import { Playlists } from "./playlists.svelte";
   import AudioPlayer from "./audio-player.svelte";
   import Player from "./ui/player.svelte";
+  import Loader from "./ui/loader.svelte";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
@@ -233,6 +234,30 @@
       Settings
     </a>
   </nav>
+  {#if appUpdate?.message}
+    <hr class="separator" />
+    <section class="stack-sm" aria-label="App update">
+      {#if appUpdate.hasUpdate}
+        <button
+          class="menu-item"
+          aria-disabled={appUpdate.busy}
+          aria-busy={appUpdate.busy}
+          title={appUpdate.failed ? undefined : appUpdate.message}
+          onclick={() => void updater?.update()}
+        >
+          {#if appUpdate.busy}
+            <Loader />
+          {:else}
+            <Icon name="refresh" color="var(--text-subtle)" />
+          {/if}
+          <span class="label text-subtle">{appUpdate.busy ? "Updating…" : "Update Libras"}</span>
+        </button>
+      {/if}
+      {#if appUpdate.failed}
+        <p class="caption text-subtle">{appUpdate.message}</p>
+      {/if}
+    </section>
+  {/if}
 {/snippet}
 
 <div class="app-root" class:standalone={!embedded}>
@@ -250,18 +275,6 @@
           <Icon name="error" color="var(--error-text)" />
         </button>
       {/if}
-      {#if appUpdate?.message}
-        <button
-          class="button"
-          data-variant="ghost"
-          commandfor="update-popover"
-          command="toggle-popover"
-          aria-label="App update"
-          title="App update"
-        >
-          <Icon name={appUpdate.busy ? "loading" : "refresh"} />
-        </button>
-      {/if}
     {/snippet}
     <aside class="sidebar app-sidebar stack-lg" aria-label="Navigation">
       {@render brand()}
@@ -274,15 +287,23 @@
         <a class="button" href="#/search" aria-label="Search"><Icon name="search" size={24} /></a>
         <button
           class="button"
+          data-size={appUpdate?.hasUpdate ? "text" : undefined}
+          data-variant={appUpdate?.hasUpdate ? "secondary" : undefined}
           aria-label="Open menu"
+          aria-describedby={appUpdate?.hasUpdate ? "navigation-update-hint" : undefined}
           aria-controls="navigation-dialog"
           aria-expanded={navigationOpen}
           commandfor="navigation-dialog"
-          command="show-modal"><Icon name="menu-lines" size={24} /></button
+          command="show-modal"
         >
+          {#if appUpdate?.hasUpdate}
+            <span id="navigation-update-hint" class="caption text-subtle">Update</span>
+          {/if}
+          <Icon name="menu-lines" size={24} />
+        </button>
       </div>
     </header>
-    {#if hasErrors || appUpdate?.message}
+    {#if hasErrors}
       <div class="row-sm app-status-actions">{@render actions()}</div>
     {/if}
     <main class="app-page">
@@ -313,26 +334,6 @@
           data-variant="ghost"
           aria-label="Close errors"
           commandfor="error-popover"
-          command="hide-popover"><Icon name="cross" /></button
-        >
-      </div>
-    {/if}
-    {#if appUpdate?.message}
-      <div id="update-popover" class="notification-popover" popover="auto" aria-label="App update">
-        <div class="stack-sm">
-          <strong class="heading-md">App update</strong>
-          <p class="caption">{appUpdate.message}</p>
-          {#if appUpdate.hasUpdate}
-            <button class="button" disabled={appUpdate.busy} onclick={() => void updater?.update()}>
-              {appUpdate.busy ? "Updating…" : "Update now"}
-            </button>
-          {/if}
-        </div>
-        <button
-          class="button"
-          data-variant="ghost"
-          aria-label="Close app update"
-          commandfor="update-popover"
           command="hide-popover"><Icon name="cross" /></button
         >
       </div>

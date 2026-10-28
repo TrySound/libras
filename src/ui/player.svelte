@@ -129,7 +129,7 @@
       draggable="false"
     />
     <header class="topbar row-md row-justify">
-      <span class="dialog-handle" aria-hidden="true"></span>
+      <span class="dialog-handle only-mobile" aria-hidden="true"></span>
       <h2 id="playing-title" class="heading-md uppercase">Now Playing</h2>
       <button
         class="button"

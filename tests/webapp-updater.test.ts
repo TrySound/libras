@@ -84,7 +84,9 @@ describe("webapp updater", () => {
     const focus = vi.spyOn(HTMLElement.prototype, "focus");
     ready();
     expect(status().hasUpdate).toBe(true);
-    expect(target.querySelector('[role="status"]')?.textContent).toContain("update is ready");
+    expect(target.querySelector('[role="status"]')?.textContent).toContain(
+      "A new version of Libras is available.",
+    );
     expect(target.querySelector("[popover], dialog, button")).toBeNull();
     expect(focus).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();

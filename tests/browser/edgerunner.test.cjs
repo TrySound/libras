@@ -43,7 +43,7 @@ test("Edgerunner foundations and native controls", async (t) => {
       assert.match(styles.font, /Rajdhani/);
       assert.equal(styles.fontDisplays.length, 3);
       assert.ok(styles.fontDisplays.every((display) => display === "optional"));
-      assert.equal(await page.locator('link[rel="preload"][as="font"][crossorigin]').count(), 1);
+      assert.equal(await page.locator('link[rel="preload"][as="font"][crossorigin]').count(), 3);
 
       for (const width of [320, 375, 768, 1440]) {
         await page.setViewportSize({ width, height: 900 });
@@ -65,6 +65,42 @@ test("Edgerunner foundations and native controls", async (t) => {
       });
       assert.deepEqual(sizing, ["16px", "20px"]);
     });
+
+    await t.test(
+      "app entry preloads all optional faces without duplicate font requests",
+      async () => {
+        const context = await browser.newContext();
+        const app = await context.newPage();
+        try {
+          await app.goto(base);
+          await app.locator(".app-root").waitFor();
+          await app.evaluate(() => document.fonts.ready);
+          const fonts = await app.evaluate(() => {
+            const preloads = [...document.querySelectorAll('link[rel="preload"][as="font"]')];
+            return preloads.map((link) => ({
+              href: link.href,
+              type: link.type,
+              cors: link.hasAttribute("crossorigin"),
+              requests: performance.getEntriesByName(link.href).length,
+            }));
+          });
+          assert.equal(fonts.length, 3);
+          for (const [index, font] of fonts.entries()) {
+            assert.match(font.href, new RegExp(`rajdhani-${[500, 600, 700][index]}-latin`));
+            assert.equal(font.type, "font/woff2");
+            assert.equal(font.cors, true);
+            assert.equal(font.requests, 1);
+          }
+          assert.ok(
+            await app.evaluate(() =>
+              [...document.fonts].every((font) => font.display === "optional"),
+            ),
+          );
+        } finally {
+          await context.close();
+        }
+      },
+    );
 
     await t.test("slow fonts keep the fallback without a late layout swap", async () => {
       // A fresh context avoids warm font caches from the preceding specimens.
@@ -139,11 +175,103 @@ test("Edgerunner foundations and native controls", async (t) => {
       assert.equal(await page.locator("#guide-popover").isVisible(), false);
     });
 
+    await t.test(
+      "sidebar specimens reflect update availability, progress, and failures",
+      async () => {
+        const states = page.getByLabel("Sidebar update states", { exact: true });
+        const sidebars = states.getByRole("complementary");
+        assert.equal(await sidebars.count(), 5);
+        for (const sidebar of await sidebars.all()) {
+          assert.equal(await sidebar.getByRole("navigation").getByRole("link").count(), 1);
+          assert.equal(
+            await sidebar.getByRole("link", { name: "Your library", exact: true }).count(),
+            1,
+          );
+        }
+        assert.equal(await states.locator("[aria-current], nav svg[color]").count(), 0);
+        const idle = states.getByRole("complementary", { name: "No update sidebar", exact: true });
+        assert.equal(await idle.getByRole("button").count(), 0);
+        assert.equal(await idle.getByRole("separator").count(), 0);
+        assert.equal(await idle.getByLabel("App update", { exact: true }).count(), 0);
+        const separators = states.getByRole("separator");
+        assert.equal(await separators.count(), 4);
+        for (const separator of await separators.all()) {
+          assert.deepEqual(
+            await separator.evaluate((element) => {
+              const style = getComputedStyle(element);
+              const sidebar = getComputedStyle(element.closest("aside"));
+              return {
+                margins: [style.marginTop, style.marginRight, style.marginBottom, style.marginLeft],
+                thickness: style.borderTopWidth,
+                expectedThickness: style.getPropertyValue("--border-width").trim(),
+                bottom: style.borderBottomWidth,
+                matchesShell: style.borderTopColor === sidebar.borderRightColor,
+                separatesUpdate:
+                  element.previousElementSibling?.tagName === "NAV" &&
+                  element.nextElementSibling?.getAttribute("aria-label") === "App update",
+              };
+            }),
+            {
+              margins: ["0px", "0px", "0px", "0px"],
+              thickness: "2px",
+              expectedThickness: "2px",
+              bottom: "0px",
+              matchesShell: true,
+              separatesUpdate: true,
+            },
+          );
+        }
+        for (const name of ["Update available sidebar", "Update failed sidebar"]) {
+          const sidebar = states.getByRole("complementary", { name, exact: true });
+          const action = sidebar.getByRole("button", { name: /^Update Libras/ });
+          assert.equal(await action.isEnabled(), true);
+          assert.equal(await action.locator(".caption").count(), 0);
+          assert.equal(await action.locator(".label.text-subtle").textContent(), "Update Libras");
+          if (name === "Update available sidebar") {
+            assert.match(
+              await action.getAttribute("title"),
+              /A new version of Libras is available/,
+            );
+          } else {
+            assert.equal(await action.getAttribute("title"), null);
+            assert.match(
+              await sidebar.locator(".caption.text-subtle").textContent(),
+              /taking too long/,
+            );
+          }
+          assert.equal(await action.locator("use").getAttribute("href"), "#icon-refresh");
+          assert.equal(await action.locator("svg").getAttribute("color"), "var(--text-subtle)");
+        }
+        const busy = states
+          .getByRole("complementary", { name: "Updating sidebar", exact: true })
+          .getByRole("button");
+        assert.equal(await busy.evaluate((element) => element.disabled), false);
+        assert.equal(await busy.getAttribute("aria-disabled"), "true");
+        assert.equal(await busy.getAttribute("aria-busy"), "true");
+        await busy.focus();
+        assert.equal(await busy.evaluate((element) => element === document.activeElement), true);
+        assert.match(await busy.getAttribute("title"), /Applying the update/);
+        assert.equal(await busy.locator(".loader-bar").count(), 5);
+        assert.equal(await busy.locator("svg").count(), 0);
+        const failure = states.getByRole("complementary", {
+          name: "Offline setup failed sidebar",
+          exact: true,
+        });
+        assert.equal(await failure.getByRole("button").count(), 0);
+        assert.match(await failure.textContent(), /Offline app setup failed/);
+        assert.equal(await states.locator('[role="status"], [role="alert"]').count(), 0);
+      },
+    );
+
     await t.test("shared navigation primitives work outside the app shell", async () => {
       await page.setViewportSize({ width: 320, height: 900 });
       await page.emulateMedia({ reducedMotion: "reduce" });
       const invoker = page.getByRole("button", { name: "Open navigation specimen", exact: true });
       const sheet = page.locator("#guide-navigation");
+      assert.equal(await invoker.getAttribute("data-variant"), "secondary");
+      assert.equal(await invoker.locator("#guide-navigation-update-hint + svg").count(), 1);
+      assert.equal(await page.locator("#guide-navigation-update-hint").isVisible(), true);
+      assert.equal(await invoker.getAttribute("aria-describedby"), "guide-navigation-update-hint");
       assert.equal(await sheet.isVisible(), false);
       await invoker.click();
       assert.equal(
@@ -157,6 +285,16 @@ test("Edgerunner foundations and native controls", async (t) => {
         await sheet.evaluate((element) => getComputedStyle(element).transitionDuration),
         "0s",
       );
+      assert.deepEqual(
+        await sheet.evaluate((element) => ({
+          dialog: getComputedStyle(element).overscrollBehaviorY,
+          backdrop: getComputedStyle(element, "::backdrop").overscrollBehaviorY,
+          backdropOverflow: getComputedStyle(element, "::backdrop").overflow,
+        })),
+        { dialog: "none", backdrop: "none", backdropOverflow: "hidden" },
+      );
+      // Headless wheel tests cannot reproduce native touch/trackpad rubber-banding;
+      // require none (not contain) so boundary bounce is disabled as well.
       await page.keyboard.press("Escape");
       await sheet.waitFor({ state: "hidden" });
       assert.equal(await invoker.evaluate((element) => element === document.activeElement), true);
@@ -176,6 +314,10 @@ test("Edgerunner foundations and native controls", async (t) => {
             return {
               sidebarVisible: getComputedStyle(sidebar).display !== "none",
               sidebarWidth: sidebar.getBoundingClientRect().width,
+              sidebarPadding: [
+                getComputedStyle(sidebar).paddingTop,
+                getComputedStyle(sidebar).paddingBottom,
+              ],
               padding: parseFloat(main.paddingInlineStart),
               gutter: parseFloat(main.paddingInlineEnd),
               clearance:
@@ -185,6 +327,8 @@ test("Edgerunner foundations and native controls", async (t) => {
           });
         const before = await geometry();
         assert.equal(before.sidebarVisible, true);
+        assert.deepEqual(before.sidebarPadding, ["24px", "24px"]);
+        assert.equal(before.playerHeight, 96);
         assert.equal(before.padding, before.sidebarWidth + before.gutter);
         assert.ok(Math.abs(before.clearance) <= 1);
         await shell.locator(".app-player .label").evaluate((element) => {
@@ -201,6 +345,7 @@ test("Edgerunner foundations and native controls", async (t) => {
         await page.setViewportSize({ width: 375, height: 900 });
         const mobile = await geometry();
         assert.equal(mobile.sidebarVisible, false);
+        assert.equal(mobile.playerHeight, 72);
         assert.equal(mobile.padding, mobile.gutter);
         await shell.evaluate((element) => {
           element.scrollTop = element.scrollHeight;
@@ -215,6 +360,49 @@ test("Edgerunner foundations and native controls", async (t) => {
         );
       },
     );
+
+    await t.test("collection panels budget the embedded viewport, not the browser", async () => {
+      const shell = page.locator("#guide-shell");
+      // Mount only shared presentation classes; no app runtime or layout overrides.
+      await shell.evaluate((element) => {
+        const panel = document.createElement("div");
+        panel.className = "viewport-panel";
+        panel.dataset.testPanel = "";
+        element.querySelector(".app-page").append(panel);
+      });
+      try {
+        for (const width of [375, 1440]) {
+          await page.setViewportSize({ width, height: 900 });
+          for (const frameHeight of [416, 640]) {
+            await shell.locator("..").evaluate((element, height) => {
+              element.style.blockSize = `${height}px`;
+            }, frameHeight);
+            const geometry = await shell.evaluate((element) => {
+              const panel = element.querySelector("[data-test-panel]");
+              const styles = getComputedStyle(panel);
+              const mobile =
+                getComputedStyle(element.querySelector(".app-sidebar")).display === "none";
+              return {
+                actual: panel.getBoundingClientRect().height,
+                expected: Math.max(
+                  0,
+                  element.getBoundingClientRect().height -
+                    parseFloat(
+                      getComputedStyle(element.querySelector(".app-player")).minBlockSize,
+                    ) -
+                    2 * parseFloat(styles.getPropertyValue("--content-padding-block")) -
+                    (mobile ? parseFloat(styles.getPropertyValue("--topbar-min-height")) : 0),
+                ),
+              };
+            });
+            assert.equal(geometry.actual, geometry.expected);
+          }
+        }
+      } finally {
+        await shell.locator("[data-test-panel]").evaluate((element) => element.remove());
+        await shell.locator("..").evaluate((element) => element.style.removeProperty("block-size"));
+      }
+    });
 
     await t.test("missing artwork and reduced-motion loading", async () => {
       const artwork = page.locator(".artwork");
