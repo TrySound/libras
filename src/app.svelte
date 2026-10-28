@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
-  import { onDestroy, onMount, untrack } from "svelte";
+  import { onDestroy, onMount, untrack, type Snippet } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import { Playlists } from "./playlists.svelte";
@@ -29,10 +29,17 @@
     auth: AuthStore;
     updaterComponent: typeof WebappUpdater | undefined;
     embedded?: boolean;
+    settingsContent?: Snippet;
   }
 
   // Entry points explicitly supply infrastructure; UI and domain state belong to App.
-  let { network, auth, updaterComponent: Updater, embedded = false }: Props = $props();
+  let {
+    network,
+    auth,
+    updaterComponent: Updater,
+    embedded = false,
+    settingsContent,
+  }: Props = $props();
 
   let navigationDrawer: HTMLDialogElement;
   let navigationOpen = $state(false);
@@ -142,7 +149,9 @@
 
 {#snippet settingsRoute()}
   <Atmosphere />
-  <Settings {session} />
+  <Settings {session}>
+    {@render settingsContent?.()}
+  </Settings>
 {/snippet}
 
 {#snippet downloadsRoute()}

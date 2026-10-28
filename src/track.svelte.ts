@@ -78,6 +78,10 @@ export class TrackEngine {
   get error() {
     return this.#error;
   }
+  get downloadsAllowed() {
+    this.#version;
+    return this.#connection?.downloadsAllowed !== false;
+  }
 
   #describe(track: SourceTrack, options: TrackSourceOptions = {}): Descriptor {
     const cache = this.#selection.cache;
@@ -102,8 +106,19 @@ export class TrackEngine {
     connection.signal.throwIfAborted();
     return connection;
   }
-  #streamUrl(trackId: string, descriptor: Descriptor, position?: number) {
-    return this.#connectionFor(descriptor).url(trackId, { format: descriptor.format, position });
+  async #streamUrl(
+    trackId: string,
+    descriptor: Descriptor,
+    signal: AbortSignal,
+    position?: number,
+  ) {
+    const url = await this.#connectionFor(descriptor).url(trackId, {
+      format: descriptor.format,
+      position,
+      signal,
+    });
+    signal.throwIfAborted();
+    return url;
   }
 
   #drain() {
@@ -186,6 +201,7 @@ export class TrackEngine {
   }
 
   #queueDownload(trackId: string, options: TrackSourceOptions) {
+    if (!this.downloadsAllowed) throw new Error("Audio downloads are disabled for this demo.");
     const selected = this.#selection.cache;
     const record = selected?.tracks.get(trackId);
     const track: DownloadTrack = {
@@ -257,7 +273,9 @@ export class TrackEngine {
     signal.throwIfAborted();
     const descriptor = this.#describe(track, options);
     const cache = this.#selection.cache!;
-    const cached = await this.#cached(cache, track, descriptor, signal);
+    const cached = this.downloadsAllowed
+      ? await this.#cached(cache, track, descriptor, signal)
+      : undefined;
     signal.throwIfAborted();
     if (this.#destroyed || cache !== this.#selection.cache)
       throw new DOMException("Source request superseded.", "AbortError");
@@ -273,12 +291,12 @@ export class TrackEngine {
         return {
           cached: false,
           offset,
-          url: this.#streamUrl(track.id, { ...descriptor, format: "mp3" }, offset),
+          url: await this.#streamUrl(track.id, { ...descriptor, format: "mp3" }, signal, offset),
           release() {},
         };
       return {
         cached: false,
-        url: this.#streamUrl(track.id, descriptor),
+        url: await this.#streamUrl(track.id, descriptor, signal),
         nativeSeeking: descriptor.format === "raw",
         release() {},
       };

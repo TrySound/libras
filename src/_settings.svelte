@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import Icon from "./icon.svelte";
   import Loader from "./ui/loader.svelte";
   import type { Session } from "./session.svelte";
@@ -6,9 +7,10 @@
 
   interface Props {
     session: Session;
+    children?: Snippet;
   }
 
-  let { session }: Props = $props();
+  let { session, children }: Props = $props();
   let host = $state("");
   let username = $state("");
   let password = $state("");
@@ -257,5 +259,7 @@
         </div>
       </section>
     </div>
+
+    {@render children?.()}
   </div>
 </section>

@@ -696,7 +696,7 @@ describe("Network connection lifecycle", () => {
     const client = network.prepare(auth);
     expect(Object.keys(client)).not.toContain("audio");
     const audio = network.accept(client).audio;
-    const url = new URL(audio.url("track", { format: "mp3", position: 42 }));
+    const url = new URL(await audio.url("track", { format: "mp3", position: 42 }));
     expect(Object.fromEntries(url.searchParams)).toMatchObject({
       id: "track",
       format: "mp3",

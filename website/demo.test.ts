@@ -4,7 +4,10 @@ import { readFileSync } from "node:fs";
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Demo from "./demo.svelte";
-import { assetsFixture, searchFixture } from "./fixtures";
+import { deezerAlbumFixture } from "./deezer-fixtures";
+import { readDeezer } from "./deezer-api";
+vi.mock("./deezer-api", () => ({ readDeezer: vi.fn() }));
+const read = vi.mocked(readDeezer);
 import { installDisk } from "../tests/cache-test-helpers";
 import { installNavigation } from "../tests/router-test-helpers";
 
@@ -13,8 +16,8 @@ let cleanup: typeof import("./main").cleanup | undefined;
 const fetcher = vi.fn<typeof fetch>();
 async function catalogResponse(input: Parameters<typeof fetch>[0]) {
   const url = String(input);
-  if (url.endsWith("search3.json")) return new Response(JSON.stringify(searchFixture));
-  if (url.endsWith("assets.json")) return new Response(JSON.stringify(assetsFixture));
+  if (url.startsWith("https://cdn-images.dzcdn.net/"))
+    return new Response("art", { headers: { "Content-Type": "image/jpeg" } });
   if (url.endsWith(".svg"))
     return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', {
       headers: { "Content-Type": "image/svg+xml" },
@@ -29,6 +32,7 @@ beforeEach(() => {
   installDisk();
   installNavigation("/settings");
   vi.stubEnv("BASE_URL", "/");
+  read.mockReset().mockResolvedValue(deezerAlbumFixture);
   fetcher.mockReset().mockImplementation(catalogResponse);
   vi.stubGlobal("fetch", fetcher);
 });
@@ -52,7 +56,9 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   localStorage.setItem("navidrome-account", "regular account");
   localStorage.setItem("navidrome-offline-mode", "true");
   render();
-  await vi.waitFor(() => expect(document.body.textContent).toContain("Demo artist"));
+  await vi.waitFor(() =>
+    expect(document.querySelector(".tile")?.textContent).toContain("A Perfect Circle"),
+  );
   expect(document.querySelector("form")).toBeNull();
   expect(document.querySelector(".app-root.standalone")).not.toBeNull();
   expect(document.querySelector("[data-embedded]")).toBeNull();
@@ -61,11 +67,28 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   expect(localStorage.getItem("navidrome-offline-mode")).toBe("true");
   expect(localStorage.length).toBe(3);
   expect(register).not.toHaveBeenCalled();
-  expect(
-    fetcher.mock.calls.some(
-      ([url]) => String(url) === new URL("/catalog/search3.json", location.origin).href,
-    ),
-  ).toBe(true);
+  expect(read).toHaveBeenCalledWith("album/302117", expect.any(AbortSignal));
+  expect(document.getElementById("demo-credits-title")).toBeNull();
+});
+
+it("renders demo credits as an HTML card inside Settings, not above the app", async () => {
+  render();
+  await vi.waitFor(() => expect(document.querySelector(".settings-view")).not.toBeNull());
+  const card = document.querySelector(
+    '.settings-view article.card[aria-labelledby="demo-credits-title"]',
+  );
+  expect(card?.querySelector("h2")?.textContent).toBe("Demo music credits");
+  expect(card?.textContent).toContain("Previews provided by Deezer");
+  expect(card?.textContent).toContain("Downloads and offline audio are disabled");
+  expect(card?.querySelectorAll("li")).toHaveLength(3);
+  expect(Array.from(card!.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual([
+    "https://www.deezer.com/album/302117",
+    "https://www.deezer.com/track/3135439",
+    "https://www.deezer.com/track/3135442",
+    "https://www.deezer.com/track/3135444",
+  ]);
+  expect(card?.textContent).toContain("Judith (explicit)");
+  expect(document.querySelector('[aria-label="Demo music credits"]')).toBeNull();
 });
 
 it("mounts the demo page as a standalone app and cleans up on hot reload", async () => {
@@ -128,14 +151,12 @@ it("resets preferences on a new mount without writing to localStorage", async ()
 });
 
 it("uses shared app errors and Refresh library to retry catalog loading", async () => {
-  fetcher.mockImplementation(async () => new Response("missing", { status: 404 }));
+  read.mockRejectedValue(new Error("Deezer unavailable"));
   render();
-  await vi.waitFor(() => expect(document.body.textContent).toContain("HTTP 404"));
+  await vi.waitFor(() => expect(document.body.textContent).toContain("Deezer unavailable"));
   expect(document.querySelector("form")).toBeNull();
-  fetcher.mockImplementation(catalogResponse);
+  read.mockResolvedValue(deezerAlbumFixture);
   document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
-  await vi.waitFor(() => expect(document.body.textContent).not.toContain("HTTP 404"));
-  expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("search3.json"))).toHaveLength(
-    2,
-  );
+  await vi.waitFor(() => expect(document.body.textContent).not.toContain("Deezer unavailable"));
+  expect(read).toHaveBeenCalledTimes(2);
 });

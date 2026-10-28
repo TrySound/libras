@@ -161,7 +161,9 @@ export type PlaylistConnection = ReturnType<typeof playlistAccess>;
 
 type AudioFormat = "raw" | "mp3";
 
-export type AudioConnection = ReturnType<typeof audioAccess>;
+export type AudioConnection = Omit<ReturnType<typeof audioAccess>, "downloadsAllowed"> & {
+  readonly downloadsAllowed?: boolean;
+};
 
 /** HTTP freshness metadata shared by responses and the local image catalog. */
 type ArtworkCachePolicy = Pick<ImageMetadata, "cacheControl" | "expires" | "freshUntil">;
@@ -492,25 +494,40 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicApi, request:
 }
 
 function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
-  const url = (id: string, options: { format: AudioFormat; position?: number }) => {
-    client.signal.throwIfAborted();
-    return client.getStreamUrl(id, {
+  const url = (
+    id: string,
+    options: { format: AudioFormat; position?: number; signal?: AbortSignal },
+  ) => {
+    const signal = options.signal
+      ? AbortSignal.any([client.signal, options.signal])
+      : client.signal;
+    signal.throwIfAborted();
+    const streamOptions = {
       format: options.format,
       estimateContentLength: true,
       timeOffset: options.position,
-    });
+    };
+    return client.resolveStreamUrl
+      ? client.resolveStreamUrl(id, streamOptions, signal)
+      : client.getStreamUrl(id, streamOptions);
   };
   return Object.freeze({
     account,
     signal: client.signal,
+    downloadsAllowed: client.audioDownloads !== false,
     url,
     async read(id: string, options: { format: AudioFormat; signal: AbortSignal }) {
+      if (client.audioDownloads === false)
+        throw new Error("Audio downloads are disabled for this demo.");
       const signal = AbortSignal.any([client.signal, options.signal]);
       signal.throwIfAborted();
       let response: Response | undefined;
       try {
         return await request(async () => {
-          response = await networkFetch(url(id, { format: options.format }), { signal });
+          const source = url(id, { format: options.format, signal });
+          response = await networkFetch(typeof source === "string" ? source : await source, {
+            signal,
+          });
           signal.throwIfAborted();
           if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
           return response;
