@@ -135,7 +135,7 @@
         data-variant="ghost"
         commandfor="player-dialog"
         command="close"
-        aria-label="Close player"><Icon name="chevron-down" size={24} /></button
+        aria-label="Close player"><Icon name="cross" size={24} /></button
       >
     </header>
     <section class="split-layout large-player-content" aria-label="Playback and queue">
