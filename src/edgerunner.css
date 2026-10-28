@@ -236,6 +236,7 @@
     env(safe-area-inset-right)
   );
   --content-end-space: 20dvh;
+  --player-min-height: 96px;
   --topbar-min-height: 76px;
   --layer-header: 10;
   --layer-player: 20;
@@ -251,6 +252,12 @@
   scrollbar-gutter: stable;
 }
 
+/* Standalone scrolling belongs to the document, not the app wrapper.
+ * Suppress boundary bounce without changing sticky-player placement. */
+:root:has(.app-root.standalone) {
+  overscroll-behavior: none;
+}
+
 @media (width <= 50rem) {
   :root,
   .app-root {
@@ -259,6 +266,7 @@
       env(safe-area-inset-left),
       env(safe-area-inset-right)
     );
+    --player-min-height: calc(72px + env(safe-area-inset-bottom));
     --topbar-min-height: 60px;
     --heading-xl-leading: var(--leading-compact);
   }
@@ -271,6 +279,7 @@
       env(safe-area-inset-left),
       env(safe-area-inset-right)
     );
+    --player-min-height: calc(72px + env(safe-area-inset-bottom));
     --topbar-min-height: 60px;
   }
 }
@@ -508,6 +517,12 @@
     font-weight: var(--metadata-weight);
     line-height: var(--metadata-leading);
     letter-spacing: var(--metadata-tracking);
+  }
+
+  .separator {
+    margin: 0;
+    border: 0;
+    border-block-start: var(--border-width) solid var(--shell-border);
   }
 
   .card {
@@ -953,14 +968,23 @@
       0px,
       var(
         --panel-height,
-        calc(100dvh - var(--topbar-min-height) - 5rem - 2 * var(--content-padding-block))
+        calc(
+          var(--app-viewport-height, 100dvh) - var(--topbar-min-height) - var(--player-min-height) -
+            2 * var(--content-padding-block)
+        )
       )
     );
 
     @container app (width > 50rem) {
       block-size: max(
         0px,
-        var(--panel-height, calc(100dvh - 5rem - 2 * var(--content-padding-block)))
+        var(
+          --panel-height,
+          calc(
+            var(--app-viewport-height, 100dvh) - var(--player-min-height) - 2 *
+              var(--content-padding-block)
+          )
+        )
       );
     }
 
@@ -1067,7 +1091,7 @@
     box-sizing: border-box;
     background: var(--surface-bg);
     backdrop-filter: blur(4px);
-    padding: var(--content-padding-block) var(--content-padding-inline) 0;
+    padding: var(--content-padding-block) var(--content-padding-inline);
     overflow: auto;
     overscroll-behavior: contain;
     border-right: var(--border-width) solid var(--shell-border);
@@ -1093,13 +1117,14 @@
   .right-sheet {
     border-radius: 0;
     &:modal {
-      overscroll-behavior: contain;
+      /* Stop chaining and native rubber-band bounce at modal boundaries. */
+      overscroll-behavior: none;
     }
     &::backdrop {
       background: var(--canvas-bg);
       opacity: 0.65;
       overflow: hidden;
-      overscroll-behavior: contain;
+      overscroll-behavior: none;
     }
 
     @media (prefers-reduced-motion: no-preference) {
@@ -1562,14 +1587,15 @@
     background-attachment: local;
     color: var(--text-primary);
     overflow: auto;
-    overscroll-behavior: contain;
+    /* Unlike contain, none also suppresses native overscroll bounce. */
+    overscroll-behavior: none;
     container: playback / size;
     translate: 0 var(--swipe-offset, 0px);
 
     &::backdrop {
       background: transparent;
       overflow: hidden;
-      overscroll-behavior: contain;
+      overscroll-behavior: none;
     }
 
     @media (prefers-reduced-motion: no-preference) {
@@ -1717,6 +1743,8 @@
 }
 
 .app-player {
+  min-block-size: var(--player-min-height);
+  flex-shrink: 0;
   position: sticky;
   bottom: 0;
   anchor-name: --mini-player;
@@ -1766,10 +1794,13 @@
 /* Embedded variant: the host supplies a viewport, without body-owned layout.
  * Native top-layer overlays remain bounded to that same app viewport. */
 .app-shell[data-embedded] {
+  /* Resolve height units at the panel against the app's size container,
+   * not the browser viewport or the page's inline-only container. */
+  --app-viewport-height: 100cqh;
   min-block-size: 100%;
   block-size: 100%;
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   background: var(--canvas-bg);
   background-attachment: local;
 

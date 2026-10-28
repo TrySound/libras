@@ -40,6 +40,18 @@ test("website and embedded app own their presentation", async (t) => {
         "none",
         "the embedded canvas must not repaint the host document",
       );
+      assert.equal(
+        await demo
+          .locator(".app-shell")
+          .evaluate((element) => getComputedStyle(element).overscrollBehavior),
+        "none",
+        "the embedded scroll owner disables boundary bounce",
+      );
+      assert.equal(
+        await page.evaluate(() => getComputedStyle(document.scrollingElement).overscrollBehavior),
+        "auto",
+        "the embedded app must not change the host's overscroll policy",
+      );
     });
 
     await t.test("Now Playing stays inside the embedded app viewport", async () => {

@@ -79,6 +79,15 @@
         block-size: 26rem;
         container: app / size;
       }
+      .sidebar-state-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+        gap: var(--space-lg);
+        align-items: start;
+      }
+      .sidebar-state-example {
+        inline-size: min(100%, 280px);
+      }
       @media (width <= 50rem) {
         .styleguide {
           padding: var(--space-md);
@@ -559,7 +568,7 @@
           </div>
         </section>
 
-        <section class="card stack-lg" aria-labelledby="navigation-heading">
+        <section class="card stack-lg specimen-wide" aria-labelledby="navigation-heading">
           <h2 class="heading-md uppercase" id="navigation-heading">Navigation shell</h2>
           <p class="body">
             A 280px independently scrolling sidebar above 50rem; at or below that, a sticky header
@@ -580,16 +589,22 @@
                 </svg>
                 <span class="brand uppercase">Libras</span>
               </a>
-              <button
-                class="button"
-                commandfor="guide-navigation"
-                command="show-modal"
-                aria-label="Open navigation specimen"
-              >
-                <svg width="24" height="24" aria-hidden="true">
-                  <use href="#icon-menu-lines"></use>
-                </svg>
-              </button>
+              <div class="row-sm">
+                <button
+                  class="button"
+                  data-size="text"
+                  data-variant="secondary"
+                  commandfor="guide-navigation"
+                  command="show-modal"
+                  aria-label="Open navigation specimen"
+                  aria-describedby="guide-navigation-update-hint"
+                >
+                  <span id="guide-navigation-update-hint" class="caption text-subtle">Update</span>
+                  <svg width="24" height="24" aria-hidden="true">
+                    <use href="#icon-menu-lines"></use>
+                  </svg>
+                </button>
+              </div>
             </header>
             <div class="topbar-example-content stack-lg">
               <p class="body">
@@ -597,44 +612,144 @@
                 responsive height are production styles, not reference-only styling.
               </p>
               <p class="body">
-                The quiet brand control uses the existing button-quiet and row-sm primitives. Open
-                the menu to inspect the same right-sheet used by the app.
+                The subtle Update cue and secondary menu button appear when an update is available.
+                Open the menu to inspect the same right-sheet used by the app.
               </p>
               <p class="body">
-                Sidebar placement belongs to the app shell; the sidebar specimen below demonstrates
-                only its shared appearance and content flow.
+                Sidebar placement belongs to the app shell; the specimens below demonstrate its
+                shared appearance and update states. Only Your library is included for simplicity.
               </p>
             </div>
           </div>
-          <aside class="sidebar stack-lg" aria-label="Sidebar specimen">
-            <nav class="stack-sm" aria-label="Navigation specimen">
-              <a class="menu-item" href="#navigation-heading" aria-current="page">
-                <svg width="24" height="24" color="var(--accent)" aria-hidden="true">
-                  <use href="#icon-disc"></use>
-                </svg>
-                Your library
-              </a>
-              <a class="menu-item" href="#navigation-heading">
-                <svg width="24" height="24" aria-hidden="true"><use href="#icon-search"></use></svg>
-                Search
-              </a>
-              <a class="menu-item" href="#navigation-heading">
-                <svg width="24" height="24" aria-hidden="true">
-                  <use href="#icon-download"></use>
-                </svg>
-                Downloads
-              </a>
-              <a class="menu-item" href="#navigation-heading">
-                <svg width="24" height="24" aria-hidden="true">
-                  <use href="#icon-settings"></use>
-                </svg>
-                Settings
-              </a>
-            </nav>
-          </aside>
+          <div class="sidebar-state-grid" aria-label="Sidebar update states">
+            <div class="stack-sm">
+              <h3 class="heading-sm">No update</h3>
+              <aside class="sidebar stack-lg sidebar-state-example" aria-label="No update sidebar">
+                <nav class="stack-sm" aria-label="No update navigation">
+                  <a class="menu-item" href="#navigation-heading">
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-disc"></use>
+                    </svg>
+                    Your library
+                  </a>
+                </nav>
+              </aside>
+            </div>
+            <div class="stack-sm">
+              <h3 class="heading-sm">Update available</h3>
+              <aside
+                class="sidebar stack-lg sidebar-state-example"
+                aria-label="Update available sidebar"
+              >
+                <nav class="stack-sm" aria-label="Update available navigation">
+                  <a class="menu-item" href="#navigation-heading">
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-disc"></use>
+                    </svg>
+                    Your library
+                  </a>
+                </nav>
+                <hr class="separator" />
+                <section class="stack-sm" aria-label="App update">
+                  <button
+                    class="menu-item"
+                    aria-busy="false"
+                    title="A new version of Libras is available. Update now to reload the app. This interrupts playback."
+                  >
+                    <svg width="24" height="24" color="var(--text-subtle)" aria-hidden="true">
+                      <use href="#icon-refresh"></use>
+                    </svg>
+                    <span class="label text-subtle">Update Libras</span>
+                  </button>
+                </section>
+              </aside>
+            </div>
+            <div class="stack-sm">
+              <h3 class="heading-sm">Updating</h3>
+              <aside class="sidebar stack-lg sidebar-state-example" aria-label="Updating sidebar">
+                <nav class="stack-sm" aria-label="Updating navigation">
+                  <a class="menu-item" href="#navigation-heading">
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-disc"></use>
+                    </svg>
+                    Your library
+                  </a>
+                </nav>
+                <hr class="separator" />
+                <section class="stack-sm" aria-label="App update">
+                  <button
+                    class="menu-item"
+                    aria-disabled="true"
+                    aria-busy="true"
+                    title="Applying the update. The app will reload when it is ready."
+                  >
+                    <span class="loader" aria-hidden="true">
+                      <span class="loader-bar"></span>
+                      <span class="loader-bar"></span>
+                      <span class="loader-bar"></span>
+                      <span class="loader-bar"></span>
+                      <span class="loader-bar"></span>
+                    </span>
+                    <span class="label text-subtle">Updating…</span>
+                  </button>
+                </section>
+              </aside>
+            </div>
+            <div class="stack-sm">
+              <h3 class="heading-sm">Update failed · retry</h3>
+              <aside
+                class="sidebar stack-lg sidebar-state-example"
+                aria-label="Update failed sidebar"
+              >
+                <nav class="stack-sm" aria-label="Update failed navigation">
+                  <a class="menu-item" href="#navigation-heading">
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-disc"></use>
+                    </svg>
+                    Your library
+                  </a>
+                </nav>
+                <hr class="separator" />
+                <section class="stack-sm" aria-label="App update">
+                  <button class="menu-item" aria-busy="false">
+                    <svg width="24" height="24" color="var(--text-subtle)" aria-hidden="true">
+                      <use href="#icon-refresh"></use>
+                    </svg>
+                    <span class="label text-subtle">Update Libras</span>
+                  </button>
+                  <p class="caption text-subtle">
+                    The update is taking too long. Please try again or reopen the app.
+                  </p>
+                </section>
+              </aside>
+            </div>
+            <div class="stack-sm">
+              <h3 class="heading-sm">Offline setup failed</h3>
+              <aside
+                class="sidebar stack-lg sidebar-state-example"
+                aria-label="Offline setup failed sidebar"
+              >
+                <nav class="stack-sm" aria-label="Offline setup failed navigation">
+                  <a class="menu-item" href="#navigation-heading">
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-disc"></use>
+                    </svg>
+                    Your library
+                  </a>
+                </nav>
+                <hr class="separator" />
+                <section class="stack-sm" aria-label="App update">
+                  <p class="caption text-subtle">
+                    Offline app setup failed. You can keep using the app online.
+                  </p>
+                </section>
+              </aside>
+            </div>
+          </div>
           <p class="caption">
-            Selected frames and icons use gold; labels remain white. Links retain native keyboard
-            behavior.
+            Static update specimens: buttons demonstrate focusable busy states only; they do not
+            install updates or reload the page. Library links are intentionally unselected. The app
+            and drawer share these same menu-item states.
           </p>
         </section>
 
@@ -796,7 +911,7 @@
     >
       <div class="large-player-stage">
         <header class="topbar row-md row-justify">
-          <span class="dialog-handle" aria-hidden="true"></span>
+          <span class="dialog-handle only-mobile" aria-hidden="true"></span>
           <h2 id="guide-playing-title" class="heading-md uppercase">Now Playing</h2>
           <button
             class="button"

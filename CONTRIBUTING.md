@@ -125,9 +125,18 @@ It uses the same styles as production, not a separate component library.
   Explicit refresh feedback and scan counters share the full sync operation's lifetime.
   Keep native field validation, bare-hostname support, and actual server errors; never expose
   authentication secrets. Busy actions stay mounted with guarded `aria-disabled` states, and
-  completed connections must not redirect after leaving or hiding Settings. PWA updates remain
-  in a shared shell popover. Presentation examples belong in `styleguide.html`; behavior contracts
-  are covered by `tests/app-settings.test.ts`.
+  completed connections must not redirect after leaving or hiding Settings. PWA update messages
+  and actions appear below the navigation links in the desktop sidebar and mobile drawer as an
+  Update Libras menu-item button with a subtle refresh icon/label and descriptive `title`;
+  busy actions use the shared loader instead of a loading icon and stay focusable with
+  `aria-disabled`, while the updater ignores repeated activation. Update failures show a
+  subtle caption below the retry action, rather than hiding the error in its title;
+  both copies share one updater state. Separate update content from navigation with `hr.separator`:
+  zero margins, one `--border-width` rule in `--shell-border`, and container-owned gaps.
+  When an update is available, the mobile header's secondary menu button includes subtle
+  Update text before its icon; setup failures without an available update do not show this cue.
+  Error details remain in the shared shell popover. Presentation examples belong in
+  `styleguide.html`; behavior contracts are covered by `tests/app-settings.test.ts`.
 - Library (`src/_library.svelte`) uses shared collection tiles and an app-container-aware
   auto-fit grid. Preserve artist ordering, 48-item lazy batches, offline filtering, and real
   collection actions. Explicit options open a mobile modal or desktop popover; long-press
@@ -139,13 +148,20 @@ It uses the same styles as production, not a separate component library.
   sticky with the first split.
 - Artist and album routes keep their markup inline, sharing layout and overlay styles.
   Preserve offline filtering, ordered playback, and collection/track action scope.
-  Cover height budgeting and route-owned atmosphere are CSS-only.
+  Cover height budgeting and route-owned atmosphere are CSS-only. Collection panels reserve
+  the responsive player minimum and header clearance; embedded panels use the app's size
+  container height rather than the browser viewport.
 - `src/ui/player.svelte` owns both mini-player and Now Playing presentation, sharing
   derived playback state. Now Playing is a native fullscreen dialog using the shared
   split layout, artwork budget, seek, transports, and queue rows. The dialog alone scrolls;
   embedded instances stay anchored and budgeted to their app viewport. Queue selection uses
   original occurrence indexes, not filtered row indexes. App retains Session/AudioPlayer ownership;
-  opening, dismissal, navigation, and resizing must not restart audio.
+  opening, dismissal, navigation, and resizing must not restart audio. Player minimum heights
+  are 96px above 50rem app width and 72px plus bottom safe area at or below 50rem; larger
+  content can still grow the bar. Modal dialogs and their backdrops use `overscroll-behavior: none`
+  to prevent scroll chaining and native boundary bounce, without changing root overflow or removing
+  the document scrollbar. `contain` alone still allows rubber-banding. Touch swipe-to-dismiss is
+  a separate intentional gesture and may move Now Playing to reveal the underlying page.
 - Shared presentation components live in `src/ui/`. Artwork delegates loading/URL ownership
   to Covers and resolves optional IDs from the current library without changing saved download
   metadata. Icon uses numeric dimensions (24px by default) and optional semantic colors.
@@ -232,6 +248,9 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
 `src/app.svelte` owns shell markup, Session, and AudioPlayer; `src/edgerunner.css` owns shared
 placement and page gutters. Container queries switch navigation without remounting playback.
 Standalone apps scroll the document; embedded apps retain host-owned sizing and local scrolling.
+Both app scroll owners use `overscroll-behavior: none` to suppress boundary bounce around the
+sticky mini-player. Apply the document policy only when a standalone app is mounted, leaving
+an embedded app's host page overscroll unchanged.
 Router exports reactive `route` metadata (`url`, resolved `pattern`) and `isCurrentPage(path)`
 for active navigation. Drawer links close it; route changes and resizing do not.
 

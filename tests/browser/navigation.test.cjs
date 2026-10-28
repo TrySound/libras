@@ -15,8 +15,12 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
   try {
     await page.goto(base);
     await page.locator(".settings-view").waitFor();
-    // Short routes still paint the whole viewport, including the document canvas
-    // exposed by native overscroll (which headless Chromium cannot rubber-band).
+    // Headless Chromium cannot rubber-band; assert the scroll owner's policy
+    // directly as well as the canvas coverage for short routes.
+    assert.equal(
+      await page.evaluate(() => getComputedStyle(document.scrollingElement).overscrollBehavior),
+      "none",
+    );
     await page.setViewportSize({ width: 1280, height: 1600 });
     const background = await page.evaluate(() => {
       const rootStyle = getComputedStyle(document.documentElement);
@@ -60,6 +64,10 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "#/settings");
     await sidebar.getByRole("link", { name: "Downloads", exact: true }).focus();
     await page.setViewportSize({ width: 768, height: 800 });
+    assert.equal(
+      await page.evaluate(() => getComputedStyle(document.scrollingElement).overscrollBehavior),
+      "none",
+    );
     assert.equal(
       await sidebar.isVisible(),
       false,
@@ -367,7 +375,41 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
       });
       assert.equal(layout.overflow, false);
       assert.equal(layout.beside, width > 800);
+      assert.equal(await dialog.locator(".dialog-handle").isVisible(), width <= 800);
       if (height < 400) assert.equal(layout.cover, false);
+      const containment = await dialog.evaluate((node) => {
+        const styles = getComputedStyle(node);
+        const backdrop = getComputedStyle(node, "::backdrop");
+        return {
+          dialog: styles.overscrollBehaviorY,
+          backdrop: backdrop.overscrollBehaviorY,
+          backdropOverflow: backdrop.overflow,
+        };
+      });
+      assert.deepEqual(containment, {
+        dialog: "none",
+        backdrop: "none",
+        backdropOverflow: "hidden",
+      });
+      // Both scroll boundaries must contain wheel gestures, including when
+      // the dialog is tall enough that its content needs no scrolling.
+      for (const delta of [-600, 600]) {
+        await dialog.evaluate((node, delta) => {
+          node.scrollTop = delta < 0 ? 0 : node.scrollHeight;
+        }, delta);
+        const background = await page.evaluate(() => ({
+          y: scrollY,
+          width: document.documentElement.clientWidth,
+        }));
+        await page.mouse.move(width / 2, 30);
+        await page.mouse.wheel(0, delta);
+        await page.waitForTimeout(200);
+        assert.deepEqual(
+          await page.evaluate(() => ({ y: scrollY, width: document.documentElement.clientWidth })),
+          background,
+          "modal scroll boundaries preserve the underlying document position and width",
+        );
+      }
     }
     assert.equal(await transport.evaluate((audio) => !audio.paused), true);
     assert.equal(await page.evaluate(() => window.__audioInstances.length), 1);
