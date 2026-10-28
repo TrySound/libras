@@ -220,9 +220,8 @@ describe("app settings", () => {
     expect(registerSW).not.toHaveBeenCalled();
   });
 
-  it("uses isolated Edgerunner cards, labeled native fields, and a native switch", async () => {
+  it("uses shared cards, labeled native fields, and a native switch", async () => {
     const { target } = await setup();
-    expect(target.querySelector(".settings-view")?.classList.contains("ui-edgerunner")).toBe(true);
     expect(target.querySelector(".settings-view h1")?.textContent).toBe("Settings");
     const server = target.querySelector("#settings-server")!;
     const offline = target.querySelector("#settings-offline-card")!;

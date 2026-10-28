@@ -39,7 +39,7 @@
   });
 </script>
 
-<section class="ui-edgerunner downloads-view" aria-labelledby="downloads-heading">
+<section class="downloads-view" aria-labelledby="downloads-heading">
   <div class="stack-lg scroll-runway">
     <header class="stack-sm">
       <h1 class="heading-xl" id="downloads-heading">Downloads</h1>

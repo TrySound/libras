@@ -80,15 +80,11 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     await page.goto(base);
     await page.locator("#server-host").waitFor();
     await navigate("/downloads");
-    await t.test("empty route is new UI inside the existing shell", async () => {
-      assert.equal(
-        await page.locator(".downloads-view.ui-edgerunner h1").textContent(),
-        "Downloads",
-      );
+    await t.test("empty route uses the shared app shell", async () => {
+      assert.equal(await page.locator(".downloads-view h1").textContent(), "Downloads");
       assert.equal(await page.getByRole("heading", { name: "No downloads yet" }).isVisible(), true);
       assert.equal(await page.locator('.downloads-view a[href="#/library"]').isVisible(), true);
       assert.equal(await page.locator(".app-sidebar").isVisible(), true);
-      assert.equal(await page.locator(".app-shell.ui-edgerunner").count(), 0);
     });
 
     await navigate("/settings");

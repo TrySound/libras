@@ -75,7 +75,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
 
   try {
     await page.goto(base);
-    await page.locator(".settings-view.ui-edgerunner").waitFor();
+    await page.locator(".settings-view").waitFor();
     await t.test("browser validation blocks submission without shifting the card", async () => {
       await page.evaluate(() => document.fonts.ready);
       const box = await page.locator("#settings-server").boundingBox();

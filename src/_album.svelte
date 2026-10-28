@@ -66,7 +66,7 @@
   }
 </script>
 
-<section class="ui-edgerunner split-layout" aria-label="Album details">
+<section class="split-layout" aria-label="Album details">
   {#if libraryAvailable && artist && album}
     <img
       class="atmosphere"
@@ -224,7 +224,7 @@
 <dialog
   bind:this={sheet}
   id="album-detail-menu"
-  class="ui-edgerunner bottom-sheet"
+  class="bottom-sheet"
   aria-labelledby="album-detail-menu-title"
   closedby="closerequest"
   data-swipedown="close"
@@ -235,7 +235,7 @@
 <div
   bind:this={popover}
   id="album-detail-menu-popover"
-  class="ui-edgerunner popover"
+  class="popover"
   popover="auto"
   role="dialog"
   aria-labelledby="album-detail-menu-popover-title"

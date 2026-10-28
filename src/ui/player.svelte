@@ -43,7 +43,7 @@
 </script>
 
 {#if track}
-  <footer class="mini-player app-player ui-edgerunner" aria-label="Music player">
+  <footer class="mini-player app-player" aria-label="Music player">
     <input
       class="seek mini-player-seek"
       type="range"
@@ -114,7 +114,7 @@
 
 <dialog
   id="player-dialog"
-  class="ui-edgerunner large-player"
+  class="large-player"
   closedby="any"
   data-swipedown="close"
   aria-labelledby="playing-title"

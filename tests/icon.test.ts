@@ -8,14 +8,14 @@ it("renders a decorative icon using the inline sprite", async () => {
   const target = document.createElement("div");
   const component = mount(Icon, {
     target,
-    props: { name: "play", size: "lg", class: "text-danger" },
+    props: { name: "play", size: 32, class: "text-subtle" },
   });
   try {
     flushSync();
     const svg = target.querySelector("svg")!;
     expect(svg.getAttribute("width")).toBe("32");
     expect(svg.getAttribute("height")).toBe("32");
-    expect(svg.getAttribute("class")).toBe("text-danger");
+    expect(svg.getAttribute("class")).toBe("text-subtle");
     expect(svg.getAttribute("aria-hidden")).toBe("true");
     expect(svg.querySelector("use")?.getAttribute("href")).toBe("#icon-play");
     expect(svg.querySelector("path, symbol")).toBeNull();
@@ -25,11 +25,10 @@ it("renders a decorative icon using the inline sprite", async () => {
 });
 
 it.each([
-  [undefined, "20"],
-  ["md", "20"],
-  ["lg", "32"],
-  ["xl", "64"],
+  [undefined, "24"],
   [24, "24"],
+  [32, "32"],
+  [64, "64"],
   [96, "96"],
 ] as const)("renders size %s at %s pixels", async (size, pixels) => {
   const target = document.createElement("div");
@@ -44,7 +43,7 @@ it.each([
   }
 });
 
-it("allows a semantic status color without changing legacy defaults", async () => {
+it("allows a semantic status color", async () => {
   const target = document.createElement("div");
   const component = mount(Icon, {
     target,

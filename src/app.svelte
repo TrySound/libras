@@ -241,7 +241,6 @@
       {#if hasErrors}
         <button
           class="button"
-          data-size="md"
           data-variant="ghost"
           commandfor="error-popover"
           command="toggle-popover"
@@ -254,7 +253,6 @@
       {#if appUpdate?.message}
         <button
           class="button"
-          data-size="md"
           data-variant="ghost"
           commandfor="update-popover"
           command="toggle-popover"
@@ -265,11 +263,11 @@
         </button>
       {/if}
     {/snippet}
-    <aside class="sidebar app-sidebar stack-lg ui-edgerunner" aria-label="Navigation">
+    <aside class="sidebar app-sidebar stack-lg" aria-label="Navigation">
       {@render brand()}
       {@render navigation()}
     </aside>
-    <header class="topbar app-header row-md row-justify row-wrap ui-edgerunner">
+    <header class="topbar app-header row-md row-justify row-wrap">
       {@render brand()}
       <div class="row-sm">
         {@render actions()}
@@ -285,7 +283,7 @@
       </div>
     </header>
     {#if hasErrors || appUpdate?.message}
-      <div class="row-sm app-status-actions ui-edgerunner">{@render actions()}</div>
+      <div class="row-sm app-status-actions">{@render actions()}</div>
     {/if}
     <main class="app-page">
       <Router
@@ -302,12 +300,7 @@
     </main>
     <Player {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
     {#if hasErrors}
-      <div
-        id="error-popover"
-        class="ui-edgerunner notification-popover"
-        popover="auto"
-        aria-label="Errors"
-      >
+      <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
         <div class="stack-sm">
           {#each alerts as alert (alert.id)}
             {#if alert.message}
@@ -317,7 +310,6 @@
         </div>
         <button
           class="button"
-          data-size="sm"
           data-variant="ghost"
           aria-label="Close errors"
           commandfor="error-popover"
@@ -326,29 +318,18 @@
       </div>
     {/if}
     {#if appUpdate?.message}
-      <div
-        id="update-popover"
-        class="ui-edgerunner notification-popover"
-        popover="auto"
-        aria-label="App update"
-      >
+      <div id="update-popover" class="notification-popover" popover="auto" aria-label="App update">
         <div class="stack-sm">
           <strong class="heading-md">App update</strong>
           <p class="caption">{appUpdate.message}</p>
           {#if appUpdate.hasUpdate}
-            <button
-              class="button"
-              data-size="sm"
-              disabled={appUpdate.busy}
-              onclick={() => void updater?.update()}
-            >
+            <button class="button" disabled={appUpdate.busy} onclick={() => void updater?.update()}>
               {appUpdate.busy ? "Updating…" : "Update now"}
             </button>
           {/if}
         </div>
         <button
           class="button"
-          data-size="sm"
           data-variant="ghost"
           aria-label="Close app update"
           commandfor="update-popover"
@@ -357,7 +338,7 @@
       </div>
     {/if}
     <dialog
-      class="right-sheet ui-edgerunner"
+      class="right-sheet"
       id="navigation-dialog"
       aria-label="Navigation"
       closedby="any"
