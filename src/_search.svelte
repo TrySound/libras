@@ -124,7 +124,9 @@
   import Icon from "./icon.svelte";
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
-  import Artwork from "./artwork.svelte";
+  import Artwork from "./ui/artwork.svelte";
+  import Loader from "./ui/loader.svelte";
+  import { formatDuration } from "./time";
   import type { TrackEngine } from "./track.svelte";
   import type { Session } from "./session.svelte";
   import type { Playback } from "./playback.svelte";
@@ -155,6 +157,12 @@
   );
 
   const matches = $derived(searchLibrary(index, searchState.query));
+  const currentTrackId = $derived(cache.queue.tracks[cache.queue.index]);
+  const libraryError = $derived(
+    session.refreshError ||
+      session.error ||
+      (cache.error ? "Some local data could not be restored or saved." : ""),
+  );
 
   const results = $derived(
     matches.groups.map((result) => ({
@@ -182,7 +190,9 @@
         : group === "Albums"
           ? cache.albums.get(id)
           : cache.tracks.get(id);
-    return item ? { group, id, title: "name" in item ? item.name : item.title } : undefined;
+    return item
+      ? { group, id, title: "name" in item ? item.name : item.title, artworkId: item.artworkId }
+      : undefined;
   });
 
   const menuTracks = $derived.by(() => {
@@ -206,6 +216,38 @@
     menuSelection = { cache, group, id };
   }
 
+  let sheet: HTMLDialogElement;
+  let popover: HTMLDivElement;
+
+  function dismissActions() {
+    sheet.close();
+    popover.hidePopover?.();
+  }
+
+  function supportingText(group: SearchGroup, record: SearchRecord) {
+    if (group === "Artists") {
+      const albums = (cache.artistAlbums.get(record.id) ?? []).filter(
+        (album) =>
+          !session.offlineMode ||
+          (cache.albumTracks.get(album.id) ?? []).some((track) => isAvailable(track.id)),
+      );
+      const count = albums.reduce(
+        (sum, album) =>
+          sum + availableTrackIds(cache.albumTracks.get(album.id) ?? [], isAvailable).length,
+        0,
+      );
+      return `${albums.length} album${albums.length === 1 ? "" : "s"} · ${count} track${count === 1 ? "" : "s"}`;
+    }
+    if (group === "Albums") {
+      const album = cache.albums.get(record.id);
+      const count = availableTrackIds(cache.albumTracks.get(record.id) ?? [], isAvailable).length;
+      return [record.artist, album?.year, `${count} track${count === 1 ? "" : "s"}`]
+        .filter((value) => value !== undefined && value !== "")
+        .join(" · ");
+    }
+    return [record.artist, record.album].filter(Boolean).join(" — ");
+  }
+
   function playMenu() {
     if (!menuItem) return;
     if (menuItem.group === "Tracks") play(menuItem.id);
@@ -220,141 +262,233 @@
   }
 </script>
 
-<section class="stack-md">
-  <div class="view stack-md">
-    <h1 class="type-heading">Search</h1>
-    <div class="stack-sm" role="search">
-      <label for="library-search">Search artists, albums, and tracks</label>
-      <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
-      <input
-        class="input"
-        id="library-search"
-        type="search"
-        bind:value={searchState.query}
-        autofocus
-      />
+<section class="ui-edgerunner stack-lg scroll-runway">
+  <h1 class="heading-xl">Search</h1>
+  <search class="stack-xs">
+    <label class="label" for="library-search">Search library</label>
+    <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
+    <input
+      class="input"
+      id="library-search"
+      type="search"
+      placeholder="Artists, albums, tracks"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      bind:value={searchState.query}
+      oninput={() => (searchState.limits = createSearchState().limits)}
+      autofocus
+    />
+  </search>
+  {#if libraryError}
+    <div class="card stack-md">
+      <h2 class="heading-sm">Library needs attention</h2>
+      <p class="body">{libraryError}</p>
+      {#if index.size > 0}<p class="body">Available music is still searchable below.</p>{/if}
+      <div class="row-sm">
+        <a class="button" data-variant="secondary" data-size="text" href="#/settings"
+          >Open settings</a
+        >
+      </div>
     </div>
-  </div>
-  {#if index.size === 0}
-    {#if session.localReady}
-      <p class="view" role="status">
-        {session.offlineMode ? "No downloaded music to search." : "Your library is empty."}
-      </p>
-    {/if}
-  {:else if !matches.query}
-    <p class="view text-muted" role="status">Type to find music in your library.</p>
-  {:else if results.every((result) => result.total === 0)}
-    <p class="view" role="status">No matches found.</p>
-  {:else}
-    {#each results as { group, records, total }}
-      {#if total > 0}
-        <section class="stack-sm" aria-label={group}>
-          <h2 class="view type-heading">
-            {group} <span class="type-small text-muted">{total}</span>
-          </h2>
-          <div class="wings">
-            {#each records as record (record.id)}
-              <div class="wings-item row-button">
-                {#if record.href}
-                  <a
-                    class="linkarea"
-                    href={record.href}
-                    aria-label={record.title}
-                    data-longpressfor="search-menu"
-                    data-longpress="show-modal"
-                    onfocus={() => selectMenu(group, record.id)}
-                  ></a>
-                {:else}
-                  <button
-                    class="linkarea"
-                    aria-label={`Play ${record.title}`}
-                    data-longpressfor="search-menu"
-                    data-longpress="show-modal"
-                    onfocus={() => selectMenu(group, record.id)}
-                    onclick={() => play(record.id)}
-                  ></button>
-                {/if}
-                <Artwork {covers} id={record.artworkId} />
-                <span class="stack-xs">
-                  <strong class="type-title">{record.title}</strong>
-                  <span class="type-small text-muted"
-                    >{[record.artist, record.album].filter(Boolean).join(" — ")}</span
-                  >
-                </span>
-                <button
-                  class="icon-button"
-                  data-size="sm"
-                  data-variant="ghost"
-                  commandfor="search-menu"
-                  command="show-modal"
-                  aria-label={`Open menu for ${record.title}`}
-                  title={`Open menu for ${record.title}`}
-                  onclick={() => selectMenu(group, record.id)}
-                >
-                  <Icon name="menu" />
-                </button>
-              </div>
-            {/each}
-          </div>
-          {#if total > records.length}
-            <div class="view">
-              <button
-                class="button"
-                data-size="sm"
-                data-variant="neutral"
-                aria-label={`Show more ${group.toLowerCase()}`}
-                onclick={() => (searchState.limits[group] += 10)}>Show more</button
-              >
-            </div>
-          {/if}
-        </section>
-      {/if}
-    {/each}
   {/if}
+  <div class="stack-xl" aria-busy={!session.localReady}>
+    {#if index.size === 0}
+      {#if session.localReady}
+        <div class="stack-md">
+          <h2 class="heading-sm">
+            {cache.savedAt === undefined
+              ? "Connect your library"
+              : session.offlineMode
+                ? "No downloaded music to search."
+                : "Your library is empty."}
+          </h2>
+          <p class="body">
+            {cache.savedAt === undefined
+              ? "Add your music server to start searching."
+              : session.offlineMode
+                ? "Download music from the library to search offline."
+                : "Your music will appear here after synchronization."}
+          </p>
+          <div class="row-sm">
+            <a
+              class="button"
+              data-variant="secondary"
+              data-size="text"
+              href={cache.savedAt === undefined ? "#/settings" : "#/library"}
+              >{cache.savedAt === undefined ? "Open settings" : "Open library"}</a
+            >
+          </div>
+        </div>
+      {/if}
+    {:else if !matches.query}
+      <p class="body text-secondary">Type to find music in your library.</p>
+    {:else if results.every((result) => result.total === 0)}
+      <div class="stack-md">
+        <h2 class="heading-sm">No matches found.</h2>
+        <p class="body">Try another artist, album, or track name.</p>
+      </div>
+    {:else}
+      {#each results as { group, records, total }}
+        {#if total > 0}
+          <section class="stack-lg" aria-label={group}>
+            <header class="row-md row-justify">
+              <h2 class="heading-lg uppercase">{group}</h2>
+              <span class="metadata text-subtle">{total}</span>
+            </header>
+            <div class="stack-sm">
+              {#each records as record (record.id)}
+                {@const track = group === "Tracks" ? cache.tracks.get(record.id) : undefined}
+                <div
+                  class="menu-item track-row"
+                  aria-current={track && currentTrackId === track.id ? "true" : undefined}
+                >
+                  <div class="row-sm">
+                    <Artwork {covers} id={record.artworkId} size="sm" />
+                    <div>
+                      <p class="label">{record.title}</p>
+                      <p class="caption text-secondary">{supportingText(group, record)}</p>
+                    </div>
+                  </div>
+                  {#if record.href}
+                    <a
+                      class="button-quiet link-target"
+                      href={record.href}
+                      aria-label={record.title}
+                      data-longpressfor="search-menu"
+                      data-longpress="show-modal"
+                      onfocus={() => selectMenu(group, record.id)}
+                    ></a>
+                  {:else}
+                    <button
+                      class="button-quiet link-target"
+                      aria-label={`Play ${record.title}`}
+                      data-longpressfor="search-menu"
+                      data-longpress="show-modal"
+                      onfocus={() => selectMenu(group, record.id)}
+                      onclick={() => play(record.id)}
+                    ></button>
+                  {/if}
+                  <div class="row-sm">
+                    {#if track?.duration !== undefined}
+                      <span class="metadata text-subtle">{formatDuration(track.duration)}</span>
+                    {/if}
+                    <button
+                      class="button only-mobile"
+                      data-variant="secondary"
+                      commandfor="search-menu"
+                      command="show-modal"
+                      aria-label={`Open menu for ${record.title}`}
+                      onclick={() => selectMenu(group, record.id)}
+                      ><Icon name="menu" size={24} /></button
+                    >
+                    <button
+                      class="button only-desktop"
+                      data-variant="secondary"
+                      commandfor="search-menu-popover"
+                      command="toggle-popover"
+                      aria-label={`Open menu for ${record.title}`}
+                      onclick={() => selectMenu(group, record.id)}
+                      ><Icon name="menu" size={24} /></button
+                    >
+                  </div>
+                </div>
+              {/each}
+            </div>
+            {#if total > records.length}
+              <div class="row-sm">
+                <button
+                  class="button"
+                  data-size="text"
+                  data-variant="secondary"
+                  aria-label={`Show more ${group.toLowerCase()}`}
+                  onclick={() => (searchState.limits[group] += 10)}>Show more</button
+                >
+              </div>
+            {/if}
+          </section>
+        {/if}
+      {/each}
+    {/if}
+  </div>
 </section>
 
 <dialog
+  bind:this={sheet}
   id="search-menu"
-  class="action-menu"
+  class="ui-edgerunner bottom-sheet"
   aria-labelledby="search-menu-title"
   closedby="closerequest"
   data-swipedown="close"
-  onclick={(event) => event.currentTarget.close()}
 >
-  <div class="wings">
-    <header class="topbar wings-item">
-      <button class="icon-button" data-size="sm" data-variant="ghost" title="Close menu">
-        <Icon name="chevron-down" class="self-center" />
-      </button>
-      <span id="search-menu-title" class="type-title">{menuItem?.title ?? ""}</span>
-    </header>
-    <button class="wings-item row-button" disabled={!menuTrackIds.length} onclick={playMenu}>
-      <Icon name="play" class="self-center" />
-      <span>Play</span>
-    </button>
-    <button
-      class="wings-item row-button"
-      disabled={!menuTrackIds.length}
-      onclick={() => void playback.enqueue(menuTrackIds, "next")}
-    >
-      <Icon name="next" class="self-center" />
-      <span>Play next</span>
-    </button>
-    <button
-      class="wings-item row-button"
-      disabled={!menuTrackIds.length}
-      onclick={() => void playback.enqueue(menuTrackIds, "last")}
-    >
-      <Icon name="plus" class="self-center" />
-      <span>Play last</span>
-    </button>
-    <button
-      class="wings-item row-button"
-      disabled={!menuTracks.length || menuDownloadStatus !== "idle"}
-      onclick={() => trackEngine.downloadMany(menuTracks.map((track) => track.id))}
-    >
-      <Icon name={downloadPresentation[menuDownloadStatus].icon} class="self-center" />
-      <span>{downloadPresentation[menuDownloadStatus].label}</span>
-    </button>
-  </div>
+  <span class="dialog-handle" aria-hidden="true"></span>
+  {@render actions("search-menu", false)}
 </dialog>
+<div
+  bind:this={popover}
+  id="search-menu-popover"
+  class="ui-edgerunner popover"
+  popover="auto"
+  role="dialog"
+  aria-labelledby="search-menu-popover-title"
+>
+  {@render actions("search-menu-popover", true)}
+</div>
+
+{#snippet actions(target: string, isPopover: boolean)}
+  <div class="stack-lg">
+    <header class="row-md row-justify">
+      <div class="row-md">
+        <Artwork {covers} id={menuItem?.artworkId} size="lg" />
+        <h2 id={`${target}-title`} class="heading-md">{menuItem?.title ?? ""}</h2>
+      </div>
+      <button
+        class="button"
+        commandfor={target}
+        command={isPopover ? "hide-popover" : "close"}
+        aria-label="Close menu"><Icon name="cross" size={24} /></button
+      >
+    </header>
+    <div class="stack-sm">
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          playMenu();
+          dismissActions();
+        }}><Icon name="play" size={24} /><span>Play</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          void playback.enqueue(menuTrackIds, "next");
+          dismissActions();
+        }}><Icon name="next" size={24} /><span>Play next</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          void playback.enqueue(menuTrackIds, "last");
+          dismissActions();
+        }}><Icon name="plus" size={24} /><span>Play last</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTracks.length || menuDownloadStatus !== "idle"}
+        onclick={() => {
+          trackEngine.downloadMany(menuTracks.map((track) => track.id));
+          dismissActions();
+        }}
+      >
+        {#if menuDownloadStatus === "downloading"}<Loader />{:else}<Icon
+            name={downloadPresentation[menuDownloadStatus].icon}
+            size={24}
+          />{/if}
+        <span>{downloadPresentation[menuDownloadStatus].label}</span>
+      </button>
+    </div>
+  </div>
+{/snippet}

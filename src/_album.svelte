@@ -10,10 +10,7 @@
   import type { RouteParams } from "./router.svelte";
   import type { Session } from "./session.svelte";
 
-  const durationFormatter = new Intl.DurationFormat("en", {
-    minutes: "numeric",
-    seconds: "2-digit",
-  });
+  import { formatDuration } from "./time";
 
   interface Props {
     params: RouteParams;
@@ -180,10 +177,7 @@
             ></button>
             <div class="row-sm">
               <span class="metadata text-subtle">
-                {#if track.duration !== undefined}{durationFormatter.format({
-                    minutes: Math.floor(track.duration / 60),
-                    seconds: Math.floor(track.duration % 60),
-                  })}{/if}
+                {#if track.duration !== undefined}{formatDuration(track.duration)}{/if}
               </span>
               <button
                 class="button only-mobile"

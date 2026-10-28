@@ -6,7 +6,7 @@
   import { Playlists } from "./playlists.svelte";
   import AudioPlayer from "./audio-player.svelte";
   import Player from "./ui/player.svelte";
-  import { formatTime } from "./time";
+  import { formatDuration } from "./time";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
@@ -477,8 +477,8 @@
               oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
             />
             <div class="playback-time type-caption">
-              <span>{formatTime(cache.queue.position)}</span>
-              <span>{formatTime(playbackDuration)}</span>
+              <span>{formatDuration(cache.queue.position)}</span>
+              <span>{formatDuration(playbackDuration)}</span>
             </div>
           </div>
 
@@ -584,7 +584,9 @@
                   {/if}
                 </span>
                 {#if track.duration !== undefined}
-                  <span class="type-small text-muted text-right">{formatTime(track.duration)}</span>
+                  <span class="type-small text-muted text-right"
+                    >{formatDuration(track.duration)}</span
+                  >
                 {/if}
               </div>
             {/each}

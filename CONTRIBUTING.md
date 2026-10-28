@@ -195,6 +195,14 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/library.test.cjs
 ```
 
+The optional Search browser check covers responsive layout, missing artwork, enlarged text,
+and native overlay focus/long-press/swipe dismissal:
+
+```sh
+NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
+  node --test tests/browser/search.test.cjs
+```
+
 Settings state/rendering, error handling, refresh phases, and navigation races are covered by
 `tests/app-settings.test.ts` in the normal CI suite. The optional browser suite uses the real
 app/OPFS with only Subsonic transport intercepted. It focuses on browser-only behavior: native
