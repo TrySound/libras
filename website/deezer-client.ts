@@ -4,18 +4,16 @@ import type {
   SubsonicAuth,
   SubsonicPlayQueue,
   SubsonicClient,
+  SubsonicStreamOptions,
 } from "../src/subsonic-client";
 import { readDeezer } from "./deezer-api";
 
-export const demoTrackIds = [3135439, 3135442, 3135444] as const;
+const demoTrackIds = [3135439, 3135442, 3135444] as const;
 const artistSchema = v.object({ id: v.literal(702), name: v.string() });
 const trackSchema = v.object({
   id: v.number(),
   title: v.string(),
-  duration: v.number(),
   explicit_lyrics: v.boolean(),
-  readable: v.boolean(),
-  preview: v.string(),
   artist: artistSchema,
 });
 const albumSchema = v.object({
@@ -58,7 +56,7 @@ export class DeezerSubsonicClient implements SubsonicApi {
     this.controller.abort();
   }
 
-  parse(input: unknown) {
+  private parse(input: unknown) {
     const album = v.parse(albumSchema, input);
     const artist = { id: "702", name: album.artist.name, coverArt: "302117" };
     const tracks = demoTrackIds.map((id) => {
@@ -144,10 +142,7 @@ export class DeezerSubsonicClient implements SubsonicApi {
     if (id !== "302117" || !this.catalog) throw new Error("Demo artwork unavailable.");
     return this.catalog.artwork;
   }
-  getStreamUrl(_id: string): string {
-    throw new Error("Deezer preview URLs must be resolved at playback time.");
-  }
-  async resolveStreamUrl(id: string, _options: unknown, signal: AbortSignal) {
+  async getStreamUrl(id: string, _options: SubsonicStreamOptions = {}, signal = this.signal) {
     if (!demoTrackIds.some((allowed) => String(allowed) === id))
       throw new Error("Unknown demo track.");
     const combined = AbortSignal.any([this.signal, signal]);
@@ -155,7 +150,13 @@ export class DeezerSubsonicClient implements SubsonicApi {
     const input = await this.read(`track/${id}`, combined);
     combined.throwIfAborted();
     const track = v.parse(
-      v.object({ ...trackSchema.entries, album: v.object({ id: v.literal(302117) }) }),
+      v.object({
+        id: v.number(),
+        artist: v.object({ id: v.literal(702) }),
+        album: v.object({ id: v.literal(302117) }),
+        readable: v.boolean(),
+        preview: v.string(),
+      }),
       input,
     );
     if (String(track.id) !== id || !track.readable || !track.preview)

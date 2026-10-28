@@ -53,16 +53,14 @@ website base defaults to `/`; `DEMO_BASE_PATH` changes it. Both website HTML ent
 build without the PWA plugin. There is no demo manifest or service worker. The real
 app's service worker remains scoped to `/webapp/`.
 
-This minimal example is not the complete public rollout from issue #79. The existing
-Pages workflow still downloads the legacy full-audio export; replacing that workflow
-and its catalog verification is deferred until the permission/browser/territory gates
-in `deezer-demo.md` are settled. Do not publish this experiment as a completed rollout.
-No Deezer credentials, signed preview URLs, or audio files belong in build inputs.
+The existing Pages workflow still downloads the legacy full-audio export. Replacing
+that workflow and its catalog verification is follow-up work in #79; the demo itself
+no longer reads that export.
 
 ## Tests
 
 `pnpm check` and `pnpm test` cover both workspaces. Deezer tests use synthetic metadata,
 not live API/CDN requests, and cover pagination, cancellation, retries, fresh URL
 resolution, restricted media origins, download/cache boundaries, account isolation,
-attribution, and the normal preconnected demo UI. Target-device playback and Serbia
-availability still require manual verification.
+attribution, and the normal preconnected demo UI. Other browser/device playback still
+requires manual verification.

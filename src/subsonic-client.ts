@@ -131,14 +131,14 @@ export interface SubsonicClientOptions {
 }
 
 /** Public protocol surface; alternate transports need not inherit private client state. */
-export type SubsonicApi = Pick<SubsonicClient, keyof SubsonicClient> & {
+export type SubsonicApi = Omit<Pick<SubsonicClient, keyof SubsonicClient>, "getStreamUrl"> & {
   /** Providers may prohibit application-managed audio downloads/caching. */
   readonly audioDownloads?: boolean;
-  resolveStreamUrl?(
+  getStreamUrl(
     id: string,
-    options: SubsonicStreamOptions,
-    signal: AbortSignal,
-  ): Promise<string>;
+    options?: SubsonicStreamOptions,
+    signal?: AbortSignal,
+  ): string | Promise<string>;
 };
 export type SubsonicClientFactory = (
   auth: SubsonicAuth,

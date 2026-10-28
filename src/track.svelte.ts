@@ -201,7 +201,7 @@ export class TrackEngine {
   }
 
   #queueDownload(trackId: string, options: TrackSourceOptions) {
-    if (!this.downloadsAllowed) throw new Error("Audio downloads are disabled for this demo.");
+    if (!this.downloadsAllowed) throw new Error("Audio downloads are disabled for this source.");
     const selected = this.#selection.cache;
     const record = selected?.tracks.get(trackId);
     const track: DownloadTrack = {

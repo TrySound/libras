@@ -507,9 +507,7 @@ function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: R
       estimateContentLength: true,
       timeOffset: options.position,
     };
-    return client.resolveStreamUrl
-      ? client.resolveStreamUrl(id, streamOptions, signal)
-      : client.getStreamUrl(id, streamOptions);
+    return client.getStreamUrl(id, streamOptions, signal);
   };
   return Object.freeze({
     account,
@@ -518,7 +516,7 @@ function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: R
     url,
     async read(id: string, options: { format: AudioFormat; signal: AbortSignal }) {
       if (client.audioDownloads === false)
-        throw new Error("Audio downloads are disabled for this demo.");
+        throw new Error("Audio downloads are disabled for this source.");
       const signal = AbortSignal.any([client.signal, options.signal]);
       signal.throwIfAborted();
       let response: Response | undefined;

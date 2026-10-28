@@ -36,6 +36,22 @@ it("loads three real recording IDs into the library without persisting preview U
   expect(read).toHaveBeenCalledTimes(1);
 });
 
+it("does not require playback fields to browse the album", async () => {
+  const read = vi.fn().mockResolvedValue({
+    ...album,
+    tracks: {
+      data: album.tracks.data.map(({ id, title, explicit_lyrics, artist }) => ({
+        id,
+        title,
+        explicit_lyrics,
+        artist,
+      })),
+    },
+  });
+  const client = new DeezerSubsonicClient(auth, read);
+  expect((await client.search3(pagination)).tracks).toHaveLength(3);
+});
+
 it("resolves a new preview for each playback and honors cancellation", async () => {
   const read = vi.fn().mockImplementation(async () => ({
     ...album.tracks.data[0],
@@ -43,14 +59,14 @@ it("resolves a new preview for each playback and honors cancellation", async () 
     preview: `https://cdnt-preview.dzcdn.net/clip.mp3?request=${read.mock.calls.length}`,
   }));
   const client = new DeezerSubsonicClient(auth, read);
-  expect(await client.resolveStreamUrl("3135439", {}, client.signal)).toContain("request=1");
-  expect(await client.resolveStreamUrl("3135439", {}, client.signal)).toContain("request=2");
+  expect(await client.getStreamUrl("3135439")).toContain("request=1");
+  expect(await client.getStreamUrl("3135439")).toContain("request=2");
   const controller = new AbortController();
   read.mockImplementation(async () => {
     controller.abort();
     return { ...album.tracks.data[0], album: { id: 302117 } };
   });
-  await expect(client.resolveStreamUrl("3135439", {}, controller.signal)).rejects.toMatchObject({
+  await expect(client.getStreamUrl("3135439", {}, controller.signal)).rejects.toMatchObject({
     name: "AbortError",
   });
 });
@@ -60,17 +76,15 @@ it("rejects unavailable recordings, unknown IDs and external media origins", asy
     .fn()
     .mockResolvedValue({ ...album.tracks.data[0], album: { id: 302117 }, readable: false });
   const client = new DeezerSubsonicClient(auth, read);
-  await expect(client.resolveStreamUrl("3135439", {}, client.signal)).rejects.toThrow(
-    "unavailable",
-  );
-  await expect(client.resolveStreamUrl("999", {}, client.signal)).rejects.toThrow("Unknown");
+  await expect(client.getStreamUrl("3135439")).rejects.toThrow("unavailable");
+  await expect(client.getStreamUrl("999")).rejects.toThrow("Unknown");
   expect(read).toHaveBeenCalledTimes(1);
   read.mockResolvedValue({
     ...album.tracks.data[0],
     album: { id: 302117 },
     preview: "https://cdnt-preview.dzcdn.net.evil.test/clip.mp3",
   });
-  await expect(client.resolveStreamUrl("3135439", {}, client.signal)).rejects.toThrow("Unexpected");
+  await expect(client.getStreamUrl("3135439")).rejects.toThrow("Unexpected");
 });
 
 it("retries failed catalog loads and rejects stale responses after disconnect", async () => {
