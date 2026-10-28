@@ -2,7 +2,7 @@
   import Icon from "./icon.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
-  import Artwork from "./artwork.svelte";
+  import Artwork from "./ui/artwork.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -24,6 +24,7 @@
   const offlineMode = $derived(session.offlineMode);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
   const artist = $derived(params.artistId ? cache.artists.get(params.artistId) : undefined);
+  const atmosphere = $derived(artist?.artworkId ? covers.ensureCover(artist.artworkId) : undefined);
   const albums = $derived(artist ? (cache.artistAlbums.get(artist.id) ?? []) : []);
   const tracks = $derived(albums.flatMap((album) => cache.albumTracks.get(album.id) ?? []));
   const visibleAlbums = $derived(
@@ -42,194 +43,213 @@
       .filter((track) => !offlineMode || trackEngine.getStatus(track.id) === "downloaded")
       .map((track) => track.id);
   }
+
+  let menuAlbumId = $state<string>();
+  const menuAlbum = $derived(menuAlbumId ? cache.albums.get(menuAlbumId) : undefined);
+  const menuTracks = $derived(menuAlbum ? (cache.albumTracks.get(menuAlbum.id) ?? []) : tracks);
+  const menuTitle = $derived(menuAlbum?.title ?? artist?.name);
+  const menuArtwork = $derived(menuAlbum ? menuAlbum.artworkId : artist?.artworkId);
+  const menuTrackIds = $derived(availableTrackIds(menuTracks));
+
+  let sheet: HTMLDialogElement;
+  let popover: HTMLDivElement;
+  function dismissActions() {
+    sheet.close();
+    popover.hidePopover?.();
+  }
 </script>
 
-<section>
+<section class="ui-edgerunner split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
-    <div class="view container collection-view">
-      <div class="collection-artwork">
-        <Artwork {covers} id={artist.artworkId} size="stretch" loading="eager" />
-      </div>
-      <div class="row-md collection-heading">
-        <div class="stack-xs grow">
-          <h2 class="type-heading">
-            {artist.name}
-          </h2>
-          <p class="library-meta type-small">
-            {visibleAlbums.length} album{visibleAlbums.length === 1 ? "" : "s"}
-          </p>
-          {#if genres.length > 0}
-            <div class="row-wrap-sm">
-              {#each genres as genre}
-                <span class="chip type-caption">{genre}</span>
-              {/each}
-            </div>
-          {/if}
+    <img
+      class="atmosphere"
+      src={atmosphere?.source}
+      hidden={!atmosphere?.source}
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+    />
+    <div class="viewport-panel">
+      <Artwork
+        {covers}
+        id={artist.artworkId}
+        size="cover"
+        loading="eager"
+        class="viewport-panel-cover"
+      />
+      <div class="stack-sm">
+        <div class="row-md row-justify">
+          <div class="stack-xs"><h1 class="heading-xl">{artist.name}</h1></div>
+          <div class="row-sm">
+            <button
+              class="button"
+              data-variant="primary"
+              aria-label={`Play ${artist.name}`}
+              disabled={!availableTrackIds(tracks).length}
+              onclick={() => void playback.replaceQueueAndPlay(availableTrackIds(tracks))}
+              ><Icon name="play" size={24} /></button
+            >
+            <button
+              class="button only-mobile"
+              data-variant="secondary"
+              commandfor="artist-detail-menu"
+              command="show-modal"
+              aria-label={`Actions for ${artist.name}`}
+              onclick={() => (menuAlbumId = undefined)}><Icon name="menu" size={24} /></button
+            >
+            <button
+              class="button only-desktop"
+              data-variant="secondary"
+              commandfor="artist-detail-menu-popover"
+              command="toggle-popover"
+              aria-label={`Actions for ${artist.name}`}
+              onclick={() => (menuAlbumId = undefined)}><Icon name="menu" size={24} /></button
+            >
+          </div>
         </div>
-        <button
-          class="icon-button"
-          data-size="md"
-          data-variant="neutral"
-          commandfor="artist-page-menu"
-          command="show-modal"
-          title={`Open menu for ${artist.name}`}
-        >
-          <Icon name="menu" />
-        </button>
+        <p class="caption text-secondary">
+          {[
+            `${visibleAlbums.length} album${visibleAlbums.length === 1 ? "" : "s"}`,
+            ...genres,
+          ].join(" · ")}
+        </p>
       </div>
     </div>
-    <div class="container wings">
-      {#each visibleAlbums as album, index}
-        {@const albumMenuId = `album-menu-${index}`}
-        {@const visibleTrackIds = availableTrackIds(cache.albumTracks.get(album.id) ?? [])}
-        <article class="wings-item row-button">
-          <a
-            class="linkarea"
-            href={`#/library/artist/${encodeURIComponent(artist.id)}/album/${encodeURIComponent(album.id)}`}
-            aria-label={`Open ${album.title}`}
-            data-longpressfor={albumMenuId}
-            data-longpress="show-modal"
-            title={`${album.title} — hold for actions`}
-          ></a>
-          <Artwork {covers} id={album.artworkId} />
-          <span class="stack-xs">
-            <strong class="type-title">{album.title}</strong>
-            <small class="type-small text-muted">
-              {album.year ?? "Unknown year"} · {visibleTrackIds.length} tracks
-            </small>
-          </span>
-          <button
-            class="icon-button"
-            data-size="sm"
-            data-variant="ghost"
-            commandfor={albumMenuId}
-            command="show-modal"
-            title={`Open menu for ${album.title}`}
-          >
-            <Icon name="menu" />
-          </button>
-        </article>
-      {:else}
-        {#if !loading}
-          <div class="empty-state stack-md">
-            <p class="type-body text-muted">
+    <div class="stack-lg scroll-runway">
+      <h2 class="heading-lg uppercase">{offlineMode ? "Downloaded albums" : "Albums"}</h2>
+      <div class="stack-sm">
+        {#each visibleAlbums as album (album.id)}
+          {@const ids = availableTrackIds(cache.albumTracks.get(album.id) ?? [])}
+          <article class="menu-item track-row">
+            <div class="row-sm">
+              <Artwork {covers} id={album.artworkId} size="sm" />
+              <div>
+                <p class="label">{album.title}</p>
+                <p class="caption text-secondary">
+                  {album.year ?? "Unknown year"} · {ids.length} track{ids.length === 1 ? "" : "s"}
+                </p>
+              </div>
+            </div>
+            <a
+              class="link-target"
+              href={`#/library/artist/${encodeURIComponent(artist.id)}/album/${encodeURIComponent(album.id)}`}
+              aria-label={`Open ${album.title}`}
+              data-longpressfor="artist-detail-menu"
+              data-longpress="show-modal"
+              onfocus={() => (menuAlbumId = album.id)}
+            ></a>
+            <div class="row-sm">
+              <button
+                class="button only-mobile"
+                data-variant="secondary"
+                commandfor="artist-detail-menu"
+                command="show-modal"
+                aria-label={`Actions for ${album.title}`}
+                onclick={() => (menuAlbumId = album.id)}><Icon name="menu" size={24} /></button
+              >
+              <button
+                class="button only-desktop"
+                data-variant="secondary"
+                commandfor="artist-detail-menu-popover"
+                command="toggle-popover"
+                aria-label={`Actions for ${album.title}`}
+                onclick={() => (menuAlbumId = album.id)}><Icon name="menu" size={24} /></button
+              >
+            </div>
+          </article>
+        {:else}
+          {#if !loading}<p class="body">
               {offlineMode ? "No downloaded albums." : "No albums found."}
-            </p>
-          </div>
-        {/if}
-      {/each}
+            </p>{/if}
+        {/each}
+      </div>
     </div>
   {:else if !loading}
-    <div class="empty-state stack-md">
-      <Artwork {covers} />
-      <p class="type-body text-muted">
-        {libraryAvailable ? "Artist not found." : "Connect your library."}
-      </p>
-      <a
-        class="button"
-        data-size="md"
-        data-variant="neutral"
-        href={libraryAvailable ? "#/library" : "#/settings"}
-      >
-        {libraryAvailable ? "Open library" : "Open settings"}
-      </a>
+    <div class="stack-md scroll-runway">
+      <h1 class="heading-sm">{libraryAvailable ? "Artist not found." : "Connect your library."}</h1>
+      <div class="row-sm">
+        <a
+          class="button"
+          data-size="text"
+          data-variant="secondary"
+          href={libraryAvailable ? "#/library" : "#/settings"}
+        >
+          {libraryAvailable ? "Open library" : "Open settings"}</a
+        >
+      </div>
     </div>
   {/if}
 </section>
-{#if libraryAvailable && artist}
-  <dialog
-    id="artist-page-menu"
-    class="action-menu"
-    aria-labelledby="artist-page-menu-title"
-    closedby="closerequest"
-    data-swipedown="close"
-    onclick={(event) => event.currentTarget.close()}
-  >
-    <div class="wings">
-      <header class="topbar wings-item">
-        <button class="icon-button" data-size="sm" data-variant="ghost" title="Close menu">
-          <Icon name="chevron-down" class="self-center" />
-        </button>
-        <span id="artist-page-menu-title" class="type-title">{artist.name}</span>
-      </header>
-      <button
-        class="wings-item row-button"
-        onclick={() => void playback.replaceQueueAndPlay(availableTrackIds(tracks))}
-      >
-        <Icon name="play" class="self-center" />
-        <span>Play</span>
-      </button>
-      <button
-        class="wings-item row-button"
-        onclick={() => void playback.enqueue(availableTrackIds(tracks), "next")}
-      >
-        <Icon name="next" class="self-center" />
-        <span>Play next</span>
-      </button>
-      <button
-        class="wings-item row-button"
-        onclick={() => void playback.enqueue(availableTrackIds(tracks), "last")}
-      >
-        <Icon name="plus" class="self-center" />
-        <span>Play last</span>
-      </button>
-      <button
-        class="wings-item row-button"
-        onclick={() => trackEngine.downloadMany(tracks.map((track) => track.id))}
-      >
-        <Icon name="download" class="self-center" />
-        <span>Download</span>
-      </button>
-    </div>
-  </dialog>
-  {#each visibleAlbums as album, index}
-    {@const albumMenuId = `album-menu-${index}`}
-    {@const albumTracks = cache.albumTracks.get(album.id) ?? []}
-    {@const visibleTrackIds = availableTrackIds(albumTracks)}
-    <dialog
-      id={albumMenuId}
-      class="action-menu"
-      aria-labelledby={`${albumMenuId}-title`}
-      closedby="closerequest"
-      data-swipedown="close"
-      onclick={(event) => event.currentTarget.close()}
-    >
-      <div class="wings">
-        <header class="topbar wings-item">
-          <button class="icon-button" data-size="sm" data-variant="ghost" title="Close menu">
-            <Icon name="chevron-down" class="self-center" />
-          </button>
-          <span id={`${albumMenuId}-title`} class="type-title">{album.title}</span>
-        </header>
-        <button
-          class="wings-item row-button"
-          onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
-        >
-          <Icon name="play" class="self-center" />
-          <span>Play</span>
-        </button>
-        <button
-          class="wings-item row-button"
-          onclick={() => void playback.enqueue(visibleTrackIds, "next")}
-        >
-          <Icon name="next" class="self-center" />
-          <span>Play next</span>
-        </button>
-        <button
-          class="wings-item row-button"
-          onclick={() => void playback.enqueue(visibleTrackIds, "last")}
-        >
-          <Icon name="plus" class="self-center" />
-          <span>Play last</span>
-        </button>
-        <button
-          class="wings-item row-button"
-          onclick={() => trackEngine.downloadMany(albumTracks.map((track) => track.id))}
-        >
-          <Icon name="download" class="self-center" />
-          <span>Download</span>
-        </button>
+
+<dialog
+  bind:this={sheet}
+  id="artist-detail-menu"
+  class="ui-edgerunner bottom-sheet"
+  aria-labelledby="artist-detail-menu-title"
+  closedby="closerequest"
+  data-swipedown="close"
+>
+  <span class="dialog-handle" aria-hidden="true"></span>
+  {@render actions("artist-detail-menu", false)}
+</dialog>
+<div
+  bind:this={popover}
+  id="artist-detail-menu-popover"
+  class="ui-edgerunner popover"
+  popover="auto"
+  role="dialog"
+  aria-labelledby="artist-detail-menu-popover-title"
+>
+  {@render actions("artist-detail-menu-popover", true)}
+</div>
+
+{#snippet actions(target: string, isPopover: boolean)}
+  <div class="stack-lg">
+    <header class="row-md row-justify">
+      <div class="row-md">
+        <Artwork {covers} id={menuArtwork} size="lg" />
+        <h2 id={`${target}-title`} class="heading-md">{menuTitle}</h2>
       </div>
-    </dialog>
-  {/each}
-{/if}
+      <button
+        class="button"
+        commandfor={target}
+        command={isPopover ? "hide-popover" : "close"}
+        aria-label="Close menu"><Icon name="cross" size={24} /></button
+      >
+    </header>
+    <div class="stack-sm">
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          void playback.replaceQueueAndPlay(menuTrackIds);
+          dismissActions();
+        }}><Icon name="play" size={24} /><span>Play</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          void playback.enqueue(menuTrackIds, "next");
+          dismissActions();
+        }}><Icon name="next" size={24} /><span>Play next</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTrackIds.length}
+        onclick={() => {
+          void playback.enqueue(menuTrackIds, "last");
+          dismissActions();
+        }}><Icon name="plus" size={24} /><span>Play last</span></button
+      >
+      <button
+        class="menu-item"
+        disabled={!menuTracks.length}
+        onclick={() => {
+          trackEngine.downloadMany(menuTracks.map((track) => track.id));
+          dismissActions();
+        }}><Icon name="download" size={24} /><span>Download</span></button
+      >
+    </div>
+  </div>
+{/snippet}

@@ -133,10 +133,13 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   collection actions. Explicit options open a mobile modal or desktop popover; long-press
   retains the shared modal with Escape/close-button/swipe dismissal (light-dismiss would
   consume the long-press release). Overlay dismissal stays native rather than resize-driven.
-  Artist and album details remain legacy until their combined migration in #62.
-- Edgerunner uses one responsive breakpoint: mobile at app widths ≤50rem, desktop above
-  (800px at the default root size). Shared `.only-mobile` / `.only-desktop` utilities,
-  navigation, player controls, page gutters, split layouts, and tile sizing switch together.
+- Shell controls switch at app widths >50rem. Split layouts query the nearest size
+  container: stacked through 50rem, equal columns above 50rem, and 2:3 above 64rem
+  (3:2 for Settings). The page container excludes sidebar/gutters; detail panels become
+  sticky with the first split.
+- Artist and album routes keep their markup inline, sharing layout and overlay styles.
+  Preserve offline filtering, ordered playback, and collection/track action scope.
+  Cover height budgeting and route-owned atmosphere are CSS-only.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
   and resolves optional IDs from the current library without changing saved download metadata.
@@ -184,7 +187,8 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
 ```
 
 The Library browser check exercises real cached artists, lazy batches, wrapping/missing artwork,
-responsive options, native overlay dismissal/focus, and deep links:
+responsive options, native overlay dismissal/focus, and the Library → Artist → Album journey,
+including contextual track/collection actions:
 
 ```sh
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
