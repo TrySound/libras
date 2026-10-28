@@ -171,7 +171,7 @@ it("uses session restoration state on the downloads page", () => {
   cleanups.push(() => unmount(component));
   flushSync();
   expect(target.textContent).toContain("Restoring local library…");
-  expect(target.textContent).not.toContain("No downloaded files yet.");
+  expect(target.textContent).not.toContain("No downloads yet");
 });
 
 it("uses the empty fallback before account selection and when selection is cleared", async () => {

@@ -213,6 +213,11 @@
     --space-lg: 24px;
     --space-xl: 48px;
 
+    /* Shared page gutters and permanent end-of-content scroll runway. */
+    --content-padding-block: var(--space-lg);
+    --content-padding-inline: var(--space-lg);
+    --content-end-space: 20dvh;
+
     /* Border/focus geometry; the outline deliberately composes geometry and color. */
     --border-width: 2px;
     --focus-ring: 4px solid var(--accent);
@@ -264,7 +269,12 @@
   @media (max-width: 600px) {
     :scope {
       --heading-xl-leading: var(--leading-compact);
+      --content-padding-inline: var(--space-md);
     }
+  }
+
+  .scroll-runway {
+    padding-block-end: var(--content-end-space);
   }
 
   .truncate {
@@ -812,6 +822,58 @@
     &:disabled {
       opacity: 0.4;
       cursor: not-allowed;
+    }
+  }
+
+  /* Shared item surface. The first consumer is an informational download row,
+   * so interactive feedback will arrive with an interactive item consumer. */
+  .menu-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm);
+    border: var(--border-width) solid var(--item-border);
+    border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
+    background: var(--item-bg);
+    color: var(--item-text);
+    font-family: var(--body-font);
+    font-size: var(--body-size);
+    font-weight: var(--body-weight);
+    line-height: var(--body-leading);
+    letter-spacing: var(--body-tracking);
+    text-align: start;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .track-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+
+    &:has(> .track-row-number) {
+      grid-template-columns: max(2ch, 24px) minmax(0, 1fr) max-content;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      animation: --edgerunner-list-entry auto linear both;
+      animation-timeline: view(block);
+      animation-range: entry 0% cover 20%;
+
+      &:has(:focus-visible) {
+        animation: none;
+      }
+    }
+  }
+
+  @keyframes --edgerunner-list-entry {
+    from {
+      transform: translateY(16px) scale(0.96);
+    }
+
+    to {
+      transform: translateY(0) scale(1);
     }
   }
 

@@ -27,15 +27,17 @@
 <script lang="ts">
   interface Props {
     name: IconName;
-    size?: "md" | "lg" | "xl";
+    size?: "md" | "lg" | "xl" | number;
     class?: string;
+    color?: string;
   }
 
   const sizes = { md: 20, lg: 32, xl: 64 };
 
-  let { name, size = "md", class: className }: Props = $props();
+  let { name, size = "md", class: className, color }: Props = $props();
+  const pixels = $derived(typeof size === "number" ? size : sizes[size]);
 </script>
 
-<svg class={className} aria-hidden="true" width={sizes[size]} height={sizes[size]}>
+<svg class={className} {color} aria-hidden="true" width={pixels} height={pixels}>
   <use href={`#icon-${name}`}></use>
 </svg>

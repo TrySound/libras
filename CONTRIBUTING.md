@@ -116,6 +116,15 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   published Figma Maroon/Gold primitives → semantic color and complete typography roles.
   Consume roles for colors/type, primitives for ordinary spacing/shape, and keep component
   configuration local. Containers own gaps/padding. Avoid global element resets.
+- Downloads (`src/_downloads.svelte`) is the first migrated route. Its temporary page
+  placement stays local while the scrolling/navigation shell remains legacy. It reads real
+  jobs and saved records, retains ordering and format-specific identities, and adds no fake
+  progress or per-file failure records. Transfer/storage notices do not discard saved rows.
+- Edgerunner components live in `src/ui/`; legacy components remain in place until their
+  consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
+  and resolves optional IDs from the current library without changing saved download metadata.
+  The shared Icon accepts explicit numeric dimensions and semantic colors; legacy sizes/defaults
+  are unchanged. Readonly download rows have no hover/press feedback or Tab stops.
 - Introduce compound components with their first consumer, not all at once. Preserve real
   application behavior, long-press, and swipe-to-dismiss; do not port the prototype runtime.
   Additional Highrider themes/selection are separate work in #54.
@@ -146,6 +155,15 @@ preservation on resize, and isolation from Edgerunner islands:
 ```sh
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5180 \
   node --test tests/browser/website-cascade.test.cjs
+```
+
+The Downloads suite runs against the app server, intercepting only the Subsonic transport.
+It exercises actual connection, long-press Download actions, queued/active transfers,
+completion/failure, responsive artwork and text, OPFS checkpoints, and disconnected reload:
+
+```sh
+NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
+  node --test tests/browser/downloads.test.cjs
 ```
 
 For a subpath deployment, include the base path in `PREVIEW_URL`. These optional suites are

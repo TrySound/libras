@@ -29,6 +29,8 @@ it.each([
   ["md", "20"],
   ["lg", "32"],
   ["xl", "64"],
+  [24, "24"],
+  [96, "96"],
 ] as const)("renders size %s at %s pixels", async (size, pixels) => {
   const target = document.createElement("div");
   const component = mount(Icon, { target, props: { name: "music", size } });
@@ -37,6 +39,21 @@ it.each([
     const svg = target.querySelector("svg")!;
     expect(svg.getAttribute("width")).toBe(pixels);
     expect(svg.getAttribute("height")).toBe(pixels);
+  } finally {
+    await unmount(component);
+  }
+});
+
+it("allows a semantic status color without changing legacy defaults", async () => {
+  const target = document.createElement("div");
+  const component = mount(Icon, {
+    target,
+    props: { name: "check", size: 24, color: "var(--accent)" },
+  });
+  try {
+    flushSync();
+    expect(target.querySelector("svg")?.getAttribute("color")).toBe("var(--accent)");
+    expect(target.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   } finally {
     await unmount(component);
   }
