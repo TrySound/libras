@@ -1,8 +1,23 @@
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { defineConfig } from "vite";
+import { defineConfig, normalizePath } from "vite";
+import { fileURLToPath } from "node:url";
 import { inlineSvgSprite } from "../build/inline-svg-sprite.ts";
 
 export default defineConfig({
   base: process.env.DEMO_BASE_PATH ?? "/",
-  plugins: [inlineSvgSprite(), svelte()],
+  plugins: [
+    inlineSvgSprite(),
+    svelte(),
+    {
+      name: "shared-font-preloads",
+      apply: "serve",
+      transformIndexHtml(html, context) {
+        // HTML-relative paths outside the website root need the same /@fs URL
+        // used by the shared font CSS in development. Builds emit hashed URLs.
+        const directory = normalizePath(fileURLToPath(new URL("../src/fonts/", import.meta.url)));
+        const prefix = `${context.server!.config.base}@fs/${directory.replace(/^\//, "")}`;
+        return html.replaceAll('href="../src/fonts/', `href="${prefix}`);
+      },
+    },
+  ],
 });

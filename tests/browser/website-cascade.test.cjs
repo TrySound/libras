@@ -54,6 +54,25 @@ test("website and embedded app own their presentation", async (t) => {
       );
     });
 
+    await t.test("website preloads the shared optional font assets", async () => {
+      await page.evaluate(() => document.fonts.ready);
+      const fonts = await page.evaluate(() => ({
+        preloads: [...document.querySelectorAll('link[rel="preload"][as="font"][crossorigin]')].map(
+          (link) => link.href,
+        ),
+        requests: performance
+          .getEntriesByType("resource")
+          .filter((entry) => entry.name.endsWith(".woff2"))
+          .map((entry) => entry.name),
+        displays: [...document.fonts].map((font) => font.display),
+      }));
+      assert.equal(fonts.preloads.length, 3);
+      assert.deepEqual(fonts.requests.sort(), fonts.preloads.sort());
+      assert.ok(
+        fonts.displays.length > 0 && fonts.displays.every((display) => display === "optional"),
+      );
+    });
+
     await t.test("Now Playing stays inside the embedded app viewport", async () => {
       await demo.locator(".tile a").first().click();
       await demo

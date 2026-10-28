@@ -43,7 +43,7 @@ test("Edgerunner foundations and native controls", async (t) => {
       assert.match(styles.font, /Rajdhani/);
       assert.equal(styles.fontDisplays.length, 3);
       assert.ok(styles.fontDisplays.every((display) => display === "optional"));
-      assert.equal(await page.locator('link[rel="preload"][as="font"][crossorigin]').count(), 1);
+      assert.equal(await page.locator('link[rel="preload"][as="font"][crossorigin]').count(), 3);
 
       for (const width of [320, 375, 768, 1440]) {
         await page.setViewportSize({ width, height: 900 });
@@ -65,6 +65,42 @@ test("Edgerunner foundations and native controls", async (t) => {
       });
       assert.deepEqual(sizing, ["16px", "20px"]);
     });
+
+    await t.test(
+      "app entry preloads all optional faces without duplicate font requests",
+      async () => {
+        const context = await browser.newContext();
+        const app = await context.newPage();
+        try {
+          await app.goto(base);
+          await app.locator(".app-root").waitFor();
+          await app.evaluate(() => document.fonts.ready);
+          const fonts = await app.evaluate(() => {
+            const preloads = [...document.querySelectorAll('link[rel="preload"][as="font"]')];
+            return preloads.map((link) => ({
+              href: link.href,
+              type: link.type,
+              cors: link.hasAttribute("crossorigin"),
+              requests: performance.getEntriesByName(link.href).length,
+            }));
+          });
+          assert.equal(fonts.length, 3);
+          for (const [index, font] of fonts.entries()) {
+            assert.match(font.href, new RegExp(`rajdhani-${[500, 600, 700][index]}-latin`));
+            assert.equal(font.type, "font/woff2");
+            assert.equal(font.cors, true);
+            assert.equal(font.requests, 1);
+          }
+          assert.ok(
+            await app.evaluate(() =>
+              [...document.fonts].every((font) => font.display === "optional"),
+            ),
+          );
+        } finally {
+          await context.close();
+        }
+      },
+    );
 
     await t.test("slow fonts keep the fallback without a late layout swap", async () => {
       // A fresh context avoids warm font caches from the preceding specimens.

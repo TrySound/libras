@@ -173,8 +173,9 @@ It uses the same styles as production, not a separate component library.
   Google Fonts, with Latin-only subsets and `font-display: optional`. Other characters
   use system-font fallbacks rather than additional bundled subsets. A short browser-managed
   loading window allows a fast font load; otherwise the page keeps its system fallback without
-  a late swap. The styleguide preloads the Latin 500 heading face; production entry points
-  retain optional loading without font preloads.
+  a late swap. The standalone app, website, and styleguide preload the three Latin faces
+  (500/600/700) with `as="font"`, `type="font/woff2"`, and `crossorigin`, giving optional fonts
+  an earlier start without forcing a late swap. Vite emits the same font URLs for CSS and preloads.
   Fonts and the SIL OFL license
   live in `src/fonts/`; unsupported glyphs and unavailable fonts use system fallbacks.
   Relative asset URLs support both the app and embedded website builds.
