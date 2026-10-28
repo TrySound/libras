@@ -107,7 +107,13 @@ test("Edgerunner foundations and legacy coexistence", async (t) => {
         await page.getByRole("switch", { name: "Disabled on", exact: true }).isDisabled(),
         true,
       );
-      assert.equal(await page.locator("#guide-host-error").isVisible(), false);
+      assert.equal(await page.locator("#guide-host-error").count(), 0);
+      assert.equal(
+        await page
+          .locator("#guide-host")
+          .evaluate((input) => input.validity.valueMissing && !!input.validationMessage),
+        true,
+      );
       assert.equal(await page.locator("#guide-invalid-error").isVisible(), true);
       await page.locator("#guide-invalid").focus();
       // Focus border feedback may transition when reduced motion is not requested.

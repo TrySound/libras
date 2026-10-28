@@ -38,6 +38,22 @@ afterEach(async () => {
 });
 
 describe("session library workflow", () => {
+  it("marks only explicit refreshes as refreshing and clears that state on disconnect", async () => {
+    const { session, metadata } = await restored();
+    const response = deferred<Library>();
+    metadata.readLibrary.mockReturnValueOnce(response.promise);
+    const run = session.refresh();
+    expect(session.syncing).toBe(true);
+    expect(session.refreshing).toBe(true);
+    await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
+    session.disconnect();
+    expect(session.syncing).toBe(false);
+    expect(session.refreshing).toBe(false);
+    response.resolve(snapshot());
+    await run;
+    expect(session.refreshing).toBe(false);
+  });
+
   it("loads the candidate cache before validation, then connects before the library refresh finishes", async () => {
     const { session, selection, metadata, validate, auth, playback, disk } = setup(false);
     await disk.seed(credentials, snapshot());
@@ -68,10 +84,13 @@ describe("session library workflow", () => {
     expect(session.localReady).toBe(true);
     expect(session.busy).toBe(false);
     expect(session.syncing).toBe(true);
+    expect(session.refreshing).toBe(false);
     expect(auth.load()).not.toBeNull();
     expect(selection.cache).toBe(prepared);
     expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
     const refreshing = session.refresh();
+    // Joining an initial sync does not turn it into an explicit refresh.
+    expect(session.refreshing).toBe(false);
     response.reject(new Error("Library unavailable"));
     await refreshing;
     expect(session.status).toBe("connected");

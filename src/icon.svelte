@@ -21,6 +21,8 @@
     | "sound-bars"
     | "cross"
     | "error"
+    | "unlink"
+    | "offline"
     | "settings";
 </script>
 

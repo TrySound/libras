@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { flushSync, mount, unmount } from "svelte";
+import { flushSync, mount, tick, unmount } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
 import WebappUpdater from "../src/webapp-updater.svelte";
@@ -42,10 +42,22 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function setup(saved = false, pwa = true) {
+async function setup(
+  saved = false,
+  pwa = true,
+  options: {
+    beforeStart?: (fixture: ReturnType<typeof createSession>) => void;
+    waitForSync?: boolean;
+  } = {},
+) {
   const fixture = createSession(saved);
+  options.beforeStart?.(fixture);
   fixture.session.start();
-  if (saved) await vi.waitFor(() => expect(fixture.session.status).toBe("connected"));
+  if (saved && options.waitForSync !== false)
+    await vi.waitFor(() => {
+      expect(fixture.session.status).toBe("connected");
+      expect(fixture.session.syncing).toBe(false);
+    });
   const target = document.createElement("main");
   document.body.append(target);
   mocks.session = fixture.session;
@@ -69,9 +81,9 @@ async function setup(saved = false, pwa = true) {
       (button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label,
     )!;
   const offline = () => target.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-  const fill = () => {
+  const fill = (host = credentials.host) => {
     const inputs = [...target.querySelectorAll<HTMLInputElement>("form input")];
-    for (const [index, value] of [credentials.host, credentials.username, "password"].entries()) {
+    for (const [index, value] of [host, credentials.username, "password"].entries()) {
       inputs[index].value = value;
       inputs[index].dispatchEvent(new Event("input", { bubbles: true }));
     }
@@ -84,56 +96,195 @@ async function setup(saved = false, pwa = true) {
 }
 
 describe("app settings", () => {
+  it("shows startup synchronization immediately and distinguishes server sync from refresh", async () => {
+    const local = deferred();
+    const modified = deferred<number | null>();
+    const { target, session, loadCache, button } = await setup(true, false, {
+      beforeStart(fixture) {
+        fixture.loadCache.mockReturnValueOnce(local.promise);
+        fixture.metadata.getModifiedAt.mockReturnValueOnce(modified.promise);
+      },
+      waitForSync: false,
+    });
+    await vi.waitFor(() => expect(loadCache).toHaveBeenCalledOnce());
+    const status = target.querySelector("#settings-connection-status")!;
+    expect(session.localReady).toBe(false);
+    expect(status.textContent).toContain("Synchronizing…");
+    expect(status.querySelector(".loader")).not.toBeNull();
+    expect(status.textContent).not.toContain("with server");
+    expect(target.textContent).not.toContain("Restoring local library…");
+    local.resolve();
+    await vi.waitFor(() => expect(session.syncing).toBe(true));
+    flushSync();
+    expect(status.textContent).toContain("Synchronizing with server…");
+    expect(button("Refresh library").getAttribute("aria-busy")).toBe("false");
+    modified.resolve(100);
+    await vi.waitFor(() => expect(session.syncing).toBe(false));
+    flushSync();
+    expect(status.textContent).toContain("Connected");
+    expect(status.querySelector(".loader")).toBeNull();
+  });
+
+  it("shows saved offline mode immediately while local data loads, without server requests", async () => {
+    const local = deferred();
+    const { target, session, metadata, validate, loadCache } = await setup(true, false, {
+      beforeStart(fixture) {
+        fixture.storage.setItem("navidrome-offline-mode", "true");
+        fixture.loadCache.mockReturnValueOnce(local.promise);
+      },
+      waitForSync: false,
+    });
+    await vi.waitFor(() => expect(loadCache).toHaveBeenCalledOnce());
+    expect(session.localReady).toBe(false);
+    const status = target.querySelector("#settings-connection-status")!;
+    expect(status.textContent).toContain("Offline mode");
+    expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-offline");
+    expect(status.querySelector(".loader")).toBeNull();
+    local.resolve();
+    await vi.waitFor(() => expect(session.localReady).toBe(true));
+    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+    expect(validate).not.toHaveBeenCalled();
+  });
+
+  it.each(["unmounted", "hidden", "navigating"] as const)(
+    "does not steal navigation when a pending connection's view is %s",
+    async (state) => {
+      const { target, fill, session, validate, navigate } = await setup(false, false);
+      const pending = deferred();
+      validate.mockReturnValueOnce(pending.promise);
+      fill();
+      await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
+      if (state === "hidden") target.style.display = "none";
+      else if (state === "navigating") window.history.replaceState(null, "", "#/downloads");
+      else {
+        // Commit another route without destroying App or cancelling its Session.
+        const intercept = vi.fn();
+        window.navigation.dispatchEvent(
+          Object.assign(new Event("navigate"), {
+            canIntercept: true,
+            navigationType: "push",
+            destination: { url: new URL("#/downloads", window.location.href).href },
+            intercept,
+          }),
+        );
+        await intercept.mock.calls[0][0].handler();
+        expect(target.querySelector(".settings-view")).toBeNull();
+      }
+      pending.resolve();
+      await vi.waitFor(() => expect(session.auth).not.toBeNull());
+      await tick();
+      expect(navigate).not.toHaveBeenCalled();
+    },
+  );
+
+  it("displays only the server host and port, without URL userinfo or auth secrets", async () => {
+    const { target, session } = await setup(true);
+    session.auth = {
+      ...credentials,
+      host: "https://hidden-user:hidden-secret@music.example:8443/base",
+      token: "private-token-value",
+      salt: "private-salt-value",
+    };
+    flushSync();
+    expect(target.querySelector("#settings-server-identity")?.textContent).toBe(
+      `${credentials.username}@music.example:8443`,
+    );
+    for (const secret of [
+      "hidden-user",
+      "hidden-secret",
+      "private-token-value",
+      "private-salt-value",
+    ])
+      expect(target.textContent).not.toContain(secret);
+  });
+
+  it("keeps the authenticated summary and retry available after refresh errors", async () => {
+    const { target, session, metadata, button } = await setup(true);
+    metadata.readLibrary.mockRejectedValueOnce(new Error("Library unavailable"));
+    button("Refresh library").click();
+    await vi.waitFor(() => expect(session.syncing).toBe(false));
+    flushSync();
+    expect(target.querySelector("#settings-server")?.textContent).toContain("Library unavailable");
+    expect(target.querySelector("form")).toBeNull();
+    expect(button("Refresh library").disabled).toBe(false);
+    button("Refresh library").click();
+    await vi.waitFor(() => expect(session.syncing).toBe(false));
+    flushSync();
+    expect(target.querySelector("#settings-server")?.textContent).not.toContain(
+      "Synchronization needs attention",
+    );
+  });
+
   it("does not register a service worker without an updater component", async () => {
     await setup(false, false);
     expect(registerSW).not.toHaveBeenCalled();
   });
 
-  it("uses shared cards for server and offline settings", async () => {
+  it("uses isolated Edgerunner cards, labeled native fields, and a native switch", async () => {
     const { target } = await setup();
-    expect(target.querySelector(".settings-view")?.classList.contains("container")).toBe(true);
-    const server = target.querySelector('.card[aria-label="Music server"]')!;
-    const offline = target.querySelector('.card[aria-label="Offline library"]')!;
-    expect(server.classList.contains("stack-md")).toBe(true);
-    expect(server.querySelector(":scope > .row-md > .stack-xs")?.textContent).toContain(
+    expect(target.querySelector(".settings-view")?.classList.contains("ui-edgerunner")).toBe(true);
+    expect(target.querySelector(".settings-view h1")?.textContent).toBe("Settings");
+    const server = target.querySelector("#settings-server")!;
+    const offline = target.querySelector("#settings-offline-card")!;
+    expect(server.classList.contains("card")).toBe(true);
+    expect(server.querySelector("#settings-connection-status")?.textContent).toContain(
       "Disconnected",
     );
-    expect(server.querySelector(":scope > form")).not.toBeNull();
-    expect(server.querySelectorAll("form input.input")).toHaveLength(3);
-    expect(offline.querySelector('input[type="checkbox"]')?.classList.contains("input")).toBe(
-      false,
+    expect(server.querySelector("form")?.getAttribute("aria-describedby")).toBe(
+      "settings-auth-help",
     );
-    expect(offline.classList.contains("row-md")).toBe(true);
-    expect(offline.querySelector(":scope > .stack-xs")?.textContent).toContain("Offline library");
-    expect(offline.querySelector('input[type="checkbox"]')).not.toBeNull();
-    expect(offline.querySelector("small")?.classList.contains("truncate")).toBe(false);
+    expect(server.querySelectorAll("form input.input")).toHaveLength(3);
+    for (const name of ["host", "username", "password"]) {
+      const input = server.querySelector<HTMLInputElement>(`#server-${name}`)!;
+      expect(input.required).toBe(true);
+      expect(server.querySelector(`label[for="${input.id}"]`)).not.toBeNull();
+      expect(input.getAttribute("aria-errormessage")).toBeNull();
+      expect(server.querySelector(`#server-${name}-error`)).toBeNull();
+    }
+    expect(server.querySelector("#server-host")?.getAttribute("type")).toBe("text");
+    expect(server.querySelector("#server-host")?.getAttribute("placeholder")).toBe(
+      "music.example.com",
+    );
+    expect(server.querySelector("#settings-auth-help")?.textContent).toContain(
+      "Sign in to your Navidrome server",
+    );
+    expect(server.querySelector("#server-password")?.getAttribute("type")).toBe("password");
+    expect(offline.classList.contains("card")).toBe(true);
+    const control = offline.querySelector('input[role="switch"]')!;
+    expect(control.classList.contains("switch")).toBe(true);
+    expect(control.getAttribute("aria-labelledby")).toBe("settings-offline-title");
+    expect(control.getAttribute("aria-describedby")).toBe("settings-offline-help");
+    expect(target.querySelector("select")).toBeNull();
   });
 
-  it("keeps the decorative status variant aligned with the connection label", async () => {
+  it("keeps decorative status glyphs and loading aligned with the connection label", async () => {
     const { target, session } = await setup(true);
-    const indicator = target.querySelector(".status")!;
-    const expectStatus = (variant: string, label?: string) => {
+    const expectStatus = (symbol: string | null, label: string) => {
       flushSync();
-      expect(target.querySelector(".status")?.getAttribute("data-variant")).toBe(variant);
-      if (label)
-        expect(target.querySelector('[aria-label="Music server"]')?.textContent).toContain(label);
+      const status = target.querySelector("#settings-connection-status")!;
+      if (symbol) {
+        expect(status.textContent).toContain(label);
+        expect(status.querySelector("use")?.getAttribute("href")).toBe(`#icon-${symbol}`);
+        expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+      } else {
+        expect(status.textContent).toContain(label);
+        expect(status.querySelector(".loader")).not.toBeNull();
+      }
     };
-    expect(indicator.getAttribute("aria-hidden")).toBe("true");
-    expect(indicator.hasAttribute("role")).toBe(false);
-    expectStatus("success", "Connected");
+    expectStatus("check", "Connected");
     session.status = "error";
-    expectStatus("danger", "Connection failed");
+    expectStatus("cross", "Connection failed");
     await session.setOfflineMode(true);
     session.status = "error";
-    expectStatus("neutral", "Offline mode");
+    expectStatus("offline", "Offline mode");
     session.status = "connecting";
-    expectStatus("warning", "Connecting…");
+    expectStatus("offline", "Offline mode");
     session.auth = null;
-    expectStatus("warning", "Connecting…");
+    expectStatus(null, "Connecting…");
     session.status = "error";
-    expectStatus("neutral", "Disconnected");
+    expectStatus("cross", "Connection failed");
     session.status = "disconnected";
-    expectStatus("neutral", "Disconnected");
+    expectStatus("unlink", "Disconnected");
   });
 
   it("offers updates in a header popover without modifying Settings", async () => {
@@ -202,8 +353,11 @@ describe("app settings", () => {
   it.each([false, true])(
     "shows album/track counters during background refresh (saved: %s)",
     async (saved) => {
-      const { target, metadata, session } = await setup(saved);
+      const { target, metadata, session, playback } = await setup(saved);
       const pending = deferred();
+      const queue = deferred();
+      const queueCalls = playback.refreshQueue.mock.calls.length;
+      playback.refreshQueue.mockReturnValueOnce(queue.promise);
       metadata.getModifiedAt.mockResolvedValue(20);
       metadata.readLibrary.mockImplementationOnce(async (_signal, onProgress) => {
         onProgress?.({ albums: 500, tracks: 1000 });
@@ -213,42 +367,77 @@ describe("app settings", () => {
       const loading = saved
         ? session.refresh()
         : session.connect({ ...credentials, password: "password" });
+      if (saved) {
+        flushSync();
+        const status = target.querySelector("#settings-connection-status")!;
+        expect(status.textContent).toContain("Connected");
+        expect(status.textContent).not.toContain("Synchronizing");
+        expect(status.querySelector(".loader")).toBeNull();
+        expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refreshing…");
+      }
       await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
       flushSync();
       const counter = `${(500).toLocaleString()} albums · ${(1000).toLocaleString()} tracks`;
       expect(
-        target.querySelector('[role="status"]')?.textContent?.replace(/\s+/g, " ").trim(),
+        target
+          .querySelector("#settings-library-progress")
+          ?.textContent?.replace(/\s+/g, " ")
+          .trim(),
       ).toBe(counter);
-      expect(target.textContent).not.toContain("songs");
-      expect(target.querySelector('[aria-label="Music server"]')?.textContent).toContain(
+      expect(
+        target.querySelector("#settings-library-progress")?.classList.contains("text-subtle"),
+      ).toBe(true);
+      expect(
+        target.querySelector("#settings-connection-status #settings-library-progress"),
+      ).not.toBeNull();
+      expect(target.querySelector("#settings-connection-status")?.textContent).not.toContain(
         "Refreshing…",
       );
-      expect(target.querySelector(".status")?.getAttribute("data-variant")).toBe("warning");
-      pending.resolve();
-      await loading;
-      await session.refresh();
-      flushSync();
-      expect(target.textContent?.replace(/\s+/g, " ")).not.toContain(counter);
-      expect(target.querySelector('[aria-label="Music server"]')?.textContent).toContain(
-        "Connected",
+      expect(target.querySelector("#settings-refresh")?.textContent).toContain(
+        saved ? "Refreshing…" : "Refresh library",
       );
-      expect(target.querySelector(".status")?.getAttribute("data-variant")).toBe("success");
+      expect(target.querySelector("#settings-connection-status .loader")).not.toBeNull();
+      pending.resolve();
+      await vi.waitFor(() => expect(playback.refreshQueue).toHaveBeenCalledTimes(queueCalls + 1));
+      flushSync();
+      const status = target.querySelector("#settings-connection-status")!;
+      expect(
+        status
+          .querySelector("#settings-library-progress")
+          ?.textContent?.replace(/\s+/g, " ")
+          .trim(),
+      ).toBe(counter);
+      expect(status.textContent).not.toContain("Synchronizing");
+      expect(status.textContent).not.toContain("Connected");
+      expect(status.querySelector(".loader")).not.toBeNull();
+      expect(target.querySelector("#settings-refresh")?.textContent).toContain(
+        saved ? "Refreshing…" : "Refresh library",
+      );
+      expect(target.querySelector("#settings-refresh")?.getAttribute("aria-busy")).toBe(
+        String(saved),
+      );
+      expect(target.querySelector("#settings-refresh")?.getAttribute("aria-disabled")).toBe("true");
+      queue.resolve();
+      await loading;
+      await vi.waitFor(() => expect(session.syncing).toBe(false));
+      flushSync();
+      expect(status.textContent).toContain("Connected");
+      expect(status.querySelector("#settings-library-progress")).toBeNull();
+      expect(status.querySelector(".loader")).toBeNull();
+      expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-check");
+      expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refresh library");
     },
   );
   it("shows read-only connection information and allows disconnect during refresh", async () => {
     const { target, session, auth, metadata, button, offline } = await setup(true);
-    const summary = target.querySelector('[aria-label="Music server"] > .row-md > .stack-xs')!;
-    expect(summary.querySelector("strong")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
-      `${credentials.username} · ${credentials.host.replace(/^https?:\/\//i, "")}`,
+    const server = target.querySelector("#settings-server")!;
+    expect(server.querySelector("#settings-server-identity")?.textContent).toBe(
+      `${credentials.username}@${new URL(credentials.host).host}`,
     );
-    expect(summary.textContent).not.toContain("https://");
-    expect(summary.firstElementChild?.classList.contains("row-sm")).toBe(true);
-    expect(summary.firstElementChild?.textContent).toContain("Connected");
-    const actions = summary.nextElementSibling!;
-    expect(actions.parentElement?.classList.contains("row-md")).toBe(true);
-    expect(actions.querySelectorAll("button")).toHaveLength(2);
-    expect(actions.querySelector('[aria-label="Refresh library"]')).not.toBeNull();
-    expect(actions.querySelector('[aria-label="Disconnect"]')).not.toBeNull();
+    expect(server.querySelector("#settings-connection-status")?.textContent).toContain("Connected");
+    expect(server.querySelectorAll("button")).toHaveLength(2);
+    expect(button("Refresh library")).toBeDefined();
+    expect(button("Disconnect")).toBeDefined();
     expect(target.querySelector("form")).toBeNull();
     const refresh = deferred();
     metadata.readLibrary.mockImplementationOnce(async () => {
@@ -257,7 +446,8 @@ describe("app settings", () => {
     });
     button("Refresh library").click();
     flushSync();
-    expect(button("Refreshing…").disabled).toBe(true);
+    expect(button("Refreshing…").getAttribute("aria-disabled")).toBe("true");
+    expect(button("Refreshing…").querySelector("svg, .loader")).toBeNull();
     button("Refreshing…").click();
     await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
     button("Disconnect").click();
@@ -279,22 +469,40 @@ describe("app settings", () => {
     expect(offline().checked).toBe(true);
     expect(offline().disabled).toBe(true);
     expect(button("Connect").disabled).toBe(false);
-    validate.mockRejectedValueOnce(new Error("Unauthorized"));
-    fill();
+    const pending = deferred();
+    validate.mockReturnValueOnce(pending.promise);
+    target.querySelector<HTMLInputElement>("#server-password")!.focus();
+    fill("music.example");
+    const connect = button("Connecting…");
+    expect(connect.disabled).toBe(false);
+    expect(connect.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      [...target.querySelectorAll<HTMLInputElement>("form input")].every((input) => input.disabled),
+    ).toBe(true);
+    target
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
+    pending.reject(new Error("Unauthorized"));
     await vi.waitFor(() =>
       expect(target.querySelector('[role="alert"]')?.textContent).toBe("Unauthorized"),
     );
-    expect(target.querySelector('[aria-label="Music server"] [role="alert"]')).toBeNull();
+    expect(target.querySelector("#settings-server [role='alert']")).toBeNull();
+    expect(target.querySelector("#settings-server-error")?.textContent).toBe("Unauthorized");
+    expect(target.querySelector("form")?.getAttribute("aria-describedby")).toContain(
+      "settings-server-error",
+    );
     expect(target.querySelectorAll('[role="alert"]')).toHaveLength(1);
     expect(button("Show errors").getAttribute("commandfor")).toBe("error-popover");
     expect(session.error).toBe("Unauthorized");
     expect(offline().checked).toBe(true);
     expect(session.auth).toBeNull();
-    fill();
+    fill("music.example");
     await vi.waitFor(() => expect(target.querySelector("form")).toBeNull());
     expect(offline().checked).toBe(false);
     expect(offline().disabled).toBe(false);
     expect(navigate).toHaveBeenCalledOnce();
     expect(navigate).toHaveBeenCalledWith("/library", "push");
+    expect(session.auth?.host).toBe(credentials.host);
   });
 });

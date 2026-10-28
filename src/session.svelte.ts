@@ -45,7 +45,7 @@ export class Session {
   #account?: Readonly<Account>;
   #connection?: ActiveNetworkConnection;
   #libraryProgress = $state.raw<LibraryProgress>();
-  #syncing = $state(false);
+  #syncState = $state<"idle" | "automatic" | "manual">("idle");
   #refreshError = $state.raw<unknown>();
   #refreshPending?: Promise<void>;
   #restoration: Promise<void> = Promise.resolve();
@@ -63,7 +63,12 @@ export class Session {
   }
 
   get syncing() {
-    return this.#syncing;
+    return this.#syncState !== "idle";
+  }
+
+  /** Explicit refresh operation, including its follow-on server sync. */
+  get refreshing() {
+    return this.#syncState === "manual";
   }
 
   get refreshError() {
@@ -102,7 +107,7 @@ export class Session {
   #detach() {
     this.#libraryProgress = undefined;
     this.#refreshPending = undefined;
-    this.#syncing = false;
+    this.#syncState = "idle";
     this.#refreshError = undefined;
     this.#options.network.setMode("offline");
     this.#setConnection(undefined);
@@ -331,25 +336,22 @@ export class Session {
     const unchanged = modified !== null && modified === cache.lastModified;
     if (!force && hasSnapshot && unchanged) return;
     this.#libraryProgress = { albums: 0, tracks: 0 };
-    try {
-      const library = await connection.readLibrary(connection.signal, (progress) => {
-        if (canPublish()) this.#libraryProgress = progress;
-      });
-      if (!canPublish()) return;
-      await cache.replaceLibrary(
-        { ...library, lastModified: modified, savedAt: Date.now() },
-        connection.signal,
-      );
-    } finally {
-      if (this.#isCurrentOperation(operationId)) this.#libraryProgress = undefined;
-    }
+    const library = await connection.readLibrary(connection.signal, (progress) => {
+      if (canPublish()) this.#libraryProgress = progress;
+    });
+    if (!canPublish()) return;
+    await cache.replaceLibrary(
+      { ...library, lastModified: modified, savedAt: Date.now() },
+      connection.signal,
+    );
   }
 
   #refresh(force: boolean): Promise<void> {
     if (this.#refreshPending) return this.#refreshPending;
     const operationId = this.#operationId;
     const { covers, playback } = this.#options;
-    this.#syncing = true;
+    this.#syncState = force ? "manual" : "automatic";
+    this.#libraryProgress = undefined;
     this.#refreshError = undefined;
     return (this.#refreshPending = (async () => {
       try {
@@ -374,7 +376,9 @@ export class Session {
       }
     })().finally(() => {
       if (!this.#isCurrentOperation(operationId)) return;
-      this.#syncing = false;
+      // Keep final scan counts until all sync work settles, then publish completion together.
+      this.#libraryProgress = undefined;
+      this.#syncState = "idle";
       this.#refreshPending = undefined;
     }));
   }

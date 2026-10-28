@@ -51,6 +51,27 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
       );
     });
 
+    await t.test(
+      "Settings adapts to the narrow embedded app, not the desktop browser",
+      async () => {
+        await page.locator("#demo").getByRole("link", { name: "Settings", exact: true }).click();
+        await page.locator("#demo .settings-view").waitFor();
+        const geometry = await page.locator("#demo .settings-view").evaluate((element) => {
+          const server = element.querySelector("#settings-server").getBoundingClientRect();
+          const offline = element.querySelector("#settings-offline-card").getBoundingClientRect();
+          return {
+            stacked: offline.top >= server.bottom,
+            fits: element.scrollWidth <= element.clientWidth,
+          };
+        });
+        assert.deepEqual(geometry, { stacked: true, fits: true });
+        assert.equal(
+          await app.evaluate((element) => element === document.querySelector("#demo .app-root")),
+          true,
+        );
+      },
+    );
+
     await t.test("website extensions stop at an Edgerunner boundary", async () => {
       await page.evaluate(() => {
         const island = document.createElement("section");

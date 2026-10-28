@@ -120,6 +120,15 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
   placement stays local while the scrolling/navigation shell remains legacy. It reads real
   jobs and saved records, retains ordering and format-specific identities, and adds no fake
   progress or per-file failure records. Transfer/storage notices do not discard saved rows.
+- Settings (`src/_settings.svelte`) uses shared cards and an app-container-based 3:2 split;
+  preserve the inline-size container so the embedded demo adapts independently of the browser.
+  Session owns authentication, disconnect, offline preferences, and automatic/manual sync.
+  Explicit refresh feedback and scan counters share the full sync operation's lifetime.
+  Keep native field validation, bare-hostname support, and actual server errors; never expose
+  authentication secrets. Busy actions stay mounted with guarded `aria-disabled` states, and
+  completed connections must not redirect after leaving or hiding Settings. PWA updates remain
+  in the header popover. Presentation examples belong in `styleguide.html`; behavior contracts
+  are covered by `tests/app-settings.test.ts`.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
   and resolves optional IDs from the current library without changing saved download metadata.
@@ -164,6 +173,17 @@ completion/failure, responsive artwork and text, OPFS checkpoints, and disconnec
 ```sh
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/downloads.test.cjs
+```
+
+Settings state/rendering, error handling, refresh phases, and navigation races are covered by
+`tests/app-settings.test.ts` in the normal CI suite. The optional browser suite uses the real
+app/OPFS with only Subsonic transport intercepted. It focuses on browser-only behavior: native
+validation without layout shifts, keyboard/focus, responsive/enlarged-text layouts, and offline
+preferences and cached metadata surviving reload:
+
+```sh
+NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
+  node --test tests/browser/settings.test.cjs
 ```
 
 For a subpath deployment, include the base path in `PREVIEW_URL`. These optional suites are
