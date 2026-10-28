@@ -120,7 +120,7 @@
 
   --surface-border: var(--palette-maroon-tone-5);
   --shell-border: var(--palette-maroon-tint-0);
-  --scrollbar-bg: var(--palette-maroon-shade-7);
+  --scrollbar-bg: var(--palette-maroon-shade-4);
   --accent: var(--palette-gold-tint-0);
 
   /* Shape primitives: literal values, consumed directly. */
