@@ -1,8 +1,7 @@
-@import "../src/edgerunner.css";
 @import "../src/app.css";
 
-/* Website layout extends its legacy foundations, never the embedded application. */
-@scope (.website) to (.app-root) {
+/* Website layout extends its legacy foundations. */
+@scope (.website) {
   :scope {
     --site-background: #090b10;
     --site-border: rgb(from var(--palette-white) r g b / 9%);
@@ -73,18 +72,6 @@
     text-wrap: balance;
   }
 
-  .mobile-only {
-    @media (width >= 800px) {
-      display: none !important;
-    }
-  }
-
-  .desktop-only {
-    @media (width < 800px) {
-      display: none !important;
-    }
-  }
-
   .site-hero {
     position: relative;
     isolation: isolate;
@@ -136,71 +123,6 @@
     flex-wrap: wrap;
     justify-content: center;
     gap: var(--space-md);
-  }
-
-  .site-showcase {
-    position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: center;
-    gap: 4rem;
-    padding-block: 2rem 0;
-    scroll-margin-top: 2rem;
-  }
-
-  .site-showcase::before {
-    content: "";
-    position: absolute;
-    inset: -5rem -10rem;
-    pointer-events: none;
-    background: radial-gradient(ellipse at 75% 50%, var(--site-accent-glow), transparent 60%);
-  }
-
-  .site-showcase-copy,
-  .site-demo-window {
-    position: relative;
-  }
-
-  .site-demo-window {
-    overflow: clip;
-    box-sizing: border-box;
-    width: min(100%, 390px);
-    max-width: none;
-    max-height: none;
-    min-width: 0;
-    margin: 0 auto;
-    padding: 0;
-    color: var(--color-text-primary);
-    border: 1px solid rgb(from var(--palette-white) r g b / 15%);
-    border-radius: var(--site-radius);
-    background: var(--surface-page-background);
-    box-shadow:
-      0 30px 100px #0008,
-      0 0 0 8px rgb(from var(--palette-white) r g b / 2%);
-  }
-
-  .site-demo-toolbar {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    border-bottom: 1px solid var(--site-border);
-  }
-
-  .site-demo-frame {
-    width: 100%;
-    aspect-ratio: 390 / 720;
-  }
-
-  /* At the inline demo's scroll boundaries, continue scrolling the website. */
-  .site-demo-dialog:not(:modal) .app-shell {
-    overscroll-behavior: auto;
-  }
-
-  .site-demo-launch {
-    display: none;
   }
 
   .site-section {
@@ -486,11 +408,6 @@
   }
 
   @media (width < 1000px) {
-    .site-showcase {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-      gap: 2rem;
-    }
-
     .site-feature {
       grid-column: span 3;
     }
@@ -509,58 +426,6 @@
   }
 
   @media (width < 800px) {
-    .site-showcase {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 2rem;
-      max-width: 34rem;
-    }
-
-    .site-showcase-copy {
-      justify-items: center;
-      text-align: center;
-    }
-
-    .site-demo-launch {
-      display: inline-flex;
-    }
-
-    .site-demo-dialog {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100dvh;
-      margin: 0;
-      border: 0;
-      border-radius: 0;
-      box-shadow: none;
-      overflow: hidden;
-    }
-
-    .site-demo-dialog:not(:modal) {
-      display: none;
-    }
-
-    .site-demo-dialog:modal {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .site-demo-dialog::backdrop {
-      background: var(--site-background);
-    }
-
-    .site-demo-toolbar {
-      flex: none;
-      padding-top: max(0.125rem, env(safe-area-inset-top));
-      padding-bottom: 0.125rem;
-    }
-
-    .site-demo-frame {
-      flex: 1;
-      min-height: 0;
-      aspect-ratio: auto;
-    }
-
     .site-feature-grid {
       grid-template-columns: minmax(0, 1fr);
     }
@@ -589,8 +454,4 @@
       align-items: flex-start;
     }
   }
-}
-
-body:has(.site-demo-dialog:modal) {
-  overflow: hidden;
 }

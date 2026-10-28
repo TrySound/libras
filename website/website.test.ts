@@ -15,8 +15,8 @@ it("serves the complete landing page without executing JavaScript", () => {
     "Which servers are supported?",
   );
   expect(page.querySelector('link[rel="stylesheet"]')?.getAttribute("href")).toBe("/website.css");
-  expect(page.querySelector("noscript")?.textContent).toContain("Enable JavaScript");
-  expect(page.querySelector("#demo")?.childElementCount).toBe(0);
+  expect(page.querySelector("script, #demo, dialog, .site-showcase")).toBeNull();
+  expect(page.querySelector('a[href="/demo/"]')?.textContent).toContain("Try live demo");
   expect(page.querySelectorAll(".app-root")).toHaveLength(0);
   expect(page.querySelectorAll('a[href="/webapp/"]')).toHaveLength(2);
   expect(page.querySelector('a[href="/catalog/credits.html"]')).not.toBeNull();

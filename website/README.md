@@ -1,36 +1,19 @@
 # Libras website
 
-This pnpm workspace (`@libras/website`) serves the Libras landing page with an embedded, preconnected live demo at `https://libras-music.app/`. The standalone installable player lives at `https://libras-music.app/webapp/`. No real server, API token, password or export-source URL is used by the browser.
+This pnpm workspace (`@libras/website`) serves the static landing page at `https://libras-music.app/` and the full-width, preconnected demo at `https://libras-music.app/demo/`. The installable player lives at `https://libras-music.app/webapp/`. No real server, API token, password or export-source URL is used by the demo browser client.
 
 ## Architecture
 
-- `index.html` contains the complete static landing page, live-demo frame, feature illustrations, setup guide, FAQ, calls to action, and SEO/social metadata. Text, links, icons, and the FAQ are available without JavaScript; a `noscript` message explains that the demo needs JavaScript. Its stylesheet link loads `website.css`, which imports `src/edgerunner.css` for the demo and `src/app.css` for the website's legacy colors, typography, utilities, and controls, then adds marketing layout. Website styles stop at `.app-root`; app component styles stay inside the app or styleguide document. Illustrations use CSS and static references to the shared SVG sprite, with no external fonts or image requests. The page adapts to mobile, respects reduced motion, and uses native links and disclosure elements.
-- `main.ts` mounts only Demo into `#demo`. The small TypeScript controller manages the responsive dialog and cleans up its viewport listener and Svelte instance on hot reload; it never renders or replaces the landing page. The app no longer overwrites its host's title. The demo uses App's `embedded` option to preserve host scrolling, focus and section anchors, and avoid document-wide view transitions. App routes still use the document hash, so this is a single-demo integration, not isolated multi-instance routing.
-- `client.ts` owns lazy loading of `search3.json` through the shared Subsonic response schema and the `assets.json` path map. Clients reuse successfully loaded metadata when given the same catalog-base URL object, keeping reconnects fast and separate demo mounts isolated; failed loads can be retried and aborted clients cannot publish stale data. It implements independent library pagination, original audio/artwork URLs and cancellation without intercepting global fetch or emulating `/rest` endpoints. Server-queue reads return empty and writes are ignored; the app's local playback queue is sufficient. The exporter checks IDs, relationships, credits, durations and asset integrity before publishing.
-- `demo.svelte` constructs auth and network synchronously and renders App directly, explicitly passing `undefined` for the updater. There is no separate asynchronous bootstrap UI. Cache/OPFS isolation comes from the separate demo account identity; preferences and auth share a per-runtime `MemoryStorage` instance, with the class defined in this component and never read or write localStorage. App's inline preference setup uses the injected auth store's storage scope, not a separate prop.
-- `vite.config.ts` is a separate build **without the PWA plugin**. There is no manifest, install prompt or demo service worker. The regular app's service worker is scoped to `/webapp/` and cannot control the website or cache its demo assets.
-- Settings, header, playback, explicit downloads and library UI stay inline in the shared app. On desktop the website presents a roughly 390 × 720 phone viewport. Below 800px the inline preview is hidden; either demo CTA opens it as a full-screen native dialog with a close button and background scroll lock. The same App instance stays mounted across closing and resizing, preserving playback. On mobile, the outer dialog's native close requests (Android Back or Escape) traverse app history within the current opening before closing at its starting entry. Opening from a website anchor first creates a `#/library` entry; reopening establishes a fresh boundary. Nested dialogs retain native dismissal and the explicit close button always closes immediately. Non-cancelable browser close requests are respected rather than trapping the user. Music credits remain available at `catalog/credits.html`. Shared Settings still allows disconnect, but the static client factory rejects any different account before a cache can be selected; it cannot connect to real servers or touch their OPFS data. Reload the demo to restore its synthetic login and default preferences after disconnecting.
+- `index.html` contains the complete static landing page, feature illustrations, FAQ, calls to action, and SEO/social metadata. It has no JavaScript entry, live preview, or demo dialog. “Try live demo” is a normal link to `demo/`. `website.css` imports the legacy website foundations from `src/app.css`; no player stylesheet is loaded on the landing page.
+- `demo/index.html` and `main.ts` mount Demo into `#app`, with the same `src/edgerunner.css`, dialog polyfill, full-width layout and hash navigation as the regular app. There is no marketing wrapper or `embedded` mode. Hot reload unmounts the component.
+- `demo.svelte` constructs auth and network synchronously and renders the shared App directly, explicitly passing `undefined` for the updater. The static network adapter is the demo's data source; layout, settings, playback, downloads, errors and library UI are the normal app components.
+- Cache/OPFS isolation comes from the existing synthetic demo account identity, resolved against the website build base (not the `/demo/` page URL). Auth and preferences use a per-runtime `MemoryStorage` instance and never read or write localStorage. Moving the demo page does not change its catalog URLs or account identity.
+- `client.ts` lazily loads `catalog/search3.json` through the shared Subsonic response schema and the `assets.json` path map. Clients reuse successfully loaded metadata for the same catalog-base URL object. Failed loads can be retried; aborted clients cannot publish stale data. It implements library pagination, original audio/artwork URLs and cancellation without intercepting global fetch or emulating `/rest` endpoints. Server-queue reads return empty and writes are ignored; the app's local playback queue is sufficient.
+- `vite.config.ts` builds both HTML entry points **without the PWA plugin**. There is no demo manifest, install prompt or service worker. The real app's service worker stays scoped to `/webapp/` and cannot control the website or demo. Directory-index output serves `/demo/` (and hosts can redirect `/demo` there).
 
-The demo loads its catalog online on every launch. Auth and preferences reset on reload. OPFS-backed downloads and the app's local playback queue remain persistent; opening/reloading the demo offline is not supported. Catalog loading and failures use the shared app's synchronization UI; Settings → Refresh library retries failed loads without losing the local library. All full-length tracks are served unchanged; there is no transcoding. Unsupported formats report an error instead of pretending that OGG bytes are an MP3.
+Shared Settings allows disconnect, but the static client factory rejects any different account before a cache can be selected. It cannot connect to real servers or touch their OPFS data. Reload the demo to restore its synthetic login and default preferences after disconnecting.
 
-## Embedding layout
-
-App fills its host's width and height. Give the host an explicit size; for a square landing-page demo:
-
-```svelte
-<div class="demo-frame">
-  <Demo />
-</div>
-
-<style>
-  .demo-frame {
-    width: min(100%, 36rem);
-    aspect-ratio: 1;
-  }
-</style>
-```
-
-The shared `.app-root` is a size-query container. Content scrolls inside it, the mini-player stays at its bottom, and the player breakpoint follows the container width rather than the page viewport. Top-layer dialogs, backdrops and notifications use CSS anchor positioning to stay aligned with the frame (requires browser support for anchor positioning and `anchor-scope`). Native modal dialogs still make the rest of the document inert while open.
+The demo loads its catalog online on every launch. Auth and preferences reset on reload. OPFS-backed downloads and the local playback queue remain persistent; opening/reloading the demo offline is not supported. Settings → Refresh library retries failed loads without losing the local library. Full-length tracks are served unchanged, without transcoding. Unsupported formats report an error. Music credits remain at `/catalog/credits.html`.
 
 ## Local development
 
@@ -39,7 +22,7 @@ Place a verified complete export in `website/public/catalog/` (ignored by Git), 
 ```sh
 pnpm install
 pnpm --filter @libras/website dev
-# Open the URL printed by Vite.
+# Open the printed URL for the landing page, or /demo/ for the player.
 pnpm check
 pnpm test
 pnpm build
@@ -47,31 +30,29 @@ pnpm --filter @libras/website build
 pnpm --filter @libras/website preview
 ```
 
-Each workspace uses Vite's normal defaults: the regular application builds to root `dist/`, while the website builds to `website/dist/`. The builds are independent and do not clear each other's output. Commands run in the website package directory, so its Vite config only sets the base URL, Svelte plugin, and shared sprite plugin—no custom root, public directory, or output path. The website base defaults to `/`; `DEMO_BASE_PATH` can change it. Public catalog URLs are resolved against that base, never against a secret build-source location. The shared `inlineSvgSprite()` plugin from `build/inline-svg-sprite.ts` injects `src/sprite.svg` once into the HTML. The shared app's typed `Icon` component uses local symbol references, preserving SMIL animations without putting icon geometry in JavaScript. There is no copied sprite source or website-specific injection implementation.
-
-The Pages workflow assembles the website at `pages/` and the PWA at `pages/webapp/` after both packages build.
+The regular app builds to root `dist/`; the website builds to `website/dist/`, including `demo/index.html`. The builds do not clear each other's output. The website base defaults to `/`; `DEMO_BASE_PATH` can change it. Catalog URLs resolve against that base, never a secret build-source location. The shared `inlineSvgSprite()` plugin injects `src/sprite.svg` into each HTML entry. Icons use local symbol references, preserving SMIL animations without putting geometry in JavaScript.
 
 ## Pages deployment and secrets
 
 Configure these **GitHub Actions repository secrets**:
 
-- `DEMO_EXPORT_URL`: the private HTTPS export-directory URL (the directory containing `latest.json`). Do not commit the URL, place it in a repository variable, or prefix it with `VITE_`.
+- `DEMO_EXPORT_URL`: the private HTTPS export-directory URL (containing `latest.json`). Do not commit it, put it in a repository variable, or prefix it with `VITE_`.
 - `DEMO_MEDIA_PASSWORD`: the private export password. HTTP Basic username defaults to `demo`.
 
-The Pages workflow builds both workspaces, downloads the catalog into `website/dist/catalog/`, copies the website output to `pages/` and the app to `pages/webapp/`, and uploads one combined artifact. Secrets are scoped to the Node.js download step only—not the frontend build. It resolves `latest.json` once and uses that immutable release for the rest of the build; future deployments automatically pick up a new latest release. There is no cross-build pin.
+The Pages workflow builds both workspaces, downloads the catalog into `website/dist/catalog/`, copies the website output to `pages/` and the app to `pages/webapp/`, and uploads one combined artifact. Secrets are scoped to the Node.js downloader—not the frontend build. It resolves `latest.json` once and uses that immutable release for the rest of the build; future deployments pick up the latest release.
 
-`download-catalog.mjs` uses Node.js and `modern-tar` to verify the manifest fingerprint, archive SHA-256 and every extracted file. It disallows redirects, symlinks, hard links, path traversal, unexpected files, mixed releases and oversized archives. Missing secrets or download/verification failures fail deployment without replacing the live Pages site. Errors are sanitized to avoid logging the private URL/password. It also rejects exports containing the private source URL/hostname or credentials before publishing any files.
+`download-catalog.mjs` uses Node.js and `modern-tar` to verify the manifest fingerprint, archive SHA-256 and every extracted file. It rejects redirects, symlinks, hard links, path traversal, unexpected files, mixed releases and oversized archives. Missing secrets or verification failures fail deployment without replacing the live site. Errors are sanitized to avoid logging the private URL/password. Exports containing private source URLs/hostnames or credentials are rejected before publishing.
 
-The browser receives no export manifest URL or credential. It reads only public same-origin catalog paths. Public artist/license source links in credits are deliberately retained—they are attribution, not the private export source. Full music files, artwork, date provenance and credits become publicly downloadable once Pages deploys.
+The browser receives only public same-origin catalog paths, never export credentials or manifest URLs. Public artist/license source links are deliberately retained as attribution. Full music files, artwork, date provenance and credits become publicly downloadable after deployment.
 
-For local development, set the same environment variables privately (not in `website/public`), then run:
+For local development, set the secrets privately (not in `website/public`), then run:
 
 ```sh
 node website/download-catalog.mjs --output website/public/catalog
 pnpm --filter @libras/website dev
 ```
 
-To reproduce a release artifact locally, start without `website/public/catalog` (otherwise Vite copies it into the build and the downloader refuses to overwrite it):
+To reproduce a release locally, start without `website/public/catalog` (otherwise Vite copies it and the downloader refuses to overwrite it):
 
 ```sh
 BASE_PATH=/webapp/ pnpm build
@@ -84,10 +65,8 @@ cp -a website/dist/. pages/
 node website/verify-build.mjs --root pages
 ```
 
-`verify-build.mjs` checks the combined site structure, required catalog metadata and credits, PWA separation, and the 1 GiB size limit. Catalog schema and asset relationships are validated by the exporter, not repeated in these deployment scripts. A code-only build is useful for CI but is not a playable deployment until its catalog is present. Keep `catalog/credits.html`, machine-readable credits and licensing evidence with the published assets.
-
-PR CI builds both workspaces without accessing the private export source.
+`verify-build.mjs` checks all three HTML entry points, required catalog metadata and credits, PWA separation, a script-free landing page, and the 1 GiB size limit. The exporter validates catalog schema and asset relationships. A code-only build is not playable until its catalog is present. Keep credits and licensing evidence with published assets. PR CI builds both workspaces without private export access.
 
 ## Tests
 
-The tests here cover landing-page content without executing JavaScript, static icon references, CTA URLs, host-title and anchor preservation, viewport-listener cleanup, the embedded library, mobile dialog controls and single-instance resizing, client pagination, the real Network integration, aborts, artwork/audio URLs, original-format behavior, shared response parsing, same-origin media URL enforcement, no-op server queues, isolated in-memory preferences, preference reset and preconnected app bootstrap without service-worker registration. They use tiny synthetic metadata rather than contacting the export source.
+Tests cover static landing content and icons, demo CTA URLs, standalone demo bootstrap and cleanup, client pagination, Network integration, cancellation, artwork/audio URLs, original-format behavior, response parsing, same-origin asset enforcement, no-op server queues, in-memory preferences, account isolation, catalog retry and no service-worker registration. They use synthetic metadata rather than the export source. Optional browser tests cover page navigation, full-width desktop/mobile layout, playback and errors.

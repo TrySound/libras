@@ -6,7 +6,7 @@ const { chromium } = require("playwright");
 
 const base = `${(process.env.PREVIEW_URL ?? "http://127.0.0.1:5180").replace(/\/$/, "")}/`;
 
-test("website and embedded app own their presentation", async (t) => {
+test("static website links to the full-width standalone demo", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
     viewport: { width: 1440, height: 900 },
@@ -16,238 +16,69 @@ test("website and embedded app own their presentation", async (t) => {
   page.on("pageerror", (error) => errors.push(error.message));
   try {
     await page.goto(base);
-    const demo = page.locator("#live-demo-dialog");
-    await demo.locator(".app-root").waitFor();
-    const app = await demo.locator(".app-root").elementHandle();
-
-    await t.test("website layout overrides shared utilities on desktop", async () => {
-      const hero = await page.locator(".site-hero").evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { display: style.display, direction: style.flexDirection };
-      });
-      assert.deepEqual(hero, { display: "flex", direction: "column" });
-      assert.equal(await page.locator(".site-demo-launch").isVisible(), false);
-      assert.equal(await demo.isVisible(), true);
-      assert.equal(await demo.evaluate((element) => element.matches(":modal")), false);
-      assert.equal(
-        await page.locator("#main-content").count(),
-        1,
-        "only the host main owns the skip-link ID",
-      );
-      assert.equal(await page.locator(".site-skip-link").getAttribute("href"), "#main-content");
-      assert.equal(
-        await page.evaluate(() => getComputedStyle(document.documentElement).backgroundImage),
-        "none",
-        "the embedded canvas must not repaint the host document",
-      );
-      assert.equal(
-        await demo
-          .locator(".app-shell")
-          .evaluate((element) => getComputedStyle(element).overscrollBehavior),
-        "none",
-        "the embedded scroll owner disables boundary bounce",
-      );
-      assert.equal(
-        await page.evaluate(() => getComputedStyle(document.scrollingElement).overscrollBehavior),
-        "auto",
-        "the embedded app must not change the host's overscroll policy",
-      );
-    });
-
-    await t.test("website preloads the shared optional font assets", async () => {
-      await page.evaluate(() => document.fonts.ready);
-      const fonts = await page.evaluate(() => ({
-        preloads: [...document.querySelectorAll('link[rel="preload"][as="font"][crossorigin]')].map(
-          (link) => link.href,
-        ),
-        requests: performance
-          .getEntriesByType("resource")
-          .filter((entry) => entry.name.endsWith(".woff2"))
-          .map((entry) => entry.name),
-        displays: [...document.fonts].map((font) => font.display),
-      }));
-      assert.equal(fonts.preloads.length, 3);
-      assert.deepEqual(fonts.requests.sort(), fonts.preloads.sort());
-      assert.ok(
-        fonts.displays.length > 0 && fonts.displays.every((display) => display === "optional"),
-      );
-    });
-
-    await t.test("Now Playing stays inside the embedded app viewport", async () => {
-      await demo.locator(".tile a").first().click();
-      await demo
-        .locator(".viewport-panel")
-        .getByRole("button", { name: /^Play / })
-        .click();
-      await demo.getByRole("button", { name: "Open Now Playing", exact: true }).click();
-      const player = demo.locator("#player-dialog");
-      await player.waitFor();
-      assert.equal(
-        await player.evaluate((node) => {
-          const box = node.getBoundingClientRect();
-          const app = node.closest(".app-shell").getBoundingClientRect();
-          return (
-            Math.abs(box.x - app.x) < 1 &&
-            Math.abs(box.y - app.y) < 1 &&
-            Math.abs(box.width - app.width) < 1 &&
-            Math.abs(box.height - app.height) < 1 &&
-            node.scrollWidth <= node.clientWidth
-          );
-        }),
-        true,
-      );
-      await player.getByRole("button", { name: "Clear", exact: true }).click();
-      await player.waitFor({ state: "hidden" });
-      await demo
-        .getByRole("link", { name: "Libras home", exact: true })
-        .filter({ visible: true })
-        .click();
-    });
-
-    await t.test("mobile launch and modal preserve the mounted demo across resizing", async () => {
-      await page.setViewportSize({ width: 375, height: 812 });
-      await page.waitForFunction(() => !document.querySelector("#live-demo-dialog").open);
-      assert.equal(await demo.isVisible(), false);
-      assert.equal(await page.locator(".site-demo-launch").isVisible(), true);
-      await page.locator(".site-demo-launch").click();
-      assert.equal(await demo.evaluate((element) => element.matches(":modal")), true);
-      await page.getByRole("button", { name: "Close demo", exact: true }).click();
-      assert.equal(await demo.isVisible(), false);
-
-      await page.setViewportSize({ width: 1440, height: 900 });
-      await page.waitForFunction(() => document.querySelector("#live-demo-dialog").open);
-      assert.equal(await demo.isVisible(), true);
-      assert.equal(await page.locator(".site-demo-launch").isVisible(), false);
-      assert.equal(
-        await app.evaluate((element) => element === document.querySelector("#demo .app-root")),
-        true,
-      );
-    });
-
-    await t.test(
-      "Settings adapts to the narrow embedded app, not the desktop browser",
-      async () => {
-        assert.equal(await page.locator("#demo .app-sidebar").isVisible(), false);
-        await page.locator("#demo").getByRole("button", { name: "Open menu", exact: true }).click();
-        await page
-          .locator("#navigation-dialog")
-          .getByRole("link", { name: "Settings", exact: true })
-          .click();
-        await page.locator("#demo .settings-view").waitFor();
-        const geometry = await page.locator("#demo .settings-view").evaluate((element) => {
-          const server = element.querySelector("#settings-server").getBoundingClientRect();
-          const offline = element.querySelector("#settings-offline-card").getBoundingClientRect();
-          return {
-            stacked: offline.top >= server.bottom,
-            fits: element.scrollWidth <= element.clientWidth,
-          };
-        });
-        assert.deepEqual(geometry, { stacked: true, fits: true });
-        assert.equal(
-          await app.evaluate((element) => element === document.querySelector("#demo .app-root")),
-          true,
-        );
-      },
+    assert.equal(await page.locator("script, .app-root, .site-showcase, dialog").count(), 0);
+    assert.equal(
+      await page
+        .locator(".site-hero")
+        .evaluate((element) => getComputedStyle(element).flexDirection),
+      "column",
     );
-
-    await t.test("host anchors do not change the embedded app's active route", async () => {
-      await page.locator(".site-skip-link").focus();
-      await page.keyboard.press("Enter");
-      await page.waitForURL("**/#main-content");
-      await page.locator("#demo .settings-view").waitFor();
-      await page.locator("#demo").getByRole("button", { name: "Open menu", exact: true }).click();
+    await page.getByRole("link", { name: "Try live demo", exact: true }).click();
+    await page.waitForURL("**/demo/**");
+    await page.locator(".app-root.standalone .tile a").first().waitFor();
+    assert.equal(await page.locator(".website, [data-embedded], .site-demo-toolbar").count(), 0);
+    assert.equal(await page.locator(".app-sidebar").isVisible(), true);
+    const app = await page.locator(".app-root").elementHandle();
+    for (const width of [1440, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      const box = await page.locator(".app-root").boundingBox();
+      const availableWidth = await page.evaluate(() => document.body.clientWidth);
+      assert.ok(Math.abs(box.width - availableWidth) < 1);
       assert.equal(
-        await page
-          .locator("#navigation-dialog")
-          .getByRole("link", { name: "Settings", exact: true })
-          .getAttribute("aria-current"),
-        "page",
+        await app.evaluate((element) => element === document.querySelector(".app-root")),
+        true,
       );
-      await page.keyboard.press("Escape");
-    });
-
-    await t.test("website tokens and styles stop at the embedded application", async () => {
-      await page.evaluate(() => {
-        document.querySelector(".website").style.setProperty("--space-lg", "40px");
-        const island = document.createElement("section");
-        island.id = "app-website-fixture";
-        island.className = "app-root";
-        // Website selectors must not reach any app content, even with shared class names.
-        island.innerHTML =
-          '<div class="site-hero stack-lg"><button class="button" data-variant="primary">App control</button></div>';
-        document.querySelector(".website").append(island);
-      });
-      const island = await page.locator("#app-website-fixture > div").evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { display: style.display, minHeight: style.minHeight, gap: style.gap };
-      });
-      assert.deepEqual(island, { display: "grid", minHeight: "0px", gap: "24px" });
-      assert.equal(
-        await page
-          .locator(".site-hero")
-          .first()
-          .evaluate((element) => getComputedStyle(element).gap),
-        "40px",
-        "website token customization must not change the embedded theme",
-      );
-      assert.equal(
-        await page
-          .locator("#app-website-fixture .button")
-          .evaluate((element) => getComputedStyle(element).backgroundColor),
-        "rgb(129, 0, 0)",
-      );
-      await page.evaluate(() =>
-        document.querySelector(".website").style.removeProperty("--space-lg"),
-      );
-    });
+    }
+    await page.locator(".tile a").first().click();
+    await page
+      .locator(".viewport-panel")
+      .getByRole("button", { name: /^Play / })
+      .click();
+    await page.getByRole("button", { name: "Open Now Playing", exact: true }).click();
+    await page.locator("#player-dialog").waitFor();
+    assert.equal(
+      await page
+        .locator("#player-dialog")
+        .evaluate((element) => element.scrollWidth <= element.clientWidth),
+      true,
+    );
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
   }
 });
 
-test("embedded error notifications stay inside the app on desktop and mobile", async () => {
+test("standalone demo errors remain usable on desktop and mobile", async () => {
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({
-    viewport: { width: 1440, height: 1200 },
-    reducedMotion: "reduce",
-  });
+  const page = await browser.newPage({ reducedMotion: "reduce" });
   await page.route("**/catalog/search3.json", (route) =>
     route.fulfill({ status: 500, body: "Catalog unavailable" }),
   );
-  const assertBounds = async () => {
-    const geometry = await page.locator("#error-popover").evaluate((popover) => {
-      const app = document.querySelector(".app-root").getBoundingClientRect();
-      const box = popover.getBoundingClientRect();
-      return {
-        inside:
-          box.left >= app.left &&
-          box.right <= app.right &&
-          box.top >= app.top &&
-          box.bottom <= app.bottom,
-        scrolls: popover.scrollHeight > popover.clientHeight,
-      };
-    });
-    assert.deepEqual(geometry, { inside: true, scrolls: true });
-  };
   try {
-    await page.goto(base);
-    await page.getByRole("button", { name: "Show errors", exact: true }).click();
-    await page.locator("#error-popover").waitFor();
-    // Exercise the app-height limit as well as its inline bounds.
-    await page.locator("#error-popover [role=alert]").evaluate((message) => {
-      message.textContent = "Long server failure details. ".repeat(200);
-    });
-    await assertBounds();
-    await page.getByRole("button", { name: "Close errors", exact: true }).click();
-    await page.setViewportSize({ width: 375, height: 812 });
-    await page.waitForFunction(() => !document.querySelector("#live-demo-dialog").open);
-    await page.locator(".site-demo-launch").click();
-    await page.getByRole("button", { name: "Show errors", exact: true }).click();
-    await page.locator("#error-popover").waitFor();
-    await assertBounds();
-    await page.getByRole("button", { name: "Close errors", exact: true }).click();
-    assert.equal(await page.locator("#error-popover").isVisible(), false);
+    await page.goto(`${base}demo/`);
+    for (const width of [1440, 375]) {
+      await page.setViewportSize({ width, height: 812 });
+      await page.getByRole("button", { name: "Show errors", exact: true }).click();
+      await page.locator("#error-popover").waitFor();
+      assert.equal(
+        await page
+          .locator("#error-popover")
+          .evaluate((element) => element.scrollWidth <= element.clientWidth),
+        true,
+      );
+      await page.getByRole("button", { name: "Close errors", exact: true }).click();
+      assert.equal(await page.locator("#error-popover").isVisible(), false);
+    }
   } finally {
     await browser.close();
   }

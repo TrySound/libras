@@ -4,27 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#090b10" />
-    <link
-      rel="preload"
-      href="../src/fonts/rajdhani-500-latin.woff2"
-      as="font"
-      type="font/woff2"
-      crossorigin
-    />
-    <link
-      rel="preload"
-      href="../src/fonts/rajdhani-600-latin.woff2"
-      as="font"
-      type="font/woff2"
-      crossorigin
-    />
-    <link
-      rel="preload"
-      href="../src/fonts/rajdhani-700-latin.woff2"
-      as="font"
-      type="font/woff2"
-      crossorigin
-    />
     <meta
       name="description"
       content="Your own music library. Listen anywhere. Libras is a free, open-source player for your own music server. Listen in your browser, take music offline, and make yourself at home."
@@ -92,59 +71,8 @@
         </p>
         <div class="site-actions">
           <a class="button" href="/webapp/">Connect your server</a>
-          <button class="button mobile-only" commandfor="live-demo-dialog" command="show-modal">
-            Try live demo
-          </button>
-          <a class="button desktop-only" href="#live-demo">Try live demo</a>
+          <a class="button" href="%BASE_URL%demo/">Try live demo</a>
         </div>
-      </section>
-
-      <section class="site-showcase site-container" id="live-demo" aria-labelledby="demo-title">
-        <div class="site-showcase-copy stack-lg">
-          <h2 class="display-lg" id="demo-title">Try live demo</h2>
-          <p class="type-body text-muted">
-            A minimal interface. Choose an artist or album and start listening.
-          </p>
-          <button
-            class="button site-demo-launch"
-            commandfor="live-demo-dialog"
-            command="show-modal"
-            aria-haspopup="dialog"
-          >
-            Open full-screen demo
-          </button>
-          <noscript
-            ><p class="type-body text-muted">
-              Enable JavaScript to try the interactive music player.
-            </p></noscript
-          >
-        </div>
-        <dialog
-          id="live-demo-dialog"
-          class="site-demo-window site-demo-dialog"
-          closedby="closerequest"
-          aria-label="Libras live demo"
-        >
-          <div class="site-demo-toolbar">
-            <!-- position title in the center -->
-            <div class="icon-button visually-hidden" data-size="sm"></div>
-            <span class="type-body text-muted">Libras</span>
-            <div class="icon-button visually-hidden desktop-only" data-size="sm"></div>
-            <button
-              class="icon-button mobile-only"
-              data-size="sm"
-              data-variant="ghost"
-              aria-label="Close demo"
-              commandfor="live-demo-dialog"
-              command="close"
-            >
-              <svg aria-hidden="true" width="20" height="20">
-                <use href="#icon-cross"></use>
-              </svg>
-            </button>
-          </div>
-          <div id="demo" class="site-demo-frame" aria-label="Interactive Libras demo"></div>
-        </dialog>
       </section>
 
       <section
@@ -377,6 +305,5 @@
         </nav>
       </footer>
     </div>
-    <script type="module" src="/main.ts"></script>
   </body>
 </html>

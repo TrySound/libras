@@ -5,6 +5,14 @@ import { inlineSvgSprite } from "../build/inline-svg-sprite.ts";
 
 export default defineConfig({
   base: process.env.DEMO_BASE_PATH ?? "/",
+  build: {
+    rolldownOptions: {
+      input: {
+        website: fileURLToPath(new URL("./index.html", import.meta.url)),
+        demo: fileURLToPath(new URL("./demo/index.html", import.meta.url)),
+      },
+    },
+  },
   plugins: [
     inlineSvgSprite(),
     svelte(),
@@ -16,7 +24,7 @@ export default defineConfig({
         // used by the shared font CSS in development. Builds emit hashed URLs.
         const directory = normalizePath(fileURLToPath(new URL("../src/fonts/", import.meta.url)));
         const prefix = `${context.server!.config.base}@fs/${directory.replace(/^\//, "")}`;
-        return html.replaceAll('href="../src/fonts/', `href="${prefix}`);
+        return html.replace(/href="(?:\.\.\/)+src\/fonts\//g, `href="${prefix}`);
       },
     },
   ],

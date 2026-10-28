@@ -61,7 +61,7 @@ Explicit login validation uses its existing authenticated `ping()` request to ve
 
 Library synchronization reads OpenSubsonic structured `genres` on albums and tracks. Names and their order are preserved as supplied, including duplicates; delimiters such as `|` remain part of a name. Missing genres become empty arrays, without falling back to legacy `genre` strings. ArtistID3 has no genre fields, so artist records do not store genres. The artist page derives its genres from the artist's albums.
 
-Genre lists render on their own caption row, joined with ` · `, separate from counts, years, durations, and artist/album credits. Omit the row when genres are absent. Other metadata fields also use middle dots as separators; preserve punctuation inside supplied names and display credits.
+Genre lists render on their own caption row, joined with `·`, separate from counts, years, durations, and artist/album credits. Omit the row when genres are absent. Other metadata fields also use middle dots as separators; preserve punctuation inside supplied names and display credits.
 
 ### Artist credits
 
@@ -211,8 +211,9 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
 ```
 
 The website cascade suite uses the website server (`pnpm --filter @libras/website dev`)
-with its own URL. It checks desktop overrides, mobile demo launch/dismissal, mounted-node
-preservation on resize, and isolation between marketing and app styles:
+with its own URL and a local demo catalog. It checks the static landing page, navigation to
+`/demo/`, full-width desktop/mobile layout, mounted-node preservation on resize, playback,
+and error controls:
 
 ```sh
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5180 \
