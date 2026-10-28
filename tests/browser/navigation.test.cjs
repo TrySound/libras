@@ -155,11 +155,12 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
   }
 });
 
-test("navigation and resizing retain real playback and the queue", async () => {
+test("navigation, resizing, and Now Playing retain real playback and the queue", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
     viewport: { width: 1280, height: 800 },
     reducedMotion: "reduce",
+    hasTouch: true,
   });
   await page.addInitScript(() => {
     window.__audioInstances = [];
@@ -257,7 +258,9 @@ test("navigation and resizing retain real playback and the queue", async () => {
       (title) => document.querySelector(".mini-player strong")?.textContent === title,
       song.title,
     );
-    await page.waitForFunction(() => !window.__audioInstances[0].paused);
+    await page.waitForFunction(
+      () => !window.__audioInstances[0].paused && window.__audioInstances[0].currentTime > 0,
+    );
     await mini.getByRole("button", { name: "Pause", exact: true }).click();
     await page.waitForFunction(() => window.__audioInstances[0].paused);
     assert.equal(await mini.isVisible(), true, "pausing retains the active player");
@@ -345,12 +348,70 @@ test("navigation and resizing retain real playback and the queue", async () => {
       }),
       true,
     );
+    const dialog = page.locator("#player-dialog");
+    assert.equal(await dialog.locator(".track-row").count(), 2);
+    for (const [width, height] of [
+      [1280, 800],
+      [393, 852],
+      [900, 390],
+    ]) {
+      await page.setViewportSize({ width, height });
+      const layout = await dialog.evaluate((node) => {
+        const panel = node.querySelector(".viewport-panel").getBoundingClientRect();
+        const queue = node.querySelector('[aria-label="Queue"]').getBoundingClientRect();
+        return {
+          overflow: node.scrollWidth > node.clientWidth,
+          beside: queue.left >= panel.right,
+          cover: getComputedStyle(node.querySelector(".viewport-panel-cover")).display !== "none",
+        };
+      });
+      assert.equal(layout.overflow, false);
+      assert.equal(layout.beside, width > 800);
+      if (height < 400) assert.equal(layout.cover, false);
+    }
+    assert.equal(await transport.evaluate((audio) => !audio.paused), true);
+    assert.equal(await page.evaluate(() => window.__audioInstances.length), 1);
+
+    await page.setViewportSize({ width: 393, height: 852 });
+    await dialog.getByRole("button", { name: "Pause", exact: true }).click();
+    await page.waitForFunction(() => window.__audioInstances[0].paused);
+    const fullscreenSeek = dialog.getByRole("slider", { name: "Playback position", exact: true });
+    await fullscreenSeek.focus();
+    await page.keyboard.press("Home");
+    await page.waitForFunction(() => document.querySelector(".mini-player progress").value === 0);
+    await page.keyboard.press("ArrowRight");
+    await page.waitForFunction(() => document.querySelector(".mini-player progress").value > 0);
+    assert.ok(Number(await fullscreenSeek.inputValue()) > 0);
+    await dialog.getByRole("button", { name: "Play", exact: true }).click();
+    await page.waitForFunction(() => !window.__audioInstances[0].paused);
+
+    await dialog.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await page.evaluate(() => {
+      const header = document.querySelector("#player-dialog .topbar");
+      const touch = (y) => new Touch({ identifier: 1, target: header, clientX: 80, clientY: y });
+      header.dispatchEvent(new TouchEvent("touchstart", { bubbles: true, touches: [touch(30)] }));
+      header.dispatchEvent(
+        new TouchEvent("touchmove", { bubbles: true, cancelable: true, touches: [touch(250)] }),
+      );
+      header.dispatchEvent(
+        new TouchEvent("touchend", {
+          bubbles: true,
+          cancelable: true,
+          changedTouches: [touch(250)],
+        }),
+      );
+    });
+    assert.equal(await dialog.isVisible(), false);
+    assert.equal(await transport.evaluate((audio) => !audio.paused), true);
+    await mini.getByRole("button", { name: "Open Now Playing", exact: true }).click();
+    await dialog.getByRole("button", { name: "Clear", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await dialog.getByText("The queue is empty.", { exact: true }).waitFor();
     assert.equal(
-      await page
-        .locator('#player-dialog [aria-label="Queue"] p.metadata')
-        .textContent()
-        .then((text) => text.trim()),
-      "2 tracks",
+      await dialog.getByRole("button", { name: "Play", exact: true }).isDisabled(),
+      true,
     );
   } finally {
     await browser.close();

@@ -166,7 +166,7 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   expect(albumRows[1].querySelector('[aria-label="Actions for Second track"]')).not.toBeNull();
 });
 
-it("keeps queue occurrence indexes and playback controls when offline rows are filtered", async () => {
+it("keeps queue occurrence indexes when offline rows are filtered", async () => {
   installDisk();
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
@@ -191,31 +191,13 @@ it("keeps queue occurrence indexes and playback controls when offline rows are f
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const playback = mocks.options!.playback;
-  const playIndex = vi.spyOn(playback, "playIndex").mockResolvedValue();
-  const seek = vi.spyOn(playback, "seek").mockResolvedValue();
+  const playIndex = vi.spyOn(mocks.options!.playback, "playIndex").mockResolvedValue();
   const rows = [...target.querySelectorAll('[aria-label="Queue"] .track-row')];
   expect(rows).toHaveLength(2);
   expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual([null, "true"]);
   (rows[1].querySelector("button") as HTMLButtonElement).click();
   expect(playIndex).toHaveBeenCalledWith(3);
   expect(cache.queue.tracks).toEqual(["missing", "one", "two", "one"]);
-  const slider = target.querySelector<HTMLInputElement>("#player-dialog .seek")!;
-  expect(slider.disabled).toBe(false);
-  expect(slider.getAttribute("aria-valuetext")).toBe("0:15 of 2:00");
-  slider.value = "30";
-  slider.dispatchEvent(new Event("input", { bubbles: true }));
-  expect(seek).toHaveBeenCalledWith(30);
-  const dialog = target.querySelector("#player-dialog")!;
-  expect(dialog.querySelector<HTMLButtonElement>('[aria-label="Next"]')!.disabled).toBe(true);
-  const clear = vi.spyOn(playback, "clearQueue");
-  [...dialog.querySelectorAll("button")].find((button) => button.textContent === "Clear")!.click();
-  flushSync();
-  expect(clear).toHaveBeenCalledOnce();
-  expect(cache.queue.tracks).toEqual([]);
-  expect(dialog.textContent).toContain("The queue is empty.");
-  expect(dialog.querySelector<HTMLButtonElement>('[aria-label="Play"]')!.disabled).toBe(true);
-  expect(dialog.querySelector<HTMLInputElement>(".seek")).toBe(slider);
 });
 
 it("restores downloads silently without flashing the empty state", () => {

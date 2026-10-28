@@ -219,17 +219,10 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/settings.test.cjs
 ```
 
-The Now Playing browser check uses real audio with an intercepted silent WAV. It covers
-seeking, duplicate queue selection, responsive artwork/layout, native focus restoration,
-swipe dismissal, queue clearing, and uninterrupted audio across resize and dismissal:
-
-```sh
-NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
-  node --test tests/browser/now-playing.test.cjs
-```
-
-The navigation shell's native drawer, active deep links, CSS responsive visibility, document
-scrolling, and enlarged-text layout have a separate browser check:
+The navigation browser suite covers the native drawer, active deep links, responsive
+visibility, document scrolling, and enlarged text. Its real-audio scenario also checks
+Now Playing layout, seeking, native focus restoration, swipe dismissal, queue clearing,
+and uninterrupted playback across navigation and resizing:
 
 ```sh
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
