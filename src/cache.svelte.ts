@@ -502,11 +502,6 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
   const artists = entityMap(artistsList);
   const albums = entityMap(snapshot?.albums ?? []);
   const tracks = entityMap(snapshot?.tracks ?? []);
-  const artistAlbums = groupBy(
-    albums.values(),
-    (album) => album.artistIds,
-    (a, b) => (a.year ?? Infinity) - (b.year ?? Infinity) || a.title.localeCompare(b.title),
-  );
   const albumTracks = groupBy(
     tracks.values(),
     (track) => [track.albumId],
@@ -514,6 +509,16 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
       (a.disc ?? 1) - (b.disc ?? 1) ||
       (a.number ?? Infinity) - (b.number ?? Infinity) ||
       a.title.localeCompare(b.title),
+  );
+  // Track-only contributors should also be able to browse their appearances.
+  // groupBy deduplicates credits without changing the album's stored artists.
+  const artistAlbums = groupBy(
+    albums.values(),
+    (album) => [
+      ...album.artistIds,
+      ...(albumTracks.get(album.id) ?? []).flatMap((track) => track.artistIds),
+    ],
+    (a, b) => (a.year ?? Infinity) - (b.year ?? Infinity) || a.title.localeCompare(b.title),
   );
   return {
     savedAt: snapshot?.savedAt,

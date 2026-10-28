@@ -36,7 +36,7 @@ describe("cached library", () => {
     await cache.load();
     expect([...cache.artists.values()].map((item) => item.id)).toEqual(["a", "b"]);
     expect(cache.artistAlbums.get("a")?.map((item) => item.id)).toEqual(["earlier", "later"]);
-    expect(cache.artistAlbums.get("b")?.map((item) => item.id)).toEqual(["later"]);
+    expect(cache.artistAlbums.get("b")?.map((item) => item.id)).toEqual(["earlier", "later"]);
     expect(cache.albums.get("later")?.artistIds).toEqual(["b", "a", "b"]);
     expect(cache.tracks.get("second")?.artistIds).toEqual(["b", "a"]);
     expect(cache.albumTracks.get("earlier")?.map((item) => item.id)).toEqual(["first", "second"]);
@@ -45,6 +45,25 @@ describe("cached library", () => {
     expect(cache.albumTracks.get("missing")).toBeUndefined();
     expect(cache.albumTracks.get("earlier")?.[0]).toBe(cache.tracks.get("first"));
     expect(JSON.parse(await storage.files.get(await snapshotPath(account))!.text())).toEqual(data);
+    expect(storage.writes).toBe(0);
+  });
+
+  it("indexes track-only appearances once without changing album credits", async () => {
+    const storage = installMetadataStorage();
+    const data = snapshot();
+    data.artists.push({ id: "guest", name: "Guest" });
+    data.tracks = [
+      { ...data.tracks[0], artistIds: ["guest", "guest"] },
+      { ...data.tracks[0], id: "second", artistIds: ["guest", "artist"] },
+    ];
+    await storage.seed(account, data);
+    const cache = new Cache(getAccountKey(account));
+    await cache.load();
+
+    expect(cache.artistAlbums.get("guest")?.map((album) => album.id)).toEqual(["album"]);
+    expect(cache.artistAlbums.get("artist")?.map((album) => album.id)).toEqual(["album"]);
+    expect(cache.artistAlbums.get("guest")?.[0]).toBe(cache.albums.get("album"));
+    expect(cache.albums.get("album")?.artistIds).toEqual(["artist"]);
     expect(storage.writes).toBe(0);
   });
 
