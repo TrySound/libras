@@ -68,8 +68,7 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
         true,
       );
       await player.getByRole("button", { name: "Clear", exact: true }).click();
-      await player.getByRole("button", { name: "Close player", exact: true }).click();
-      assert.equal(await player.isVisible(), false);
+      await player.waitFor({ state: "hidden" });
       await demo
         .getByRole("link", { name: "Libras home", exact: true })
         .filter({ visible: true })

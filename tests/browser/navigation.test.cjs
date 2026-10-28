@@ -411,11 +411,9 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
     await mini.getByRole("button", { name: "Open Now Playing", exact: true }).click();
     await dialog.getByRole("button", { name: "Clear", exact: true }).focus();
     await page.keyboard.press("Enter");
-    await dialog.getByText("The queue is empty.", { exact: true }).waitFor();
-    assert.equal(
-      await dialog.getByRole("button", { name: "Play", exact: true }).isDisabled(),
-      true,
-    );
+    await dialog.waitFor({ state: "hidden" });
+    assert.equal(await mini.count(), 0);
+    assert.equal(await transport.evaluate((audio) => audio.paused), true);
   } finally {
     await browser.close();
   }

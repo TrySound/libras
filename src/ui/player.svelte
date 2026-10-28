@@ -244,7 +244,10 @@
               class="button"
               data-size="text"
               data-variant="secondary"
-              onclick={() => playback.clearQueue()}>Clear</button
+              onclick={(event) => {
+                event.currentTarget.closest("dialog")?.close();
+                playback.clearQueue();
+              }}>Clear</button
             >
           {/if}
         </div>
