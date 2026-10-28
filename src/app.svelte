@@ -6,7 +6,7 @@
   import { Playlists } from "./playlists.svelte";
   import AudioPlayer from "./audio-player.svelte";
   import Player from "./ui/player.svelte";
-  import { formatDuration } from "./time";
+  import NowPlaying from "./ui/now-playing.svelte";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
@@ -16,9 +16,7 @@
   import type WebappUpdater from "./webapp-updater.svelte";
   import type { AuthStore } from "./auth";
   import { Covers } from "./covers.svelte";
-  import Artwork from "./artwork.svelte";
-  import type { Album as AlbumRecord, Artist as ArtistRecord } from "./schema";
-  import { Cache, type Immutable } from "./cache.svelte";
+  import { Cache } from "./cache.svelte";
   import { Session } from "./session.svelte";
   import type { Network } from "./network.svelte";
   import Router, { isCurrentPage, navigate, type RouteParams } from "./router.svelte";
@@ -38,9 +36,6 @@
   let navigationDrawer: HTMLDialogElement;
   let navigationOpen = $state(false);
 
-  type Album = Immutable<AlbumRecord>;
-  type Artist = Immutable<ArtistRecord>;
-
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
 
@@ -56,22 +51,10 @@
     void cache;
     return newSearchState();
   });
-  const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
-  const playerArtist = $derived(currentTrack && cache.artists.get(currentTrack.artistIds[0]));
-  const playerAlbum = $derived(currentTrack && cache.albums.get(currentTrack.albumId));
-  const playerAlbumArtist = $derived(playerAlbum && cache.artists.get(playerAlbum.artistIds[0]));
   const hasNextTrack = $derived(
     cache.queue.index >= 0 && cache.queue.index < cache.queue.tracks.length - 1,
   );
   const hasPreviousTrack = $derived(cache.queue.index > 0);
-  let queue = $derived(
-    cache.queue.tracks.flatMap((id, index) => {
-      const track = cache.tracks.get(id);
-      return track && (!offlineMode || trackEngine.getStatus(id) === "downloaded")
-        ? [{ track, index }]
-        : [];
-    }),
-  );
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
   const trackEngine = new TrackEngine({ selection });
@@ -98,7 +81,6 @@
   const offlineMode = $derived(session.offlineMode);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);
-  const playbackDuration = $derived(player?.duration || currentTrack?.duration || 0);
   let playbackLoading = $derived(
     ["loading", "buffering", "seeking"].includes(player?.status ?? "idle"),
   );
@@ -144,14 +126,6 @@
     const savedAuth = session.start();
     if (!savedAuth && cache.key === undefined) navigate("/settings", "replace");
   });
-
-  function artistPath(artist: Artist) {
-    return `/library/artist/${encodeURIComponent(artist.id)}`;
-  }
-
-  function albumPath(artist: Artist, album: Album) {
-    return `${artistPath(artist)}/album/${encodeURIComponent(album.id)}`;
-  }
 </script>
 
 <AudioPlayer
@@ -406,199 +380,8 @@
         {@render navigation()}
       </div>
     </dialog>
+    <NowPlaying {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
   </div>
-
-  <dialog id="player-dialog" class="player-dialog" closedby="any" data-swipedown="close">
-    <header class="topbar wings">
-      <button
-        class="icon-button"
-        data-size="md"
-        data-variant="ghost"
-        commandfor="player-dialog"
-        command="close"
-        title="Close player"><Icon name="chevron-down" /></button
-      >
-    </header>
-
-    <section class="player-view">
-      <div class="player-main">
-        <Artwork {covers} id={currentTrack?.artworkId} size="stretch" loading="eager" />
-
-        <div class="view player-content">
-          {#if currentTrack}
-            <p class="type-body">
-              <strong class="type-heading">{currentTrack.title}</strong>
-              <br />
-              {#if playerArtist}
-                <a
-                  class="text-link"
-                  href={`#${artistPath(playerArtist)}`}
-                  onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-                >
-                  {currentTrack.displayArtist ?? playerArtist.name}
-                </a>
-              {:else}
-                {currentTrack.displayArtist}
-              {/if}
-              —
-              {#if playerAlbum && playerAlbumArtist}
-                <a
-                  class="text-link"
-                  href={`#${albumPath(playerAlbumArtist, playerAlbum)}`}
-                  onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-                >
-                  {playerAlbum.title}
-                </a>
-              {:else}
-                {playerAlbum?.title}
-              {/if}
-            </p>
-            {#if currentTrack.genres.length > 0}
-              <div class="row-wrap-sm">
-                {#each currentTrack.genres as genre}
-                  <span class="chip type-caption">{genre}</span>
-                {/each}
-              </div>
-            {/if}
-          {/if}
-
-          <div class="playback-progress">
-            <input
-              class="playback-slider"
-              type="range"
-              min="0"
-              max={Number.isFinite(playbackDuration) ? playbackDuration : 0}
-              step="0.1"
-              value={Math.min(cache.queue.position, playbackDuration)}
-              disabled={!playbackDuration ||
-                (offlineMode &&
-                  currentTrack &&
-                  trackEngine.getStatus(currentTrack.id) !== "downloaded")}
-              oninput={(event) => playback.seek(event.currentTarget.valueAsNumber)}
-            />
-            <div class="playback-time type-caption">
-              <span>{formatDuration(cache.queue.position)}</span>
-              <span>{formatDuration(playbackDuration)}</span>
-            </div>
-          </div>
-
-          <div class="controls">
-            <button
-              class="icon-button"
-              data-size="md"
-              data-variant="neutral"
-              onclick={() => playback.previous()}
-              disabled={!hasPreviousTrack && cache.queue.position <= 0}
-              title="Previous"><Icon name="previous" /></button
-            >
-            <button
-              class="icon-button"
-              data-size="lg"
-              data-variant="primary"
-              onclick={() => playback.toggle()}
-              disabled={queue.length === 0}
-              title={player?.playing ? "Pause" : "Play"}
-            >
-              {#if playbackLoading}
-                <Icon name="loading" size="lg" />
-              {:else if player?.playing}
-                <Icon name="pause" size="lg" />
-              {:else}
-                <Icon name="play" size="lg" />
-              {/if}
-            </button>
-            <button
-              class="icon-button"
-              data-size="md"
-              data-variant="neutral"
-              onclick={() => playback.next()}
-              disabled={!hasNextTrack}
-              title="Next"><Icon name="next" /></button
-            >
-          </div>
-        </div>
-      </div>
-
-      <div class="player-queue stack-md">
-        <div class="view row-md">
-          <div class="stack-xs grow">
-            <span class="type-eyebrow text-muted">Up next</span>
-            <h2 class="type-heading">
-              {queue.length} track{queue.length === 1 ? "" : "s"}
-            </h2>
-          </div>
-          {#if cache.queue.tracks.length > 0}
-            <button
-              class="button"
-              data-size="sm"
-              data-variant="neutral"
-              onclick={() => playback.clearQueue()}>Clear</button
-            >
-          {/if}
-        </div>
-        {#if queue.length > 0}
-          <div class="wings">
-            {#each queue as { track, index }, visibleIndex}
-              {@const downloadStatus = trackEngine.getStatus(track.id)}
-              {@const credit =
-                track.displayArtist?.trim() ||
-                track.artistIds
-                  .map((id) => cache.artists.get(id)?.name)
-                  .filter(Boolean)
-                  .join(", ")}
-              <div class="wings-item row-button">
-                <button
-                  class="linkarea"
-                  aria-label={`Play ${track.title}`}
-                  onclick={() => playback.playIndex(index)}
-                ></button>
-                <span class="track-leading">
-                  {#if index === cache.queue.index && playbackLoading}
-                    <span role="img" aria-label="Loading playback">
-                      <Icon name="loading" />
-                    </span>
-                  {:else if index === cache.queue.index && player?.playing}
-                    <span role="img" aria-label="Playing">
-                      <Icon name="sound-bars" />
-                    </span>
-                  {:else if index === cache.queue.index}
-                    <span role="img" aria-label="Current track, not playing">
-                      <Icon name="pause" />
-                    </span>
-                  {:else if downloadStatus === "downloading"}
-                    <span role="img" aria-label="Downloading">
-                      <Icon name="loading" />
-                    </span>
-                  {:else if downloadStatus === "queued"}
-                    <span role="img" aria-label="Queued for download">
-                      <Icon name="clock" />
-                    </span>
-                  {:else}
-                    {String(visibleIndex + 1).padStart(2, "0")}
-                  {/if}
-                </span>
-                <span class="stack-xs grow">
-                  <span class="truncate">{track.title}</span>
-                  {#if credit}
-                    <small class="type-small text-muted truncate">{credit}</small>
-                  {/if}
-                </span>
-                {#if track.duration !== undefined}
-                  <span class="type-small text-muted text-right"
-                    >{formatDuration(track.duration)}</span
-                  >
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {:else if cache.queue.tracks.length > 0}
-          <p class="view type-body text-muted">No available tracks.</p>
-        {:else}
-          <p class="view type-body text-muted">The queue is empty.</p>
-        {/if}
-      </div>
-    </section>
-  </dialog>
 
   {#if Updater}
     <Updater bind:this={updater} />

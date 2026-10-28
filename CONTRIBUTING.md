@@ -140,6 +140,11 @@ To test updates, leave the installed app open, rebuild, and return to it. **Upda
 - Artist and album routes keep their markup inline, sharing layout and overlay styles.
   Preserve offline filtering, ordered playback, and collection/track action scope.
   Cover height budgeting and route-owned atmosphere are CSS-only.
+- Now Playing (`src/ui/now-playing.svelte`) is a native fullscreen dialog using the shared
+  split layout, artwork budget, seek, transports, and queue rows. The dialog alone scrolls;
+  embedded instances stay anchored and budgeted to their app viewport. Queue selection uses
+  original occurrence indexes, not filtered row indexes. App retains Session/AudioPlayer ownership;
+  opening, dismissal, navigation, and resizing must not restart audio.
 - Edgerunner components live in `src/ui/`; legacy components remain in place until their
   consumers migrate. The new artwork presentation delegates loading/URL ownership to Covers,
   and resolves optional IDs from the current library without changing saved download metadata.
@@ -212,6 +217,15 @@ preferences and cached metadata surviving reload:
 ```sh
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/settings.test.cjs
+```
+
+The Now Playing browser check uses real audio with an intercepted silent WAV. It covers
+seeking, duplicate queue selection, responsive artwork/layout, native focus restoration,
+swipe dismissal, queue clearing, and uninterrupted audio across resize and dismissal:
+
+```sh
+NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
+  node --test tests/browser/now-playing.test.cjs
 ```
 
 The navigation shell's native drawer, active deep links, CSS responsive visibility, document

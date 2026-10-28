@@ -347,7 +347,7 @@ test("navigation and resizing retain real playback and the queue", async () => {
     );
     assert.equal(
       await page
-        .locator(".player-queue h2")
+        .locator('#player-dialog [aria-label="Queue"] p.metadata')
         .textContent()
         .then((text) => text.trim()),
       "2 tracks",

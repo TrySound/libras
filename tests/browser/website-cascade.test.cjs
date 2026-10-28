@@ -29,11 +29,51 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
       assert.equal(await page.locator(".site-demo-launch").isVisible(), false);
       assert.equal(await demo.isVisible(), true);
       assert.equal(await demo.evaluate((element) => element.matches(":modal")), false);
-      assert.equal(await page.locator("#main-content").count(), 1, "only the host main owns the skip-link ID");
+      assert.equal(
+        await page.locator("#main-content").count(),
+        1,
+        "only the host main owns the skip-link ID",
+      );
       assert.equal(await page.locator(".site-skip-link").getAttribute("href"), "#main-content");
-      assert.equal(await page.evaluate(() =>
-        getComputedStyle(document.documentElement).getPropertyValue("--canvas-bg").trim()
-      ), "", "the embedded canvas must not repaint the host document");
+      assert.equal(
+        await page.evaluate(() =>
+          getComputedStyle(document.documentElement).getPropertyValue("--canvas-bg").trim(),
+        ),
+        "",
+        "the embedded canvas must not repaint the host document",
+      );
+    });
+
+    await t.test("Now Playing stays inside the embedded app viewport", async () => {
+      await demo.locator(".tile a").first().click();
+      await demo
+        .locator(".viewport-panel")
+        .getByRole("button", { name: /^Play / })
+        .click();
+      await demo.getByRole("button", { name: "Open Now Playing", exact: true }).click();
+      const player = demo.locator("#player-dialog");
+      await player.waitFor();
+      assert.equal(
+        await player.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          const app = node.closest(".app-shell").getBoundingClientRect();
+          return (
+            Math.abs(box.x - app.x) < 1 &&
+            Math.abs(box.y - app.y) < 1 &&
+            Math.abs(box.width - app.width) < 1 &&
+            Math.abs(box.height - app.height) < 1 &&
+            node.scrollWidth <= node.clientWidth
+          );
+        }),
+        true,
+      );
+      await player.getByRole("button", { name: "Clear", exact: true }).click();
+      await player.getByRole("button", { name: "Close player", exact: true }).click();
+      assert.equal(await player.isVisible(), false);
+      await demo
+        .getByRole("link", { name: "Libras home", exact: true })
+        .filter({ visible: true })
+        .click();
     });
 
     await t.test("mobile launch and modal preserve the mounted demo across resizing", async () => {
@@ -88,7 +128,13 @@ test("website overrides coexist with scoped legacy and Edgerunner styles", async
       await page.waitForURL("**/#main-content");
       await page.locator("#demo .settings-view").waitFor();
       await page.locator("#demo").getByRole("button", { name: "Open menu", exact: true }).click();
-      assert.equal(await page.locator("#navigation-dialog").getByRole("link", { name: "Settings", exact: true }).getAttribute("aria-current"), "page");
+      assert.equal(
+        await page
+          .locator("#navigation-dialog")
+          .getByRole("link", { name: "Settings", exact: true })
+          .getAttribute("aria-current"),
+        "page",
+      );
       await page.keyboard.press("Escape");
     });
 
@@ -133,8 +179,11 @@ test("embedded error notifications stay inside the app on desktop and mobile", a
       const app = document.querySelector(".app-root").getBoundingClientRect();
       const box = popover.getBoundingClientRect();
       return {
-        inside: box.left >= app.left && box.right <= app.right &&
-          box.top >= app.top && box.bottom <= app.bottom,
+        inside:
+          box.left >= app.left &&
+          box.right <= app.right &&
+          box.top >= app.top &&
+          box.bottom <= app.bottom,
         scrolls: popover.scrollHeight > popover.clientHeight,
       };
     });

@@ -968,16 +968,22 @@
     min-inline-size: 0;
     block-size: max(
       0px,
-      calc(100dvh - var(--topbar-min-height) - 5rem - 2 * var(--content-padding-block))
+      var(
+        --panel-height,
+        calc(100dvh - var(--topbar-min-height) - 5rem - 2 * var(--content-padding-block))
+      )
     );
 
     @container app (width > 50rem) {
-      block-size: max(0px, calc(100dvh - 5rem - 2 * var(--content-padding-block)));
+      block-size: max(
+        0px,
+        var(--panel-height, calc(100dvh - 5rem - 2 * var(--content-padding-block)))
+      );
     }
 
     @container (width > 50rem) {
       position: sticky;
-      inset-block-start: var(--content-padding-block);
+      inset-block-start: var(--panel-top, var(--content-padding-block));
     }
   }
 
@@ -1556,6 +1562,87 @@
     }
   }
 
+  /* Fullscreen presentation from libras-new. Only the native dialog scrolls;
+   * the embedded variant below keeps the host's viewport and size budget. */
+  :where(:scope, *).large-player {
+    box-sizing: border-box;
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    inline-size: 100%;
+    block-size: 100dvh;
+    max-inline-size: none;
+    max-block-size: none;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--canvas-bg);
+    background-attachment: local;
+    color: var(--text-primary);
+    overflow: auto;
+    overscroll-behavior: contain;
+    container: playback / size;
+    translate: 0 var(--swipe-offset, 0px);
+
+    &::backdrop {
+      background: transparent;
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      translate: 0 100%;
+      pointer-events: none;
+      transition:
+        translate var(--motion-duration-exit) var(--motion-ease-exit),
+        display var(--motion-duration-exit),
+        overlay var(--motion-duration-exit);
+      transition-behavior: allow-discrete;
+
+      &::backdrop {
+        pointer-events: none;
+      }
+      &[open] {
+        translate: 0 var(--swipe-offset, 0px);
+        pointer-events: auto;
+        transition-duration: var(--motion-duration-enter);
+        transition-timing-function: var(--motion-ease-enter);
+      }
+      &[open]::backdrop {
+        pointer-events: auto;
+      }
+      @starting-style {
+        &[open] {
+          translate: 0 100%;
+        }
+      }
+    }
+
+    &[data-dragging] {
+      transition: none;
+    }
+  }
+
+  .large-player-stage {
+    position: relative;
+    isolation: isolate;
+    min-block-size: 100%;
+  }
+
+  .large-player-content {
+    --large-player-padding-end: max(var(--content-padding-block), env(safe-area-inset-bottom));
+    --panel-height: calc(
+      100cqh - var(--topbar-min-height) - var(--content-padding-block) -
+        var(--large-player-padding-end)
+    );
+    --panel-top: calc(var(--topbar-min-height) + var(--content-padding-block));
+    box-sizing: border-box;
+    position: relative;
+    min-block-size: calc(100cqh - var(--topbar-min-height));
+    padding: var(--content-padding-block) var(--content-padding-inline)
+      var(--large-player-padding-end);
+  }
+
   /* Route-owned decoration fills the positioned shell behind content and chrome. */
   .atmosphere {
     position: absolute;
@@ -1699,6 +1786,12 @@
     .app-status-actions {
       position: absolute;
     }
+  }
+  .large-player {
+    position-anchor: --app-shell;
+    inset: anchor(top) auto auto anchor(left);
+    inline-size: anchor-size(width);
+    block-size: anchor-size(height);
   }
   .right-sheet {
     position-anchor: --app-shell;

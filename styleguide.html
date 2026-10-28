@@ -702,7 +702,7 @@
                 ></progress>
                 <button
                   class="button-quiet row-sm"
-                  commandfor="guide-dialog"
+                  commandfor="guide-player"
                   command="show-modal"
                   aria-label="Open Now Playing specimen"
                   aria-describedby="guide-track-title guide-track-artist"
@@ -789,6 +789,111 @@
         </p>
       </footer>
     </main>
+
+    <dialog
+      id="guide-player"
+      class="ui-edgerunner large-player"
+      closedby="any"
+      aria-labelledby="guide-playing-title"
+    >
+      <div class="large-player-stage">
+        <header class="topbar row-md row-justify">
+          <span class="dialog-handle" aria-hidden="true"></span>
+          <h2 id="guide-playing-title" class="heading-md uppercase">Now Playing</h2>
+          <button
+            class="button"
+            commandfor="guide-player"
+            command="close"
+            aria-label="Close player specimen"
+          >
+            <svg width="24" height="24" aria-hidden="true">
+              <use href="#icon-chevron-down"></use>
+            </svg>
+          </button>
+        </header>
+        <section class="split-layout large-player-content">
+          <div class="viewport-panel">
+            <span class="artwork viewport-panel-cover" data-size="cover" aria-hidden="true">
+              <svg class="artwork-placeholder" width="96" height="96" aria-hidden="true">
+                <use href="#icon-music"></use>
+              </svg>
+            </span>
+            <div class="stack-lg">
+              <div class="stack-xs">
+                <h2 class="heading-xl">A long track title with missing artwork</h2>
+                <p class="caption text-secondary">Artist and guest artist — Album title</p>
+              </div>
+              <div class="stack-md">
+                <div>
+                  <input
+                    class="seek"
+                    type="range"
+                    min="0"
+                    max="200"
+                    value="102"
+                    style="--progress: 51%"
+                    aria-label="Fullscreen playback position specimen"
+                    aria-valuetext="1:42 of 3:20"
+                  />
+                  <div class="row-sm row-justify metadata text-subtle">
+                    <span>1:42</span><span>3:20</span>
+                  </div>
+                </div>
+                <div class="row-md row-center">
+                  <button class="button" data-size="lg" aria-label="Previous specimen" disabled>
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-previous"></use>
+                    </svg>
+                  </button>
+                  <button
+                    class="button"
+                    data-size="lg"
+                    data-variant="primary"
+                    aria-label="Play fullscreen specimen"
+                  >
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-play"></use>
+                    </svg>
+                  </button>
+                  <button class="button" data-size="lg" aria-label="Next specimen">
+                    <svg width="24" height="24" aria-hidden="true">
+                      <use href="#icon-next"></use>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="stack-lg scroll-runway">
+            <h2 class="heading-lg uppercase">Up next</h2>
+            <p class="body">Presentation specimen only; controls do not start audio.</p>
+            <div class="stack-sm">
+              <div class="menu-item track-row" aria-current="true">
+                <span class="track-row-number metadata text-subtle">01</span>
+                <div>
+                  <p class="label">A long track title with missing artwork</p>
+                  <p class="caption text-secondary">Artist and guest artist</p>
+                </div>
+                <button class="button-quiet link-target" aria-label="Play queued specimen"></button>
+                <div class="row-sm"><span class="metadata text-subtle">3:20</span></div>
+              </div>
+              <div class="menu-item track-row">
+                <span class="track-row-number metadata text-subtle">02</span>
+                <div>
+                  <p class="label">Another track</p>
+                  <p class="caption text-secondary">Guest artist</p>
+                </div>
+                <button
+                  class="button-quiet link-target"
+                  aria-label="Play another queued specimen"
+                ></button>
+                <div class="row-sm"><span class="metadata text-subtle">4:32</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </dialog>
 
     <dialog
       id="guide-navigation"

@@ -293,7 +293,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     assert.notEqual(await checkAtmosphere(), artistBackground);
     await page.locator('a[href="#/library"]').filter({ visible: true }).first().click();
     await page.locator(".library-view").waitFor();
-    assert.equal(await page.locator(".atmosphere").count(), 0);
+    assert.equal(await page.locator(".app-page .atmosphere").count(), 0);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
