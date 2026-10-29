@@ -28,6 +28,48 @@ async function mockDeezer(page, unavailable = false) {
     album: { id: 59667692 },
     preview: "https://cdnt-preview.dzcdn.net/archive-fixture.mp3",
   }));
+  const additionalAlbums = [
+    {
+      id: 320369597,
+      title: "Fantasies",
+      artist: { id: 956, name: "Metric" },
+      firstId: 1758502927,
+      step: 10,
+      count: 10,
+      firstTitle: "Help I'm Alive",
+    },
+    {
+      id: 14879699,
+      title: "OK Computer",
+      artist: { id: 399, name: "Radiohead" },
+      firstId: 138539971,
+      step: 2,
+      count: 12,
+      firstTitle: "Airbag",
+    },
+    {
+      id: 355921,
+      title: "xx",
+      artist: { id: 261212, name: "The xx" },
+      firstId: 3787855,
+      step: 1,
+      count: 11,
+      firstTitle: "Intro",
+    },
+  ].map(({ firstId, step, count, firstTitle, ...album }) => ({
+    ...album,
+    tracks: {
+      data: Array.from({ length: count }, (_, index) => ({
+        id: firstId + index * step,
+        title: index === 0 ? firstTitle : `Fixture track ${index + 1}`,
+        explicit_lyrics: false,
+        readable: true,
+        artist: album.artist,
+        album: { id: album.id },
+        preview: "https://cdnt-preview.dzcdn.net/fixture.mp3",
+      })),
+    },
+  }));
   await page.route("https://api.deezer.com/**", (route) => {
     if (unavailable) return route.fulfill({ status: 500, body: "Unavailable" });
     const url = new URL(route.request().url());
@@ -41,11 +83,14 @@ async function mockDeezer(page, unavailable = false) {
         artist: archiveArtist,
         tracks: { data: archiveTracks },
       },
+      ...additionalAlbums,
     ];
     const album = albums.find((album) => url.pathname === `/album/${album.id}`);
     const data = album
       ? { ...album, cover_medium: "https://cdn-images.dzcdn.net/fixture.svg" }
-      : [...tracks, ...archiveTracks].find((track) => url.pathname === `/track/${track.id}`);
+      : albums
+          .flatMap((album) => album.tracks.data)
+          .find((track) => url.pathname === `/track/${track.id}`);
     return route.fulfill({
       contentType: "text/javascript",
       body: `${callback}(${JSON.stringify(data)})`,
@@ -82,6 +127,10 @@ test("static website links to the full-width standalone demo", async () => {
     await page.getByRole("link", { name: "Try live demo", exact: true }).click();
     await page.waitForURL("**/demo/**");
     await page.locator(".app-root.standalone .tile a").first().waitFor();
+    assert.equal(await page.locator(".tile a").count(), 5);
+    for (const id of [956, 399, 261212]) {
+      assert.equal(await page.locator(`.tile a[href="#/library/artist/${id}"]`).count(), 1);
+    }
     assert.equal(await page.locator(".website, [data-embedded], .site-demo-toolbar").count(), 0);
     assert.equal(await page.locator(".app-sidebar").isVisible(), true);
     const app = await page.locator(".app-root").elementHandle();
@@ -129,7 +178,7 @@ test("Archive album shows all 13 tracks including Bullets and Settings credits",
     await page.getByRole("link", { name: "Settings", exact: true }).first().click();
     const credits = page.locator('article[aria-labelledby="demo-credits-title"]');
     await credits.waitFor();
-    assert.equal(await credits.locator("li").count(), 16);
+    assert.equal(await credits.locator("li").count(), 49);
     assert.equal(
       await credits.locator('a[href="https://www.deezer.com/album/59667692"]').count(),
       1,

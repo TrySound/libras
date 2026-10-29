@@ -70,7 +70,9 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   expect(read).toHaveBeenCalledWith("album/302117", expect.any(AbortSignal));
   expect(read).toHaveBeenCalledWith("album/59667692", expect.any(AbortSignal));
   expect(Array.from(document.querySelectorAll(".tile"), (tile) => tile.textContent)).toEqual(
-    expect.arrayContaining([expect.stringContaining("Archive")]),
+    expect.arrayContaining(
+      ["Archive", "Metric", "Radiohead", "The xx"].map((artist) => expect.stringContaining(artist)),
+    ),
   );
   expect(document.getElementById("demo-credits-title")).toBeNull();
 });
@@ -78,6 +80,9 @@ it("opens preconnected without touching regular settings or registering a PWA", 
 it.each([
   { artistId: "702", year: 2000 },
   { artistId: "1334", year: 2009 },
+  { artistId: "956", year: 2009 },
+  { artistId: "399", year: 1997 },
+  { artistId: "261212", year: 2009 },
 ])("shows the album year for artist $artistId", async ({ artistId, year }) => {
   installNavigation(`/library/artist/${artistId}`);
   render();
@@ -96,7 +101,7 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
   expect(card?.querySelector("h2")?.textContent).toBe("Demo music credits");
   expect(card?.textContent).toContain("Previews provided by Deezer");
   expect(card?.textContent).toContain("Downloads may not work in this demo");
-  expect(card?.querySelectorAll("li")).toHaveLength(16);
+  expect(card?.querySelectorAll("li")).toHaveLength(49);
   expect(Array.from(card!.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual(
     expect.arrayContaining([
       "https://www.deezer.com/album/302117",
@@ -105,6 +110,9 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
       "https://www.deezer.com/track/3135444",
       "https://www.deezer.com/album/59667692",
       "https://www.deezer.com/track/476972632",
+      "https://www.deezer.com/album/320369597",
+      "https://www.deezer.com/album/14879699",
+      "https://www.deezer.com/album/355921",
     ]),
   );
   expect(card?.textContent).toContain("Archive");
@@ -180,5 +188,5 @@ it("uses shared app errors and Refresh library to retry catalog loading", async 
   read.mockImplementation(readAlbumFixture);
   document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
   await vi.waitFor(() => expect(document.body.textContent).not.toContain("Deezer unavailable"));
-  expect(read).toHaveBeenCalledTimes(4);
+  expect(read).toHaveBeenCalledTimes(10);
 });

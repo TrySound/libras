@@ -51,8 +51,57 @@ export const archiveAlbumFixture = {
   },
 };
 
+export const additionalAlbumFixtures = [
+  {
+    id: 320369597,
+    title: "Fantasies",
+    artist: { id: 956, name: "Metric" },
+    firstTrack: "Help I'm Alive",
+    trackIds: [
+      1758502927, 1758502937, 1758502947, 1758502957, 1758502967, 1758502977, 1758502987,
+      1758502997, 1758503007, 1758503017,
+    ],
+  },
+  {
+    id: 14879699,
+    title: "OK Computer",
+    artist: { id: 399, name: "Radiohead" },
+    firstTrack: "Airbag",
+    trackIds: [
+      138539971, 138539973, 138539975, 138539977, 138539979, 138539981, 138539983, 138539985,
+      138539987, 138539989, 138539991, 138539993,
+    ],
+  },
+  {
+    id: 355921,
+    title: "xx",
+    artist: { id: 261212, name: "The xx" },
+    firstTrack: "Intro",
+    trackIds: [
+      3787855, 3787856, 3787857, 3787858, 3787859, 3787860, 3787861, 3787862, 3787863, 3787864,
+      3787865,
+    ],
+  },
+].map(({ firstTrack, trackIds, ...album }) => ({
+  ...album,
+  cover_medium: `https://cdn-images.dzcdn.net/images/cover/fixture-${album.id}.jpg`,
+  tracks: {
+    data: trackIds.map((id, index) => ({
+      id,
+      title: index === 0 ? firstTrack : `Fixture track ${index + 1}`,
+      duration: 300,
+      explicit_lyrics: id === 1758502947,
+      artist: album.artist,
+      readable: true,
+      preview: "https://cdnt-preview.dzcdn.net/fixture.mp3?temporary=not-persisted",
+    })),
+  },
+}));
+
 export async function readAlbumFixture(path: string) {
-  if (path === "album/302117") return deezerAlbumFixture;
-  if (path === "album/59667692") return archiveAlbumFixture;
-  throw new Error(`Unexpected fixture request: ${path}`);
+  const album = [deezerAlbumFixture, archiveAlbumFixture, ...additionalAlbumFixtures].find(
+    (album) => path === `album/${album.id}`,
+  );
+  if (!album) throw new Error(`Unexpected fixture request: ${path}`);
+  return album;
 }

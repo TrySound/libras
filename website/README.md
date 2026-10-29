@@ -17,10 +17,13 @@ The demo loads metadata online on every launch. Auth and preferences reset on re
 
 ## Deezer previews
 
-The demo catalog for #79 contains two artists, two albums, and 16 previews:
+The demo catalog for #79 contains five artists, five albums, and 49 previews:
 
 - A Perfect Circle (artist **702**), _Mer De Noms_ (2000, album **302117**): **The Hollow** (3135439), **Judith** (3135442, explicit), and **3 Libras** (3135444).
 - Archive (artist **1334**), _Controlling Crowds (Parts I–III)_ (2009, album **59667692**): all 13 tracks, including **Bullets** (476972632).
+- Metric (artist **956**), _Fantasies_ (2009, album **320369597**): all 10 tracks.
+- Radiohead (artist **399**), _OK Computer_ (1997, album **14879699**): all 12 tracks.
+- The xx (artist **261212**), _xx_ (2009, album **355921**): all 11 tracks.
 
 Exact album/track IDs, original release years with source links, and Settings credits are defined in `deezer-catalog.ts`. Years are curated rather than inferred from Deezer edition dates. Album ordering is retained. Track labels identify previews and explicit content; Settings contains attribution and source links. The player measures actual clip duration instead of using the full-song duration.
 
@@ -85,4 +88,4 @@ node website/verify-build.mjs --root pages
 
 `pnpm check` and `pnpm test` cover both workspaces. Tests cover static landing content, demo navigation and bootstrap, adapter pagination, cancellation, retries, fresh preview URL resolution, restricted media origins, Settings credits, in-memory preferences, account isolation, and no demo service-worker registration. They use synthetic metadata rather than live Deezer or private export requests. The original static adapter retains its own fixtures and tests.
 
-A live headless Chromium check played the three A Perfect Circle previews (29.988563s each), sought The Hollow to 10s, and checked queue advancement after seeking near a clip's end. A subsequent check played Archive's Bullets (29.988563s) and sought it to 10s. This does not establish other browser/device behavior. Optional browser tests cover desktop/mobile layout and demo errors; their preview audio requests are aborted, so they do not verify successful playback.
+A live headless Chromium check played the three A Perfect Circle previews (29.988563s each), sought The Hollow to 10s, and checked queue advancement after seeking near a clip's end. Subsequent checks played Archive's Bullets and sought it to 10s, then played Help I'm Alive, Airbag, and Intro and checked their album years and track counts. This does not establish other browser/device behavior. Optional browser tests cover desktop/mobile layout and demo errors; their preview audio requests are aborted, so they do not verify successful playback.
