@@ -112,9 +112,16 @@ test("every planned album is browsable without live Deezer API access", async ()
     await page.goto(`${base}demo/#/settings`);
     const credits = page.locator('article[aria-labelledby="demo-credits-title"]');
     await credits.waitFor();
-    assert.equal(await credits.locator("li").count(), 663);
-    assert.equal(await credits.locator("h3").count(), 53);
-    assert.equal(await credits.getByRole("link", { name: "Bullets", exact: true }).count(), 1);
+    assert.equal(await credits.locator("li").count(), 53);
+    assert.equal(await credits.locator("a").count(), 53);
+    assert.equal(await credits.locator('a[href*="/track/"]').count(), 0);
+    for (const album of catalog) {
+      const link = credits.getByRole("link", {
+        name: `${album.artist} — ${album.title} (${album.year})`,
+        exact: true,
+      });
+      assert.equal(await link.getAttribute("href"), `https://www.deezer.com/album/${album.id}`);
+    }
     assert.deepEqual(requests, []);
   } finally {
     await browser.close();

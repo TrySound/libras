@@ -53,24 +53,15 @@
     <article class="card stack-md" aria-labelledby="demo-credits-title">
       <h2 class="heading-md uppercase" id="demo-credits-title">Demo music credits</h2>
       <p class="body">Previews provided by Deezer. Downloads may not work in this demo.</p>
-      {#each demoAlbums as album (album.id)}
-        <div class="stack-sm">
-          <h3 class="heading-sm">
+      <ul class="stack-sm body">
+        {#each demoAlbums as album (album.id)}
+          <li>
             <a href={`https://www.deezer.com/album/${album.id}`} rel="noreferrer">
-              {album.artist} — {album.title}
+              {album.artist} — {album.title} ({album.year})
             </a>
-          </h3>
-          <ul class="stack-sm">
-            {#each album.tracks as track (track.id)}
-              <li>
-                <a href={`https://www.deezer.com/track/${track.id}`} rel="noreferrer">
-                  {track.title}{track.explicit ? " (explicit)" : ""}
-                </a>
-              </li>
-            {/each}
-          </ul>
-        </div>
-      {/each}
+          </li>
+        {/each}
+      </ul>
     </article>
   {/snippet}
 </App>

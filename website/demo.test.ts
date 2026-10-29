@@ -113,15 +113,22 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
   expect(card?.querySelector("h2")?.textContent).toBe("Demo music credits");
   expect(card?.textContent).toContain("Previews provided by Deezer");
   expect(card?.textContent).toContain("Downloads may not work in this demo");
-  expect(card?.querySelectorAll("li")).toHaveLength(663);
+  expect(card?.querySelectorAll("li")).toHaveLength(53);
+  expect(card?.querySelectorAll("a")).toHaveLength(53);
+  expect(card?.querySelectorAll('a[href*="/track/"]')).toHaveLength(0);
+  expect(Array.from(card!.querySelectorAll("a"), (link) => link.textContent?.trim())).toEqual(
+    expect.arrayContaining([
+      "A Perfect Circle — Mer De Noms (2000)",
+      "Archive — Controlling Crowds (Parts I-III) (2009)",
+      "Breaking Benjamin — We Are Not Alone (2004)",
+      "Seether — Disclaimer II (2004)",
+      "Shinedown — The Sound of Madness (2008)",
+    ]),
+  );
   expect(Array.from(card!.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual(
     expect.arrayContaining([
       "https://www.deezer.com/album/302117",
-      "https://www.deezer.com/track/3135439",
-      "https://www.deezer.com/track/3135442",
-      "https://www.deezer.com/track/3135444",
       "https://www.deezer.com/album/59667692",
-      "https://www.deezer.com/track/476972632",
       "https://www.deezer.com/album/320369597",
       "https://www.deezer.com/album/14879699",
       "https://www.deezer.com/album/355921",
@@ -141,8 +148,7 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
   expect(card?.textContent).toContain("Seether");
   expect(card?.textContent).toContain("Shinedown");
   expect(card?.textContent).not.toContain("Audioslave");
-  expect(card?.textContent).toContain("Bullets");
-  expect(card?.textContent).toContain("Judith (explicit)");
+  expect(card?.querySelectorAll("h3")).toHaveLength(0);
   expect(document.querySelector('[aria-label="Demo music credits"]')).toBeNull();
 });
 
