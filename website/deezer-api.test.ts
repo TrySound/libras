@@ -32,6 +32,22 @@ it("uses only the fixed API allowlist, with unique callbacks and no referrer", a
   await expect(readDeezer("https://evil.test/track/3135439", signal)).rejects.toThrow("allowlist");
 });
 
+it.each(["album/59667692", "track/476972632", "track/476972742"])(
+  "allows selected Archive request %s",
+  async (path) => {
+    const pending = readDeezer(path, new AbortController().signal);
+    request().callback({ example: true });
+    await expect(pending).resolves.toEqual({ example: true });
+  },
+);
+
+it.each(["album/895746612", "album/1", "track/476972633", "album/59667692/extra"])(
+  "rejects requests outside the catalog: %s",
+  async (path) => {
+    await expect(readDeezer(path, new AbortController().signal)).rejects.toThrow("allowlist");
+  },
+);
+
 it("cancels immediately and ignores callbacks already in flight", async () => {
   vi.useFakeTimers();
   const controller = new AbortController();

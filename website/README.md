@@ -8,7 +8,7 @@ This pnpm workspace (`@libras/website`) serves the static landing page at `https
 - `demo/index.html` and `main.ts` mount Demo into `#app`, with the same `src/edgerunner.css`, dialog polyfill, full-width layout and hash navigation as the regular app. There is no marketing wrapper or `embedded` mode. Hot reload unmounts the component.
 - `demo.svelte` constructs auth and network synchronously and renders the shared App directly, explicitly passing `undefined` for the updater. `DeezerSubsonicClient` is injected through the existing `Network` factory; library, settings, playback, downloads, errors and queue UI use the normal app components. Credits are HTML supplied through App's optional `settingsContent` snippet and rendered as a card in Settings.
 - Cache/OPFS isolation comes from the synthetic `deezer-preview-demo` account identity, resolved against the website build base (not the `/demo/` page URL). The new username separates this library from the old static demo. Auth and preferences use a per-runtime `MemoryStorage` instance and never read or write localStorage.
-- `deezer-client.ts` adapts the selected Deezer album into the existing library pagination interface. It resolves current preview URLs at playback time; URLs are not persisted in library or queue records. Server-queue reads return empty and writes are ignored; the app's local playback queue is sufficient. The original `client.ts` static adapter and its same-origin checks remain unchanged, but are no longer used by `/demo/`.
+- `deezer-client.ts` adapts the selected Deezer albums into the existing library pagination interface. It resolves current preview URLs at playback time; URLs are not persisted in library or queue records. Server-queue reads return empty and writes are ignored; the app's local playback queue is sufficient. The original `client.ts` static adapter and its same-origin checks remain unchanged, but are no longer used by `/demo/`.
 - `vite.config.ts` builds both HTML entry points **without the PWA plugin**. There is no demo manifest, install prompt or service worker. The real app's service worker stays scoped to `/webapp/` and cannot control the website or demo. Directory-index output serves `/demo/` (and hosts can redirect `/demo` there).
 
 Shared Settings allows disconnect, but the demo client factory rejects any different account before a cache can be selected. It cannot connect to real servers or touch their OPFS data. Reload the demo to restore its synthetic login and default preferences after disconnecting.
@@ -17,7 +17,12 @@ The demo loads metadata online on every launch. Auth and preferences reset on re
 
 ## Deezer previews
 
-The minimal catalog for #79 is A Perfect Circle (artist **702**), _Mer De Noms_ (album **302117**): **The Hollow** (3135439), **Judith** (3135442, explicit), and **3 Libras** (3135444). Album ordering is retained. Track labels identify previews and explicit content; Settings contains attribution and source links. The player measures actual clip duration instead of using the full-song duration.
+The demo catalog for #79 contains two artists, two albums, and 16 previews:
+
+- A Perfect Circle (artist **702**), _Mer De Noms_ (album **302117**): **The Hollow** (3135439), **Judith** (3135442, explicit), and **3 Libras** (3135444).
+- Archive (artist **1334**), _Controlling Crowds (Parts I–III)_ (album **59667692**): all 13 tracks, including **Bullets** (476972632).
+
+Exact album/track IDs and Settings credits are defined in `deezer-catalog.ts`. Album ordering is retained. Track labels identify previews and explicit content; Settings contains attribution and source links. The player measures actual clip duration instead of using the full-song duration.
 
 `deezer-api.ts` uses JSONP at `https://api.deezer.com/` because the API did not provide browser fetch CORS headers during testing. JSONP executes third-party JavaScript with page privileges. Requests are limited to the selected album/tracks, with cancellation and a timeout. No Libras credentials are sent. Preview audio plays directly from Deezer's CDN; there is no proxy or separate backend process.
 
@@ -80,4 +85,4 @@ node website/verify-build.mjs --root pages
 
 `pnpm check` and `pnpm test` cover both workspaces. Tests cover static landing content, demo navigation and bootstrap, adapter pagination, cancellation, retries, fresh preview URL resolution, restricted media origins, Settings credits, in-memory preferences, account isolation, and no demo service-worker registration. They use synthetic metadata rather than live Deezer or private export requests. The original static adapter retains its own fixtures and tests.
 
-A live headless Chromium check played all three previews (29.988563s each), sought The Hollow to 10s, and checked queue advancement after seeking near a clip's end. This does not establish other browser/device behavior. Optional browser tests cover desktop/mobile layout and demo errors; their preview audio requests are aborted, so they do not verify successful playback.
+A live headless Chromium check played the three A Perfect Circle previews (29.988563s each), sought The Hollow to 10s, and checked queue advancement after seeking near a clip's end. A subsequent check played Archive's Bullets (29.988563s) and sought it to 10s. This does not establish other browser/device behavior. Optional browser tests cover desktop/mobile layout and demo errors; their preview audio requests are aborted, so they do not verify successful playback.

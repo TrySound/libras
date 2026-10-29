@@ -7,9 +7,9 @@ import type {
   SubsonicStreamOptions,
 } from "../src/subsonic-client";
 import { readDeezer } from "./deezer-api";
+import { demoAlbums } from "./deezer-catalog";
 
-const demoTrackIds = [3135439, 3135442, 3135444] as const;
-const artistSchema = v.object({ id: v.literal(702), name: v.string() });
+const artistSchema = v.object({ id: v.number(), name: v.string() });
 const trackSchema = v.object({
   id: v.number(),
   title: v.string(),
@@ -17,7 +17,7 @@ const trackSchema = v.object({
   artist: artistSchema,
 });
 const albumSchema = v.object({
-  id: v.literal(302117),
+  id: v.number(),
   title: v.string(),
   artist: artistSchema,
   cover_medium: v.string(),
@@ -55,20 +55,24 @@ export class DeezerSubsonicClient implements SubsonicApi {
     this.controller.abort();
   }
 
-  private parse(input: unknown) {
+  private parse(input: unknown, selection: (typeof demoAlbums)[number]) {
     const album = v.parse(albumSchema, input);
-    const artist = { id: "702", name: album.artist.name, coverArt: "302117" };
-    const tracks = demoTrackIds.map((id) => {
+    if (album.id !== selection.id || album.artist.id !== selection.artistId)
+      throw new Error("Unexpected Deezer album or artist.");
+    const albumId = String(album.id);
+    const artist = { id: String(album.artist.id), name: album.artist.name, coverArt: albumId };
+    const tracks = selection.tracks.map(({ id }) => {
       const track = album.tracks.data.find((track) => track.id === id);
-      if (!track) throw new Error("A selected Deezer recording is missing.");
+      if (!track || track.artist.id !== selection.artistId)
+        throw new Error("A selected Deezer recording is missing or has an unexpected artist.");
       return {
         id: String(id),
         title: `${track.title} — Preview${track.explicit_lyrics ? " [Explicit]" : ""}`,
         album: album.title,
-        albumId: "302117",
+        albumId,
         artists: [artist],
         displayArtist: artist.name,
-        coverArt: "302117",
+        coverArt: albumId,
         contentType: "audio/mpeg",
         discNumber: 1,
         track: album.tracks.data.indexOf(track) + 1,
@@ -79,25 +83,38 @@ export class DeezerSubsonicClient implements SubsonicApi {
       artists: [artist],
       albums: [
         {
-          id: "302117",
+          id: albumId,
           name: album.title,
           artists: [artist],
           displayArtist: artist.name,
-          coverArt: "302117",
+          coverArt: albumId,
         },
       ],
       tracks,
-      artwork: mediaUrl(album.cover_medium, "https://cdn-images.dzcdn.net"),
+      artwork: { [albumId]: mediaUrl(album.cover_medium, "https://cdn-images.dzcdn.net") },
     };
   }
   private async load(signal = this.signal) {
     const combined = AbortSignal.any([this.signal, signal]);
     combined.throwIfAborted();
     if (!this.catalog) {
-      this.pending ??= this.read("album/302117", combined)
-        .then((input) => {
+      this.pending ??= Promise.all(
+        demoAlbums.map(async (selection) => {
+          const input = await this.read(`album/${selection.id}`, combined);
           combined.throwIfAborted();
-          const catalog = this.parse(input);
+          return this.parse(input, selection);
+        }),
+      )
+        .then((catalogs) => {
+          combined.throwIfAborted();
+          const catalog = {
+            artists: catalogs.flatMap((catalog) => catalog.artists),
+            albums: catalogs.flatMap((catalog) => catalog.albums),
+            tracks: catalogs.flatMap((catalog) => catalog.tracks),
+            artwork: Object.fromEntries(
+              catalogs.flatMap((catalog) => Object.entries(catalog.artwork)),
+            ),
+          };
           this.catalog = catalog;
           return catalog;
         })
@@ -138,12 +155,15 @@ export class DeezerSubsonicClient implements SubsonicApi {
   }
   getCoverArtUrl(id: string, _size?: number) {
     this.signal.throwIfAborted();
-    if (id !== "302117" || !this.catalog) throw new Error("Demo artwork unavailable.");
-    return this.catalog.artwork;
+    const artwork = this.catalog?.artwork[id];
+    if (!artwork) throw new Error("Demo artwork unavailable.");
+    return artwork;
   }
   async getStreamUrl(id: string, _options: SubsonicStreamOptions = {}, signal = this.signal) {
-    if (!demoTrackIds.some((allowed) => String(allowed) === id))
-      throw new Error("Unknown demo track.");
+    const selection = demoAlbums.find((album) =>
+      album.tracks.some((track) => String(track.id) === id),
+    );
+    if (!selection) throw new Error("Unknown demo track.");
     const combined = AbortSignal.any([this.signal, signal]);
     combined.throwIfAborted();
     const input = await this.read(`track/${id}`, combined);
@@ -151,8 +171,8 @@ export class DeezerSubsonicClient implements SubsonicApi {
     const track = v.parse(
       v.object({
         id: v.number(),
-        artist: v.object({ id: v.literal(702) }),
-        album: v.object({ id: v.literal(302117) }),
+        artist: v.object({ id: v.literal(selection.artistId) }),
+        album: v.object({ id: v.literal(selection.id) }),
         readable: v.boolean(),
         preview: v.string(),
       }),

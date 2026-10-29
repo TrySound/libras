@@ -3,6 +3,7 @@
   import { AuthStore } from "../src/auth";
   import { Network } from "../src/network.svelte";
   import { DeezerSubsonicClient } from "./deezer-client";
+  import { demoAlbums } from "./deezer-catalog";
 
   class MemoryStorage implements Storage {
     private items = new Map<string, string>();
@@ -52,18 +53,24 @@
     <article class="card stack-md" aria-labelledby="demo-credits-title">
       <h2 class="heading-md uppercase" id="demo-credits-title">Demo music credits</h2>
       <p class="body">Previews provided by Deezer. Downloads may not work in this demo.</p>
-      <p class="body">
-        <a href="https://www.deezer.com/album/302117" rel="noreferrer"
-          >A Perfect Circle — Mer De Noms</a
-        >
-      </p>
-      <ul class="stack-sm">
-        <li><a href="https://www.deezer.com/track/3135439" rel="noreferrer">The Hollow</a></li>
-        <li>
-          <a href="https://www.deezer.com/track/3135442" rel="noreferrer">Judith (explicit)</a>
-        </li>
-        <li><a href="https://www.deezer.com/track/3135444" rel="noreferrer">3 Libras</a></li>
-      </ul>
+      {#each demoAlbums as album (album.id)}
+        <div class="stack-sm">
+          <h3 class="heading-sm">
+            <a href={`https://www.deezer.com/album/${album.id}`} rel="noreferrer">
+              {album.artist} — {album.title}
+            </a>
+          </h3>
+          <ul class="stack-sm">
+            {#each album.tracks as track (track.id)}
+              <li>
+                <a href={`https://www.deezer.com/track/${track.id}`} rel="noreferrer">
+                  {track.title}{track.explicit ? " (explicit)" : ""}
+                </a>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/each}
     </article>
   {/snippet}
 </App>

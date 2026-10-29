@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Demo from "./demo.svelte";
-import { deezerAlbumFixture } from "./deezer-fixtures";
+import { readAlbumFixture } from "./deezer-fixtures";
 import { readDeezer } from "./deezer-api";
 vi.mock("./deezer-api", () => ({ readDeezer: vi.fn() }));
 const read = vi.mocked(readDeezer);
@@ -32,7 +32,7 @@ beforeEach(() => {
   installDisk();
   installNavigation("/settings");
   vi.stubEnv("BASE_URL", "/");
-  read.mockReset().mockResolvedValue(deezerAlbumFixture);
+  read.mockReset().mockImplementation(readAlbumFixture);
   fetcher.mockReset().mockImplementation(catalogResponse);
   vi.stubGlobal("fetch", fetcher);
 });
@@ -68,6 +68,10 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   expect(localStorage.length).toBe(3);
   expect(register).not.toHaveBeenCalled();
   expect(read).toHaveBeenCalledWith("album/302117", expect.any(AbortSignal));
+  expect(read).toHaveBeenCalledWith("album/59667692", expect.any(AbortSignal));
+  expect(Array.from(document.querySelectorAll(".tile"), (tile) => tile.textContent)).toEqual(
+    expect.arrayContaining([expect.stringContaining("Archive")]),
+  );
   expect(document.getElementById("demo-credits-title")).toBeNull();
 });
 
@@ -80,13 +84,19 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
   expect(card?.querySelector("h2")?.textContent).toBe("Demo music credits");
   expect(card?.textContent).toContain("Previews provided by Deezer");
   expect(card?.textContent).toContain("Downloads may not work in this demo");
-  expect(card?.querySelectorAll("li")).toHaveLength(3);
-  expect(Array.from(card!.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual([
-    "https://www.deezer.com/album/302117",
-    "https://www.deezer.com/track/3135439",
-    "https://www.deezer.com/track/3135442",
-    "https://www.deezer.com/track/3135444",
-  ]);
+  expect(card?.querySelectorAll("li")).toHaveLength(16);
+  expect(Array.from(card!.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual(
+    expect.arrayContaining([
+      "https://www.deezer.com/album/302117",
+      "https://www.deezer.com/track/3135439",
+      "https://www.deezer.com/track/3135442",
+      "https://www.deezer.com/track/3135444",
+      "https://www.deezer.com/album/59667692",
+      "https://www.deezer.com/track/476972632",
+    ]),
+  );
+  expect(card?.textContent).toContain("Archive");
+  expect(card?.textContent).toContain("Bullets");
   expect(card?.textContent).toContain("Judith (explicit)");
   expect(document.querySelector('[aria-label="Demo music credits"]')).toBeNull();
 });
@@ -155,8 +165,8 @@ it("uses shared app errors and Refresh library to retry catalog loading", async 
   render();
   await vi.waitFor(() => expect(document.body.textContent).toContain("Deezer unavailable"));
   expect(document.querySelector("form")).toBeNull();
-  read.mockResolvedValue(deezerAlbumFixture);
+  read.mockImplementation(readAlbumFixture);
   document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
   await vi.waitFor(() => expect(document.body.textContent).not.toContain("Deezer unavailable"));
-  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenCalledTimes(4);
 });

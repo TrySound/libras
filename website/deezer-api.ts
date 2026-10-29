@@ -1,8 +1,15 @@
+import { demoAlbums } from "./deezer-catalog";
+
 // Deezer's public API does not provide fetch CORS headers. Its JSONP transport
 // executes third-party code: trust is restricted to this fixed HTTPS API, never
 // a caller-supplied URL. No SDK, credentials, proxy, or audio bytes are involved.
 export function readDeezer(path: string, signal: AbortSignal): Promise<unknown> {
-  if (!/^(album\/302117|track\/(3135439|3135442|3135444))$/.test(path)) {
+  if (
+    !demoAlbums.some(
+      (album) =>
+        path === `album/${album.id}` || album.tracks.some((track) => path === `track/${track.id}`),
+    )
+  ) {
     return Promise.reject(new Error("Recording is outside the demo allowlist."));
   }
   signal.throwIfAborted();
