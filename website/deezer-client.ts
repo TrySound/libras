@@ -9,19 +9,12 @@ import type {
 import { readDeezer } from "./deezer-api";
 import { demoAlbums } from "./deezer-catalog";
 
-const artistSchema = v.object({ id: v.number(), name: v.string() });
-const trackSchema = v.object({
+const streamSchema = v.object({
   id: v.number(),
-  title: v.string(),
-  explicit_lyrics: v.boolean(),
-  artist: artistSchema,
-});
-const albumSchema = v.object({
-  id: v.number(),
-  title: v.string(),
-  artist: artistSchema,
-  cover_medium: v.string(),
-  tracks: v.object({ data: v.array(trackSchema) }),
+  artist: v.object({ id: v.number() }),
+  album: v.object({ id: v.number() }),
+  readable: v.boolean(),
+  preview: v.string(),
 });
 
 function mediaUrl(value: string, origin: string) {
@@ -31,15 +24,50 @@ function mediaUrl(value: string, origin: string) {
   return url.href;
 }
 
-type Catalog = ReturnType<DeezerSubsonicClient["parse"]>;
+function catalogMetadata() {
+  const entries = demoAlbums.map((selection) => {
+    const albumId = String(selection.id);
+    const artist = { id: String(selection.artistId), name: selection.artist, coverArt: albumId };
+    return {
+      artist,
+      album: {
+        id: albumId,
+        name: selection.title,
+        year: selection.year,
+        artists: [artist],
+        displayArtist: artist.name,
+        coverArt: albumId,
+      },
+      tracks: selection.tracks.map((track, index) => ({
+        id: String(track.id),
+        title: `${track.title} — Preview${track.explicit ? " [Explicit]" : ""}`,
+        album: selection.title,
+        albumId,
+        artists: [artist],
+        displayArtist: artist.name,
+        coverArt: albumId,
+        contentType: "audio/mpeg",
+        discNumber: 1,
+        track: index + 1,
+        // Full-song duration is not the preview duration. The player measures the clip.
+      })),
+      artwork: mediaUrl(selection.artwork, "https://cdn-images.dzcdn.net"),
+    };
+  });
+  return {
+    artists: [...new Map(entries.map((entry) => [entry.artist.id, entry.artist])).values()],
+    albums: entries.map((entry) => entry.album),
+    tracks: entries.flatMap((entry) => entry.tracks),
+    artwork: Object.fromEntries(entries.map((entry) => [entry.album.id, entry.artwork])),
+  };
+}
 
-/** The demo's in-browser data backend; no server process or real account. */
+/** Browsing uses the committed snapshot; only playback resolves live Deezer data. */
 export class DeezerSubsonicClient implements SubsonicApi {
   readonly host: string;
   readonly username: string;
   private controller = new AbortController();
-  private catalog?: Catalog;
-  private pending?: Promise<Catalog>;
+  private catalog = catalogMetadata();
 
   constructor(
     auth: SubsonicAuth,
@@ -54,85 +82,8 @@ export class DeezerSubsonicClient implements SubsonicApi {
   abort() {
     this.controller.abort();
   }
-
-  private parse(input: unknown, selection: (typeof demoAlbums)[number]) {
-    const album = v.parse(albumSchema, input);
-    if (album.id !== selection.id || album.artist.id !== selection.artistId)
-      throw new Error("Unexpected Deezer album or artist.");
-    const albumId = String(album.id);
-    const artist = { id: String(album.artist.id), name: album.artist.name, coverArt: albumId };
-    const tracks = selection.tracks.map(({ id }) => {
-      const track = album.tracks.data.find((track) => track.id === id);
-      if (!track || track.artist.id !== selection.artistId)
-        throw new Error("A selected Deezer recording is missing or has an unexpected artist.");
-      return {
-        id: String(id),
-        title: `${track.title} — Preview${track.explicit_lyrics ? " [Explicit]" : ""}`,
-        album: album.title,
-        albumId,
-        artists: [artist],
-        displayArtist: artist.name,
-        coverArt: albumId,
-        contentType: "audio/mpeg",
-        discNumber: 1,
-        track: album.tracks.data.indexOf(track) + 1,
-        // Full-song duration is not the preview duration. The player measures the clip.
-      };
-    });
-    return {
-      artists: [artist],
-      albums: [
-        {
-          id: albumId,
-          name: album.title,
-          year: selection.year,
-          artists: [artist],
-          displayArtist: artist.name,
-          coverArt: albumId,
-        },
-      ],
-      tracks,
-      artwork: { [albumId]: mediaUrl(album.cover_medium, "https://cdn-images.dzcdn.net") },
-    };
-  }
-  private async load(signal = this.signal) {
-    const combined = AbortSignal.any([this.signal, signal]);
-    combined.throwIfAborted();
-    if (!this.catalog) {
-      this.pending ??= Promise.all(
-        demoAlbums.map(async (selection) => {
-          const input = await this.read(`album/${selection.id}`, combined);
-          combined.throwIfAborted();
-          return this.parse(input, selection);
-        }),
-      )
-        .then((catalogs) => {
-          combined.throwIfAborted();
-          const catalog = {
-            artists: [
-              ...new Map(
-                catalogs.flatMap((catalog) => catalog.artists).map((artist) => [artist.id, artist]),
-              ).values(),
-            ],
-            albums: catalogs.flatMap((catalog) => catalog.albums),
-            tracks: catalogs.flatMap((catalog) => catalog.tracks),
-            artwork: Object.fromEntries(
-              catalogs.flatMap((catalog) => Object.entries(catalog.artwork)),
-            ),
-          };
-          this.catalog = catalog;
-          return catalog;
-        })
-        .finally(() => {
-          this.pending = undefined;
-        });
-      await this.pending;
-    }
-    combined.throwIfAborted();
-    return this.catalog!;
-  }
   async ping() {
-    await this.load();
+    this.signal.throwIfAborted();
     return {
       version: "1.16.1",
       type: "libras-deezer-demo",
@@ -141,26 +92,30 @@ export class DeezerSubsonicClient implements SubsonicApi {
     };
   }
   async getIndexes(_ifModifiedSince?: number) {
-    await this.load();
+    this.signal.throwIfAborted();
     return null;
   }
   async search3(options: Parameters<SubsonicClient["search3"]>[0], signal?: AbortSignal) {
+    this.signal.throwIfAborted();
+    signal?.throwIfAborted();
     for (const value of Object.values(options)) {
       if (!Number.isSafeInteger(value) || value < 0) throw new Error("Invalid catalog pagination.");
     }
-    const catalog = await this.load(signal);
     return {
-      artists: catalog.artists.slice(
+      artists: this.catalog.artists.slice(
         options.artistOffset,
         options.artistOffset + options.artistCount,
       ),
-      albums: catalog.albums.slice(options.albumOffset, options.albumOffset + options.albumCount),
-      tracks: catalog.tracks.slice(options.songOffset, options.songOffset + options.songCount),
+      albums: this.catalog.albums.slice(
+        options.albumOffset,
+        options.albumOffset + options.albumCount,
+      ),
+      tracks: this.catalog.tracks.slice(options.songOffset, options.songOffset + options.songCount),
     };
   }
   getCoverArtUrl(id: string, _size?: number) {
     this.signal.throwIfAborted();
-    const artwork = this.catalog?.artwork[id];
+    const artwork = this.catalog.artwork[id];
     if (!artwork) throw new Error("Demo artwork unavailable.");
     return artwork;
   }
@@ -168,23 +123,31 @@ export class DeezerSubsonicClient implements SubsonicApi {
     const selection = demoAlbums.find((album) =>
       album.tracks.some((track) => String(track.id) === id),
     );
-    if (!selection) throw new Error("Unknown demo track.");
+    const recording = selection?.tracks.find((track) => String(track.id) === id);
+    if (!selection || !recording) throw new Error("Unknown demo track.");
     const combined = AbortSignal.any([this.signal, signal]);
     combined.throwIfAborted();
     const input = await this.read(`track/${id}`, combined);
     combined.throwIfAborted();
-    const track = v.parse(
-      v.object({
-        id: v.number(),
-        artist: v.object({ id: v.literal(selection.artistId) }),
-        album: v.object({ id: v.literal(selection.id) }),
-        readable: v.boolean(),
-        preview: v.string(),
-      }),
-      input,
-    );
-    if (String(track.id) !== id || !track.readable || !track.preview)
-      throw new Error("This Deezer preview is unavailable.");
+    const parsed = v.safeParse(streamSchema, input);
+    if (!parsed.success)
+      throw new Error(
+        `Deezer preview unavailable for ${selection.artist} — ${recording.title} (track ${id}).`,
+      );
+    const track = parsed.output;
+    if (
+      String(track.id) !== id ||
+      track.artist.id !== selection.artistId ||
+      track.album.id !== selection.id
+    ) {
+      throw new Error(
+        `Deezer returned a different recording for ${recording.title}: expected track ${id}, album ${selection.id}, artist ${selection.artistId}; received track ${track.id}, album ${track.album.id}, artist ${track.artist.id}.`,
+      );
+    }
+    if (!track.readable || !track.preview)
+      throw new Error(
+        `This Deezer preview is unavailable: ${selection.artist} — ${recording.title} (track ${id}).`,
+      );
     return mediaUrl(track.preview, "https://cdnt-preview.dzcdn.net");
   }
   async getPlaylists() {

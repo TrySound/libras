@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Demo from "./demo.svelte";
-import { readAlbumFixture } from "./deezer-fixtures";
 import { readDeezer } from "./deezer-api";
 vi.mock("./deezer-api", () => ({ readDeezer: vi.fn() }));
 const read = vi.mocked(readDeezer);
@@ -32,7 +31,7 @@ beforeEach(() => {
   installDisk();
   installNavigation("/settings");
   vi.stubEnv("BASE_URL", "/");
-  read.mockReset().mockImplementation(readAlbumFixture);
+  read.mockReset().mockRejectedValue(new Error("Unexpected live Deezer request"));
   fetcher.mockReset().mockImplementation(catalogResponse);
   vi.stubGlobal("fetch", fetcher);
 });
@@ -67,8 +66,7 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   expect(localStorage.getItem("navidrome-offline-mode")).toBe("true");
   expect(localStorage.length).toBe(3);
   expect(register).not.toHaveBeenCalled();
-  expect(read).toHaveBeenCalledWith("album/302117", expect.any(AbortSignal));
-  expect(read).toHaveBeenCalledWith("album/59667692", expect.any(AbortSignal));
+  expect(read).not.toHaveBeenCalled();
   expect(Array.from(document.querySelectorAll(".tile"), (tile) => tile.textContent)).toEqual(
     expect.arrayContaining(
       ["Archive", "Metric", "Radiohead", "The xx"].map((artist) => expect.stringContaining(artist)),
@@ -183,13 +181,21 @@ it("resets preferences on a new mount without writing to localStorage", async ()
   expect(localStorage.length).toBe(0);
 });
 
-it("uses shared app errors and Refresh library to retry catalog loading", async () => {
-  read.mockRejectedValue(new Error("Deezer unavailable"));
+it("syncs and refreshes the snapshot even when live Deezer album responses would fail", async () => {
+  read.mockRejectedValue(new Error("Unexpected Deezer album or artist."));
   render();
-  await vi.waitFor(() => expect(document.body.textContent).toContain("Deezer unavailable"));
+  await vi.waitFor(() =>
+    expect(document.querySelector("#settings-server-identity")?.textContent).toContain(
+      "deezer-preview-demo",
+    ),
+  );
   expect(document.querySelector("form")).toBeNull();
-  read.mockImplementation(readAlbumFixture);
   document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
-  await vi.waitFor(() => expect(document.body.textContent).not.toContain("Deezer unavailable"));
-  expect(read).toHaveBeenCalledTimes(94);
+  flushSync();
+  await vi.waitFor(() =>
+    expect(document.querySelector("#settings-refresh")?.getAttribute("aria-busy")).toBe("false"),
+  );
+  expect(document.body.textContent).not.toContain("Synchronization needs attention");
+  expect(document.body.textContent).not.toContain("Unexpected Deezer album or artist");
+  expect(read).not.toHaveBeenCalled();
 });

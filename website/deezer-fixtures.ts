@@ -7,7 +7,7 @@ export const albumFixtures = demoAlbums.map((album) => {
     id: album.id,
     title: album.title,
     artist,
-    cover_medium: `https://cdn-images.dzcdn.net/images/cover/fixture-${album.id}.jpg`,
+    cover_medium: album.artwork,
     tracks: {
       data: album.tracks.map((track) => ({
         id: track.id,
@@ -24,9 +24,3 @@ export const albumFixtures = demoAlbums.map((album) => {
 
 export const deezerAlbumFixture = albumFixtures.find((album) => album.id === 302117)!;
 export const archiveAlbumFixture = albumFixtures.find((album) => album.id === 59667692)!;
-
-export async function readAlbumFixture(path: string) {
-  const album = albumFixtures.find((album) => path === `album/${album.id}`);
-  if (!album) throw new Error(`Unexpected fixture request: ${path}`);
-  return album;
-}

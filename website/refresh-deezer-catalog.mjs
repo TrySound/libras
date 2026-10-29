@@ -74,11 +74,16 @@ export async function refreshCatalog() {
       album.tracks?.data?.length !== count ||
       typeof album.title !== "string" ||
       typeof album.artist.name !== "string" ||
+      typeof album.cover_medium !== "string" ||
       !/^\d{4}-\d{2}-\d{2}$/.test(album.release_date)
     ) {
       throw new Error(
         `Album ${id}: edition, artist, count or metadata changed; review before refreshing.`,
       );
+    }
+    const artwork = new URL(album.cover_medium);
+    if (artwork.origin !== "https://cdn-images.dzcdn.net" || artwork.username || artwork.password) {
+      throw new Error(`Album ${id}: unexpected artwork URL; review before refreshing.`);
     }
     const tracks = album.tracks.data.map((track) => {
       if (
@@ -105,6 +110,7 @@ export async function refreshCatalog() {
       year,
       yearSource: `https://en.wikipedia.org/wiki/${source}`,
       sourceReleaseDate: album.release_date,
+      artwork: artwork.href,
       tracks,
     });
   }

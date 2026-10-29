@@ -1,12 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
 import { DeezerSubsonicClient } from "./deezer-client";
-import {
-  albumFixtures,
-  deezerAlbumFixture as album,
-  archiveAlbumFixture,
-  readAlbumFixture,
-} from "./deezer-fixtures";
+import { albumFixtures, deezerAlbumFixture as album, archiveAlbumFixture } from "./deezer-fixtures";
 import { Network } from "../src/network.svelte";
 
 const auth = {
@@ -25,7 +20,7 @@ const pagination = {
 };
 
 it("loads 14 unique artists, 47 editions and 571 recordings without persisting preview URLs or song durations", async () => {
-  const read = vi.fn(readAlbumFixture);
+  const read = vi.fn().mockRejectedValue(new Error("Unexpected live catalog request"));
   const client = new DeezerSubsonicClient(auth, read);
   await client.ping();
   const result = await client.search3(pagination);
@@ -65,11 +60,11 @@ it("loads 14 unique artists, 47 editions and 571 recordings without persisting p
   expect(result.tracks.find((track) => track.id === "1758502947")?.title).toContain("Explicit");
   expect(JSON.stringify(result)).not.toContain("temporary");
   expect(result.tracks.every((track) => !("duration" in track))).toBe(true);
-  expect(read).toHaveBeenCalledTimes(47);
+  expect(read).not.toHaveBeenCalled();
 });
 
 it("paginates artists, albums and tracks without duplicate artists or missing recordings", async () => {
-  const client = new DeezerSubsonicClient(auth, readAlbumFixture);
+  const client = new DeezerSubsonicClient(auth);
   const page = await client.search3({
     ...pagination,
     artistOffset: 13,
@@ -102,11 +97,7 @@ it("paginates artists, albums and tracks without duplicate artists or missing re
 });
 
 it("uses original release years rather than Deezer edition dates", async () => {
-  const read = vi.fn(async (path: string) => ({
-    ...(await readAlbumFixture(path)),
-    release_date: "2026-01-01",
-  }));
-  const result = await new DeezerSubsonicClient(auth, read).search3(pagination);
+  const result = await new DeezerSubsonicClient(auth).search3(pagination);
   const years = new Map(result.albums.map((album) => [album.id, album.year]));
   expect(years.get("302117")).toBe(2000);
   expect(years.get("59667692")).toBe(2009);
@@ -116,22 +107,14 @@ it("uses original release years rather than Deezer edition dates", async () => {
   expect(years.get("105614472")).toBe(1993);
 });
 
-it("does not require playback fields to browse the albums", async () => {
-  const read = vi.fn(async (path: string) => {
-    const album = await readAlbumFixture(path);
-    return {
-      ...album,
-      tracks: {
-        data: album.tracks.data.map(({ id, title, explicit_lyrics, artist }) => ({
-          id,
-          title,
-          explicit_lyrics,
-          artist,
-        })),
-      },
-    };
-  });
-  expect((await new DeezerSubsonicClient(auth, read).search3(pagination)).tracks).toHaveLength(571);
+it("syncs the committed snapshot even when live Deezer data is unavailable or mismatched", async () => {
+  const read = vi.fn().mockRejectedValue(new Error("Deezer unavailable"));
+  const client = new DeezerSubsonicClient(auth, read);
+  await expect(client.ping()).resolves.toMatchObject({ openSubsonic: true });
+  expect((await client.search3(pagination)).tracks).toHaveLength(571);
+  read.mockResolvedValue({ ...album, id: 999, artist: { id: 999, name: "Unexpected artist" } });
+  expect((await client.search3(pagination)).albums).toHaveLength(47);
+  expect(read).not.toHaveBeenCalled();
 });
 
 it.each(albumFixtures)("resolves a preview for $artist.name — $title", async (fixture) => {
@@ -177,16 +160,16 @@ it("rejects unavailable recordings, unknown IDs and external media origins", asy
   await expect(client.getStreamUrl("3135439")).rejects.toThrow("Unexpected");
 });
 
-it("retries failed catalog loads and rejects stale responses after disconnect", async () => {
-  const read = vi.fn(readAlbumFixture).mockRejectedValueOnce(new Error("offline"));
-  const client = new DeezerSubsonicClient(auth, read);
-  await expect(client.ping()).rejects.toThrow("offline");
-  await expect(client.ping()).resolves.toMatchObject({ openSubsonic: true });
-  const stale = new DeezerSubsonicClient(auth, async () => {
-    stale.abort();
-    return album;
-  });
-  await expect(stale.ping()).rejects.toMatchObject({ name: "AbortError" });
+it("rejects metadata access after disconnect or scan cancellation", async () => {
+  const client = new DeezerSubsonicClient(auth);
+  client.abort();
+  await expect(client.ping()).rejects.toMatchObject({ name: "AbortError" });
+  await expect(client.search3(pagination)).rejects.toMatchObject({ name: "AbortError" });
+  const controller = new AbortController();
+  controller.abort();
+  await expect(
+    new DeezerSubsonicClient(auth).search3(pagination, controller.signal),
+  ).rejects.toMatchObject({ name: "AbortError" });
 });
 
 it("resolves Bullets only for the selected Archive album and artist", async () => {
@@ -196,20 +179,30 @@ it("resolves Bullets only for the selected Archive album and artist", async () =
   const client = new DeezerSubsonicClient(auth, read);
   expect(await client.getStreamUrl("476972632")).toContain("fixture.mp3");
   read.mockResolvedValue({ ...archiveAlbumFixture.tracks.data[1], album: { id: 302117 } });
-  await expect(client.getStreamUrl("476972632")).rejects.toThrow();
+  const failure = client.getStreamUrl("476972632");
+  await expect(failure).rejects.toThrow("Bullets");
+  await expect(failure).rejects.toThrow("expected track 476972632, album 59667692, artist 1334");
+  await expect(failure).rejects.toThrow("received track 476972632, album 302117, artist 1334");
+  await expect(failure).rejects.not.toThrow("temporary");
 });
 
-it("rejects missing recordings and mismatched artists", async () => {
-  const read = vi.fn(async (path: string) => {
-    const input = await readAlbumFixture(path);
-    return path === "album/59667692" ? { ...input, artist: album.artist } : input;
-  });
-  await expect(new DeezerSubsonicClient(auth, read).ping()).rejects.toThrow("Unexpected");
-  read.mockImplementation(async (path) => ({
-    ...(await readAlbumFixture(path)),
-    tracks: { data: [] },
-  }));
-  await expect(new DeezerSubsonicClient(auth, read).ping()).rejects.toThrow("missing");
+it.each([
+  { id: 999, artist: { id: 702 } },
+  { id: 3135439, artist: { id: 999 } },
+])("rejects a different recording or artist at playback time: %j", async (identity) => {
+  const read = vi
+    .fn()
+    .mockResolvedValue({ ...album.tracks.data[0], ...identity, album: { id: 302117 } });
+  await expect(new DeezerSubsonicClient(auth, read).getStreamUrl("3135439")).rejects.toThrow(
+    "different recording",
+  );
+});
+
+it("reports malformed or removed playback data as unavailable", async () => {
+  const read = vi.fn().mockResolvedValue({ error: { message: "removed" } });
+  await expect(new DeezerSubsonicClient(auth, read).getStreamUrl("3135439")).rejects.toThrow(
+    "preview unavailable for A Perfect Circle — The Hollow",
+  );
 });
 
 it("supports async playback URLs through Network", async () => {

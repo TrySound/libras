@@ -8,36 +8,25 @@ const catalog = require("../../website/deezer-catalog.json");
 const base = `${(process.env.PREVIEW_URL ?? "http://127.0.0.1:5180").replace(/\/$/, "")}/`;
 
 async function mockDeezer(page, unavailable = false) {
-  const albums = catalog.map((album) => {
-    const artist = { id: album.artistId, name: album.artist };
-    return {
-      id: album.id,
-      title: album.title,
-      artist,
-      cover_medium: "https://cdn-images.dzcdn.net/fixture.svg",
-      tracks: {
-        data: album.tracks.map((track) => ({
-          id: track.id,
-          title: track.title,
-          explicit_lyrics: track.explicit,
-          artist,
-          album: { id: album.id },
-          readable: true,
-          preview: "https://cdnt-preview.dzcdn.net/fixture.mp3",
-        })),
-      },
-    };
-  });
+  const requests = [];
+  const tracks = catalog.flatMap((album) =>
+    album.tracks.map((track) => ({
+      id: track.id,
+      title: track.title,
+      explicit_lyrics: track.explicit,
+      artist: { id: album.artistId, name: album.artist },
+      album: { id: album.id },
+      readable: true,
+      preview: "https://cdnt-preview.dzcdn.net/fixture.mp3",
+    })),
+  );
   await page.route("https://api.deezer.com/**", (route) => {
-    if (unavailable) return route.fulfill({ status: 500, body: "Unavailable" });
     const url = new URL(route.request().url());
+    requests.push(url.pathname);
+    if (unavailable) return route.fulfill({ status: 500, body: "Unavailable" });
     const callback = url.searchParams.get("callback");
     assert.match(callback, /^librasDeezer_[a-z0-9]+$/);
-    const data =
-      albums.find((album) => url.pathname === `/album/${album.id}`) ??
-      albums
-        .flatMap((album) => album.tracks.data)
-        .find((track) => url.pathname === `/track/${track.id}`);
+    const data = tracks.find((track) => url.pathname === `/track/${track.id}`);
     return route.fulfill({
       contentType: "text/javascript",
       body: `${callback}(${JSON.stringify(data)})`,
@@ -51,6 +40,7 @@ async function mockDeezer(page, unavailable = false) {
     }),
   );
   await page.route("https://cdnt-preview.dzcdn.net/**", (route) => route.abort());
+  return requests;
 }
 
 test("static website links to the full-width standalone demo", async () => {
@@ -107,10 +97,10 @@ test("static website links to the full-width standalone demo", async () => {
   }
 });
 
-test("every planned album has its track list and original year in the UI", async () => {
+test("every planned album is browsable without live Deezer API access", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ reducedMotion: "reduce" });
-  await mockDeezer(page);
+  const requests = await mockDeezer(page, true);
   try {
     for (const album of catalog) {
       await page.goto(`${base}demo/#/library/artist/${album.artistId}/album/${album.id}`);
@@ -125,6 +115,7 @@ test("every planned album has its track list and original year in the UI", async
     assert.equal(await credits.locator("li").count(), 571);
     assert.equal(await credits.locator("h3").count(), 47);
     assert.equal(await credits.getByRole("link", { name: "Bullets", exact: true }).count(), 1);
+    assert.deepEqual(requests, []);
   } finally {
     await browser.close();
   }
@@ -136,6 +127,8 @@ test("standalone demo errors remain usable on desktop and mobile", async () => {
   await mockDeezer(page, true);
   try {
     await page.goto(`${base}demo/`);
+    await page.locator(".tile a").first().click();
+    await page.getByRole("button", { name: "Play A Perfect Circle", exact: true }).click();
     for (const width of [1440, 375]) {
       await page.setViewportSize({ width, height: 812 });
       await page.getByRole("button", { name: "Show errors", exact: true }).click();

@@ -31,11 +31,14 @@ it("preserves edition labels, explicit flags and independently curated years", (
   expect(undertow.sourceReleaseDate).toBe("2019-08-02");
   for (const album of demoAlbums) {
     expect(new URL(album.yearSource).origin).toBe("https://en.wikipedia.org");
+    expect(new URL(album.artwork).origin).toBe("https://cdn-images.dzcdn.net");
     expect(album.year).toBeGreaterThan(1900);
     expect(album.sourceReleaseDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   }
 });
 
 it("contains no playback URLs or API tokens", () => {
-  expect(JSON.stringify(demoAlbums)).not.toMatch(/dzcdn|hdnea|track_token|preview|password|token/i);
+  expect(JSON.stringify(demoAlbums)).not.toMatch(
+    /cdnt-preview|hdnea|track_token|preview|password|token/i,
+  );
 });

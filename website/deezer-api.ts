@@ -4,12 +4,7 @@ import { demoAlbums } from "./deezer-catalog";
 // executes third-party code: trust is restricted to this fixed HTTPS API, never
 // a caller-supplied URL. No SDK, credentials, proxy, or audio bytes are involved.
 export function readDeezer(path: string, signal: AbortSignal): Promise<unknown> {
-  if (
-    !demoAlbums.some(
-      (album) =>
-        path === `album/${album.id}` || album.tracks.some((track) => path === `track/${track.id}`),
-    )
-  ) {
+  if (!demoAlbums.some((album) => album.tracks.some((track) => path === `track/${track.id}`))) {
     return Promise.reject(new Error("Recording is outside the demo allowlist."));
   }
   signal.throwIfAborted();
