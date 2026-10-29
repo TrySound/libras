@@ -30,12 +30,6 @@ jobs:
       - run: pnpm --filter @libras/website build
         env:
           DEMO_BASE_PATH: /
-      # Secrets are available only to the downloader, never to Vite or frontend code.
-      - name: Fetch latest verified demo catalog
-        run: node website/download-catalog.mjs --output website/dist/catalog
-        env:
-          DEMO_EXPORT_URL: ${{ secrets.DEMO_EXPORT_URL }}
-          DEMO_MEDIA_PASSWORD: ${{ secrets.DEMO_MEDIA_PASSWORD }}
       - name: Assemble Pages site
         run: |
           mkdir -p pages/webapp

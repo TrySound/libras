@@ -21,7 +21,7 @@ pnpm test
 pnpm build
 ```
 
-`pnpm format` formats the project; the pre-commit hook formats staged HTML, CSS, Svelte, and TypeScript files. The pnpm workspace contains the root `libras` application (`src/`, `tests/`) and `@libras/website` (`website/`), which imports the shared app. Each package builds to its own `dist/`. Use `pnpm --filter @libras/website dev` or `build` for the static demo. Root `pnpm check` checks both packages, and root `pnpm test` runs both test suites.
+`pnpm format` formats the project; the pre-commit hook formats staged HTML, CSS, Svelte, and TypeScript files. The pnpm workspace contains the root `libras` application (`src/`, `tests/`) and `@libras/website` (`website/`), which imports the shared app. Each package builds to its own `dist/`. Use `pnpm --filter @libras/website dev` or `build` for the website and Deezer demo. Root `pnpm check` checks both packages, and root `pnpm test` runs both test suites.
 
 ## Architecture at a glance
 
@@ -212,8 +212,8 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/edgerunner.test.cjs
 ```
 
-The website cascade suite uses the website server (`pnpm --filter @libras/website dev`)
-with its own URL and a local demo catalog. It checks the static landing page, navigation to
+The website cascade suite uses the website preview server (`pnpm --filter @libras/website build`
+then `pnpm --filter @libras/website preview`) with synthetic Deezer responses. It checks the static landing page, navigation to
 `/demo/`, full-width desktop/mobile layout, mounted-node preservation on resize, playback,
 and error controls:
 
