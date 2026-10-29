@@ -1,0 +1,3953 @@
+[
+  {
+    "id": 302117,
+    "artistId": 702,
+    "artist": "A Perfect Circle",
+    "title": "Mer De Noms",
+    "year": 2000,
+    "yearSource": "https://en.wikipedia.org/wiki/Mer_de_Noms",
+    "sourceReleaseDate": "2000-05-23",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/cf2e7aac5b5af36bfc202609585889ca/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 3135439,
+        "title": "The Hollow",
+        "explicit": false
+      },
+      {
+        "id": 3135440,
+        "title": "Magdalena",
+        "explicit": false
+      },
+      {
+        "id": 3135441,
+        "title": "Rose",
+        "explicit": false
+      },
+      {
+        "id": 3135442,
+        "title": "Judith",
+        "explicit": true
+      },
+      {
+        "id": 3135443,
+        "title": "Orestes",
+        "explicit": false
+      },
+      {
+        "id": 3135444,
+        "title": "3 Libras",
+        "explicit": false
+      },
+      {
+        "id": 3135445,
+        "title": "Sleeping Beauty",
+        "explicit": false
+      },
+      {
+        "id": 3135446,
+        "title": "Thomas",
+        "explicit": false
+      },
+      {
+        "id": 3135447,
+        "title": "Renholdër",
+        "explicit": false
+      },
+      {
+        "id": 3135448,
+        "title": "Thinking Of You",
+        "explicit": false
+      },
+      {
+        "id": 3135449,
+        "title": "Breña",
+        "explicit": false
+      },
+      {
+        "id": 3135450,
+        "title": "Over",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 299425,
+    "artistId": 702,
+    "artist": "A Perfect Circle",
+    "title": "Thirteenth Step",
+    "year": 2003,
+    "yearSource": "https://en.wikipedia.org/wiki/Thirteenth_Step",
+    "sourceReleaseDate": "2003-09-16",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/237e09e2f1eb7fac2df3b20fe7c70c70/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 3092694,
+        "title": "The Package",
+        "explicit": false
+      },
+      {
+        "id": 3092695,
+        "title": "Weak And Powerless",
+        "explicit": false
+      },
+      {
+        "id": 3092696,
+        "title": "The Noose",
+        "explicit": false
+      },
+      {
+        "id": 3092697,
+        "title": "Blue",
+        "explicit": false
+      },
+      {
+        "id": 3092698,
+        "title": "Vanishing",
+        "explicit": false
+      },
+      {
+        "id": 3092699,
+        "title": "A Stranger",
+        "explicit": true
+      },
+      {
+        "id": 3092700,
+        "title": "The Outsider",
+        "explicit": false
+      },
+      {
+        "id": 3092701,
+        "title": "Crimes",
+        "explicit": false
+      },
+      {
+        "id": 3092702,
+        "title": "The Nurse Who Loved Me",
+        "explicit": false
+      },
+      {
+        "id": 3092703,
+        "title": "Pet",
+        "explicit": true
+      },
+      {
+        "id": 3092704,
+        "title": "Lullaby",
+        "explicit": false
+      },
+      {
+        "id": 3092705,
+        "title": "Gravity",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 892847522,
+    "artistId": 702,
+    "artist": "A Perfect Circle",
+    "title": "Eat The Elephant",
+    "year": 2018,
+    "yearSource": "https://en.wikipedia.org/wiki/Eat_the_Elephant",
+    "sourceReleaseDate": "2018-04-20",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/7962d4b7b584f17f9d80ef826dc0b73b/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 3761284752,
+        "title": "Eat The Elephant",
+        "explicit": false
+      },
+      {
+        "id": 3761284762,
+        "title": "Disillusioned",
+        "explicit": false
+      },
+      {
+        "id": 3761284772,
+        "title": "The Contrarian",
+        "explicit": false
+      },
+      {
+        "id": 3761284782,
+        "title": "The Doomed",
+        "explicit": true
+      },
+      {
+        "id": 3761284792,
+        "title": "So Long, And Thanks For All The Fish",
+        "explicit": false
+      },
+      {
+        "id": 3761284802,
+        "title": "TalkTalk",
+        "explicit": true
+      },
+      {
+        "id": 3761284812,
+        "title": "By And Down The River",
+        "explicit": false
+      },
+      {
+        "id": 3761284822,
+        "title": "Delicious",
+        "explicit": false
+      },
+      {
+        "id": 3761284832,
+        "title": "DLB",
+        "explicit": false
+      },
+      {
+        "id": 3761284842,
+        "title": "Hourglass",
+        "explicit": false
+      },
+      {
+        "id": 3761284852,
+        "title": "Feathers",
+        "explicit": false
+      },
+      {
+        "id": 3761284862,
+        "title": "Get The Lead Out",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 123427,
+    "artistId": 1334,
+    "artist": "Archive",
+    "title": "Londinium",
+    "year": 1996,
+    "yearSource": "https://en.wikipedia.org/wiki/Londinium_(album)",
+    "sourceReleaseDate": "1996-01-01",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/913bda16f1f59968ff9be47f4f27253c/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 1152222,
+        "title": "Old Artist",
+        "explicit": false
+      },
+      {
+        "id": 1152223,
+        "title": "All Time",
+        "explicit": false
+      },
+      {
+        "id": 1152224,
+        "title": "So Few Words",
+        "explicit": false
+      },
+      {
+        "id": 1152225,
+        "title": "Headspace",
+        "explicit": false
+      },
+      {
+        "id": 1152226,
+        "title": "Darkroom",
+        "explicit": false
+      },
+      {
+        "id": 1152227,
+        "title": "Londinium",
+        "explicit": false
+      },
+      {
+        "id": 1152228,
+        "title": "Man-Made",
+        "explicit": false
+      },
+      {
+        "id": 1152229,
+        "title": "Nothing Else",
+        "explicit": false
+      },
+      {
+        "id": 1152230,
+        "title": "Skyscraper",
+        "explicit": false
+      },
+      {
+        "id": 1152231,
+        "title": "Parvaneh (Butterfly)",
+        "explicit": false
+      },
+      {
+        "id": 1152232,
+        "title": "Beautiful World",
+        "explicit": false
+      },
+      {
+        "id": 1152233,
+        "title": "Organ Song",
+        "explicit": false
+      },
+      {
+        "id": 1152234,
+        "title": "Last Five (Incl. Hidden Track \"Untitled\")",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 685674,
+    "artistId": 1334,
+    "artist": "Archive",
+    "title": "You All Look The Same To Me",
+    "year": 2002,
+    "yearSource": "https://en.wikipedia.org/wiki/You_All_Look_the_Same_to_Me",
+    "sourceReleaseDate": "2002-02-04",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/4829e0240ca2e25eeb3dccd174ce5226/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 7431443,
+        "title": "Again",
+        "explicit": false
+      },
+      {
+        "id": 7431444,
+        "title": "Numb",
+        "explicit": false
+      },
+      {
+        "id": 7431445,
+        "title": "Meon",
+        "explicit": false
+      },
+      {
+        "id": 7431446,
+        "title": "Goodbye",
+        "explicit": false
+      },
+      {
+        "id": 7431447,
+        "title": "Now and Then",
+        "explicit": false
+      },
+      {
+        "id": 7431448,
+        "title": "Seamless",
+        "explicit": false
+      },
+      {
+        "id": 7431449,
+        "title": "Finding It So Hard",
+        "explicit": false
+      },
+      {
+        "id": 7431450,
+        "title": "Fool",
+        "explicit": false
+      },
+      {
+        "id": 7431451,
+        "title": "Hate",
+        "explicit": false
+      },
+      {
+        "id": 7431452,
+        "title": "Need",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 59667692,
+    "artistId": 1334,
+    "artist": "Archive",
+    "title": "Controlling Crowds (Parts I-III)",
+    "year": 2009,
+    "yearSource": "https://en.wikipedia.org/wiki/Controlling_Crowds",
+    "sourceReleaseDate": "2009-03-27",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/feb5d08127bbab1ec94fe5c5d600a0fb/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 476972622,
+        "title": "Controlling Crowds",
+        "explicit": false
+      },
+      {
+        "id": 476972632,
+        "title": "Bullets",
+        "explicit": false
+      },
+      {
+        "id": 476972642,
+        "title": "Words On Signs",
+        "explicit": false
+      },
+      {
+        "id": 476972652,
+        "title": "Dangervisit",
+        "explicit": false
+      },
+      {
+        "id": 476972662,
+        "title": "Quiet Time",
+        "explicit": false
+      },
+      {
+        "id": 476972672,
+        "title": "Collapse / Collide",
+        "explicit": false
+      },
+      {
+        "id": 476972682,
+        "title": "Clones",
+        "explicit": false
+      },
+      {
+        "id": 476972692,
+        "title": "Bastardized Ink",
+        "explicit": false
+      },
+      {
+        "id": 476972702,
+        "title": "Kings Of Speed",
+        "explicit": false
+      },
+      {
+        "id": 476972712,
+        "title": "Whore",
+        "explicit": true
+      },
+      {
+        "id": 476972722,
+        "title": "Chaos",
+        "explicit": false
+      },
+      {
+        "id": 476972732,
+        "title": "Razed To The Ground",
+        "explicit": false
+      },
+      {
+        "id": 476972742,
+        "title": "Funeral",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 401340,
+    "artistId": 1182,
+    "artist": "Arctic Monkeys",
+    "title": "Whatever People Say I Am, That's What I'm Not",
+    "year": 2006,
+    "yearSource": "https://en.wikipedia.org/wiki/Whatever_People_Say_I_Am,_That's_What_I'm_Not",
+    "sourceReleaseDate": "2006-02-18",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/f7a0a1ca91431861989efe5a22aad557/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 4315309,
+        "title": "The View From The Afternoon",
+        "explicit": false
+      },
+      {
+        "id": 4315310,
+        "title": "I Bet You Look Good On The Dancefloor",
+        "explicit": false
+      },
+      {
+        "id": 4315311,
+        "title": "Fake Tales Of San Francisco",
+        "explicit": true
+      },
+      {
+        "id": 4315312,
+        "title": "Dancing Shoes",
+        "explicit": false
+      },
+      {
+        "id": 4315313,
+        "title": "You Probably Couldn't See For The Lights But You Were Staring Straight At Me",
+        "explicit": false
+      },
+      {
+        "id": 4315314,
+        "title": "Still Take You Home",
+        "explicit": false
+      },
+      {
+        "id": 4315315,
+        "title": "Riot Van",
+        "explicit": false
+      },
+      {
+        "id": 4315316,
+        "title": "Red Light Indicates Doors Are Secured",
+        "explicit": false
+      },
+      {
+        "id": 4315317,
+        "title": "Mardy Bum",
+        "explicit": false
+      },
+      {
+        "id": 4315318,
+        "title": "Perhaps Vampires Is A Bit Strong But…",
+        "explicit": false
+      },
+      {
+        "id": 4315319,
+        "title": "When The Sun Goes Down",
+        "explicit": true
+      },
+      {
+        "id": 4315320,
+        "title": "From The Ritz To The Rubble",
+        "explicit": false
+      },
+      {
+        "id": 4315321,
+        "title": "A Certain Romance",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 401346,
+    "artistId": 1182,
+    "artist": "Arctic Monkeys",
+    "title": "Favourite Worst Nightmare",
+    "year": 2007,
+    "yearSource": "https://en.wikipedia.org/wiki/Favourite_Worst_Nightmare",
+    "sourceReleaseDate": "2007-04-22",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/d7a4f9f1af8736457de34f28d50ef496/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 4315378,
+        "title": "Brianstorm",
+        "explicit": false
+      },
+      {
+        "id": 4315379,
+        "title": "Teddy Picker",
+        "explicit": true
+      },
+      {
+        "id": 4315380,
+        "title": "D is for Dangerous",
+        "explicit": false
+      },
+      {
+        "id": 4315381,
+        "title": "Balaclava",
+        "explicit": false
+      },
+      {
+        "id": 4315382,
+        "title": "Fluorescent Adolescent",
+        "explicit": false
+      },
+      {
+        "id": 4315383,
+        "title": "Only Ones Who Know",
+        "explicit": false
+      },
+      {
+        "id": 4315384,
+        "title": "Do Me a Favour",
+        "explicit": true
+      },
+      {
+        "id": 4315385,
+        "title": "This House is a Circus",
+        "explicit": true
+      },
+      {
+        "id": 4315386,
+        "title": "If You Were There, Beware",
+        "explicit": false
+      },
+      {
+        "id": 4315387,
+        "title": "The Bad Thing",
+        "explicit": false
+      },
+      {
+        "id": 4315388,
+        "title": "Old Yellow Bricks",
+        "explicit": false
+      },
+      {
+        "id": 4315389,
+        "title": "505",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 6899610,
+    "artistId": 1182,
+    "artist": "Arctic Monkeys",
+    "title": "AM",
+    "year": 2013,
+    "yearSource": "https://en.wikipedia.org/wiki/AM_(Arctic_Monkeys_album)",
+    "sourceReleaseDate": "2013-09-06",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/64e54e307bd5e2bdb27ffeb662fd910d/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 70322130,
+        "title": "Do I Wanna Know?",
+        "explicit": false
+      },
+      {
+        "id": 70322132,
+        "title": "R U Mine?",
+        "explicit": false
+      },
+      {
+        "id": 70322133,
+        "title": "One For The Road",
+        "explicit": false
+      },
+      {
+        "id": 70322134,
+        "title": "Arabella",
+        "explicit": false
+      },
+      {
+        "id": 70322135,
+        "title": "I Want It All",
+        "explicit": false
+      },
+      {
+        "id": 70322136,
+        "title": "No. 1 Party Anthem",
+        "explicit": false
+      },
+      {
+        "id": 70322137,
+        "title": "Mad Sounds",
+        "explicit": false
+      },
+      {
+        "id": 70322138,
+        "title": "Fireside",
+        "explicit": false
+      },
+      {
+        "id": 70322139,
+        "title": "Why'd You Only Call Me When You're High?",
+        "explicit": false
+      },
+      {
+        "id": 70322140,
+        "title": "Snap Out Of It",
+        "explicit": false
+      },
+      {
+        "id": 70322141,
+        "title": "Knee Socks",
+        "explicit": false
+      },
+      {
+        "id": 70322142,
+        "title": "I Wanna Be Yours",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 11019040,
+    "artistId": 5286,
+    "artist": "Breaking Benjamin",
+    "title": "We Are Not Alone",
+    "year": 2004,
+    "yearSource": "https://en.wikipedia.org/wiki/We_Are_Not_Alone_(Breaking_Benjamin_album)",
+    "sourceReleaseDate": "2009-09-01",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/e7aca189d514a6ad80ccc0b4d82f6abc/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 105746414,
+        "title": "So Cold (Remix)",
+        "explicit": false
+      },
+      {
+        "id": 105746416,
+        "title": "Simple Design",
+        "explicit": true
+      },
+      {
+        "id": 105746418,
+        "title": "Follow (Radio Edit)",
+        "explicit": false
+      },
+      {
+        "id": 105746420,
+        "title": "Firefly",
+        "explicit": true
+      },
+      {
+        "id": 105746422,
+        "title": "Break My Fall",
+        "explicit": true
+      },
+      {
+        "id": 105746424,
+        "title": "Forget It",
+        "explicit": false
+      },
+      {
+        "id": 105746426,
+        "title": "Sooner Or Later",
+        "explicit": false
+      },
+      {
+        "id": 105746428,
+        "title": "Breakdown",
+        "explicit": false
+      },
+      {
+        "id": 105746430,
+        "title": "Away",
+        "explicit": false
+      },
+      {
+        "id": 105746432,
+        "title": "Believe",
+        "explicit": false
+      },
+      {
+        "id": 105746434,
+        "title": "Rain",
+        "explicit": false
+      },
+      {
+        "id": 105746436,
+        "title": "Rain (2005) (Alternate Single Version)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 13793191,
+    "artistId": 5286,
+    "artist": "Breaking Benjamin",
+    "title": "Phobia (Explicit Version)",
+    "year": 2006,
+    "yearSource": "https://en.wikipedia.org/wiki/Phobia_(Breaking_Benjamin_album)",
+    "sourceReleaseDate": "2006-08-08",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/5198ae93044a7edf3fa22e69fc09f6cb/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 130132897,
+        "title": "Intro",
+        "explicit": false
+      },
+      {
+        "id": 130132899,
+        "title": "The Diary of Jane (Single Version)",
+        "explicit": false
+      },
+      {
+        "id": 130132901,
+        "title": "Breath",
+        "explicit": false
+      },
+      {
+        "id": 130132903,
+        "title": "You",
+        "explicit": false
+      },
+      {
+        "id": 130132905,
+        "title": "Evil Angel",
+        "explicit": false
+      },
+      {
+        "id": 130132907,
+        "title": "Until The End",
+        "explicit": true
+      },
+      {
+        "id": 130132909,
+        "title": "Dance With The Devil",
+        "explicit": false
+      },
+      {
+        "id": 130132911,
+        "title": "Topless",
+        "explicit": true
+      },
+      {
+        "id": 130132913,
+        "title": "Here We Are",
+        "explicit": false
+      },
+      {
+        "id": 130132915,
+        "title": "Unknown Soldier",
+        "explicit": false
+      },
+      {
+        "id": 130132917,
+        "title": "Had Enough",
+        "explicit": false
+      },
+      {
+        "id": 130132919,
+        "title": "You Fight Me",
+        "explicit": false
+      },
+      {
+        "id": 130132921,
+        "title": "Outro",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 426788,
+    "artistId": 5286,
+    "artist": "Breaking Benjamin",
+    "title": "Dear Agony",
+    "year": 2009,
+    "yearSource": "https://en.wikipedia.org/wiki/Dear_Agony",
+    "sourceReleaseDate": "2009-10-14",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/8ef941f2eaf2785987dc77d75f1bdc1f/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 4638670,
+        "title": "Fade Away",
+        "explicit": false
+      },
+      {
+        "id": 4638671,
+        "title": "I Will Not Bow",
+        "explicit": false
+      },
+      {
+        "id": 4638672,
+        "title": "Crawl",
+        "explicit": false
+      },
+      {
+        "id": 4638673,
+        "title": "Give Me A Sign",
+        "explicit": false
+      },
+      {
+        "id": 4638674,
+        "title": "Hopeless",
+        "explicit": false
+      },
+      {
+        "id": 4638675,
+        "title": "What Lies Beneath",
+        "explicit": false
+      },
+      {
+        "id": 4638676,
+        "title": "Anthem Of The Angels",
+        "explicit": false
+      },
+      {
+        "id": 4638677,
+        "title": "Lights Out",
+        "explicit": false
+      },
+      {
+        "id": 4638678,
+        "title": "Dear Agony",
+        "explicit": false
+      },
+      {
+        "id": 4638679,
+        "title": "Into The Nothing",
+        "explicit": false
+      },
+      {
+        "id": 4638680,
+        "title": "Without You",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 78721,
+    "artistId": 566,
+    "artist": "Foo Fighters",
+    "title": "Foo Fighters",
+    "year": 1995,
+    "yearSource": "https://en.wikipedia.org/wiki/Foo_Fighters_(album)",
+    "sourceReleaseDate": "1995-07-04",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/da95768f4665d49f198ddab137d128a7/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 629776,
+        "title": "This Is a Call",
+        "explicit": false
+      },
+      {
+        "id": 629779,
+        "title": "I'll Stick Around",
+        "explicit": false
+      },
+      {
+        "id": 629781,
+        "title": "Big Me",
+        "explicit": false
+      },
+      {
+        "id": 629784,
+        "title": "Alone + Easy Target",
+        "explicit": false
+      },
+      {
+        "id": 629413,
+        "title": "Good Grief",
+        "explicit": false
+      },
+      {
+        "id": 630255,
+        "title": "Floaty",
+        "explicit": false
+      },
+      {
+        "id": 629786,
+        "title": "Weenie Beenie",
+        "explicit": false
+      },
+      {
+        "id": 629789,
+        "title": "Oh, George",
+        "explicit": false
+      },
+      {
+        "id": 629792,
+        "title": "For All the Cows",
+        "explicit": false
+      },
+      {
+        "id": 630258,
+        "title": "X-Static",
+        "explicit": false
+      },
+      {
+        "id": 629794,
+        "title": "Wattershed",
+        "explicit": false
+      },
+      {
+        "id": 629796,
+        "title": "Exhausted",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 8247832,
+    "artistId": 566,
+    "artist": "Foo Fighters",
+    "title": "The Colour And The Shape",
+    "year": 1997,
+    "yearSource": "https://en.wikipedia.org/wiki/The_Colour_and_the_Shape",
+    "sourceReleaseDate": "1997-05-20",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/b60f3a75fb0eac77786603a940657164/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 82231546,
+        "title": "Doll",
+        "explicit": false
+      },
+      {
+        "id": 82231552,
+        "title": "Monkey Wrench",
+        "explicit": false
+      },
+      {
+        "id": 82231554,
+        "title": "Hey, Johnny Park!",
+        "explicit": false
+      },
+      {
+        "id": 82231558,
+        "title": "My Poor Brain",
+        "explicit": true
+      },
+      {
+        "id": 82231562,
+        "title": "Wind Up",
+        "explicit": false
+      },
+      {
+        "id": 82231564,
+        "title": "Up In Arms",
+        "explicit": false
+      },
+      {
+        "id": 82231568,
+        "title": "My Hero",
+        "explicit": false
+      },
+      {
+        "id": 82231570,
+        "title": "See You",
+        "explicit": false
+      },
+      {
+        "id": 82231572,
+        "title": "Enough Space",
+        "explicit": false
+      },
+      {
+        "id": 82231576,
+        "title": "February Stars",
+        "explicit": false
+      },
+      {
+        "id": 82231578,
+        "title": "Everlong",
+        "explicit": false
+      },
+      {
+        "id": 82231582,
+        "title": "Walking After You",
+        "explicit": false
+      },
+      {
+        "id": 82231584,
+        "title": "New Way Home",
+        "explicit": false
+      },
+      {
+        "id": 82231586,
+        "title": "The Colour And The Shape",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 1205341,
+    "artistId": 566,
+    "artist": "Foo Fighters",
+    "title": "Echoes, Silence, Patience & Grace",
+    "year": 2007,
+    "yearSource": "https://en.wikipedia.org/wiki/Echoes,_Silence,_Patience_&_Grace",
+    "sourceReleaseDate": "2010-02-10",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/eeb97de903db1fd395c03da4a26ef8f5/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 13132634,
+        "title": "The Pretender",
+        "explicit": false
+      },
+      {
+        "id": 13132635,
+        "title": "Let It Die",
+        "explicit": false
+      },
+      {
+        "id": 13132636,
+        "title": "Erase/Replace",
+        "explicit": false
+      },
+      {
+        "id": 13132637,
+        "title": "Long Road To Ruin",
+        "explicit": false
+      },
+      {
+        "id": 13132638,
+        "title": "Come Alive",
+        "explicit": false
+      },
+      {
+        "id": 13132639,
+        "title": "Stranger Things Have Happened",
+        "explicit": false
+      },
+      {
+        "id": 13132640,
+        "title": "Cheer Up, Boys (Your Make Up Is Running)",
+        "explicit": false
+      },
+      {
+        "id": 13132641,
+        "title": "Summer's End",
+        "explicit": false
+      },
+      {
+        "id": 13132642,
+        "title": "Ballad Of The Beaconsfield Miners",
+        "explicit": false
+      },
+      {
+        "id": 13132643,
+        "title": "Statues",
+        "explicit": false
+      },
+      {
+        "id": 13132644,
+        "title": "But, Honestly",
+        "explicit": false
+      },
+      {
+        "id": 13132645,
+        "title": "Home",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 940640,
+    "artistId": 566,
+    "artist": "Foo Fighters",
+    "title": "Wasting Light",
+    "year": 2011,
+    "yearSource": "https://en.wikipedia.org/wiki/Wasting_Light",
+    "sourceReleaseDate": "2011-04-08",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/48da15ed620fda47423c3638bf6f39b8/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 10287066,
+        "title": "Bridge Burning",
+        "explicit": false
+      },
+      {
+        "id": 10287067,
+        "title": "Rope",
+        "explicit": false
+      },
+      {
+        "id": 10287068,
+        "title": "Dear Rosemary",
+        "explicit": false
+      },
+      {
+        "id": 10287069,
+        "title": "White Limo",
+        "explicit": false
+      },
+      {
+        "id": 10287070,
+        "title": "Arlandria",
+        "explicit": false
+      },
+      {
+        "id": 10287071,
+        "title": "These Days",
+        "explicit": false
+      },
+      {
+        "id": 10287072,
+        "title": "Back & Forth",
+        "explicit": false
+      },
+      {
+        "id": 10287073,
+        "title": "A Matter Of Time",
+        "explicit": false
+      },
+      {
+        "id": 10287074,
+        "title": "Miss The Misery",
+        "explicit": false
+      },
+      {
+        "id": 10287075,
+        "title": "I Should Have Known",
+        "explicit": false
+      },
+      {
+        "id": 10287076,
+        "title": "Walk",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 320369597,
+    "artistId": 956,
+    "artist": "Metric",
+    "title": "Fantasies",
+    "year": 2009,
+    "yearSource": "https://en.wikipedia.org/wiki/Fantasies_(album)",
+    "sourceReleaseDate": "2015-06-01",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/df1e3dd3a90ad641912ceaa5a26ac954/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 1758502927,
+        "title": "Help I'm Alive",
+        "explicit": false
+      },
+      {
+        "id": 1758502937,
+        "title": "Sick Muse",
+        "explicit": false
+      },
+      {
+        "id": 1758502947,
+        "title": "Satellite Mind",
+        "explicit": true
+      },
+      {
+        "id": 1758502957,
+        "title": "Twilight Galaxy",
+        "explicit": false
+      },
+      {
+        "id": 1758502967,
+        "title": "Gold Guns Girls",
+        "explicit": false
+      },
+      {
+        "id": 1758502977,
+        "title": "Gimme Sympathy",
+        "explicit": false
+      },
+      {
+        "id": 1758502987,
+        "title": "Collect Call",
+        "explicit": false
+      },
+      {
+        "id": 1758502997,
+        "title": "Front Row",
+        "explicit": false
+      },
+      {
+        "id": 1758503007,
+        "title": "Blindness",
+        "explicit": false
+      },
+      {
+        "id": 1758503017,
+        "title": "Stadium Love",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 320919507,
+    "artistId": 956,
+    "artist": "Metric",
+    "title": "Synthetica",
+    "year": 2012,
+    "yearSource": "https://en.wikipedia.org/wiki/Synthetica",
+    "sourceReleaseDate": "2012-06-12",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/d133d8b58de7fd97acd1318e6cc762b3/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 1761330057,
+        "title": "Artificial Nocturne",
+        "explicit": true
+      },
+      {
+        "id": 1761330067,
+        "title": "Youth Without Youth",
+        "explicit": false
+      },
+      {
+        "id": 1761330077,
+        "title": "Speed The Collapse",
+        "explicit": false
+      },
+      {
+        "id": 1761330087,
+        "title": "Breathing Underwater",
+        "explicit": false
+      },
+      {
+        "id": 1761330097,
+        "title": "Dreams So Real",
+        "explicit": false
+      },
+      {
+        "id": 1761330107,
+        "title": "Lost Kitten",
+        "explicit": false
+      },
+      {
+        "id": 1761330117,
+        "title": "The Void",
+        "explicit": false
+      },
+      {
+        "id": 1761330127,
+        "title": "Synthetica",
+        "explicit": false
+      },
+      {
+        "id": 1761330137,
+        "title": "Clone",
+        "explicit": false
+      },
+      {
+        "id": 1761330147,
+        "title": "The Wanderlust",
+        "explicit": false
+      },
+      {
+        "id": 1761330167,
+        "title": "Nothing But Time",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 73299342,
+    "artistId": 956,
+    "artist": "Metric",
+    "title": "Art of Doubt",
+    "year": 2018,
+    "yearSource": "https://en.wikipedia.org/wiki/Art_of_Doubt",
+    "sourceReleaseDate": "2018-09-21",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/f6c9c5b9d88f6cb2eea88de70e2c1e28/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 555623072,
+        "title": "Dark Saturday",
+        "explicit": false
+      },
+      {
+        "id": 555623082,
+        "title": "Love You Back",
+        "explicit": false
+      },
+      {
+        "id": 555623092,
+        "title": "Die Happy",
+        "explicit": false
+      },
+      {
+        "id": 555623102,
+        "title": "Now or Never Now",
+        "explicit": false
+      },
+      {
+        "id": 555623112,
+        "title": "Art of Doubt",
+        "explicit": false
+      },
+      {
+        "id": 555623122,
+        "title": "Underline the Black",
+        "explicit": false
+      },
+      {
+        "id": 555623132,
+        "title": "Dressed to Suppress",
+        "explicit": false
+      },
+      {
+        "id": 555623142,
+        "title": "Risk",
+        "explicit": false
+      },
+      {
+        "id": 555623152,
+        "title": "Seven Rules",
+        "explicit": false
+      },
+      {
+        "id": 555623162,
+        "title": "Holding Out",
+        "explicit": false
+      },
+      {
+        "id": 555623172,
+        "title": "Anticipate",
+        "explicit": false
+      },
+      {
+        "id": 555623182,
+        "title": "No Lights on the Horizon",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 16576221,
+    "artistId": 2210161,
+    "artist": "Nothing But Thieves",
+    "title": "Nothing But Thieves",
+    "year": 2015,
+    "yearSource": "https://en.wikipedia.org/wiki/Nothing_but_Thieves_(album)",
+    "sourceReleaseDate": "2015-10-16",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/9f2de1113de4ea7661a1f5d12d5b4e31/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 156536421,
+        "title": "Excuse Me",
+        "explicit": false
+      },
+      {
+        "id": 156536431,
+        "title": "Ban All the Music",
+        "explicit": false
+      },
+      {
+        "id": 156536441,
+        "title": "Wake Up Call",
+        "explicit": false
+      },
+      {
+        "id": 156536451,
+        "title": "Itch",
+        "explicit": false
+      },
+      {
+        "id": 156536461,
+        "title": "If I Get High",
+        "explicit": false
+      },
+      {
+        "id": 156536471,
+        "title": "Graveyard Whistling",
+        "explicit": false
+      },
+      {
+        "id": 156536481,
+        "title": "Hostage",
+        "explicit": false
+      },
+      {
+        "id": 156536491,
+        "title": "Trip Switch",
+        "explicit": false
+      },
+      {
+        "id": 156536501,
+        "title": "Lover, Please Stay",
+        "explicit": false
+      },
+      {
+        "id": 156536511,
+        "title": "Drawing Pins",
+        "explicit": false
+      },
+      {
+        "id": 156536521,
+        "title": "Painkiller",
+        "explicit": false
+      },
+      {
+        "id": 156536531,
+        "title": "Tempt You (Evocatio)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 46921452,
+    "artistId": 2210161,
+    "artist": "Nothing But Thieves",
+    "title": "Broken Machine (Deluxe)",
+    "year": 2017,
+    "yearSource": "https://en.wikipedia.org/wiki/Broken_Machine_(album)",
+    "sourceReleaseDate": "2017-09-08",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/ae7ce644ccffa85c62a8065d533c3c77/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 398897342,
+        "title": "I Was Just a Kid",
+        "explicit": false
+      },
+      {
+        "id": 398897352,
+        "title": "Amsterdam",
+        "explicit": false
+      },
+      {
+        "id": 398897362,
+        "title": "Sorry",
+        "explicit": false
+      },
+      {
+        "id": 398897372,
+        "title": "Broken Machine",
+        "explicit": true
+      },
+      {
+        "id": 398897382,
+        "title": "Live Like Animals",
+        "explicit": true
+      },
+      {
+        "id": 398897392,
+        "title": "Soda",
+        "explicit": false
+      },
+      {
+        "id": 398897402,
+        "title": "I'm Not Made by Design",
+        "explicit": true
+      },
+      {
+        "id": 398897412,
+        "title": "Particles",
+        "explicit": false
+      },
+      {
+        "id": 398897422,
+        "title": "Get Better",
+        "explicit": false
+      },
+      {
+        "id": 398897432,
+        "title": "Hell, Yeah",
+        "explicit": false
+      },
+      {
+        "id": 398897442,
+        "title": "Afterlife",
+        "explicit": false
+      },
+      {
+        "id": 398897452,
+        "title": "Reset Me",
+        "explicit": false
+      },
+      {
+        "id": 398897462,
+        "title": "Number 13",
+        "explicit": false
+      },
+      {
+        "id": 398897472,
+        "title": "Sorry (Acoustic)",
+        "explicit": false
+      },
+      {
+        "id": 398897482,
+        "title": "Particles (Piano Version)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 180580152,
+    "artistId": 2210161,
+    "artist": "Nothing But Thieves",
+    "title": "Moral Panic",
+    "year": 2020,
+    "yearSource": "https://en.wikipedia.org/wiki/Moral_Panic_(album)",
+    "sourceReleaseDate": "2020-10-23",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/ff13b95c8fa8818dc6be02f5d7bdd59b/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 1113575312,
+        "title": "Unperson",
+        "explicit": false
+      },
+      {
+        "id": 1113575322,
+        "title": "Is Everybody Going Crazy?",
+        "explicit": false
+      },
+      {
+        "id": 1113575332,
+        "title": "Moral Panic",
+        "explicit": false
+      },
+      {
+        "id": 1113575342,
+        "title": "Real Love Song",
+        "explicit": false
+      },
+      {
+        "id": 1113575352,
+        "title": "Phobia",
+        "explicit": true
+      },
+      {
+        "id": 1113575362,
+        "title": "This Feels Like the End",
+        "explicit": false
+      },
+      {
+        "id": 1113575372,
+        "title": "Free If We Want It",
+        "explicit": false
+      },
+      {
+        "id": 1113575382,
+        "title": "Impossible",
+        "explicit": true
+      },
+      {
+        "id": 1113575392,
+        "title": "There Was Sun",
+        "explicit": false
+      },
+      {
+        "id": 1113575402,
+        "title": "Can You Afford to Be An Individual?",
+        "explicit": true
+      },
+      {
+        "id": 1113575412,
+        "title": "Before We Drift Away",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 1612869,
+    "artistId": 1817,
+    "artist": "Poets of the Fall",
+    "title": "Signs of Life",
+    "year": 2005,
+    "yearSource": "https://en.wikipedia.org/wiki/Signs_of_Life_(Poets_of_the_Fall_album)",
+    "sourceReleaseDate": "2005-07-20",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/2929fef5a6f60e9fcb0526c2bc4d60ef/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 17222425,
+        "title": "Lift",
+        "explicit": false
+      },
+      {
+        "id": 17222426,
+        "title": "Overboard",
+        "explicit": false
+      },
+      {
+        "id": 17222427,
+        "title": "Late Goodbye",
+        "explicit": false
+      },
+      {
+        "id": 17222428,
+        "title": "Don't Mess With Me",
+        "explicit": false
+      },
+      {
+        "id": 17222429,
+        "title": "3 AM",
+        "explicit": false
+      },
+      {
+        "id": 17222430,
+        "title": "Stay",
+        "explicit": false
+      },
+      {
+        "id": 17222431,
+        "title": "Seek You Out",
+        "explicit": false
+      },
+      {
+        "id": 17222432,
+        "title": "Shallow",
+        "explicit": false
+      },
+      {
+        "id": 17222433,
+        "title": "Everything Fades",
+        "explicit": false
+      },
+      {
+        "id": 17222434,
+        "title": "Someone Special",
+        "explicit": false
+      },
+      {
+        "id": 17222435,
+        "title": "Illusion & Dream",
+        "explicit": false
+      },
+      {
+        "id": 17222436,
+        "title": "Sleep",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 6032549,
+    "artistId": 1817,
+    "artist": "Poets of the Fall",
+    "title": "Carnival of Rust",
+    "year": 2006,
+    "yearSource": "https://en.wikipedia.org/wiki/Carnival_of_Rust",
+    "sourceReleaseDate": "2006-04-12",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/467a12c687216c584c0b73d4e8218a2f/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 61562707,
+        "title": "Fire",
+        "explicit": false
+      },
+      {
+        "id": 61562708,
+        "title": "Sorry Go 'Round",
+        "explicit": false
+      },
+      {
+        "id": 61562709,
+        "title": "Carnival of Rust",
+        "explicit": false
+      },
+      {
+        "id": 61562710,
+        "title": "Locking Up the Sun",
+        "explicit": false
+      },
+      {
+        "id": 61562711,
+        "title": "Gravity",
+        "explicit": false
+      },
+      {
+        "id": 61562712,
+        "title": "King of Fools",
+        "explicit": false
+      },
+      {
+        "id": 61562713,
+        "title": "Roses",
+        "explicit": false
+      },
+      {
+        "id": 61562714,
+        "title": "Desire",
+        "explicit": false
+      },
+      {
+        "id": 61562715,
+        "title": "All the Way / 4U",
+        "explicit": false
+      },
+      {
+        "id": 61562716,
+        "title": "Delicious",
+        "explicit": false
+      },
+      {
+        "id": 61562717,
+        "title": "Maybe Tomorrow Is a Better Day",
+        "explicit": false
+      },
+      {
+        "id": 61562718,
+        "title": "Dawn",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 4909791,
+    "artistId": 1817,
+    "artist": "Poets of the Fall",
+    "title": "Twilight Theater",
+    "year": 2010,
+    "yearSource": "https://en.wikipedia.org/wiki/Twilight_Theater",
+    "sourceReleaseDate": "2010-03-17",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/5a01f0803f2a233dc2d29fc52aa080ef/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 51006551,
+        "title": "Dreaming Wide Awake",
+        "explicit": false
+      },
+      {
+        "id": 51006561,
+        "title": "War",
+        "explicit": false
+      },
+      {
+        "id": 51006571,
+        "title": "Change",
+        "explicit": false
+      },
+      {
+        "id": 51006581,
+        "title": "15 Min Flame",
+        "explicit": false
+      },
+      {
+        "id": 51006591,
+        "title": "Given and Denied",
+        "explicit": false
+      },
+      {
+        "id": 51006601,
+        "title": "Rewind",
+        "explicit": false
+      },
+      {
+        "id": 51006611,
+        "title": "Dying to Live",
+        "explicit": false
+      },
+      {
+        "id": 51006621,
+        "title": "You're Still Here",
+        "explicit": false
+      },
+      {
+        "id": 51006631,
+        "title": "Smoke and Mirrors",
+        "explicit": false
+      },
+      {
+        "id": 51006641,
+        "title": "Heal My Wounds",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 7690769,
+    "artistId": 1177,
+    "artist": "Queens of the Stone Age",
+    "title": "Rated R",
+    "year": 2000,
+    "yearSource": "https://en.wikipedia.org/wiki/Rated_R_(Queens_of_the_Stone_Age_album)",
+    "sourceReleaseDate": "2007-07-10",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/b57964655eae594730cac91ff97b9772/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 77401363,
+        "title": "Feel Good Hit Of The Summer",
+        "explicit": false
+      },
+      {
+        "id": 77401364,
+        "title": "The Lost Art Of Keeping A Secret",
+        "explicit": false
+      },
+      {
+        "id": 77401365,
+        "title": "Leg Of Lamb",
+        "explicit": false
+      },
+      {
+        "id": 77401366,
+        "title": "Auto Pilot",
+        "explicit": false
+      },
+      {
+        "id": 77401367,
+        "title": "Better Living Through Chemistry",
+        "explicit": false
+      },
+      {
+        "id": 77401368,
+        "title": "Monsters In The Parasol",
+        "explicit": false
+      },
+      {
+        "id": 77401369,
+        "title": "Quick And To The Pointless",
+        "explicit": false
+      },
+      {
+        "id": 77401370,
+        "title": "In The Fade",
+        "explicit": false
+      },
+      {
+        "id": 77401371,
+        "title": "Feel Good Hit Of The Summer (Reprise)",
+        "explicit": false
+      },
+      {
+        "id": 77401372,
+        "title": "Tension Head",
+        "explicit": true
+      },
+      {
+        "id": 77401373,
+        "title": "Lightning Song",
+        "explicit": false
+      },
+      {
+        "id": 77401374,
+        "title": "I Think I Lost My Headache",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 662259,
+    "artistId": 1177,
+    "artist": "Queens of the Stone Age",
+    "title": "Songs For The Deaf",
+    "year": 2002,
+    "yearSource": "https://en.wikipedia.org/wiki/Songs_for_the_Deaf",
+    "sourceReleaseDate": "2002-01-01",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/ace9490e8fe0c7468b102aa5145fb766/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 7179757,
+        "title": "You Think I Ain't Worth A Dollar, But I Feel Like A Millionaire (Album Version With Interlude)",
+        "explicit": false
+      },
+      {
+        "id": 7179758,
+        "title": "No One Knows",
+        "explicit": false
+      },
+      {
+        "id": 7179759,
+        "title": "First It Giveth (Album Version)",
+        "explicit": false
+      },
+      {
+        "id": 7179760,
+        "title": "Song For The Dead",
+        "explicit": true
+      },
+      {
+        "id": 7179761,
+        "title": "The Sky Is Fallin' (Album Version)",
+        "explicit": false
+      },
+      {
+        "id": 7179762,
+        "title": "Six Shooter (Album Version Explicit)",
+        "explicit": true
+      },
+      {
+        "id": 7179763,
+        "title": "Hanging Tree (Album Version)",
+        "explicit": false
+      },
+      {
+        "id": 7179764,
+        "title": "Go With The Flow",
+        "explicit": false
+      },
+      {
+        "id": 7179765,
+        "title": "Gonna Leave You (Album Version)",
+        "explicit": false
+      },
+      {
+        "id": 7179766,
+        "title": "Do It Again (Album Version)",
+        "explicit": false
+      },
+      {
+        "id": 7179767,
+        "title": "God Is In The Radio (Album Version)",
+        "explicit": false
+      },
+      {
+        "id": 7179768,
+        "title": "Another Love Song (Album Version)",
+        "explicit": false
+      },
+      {
+        "id": 7179769,
+        "title": "Song For The Deaf (Album Version Explicit)",
+        "explicit": true
+      },
+      {
+        "id": 7179770,
+        "title": "Mosquito Song (Album Version)",
+        "explicit": false
+      },
+      {
+        "id": 7179771,
+        "title": "The Lost Art Of Keeping A Secret (Live at the Troubadour Version)",
+        "explicit": false
+      },
+      {
+        "id": 7179772,
+        "title": "Everybody's Gonna Be Happy (Non-LP Version)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 107240,
+    "artistId": 1177,
+    "artist": "Queens of the Stone Age",
+    "title": "Lullabies To Paralyze",
+    "year": 2005,
+    "yearSource": "https://en.wikipedia.org/wiki/Lullabies_to_Paralyze",
+    "sourceReleaseDate": "2005-01-01",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/5bce72bf9537a679f1c576d396f19c85/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 953741,
+        "title": "This Lullaby",
+        "explicit": false
+      },
+      {
+        "id": 953742,
+        "title": "Medication",
+        "explicit": false
+      },
+      {
+        "id": 953743,
+        "title": "Everybody Knows That You're Insane",
+        "explicit": false
+      },
+      {
+        "id": 953744,
+        "title": "Tangled Up In Plaid",
+        "explicit": false
+      },
+      {
+        "id": 953745,
+        "title": "Burn The Witch",
+        "explicit": false
+      },
+      {
+        "id": 953746,
+        "title": "In My Head",
+        "explicit": false
+      },
+      {
+        "id": 953747,
+        "title": "Little Sister",
+        "explicit": false
+      },
+      {
+        "id": 953748,
+        "title": "I Never Came",
+        "explicit": false
+      },
+      {
+        "id": 953749,
+        "title": "Someone's In The Wolf",
+        "explicit": false
+      },
+      {
+        "id": 953750,
+        "title": "The Blood Is Love",
+        "explicit": false
+      },
+      {
+        "id": 953751,
+        "title": "Skin On Skin",
+        "explicit": false
+      },
+      {
+        "id": 953752,
+        "title": "Broken Box",
+        "explicit": true
+      },
+      {
+        "id": 953753,
+        "title": "\"You Got A Killer Scene There, Man...\"",
+        "explicit": true
+      },
+      {
+        "id": 953754,
+        "title": "Long Slow Goodbye",
+        "explicit": false
+      },
+      {
+        "id": 953755,
+        "title": "Like A Drug",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 6619332,
+    "artistId": 1177,
+    "artist": "Queens of the Stone Age",
+    "title": "...Like Clockwork",
+    "year": 2013,
+    "yearSource": "https://en.wikipedia.org/wiki/...Like_Clockwork",
+    "sourceReleaseDate": "2013-06-03",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/ac317291ed9654c649ca24d0d17c063c/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 67615718,
+        "title": "Keep Your Eyes Peeled",
+        "explicit": false
+      },
+      {
+        "id": 67615719,
+        "title": "I Sat by the Ocean",
+        "explicit": false
+      },
+      {
+        "id": 67615720,
+        "title": "The Vampyre of Time and Memory",
+        "explicit": false
+      },
+      {
+        "id": 67615721,
+        "title": "If I Had a Tail",
+        "explicit": false
+      },
+      {
+        "id": 67615722,
+        "title": "My God Is the Sun",
+        "explicit": false
+      },
+      {
+        "id": 67615723,
+        "title": "Kalopsia",
+        "explicit": false
+      },
+      {
+        "id": 67615724,
+        "title": "Fairweather Friends",
+        "explicit": true
+      },
+      {
+        "id": 67615725,
+        "title": "Smooth Sailing",
+        "explicit": true
+      },
+      {
+        "id": 67615726,
+        "title": "I Appear Missing",
+        "explicit": false
+      },
+      {
+        "id": 67615727,
+        "title": "...Like Clockwork",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 14880317,
+    "artistId": 399,
+    "artist": "Radiohead",
+    "title": "The Bends",
+    "year": 1995,
+    "yearSource": "https://en.wikipedia.org/wiki/The_Bends_(album)",
+    "sourceReleaseDate": "1994-11-01",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/0d2ccaf5f7b35af57f3d9c8f4504a6e6/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 138544257,
+        "title": "Planet Telex",
+        "explicit": false
+      },
+      {
+        "id": 138544259,
+        "title": "The Bends",
+        "explicit": false
+      },
+      {
+        "id": 138544261,
+        "title": "High and Dry",
+        "explicit": false
+      },
+      {
+        "id": 138544263,
+        "title": "Fake Plastic Trees",
+        "explicit": false
+      },
+      {
+        "id": 138544265,
+        "title": "Bones",
+        "explicit": false
+      },
+      {
+        "id": 138544267,
+        "title": "(Nice Dream)",
+        "explicit": false
+      },
+      {
+        "id": 138544269,
+        "title": "Just",
+        "explicit": false
+      },
+      {
+        "id": 138544271,
+        "title": "My Iron Lung",
+        "explicit": false
+      },
+      {
+        "id": 138544273,
+        "title": "Bullet Proof ... I Wish I Was",
+        "explicit": false
+      },
+      {
+        "id": 138544275,
+        "title": "Black Star",
+        "explicit": false
+      },
+      {
+        "id": 138544277,
+        "title": "Sulk",
+        "explicit": false
+      },
+      {
+        "id": 138544279,
+        "title": "Street Spirit (Fade Out)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 14879699,
+    "artistId": 399,
+    "artist": "Radiohead",
+    "title": "OK Computer",
+    "year": 1997,
+    "yearSource": "https://en.wikipedia.org/wiki/OK_Computer",
+    "sourceReleaseDate": "1997-06-17",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/05a186e0a859a36f9cd51cdae2158fe1/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 138539971,
+        "title": "Airbag",
+        "explicit": false
+      },
+      {
+        "id": 138539973,
+        "title": "Paranoid Android",
+        "explicit": false
+      },
+      {
+        "id": 138539975,
+        "title": "Subterranean Homesick Alien",
+        "explicit": false
+      },
+      {
+        "id": 138539977,
+        "title": "Exit Music (For A Film)",
+        "explicit": false
+      },
+      {
+        "id": 138539979,
+        "title": "Let Down",
+        "explicit": false
+      },
+      {
+        "id": 138539981,
+        "title": "Karma Police",
+        "explicit": false
+      },
+      {
+        "id": 138539983,
+        "title": "Fitter Happier",
+        "explicit": false
+      },
+      {
+        "id": 138539985,
+        "title": "Electioneering",
+        "explicit": false
+      },
+      {
+        "id": 138539987,
+        "title": "Climbing Up the Walls",
+        "explicit": false
+      },
+      {
+        "id": 138539989,
+        "title": "No Surprises",
+        "explicit": false
+      },
+      {
+        "id": 138539991,
+        "title": "Lucky",
+        "explicit": false
+      },
+      {
+        "id": 138539993,
+        "title": "The Tourist",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 14880741,
+    "artistId": 399,
+    "artist": "Radiohead",
+    "title": "Kid A",
+    "year": 2000,
+    "yearSource": "https://en.wikipedia.org/wiki/Kid_A",
+    "sourceReleaseDate": "2000-10-02",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/e5925065cdb1cefbc3bd75af4a1f1801/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 138547587,
+        "title": "Everything In Its Right Place",
+        "explicit": false
+      },
+      {
+        "id": 138547589,
+        "title": "Kid A",
+        "explicit": false
+      },
+      {
+        "id": 138547591,
+        "title": "The National Anthem",
+        "explicit": false
+      },
+      {
+        "id": 138547593,
+        "title": "How to Disappear Completely",
+        "explicit": false
+      },
+      {
+        "id": 138547595,
+        "title": "Treefingers",
+        "explicit": false
+      },
+      {
+        "id": 138547597,
+        "title": "Optimistic",
+        "explicit": false
+      },
+      {
+        "id": 138547599,
+        "title": "In Limbo",
+        "explicit": false
+      },
+      {
+        "id": 138547601,
+        "title": "Idioteque",
+        "explicit": false
+      },
+      {
+        "id": 138547603,
+        "title": "Morning Bell",
+        "explicit": false
+      },
+      {
+        "id": 138547605,
+        "title": "Motion Picture Soundtrack",
+        "explicit": false
+      },
+      {
+        "id": 138547607,
+        "title": "Untitled",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 14880659,
+    "artistId": 399,
+    "artist": "Radiohead",
+    "title": "In Rainbows",
+    "year": 2007,
+    "yearSource": "https://en.wikipedia.org/wiki/In_Rainbows",
+    "sourceReleaseDate": "2007-12-28",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/a175af9b7d329bc678cb4d26fc13d6de/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 138546803,
+        "title": "15 Step",
+        "explicit": false
+      },
+      {
+        "id": 138546805,
+        "title": "Bodysnatchers",
+        "explicit": false
+      },
+      {
+        "id": 138546807,
+        "title": "Nude",
+        "explicit": false
+      },
+      {
+        "id": 138546809,
+        "title": "Weird Fishes / Arpeggi",
+        "explicit": false
+      },
+      {
+        "id": 138546811,
+        "title": "All I Need",
+        "explicit": false
+      },
+      {
+        "id": 138546813,
+        "title": "Faust Arp",
+        "explicit": false
+      },
+      {
+        "id": 138546815,
+        "title": "Reckoner",
+        "explicit": false
+      },
+      {
+        "id": 138546817,
+        "title": "House Of Cards",
+        "explicit": false
+      },
+      {
+        "id": 138546819,
+        "title": "Jigsaw Falling Into Place",
+        "explicit": false
+      },
+      {
+        "id": 138546821,
+        "title": "Videotape",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 11429868,
+    "artistId": 480,
+    "artist": "Röyksopp",
+    "title": "Melody A.M.",
+    "year": 2001,
+    "yearSource": "https://en.wikipedia.org/wiki/Melody_A.M.",
+    "sourceReleaseDate": "2001-08-22",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/ecef0bb59ddb6af8ba8fe938647ba94e/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 109713882,
+        "title": "So Easy",
+        "explicit": false
+      },
+      {
+        "id": 109713884,
+        "title": "Eple",
+        "explicit": false
+      },
+      {
+        "id": 109713886,
+        "title": "Sparks",
+        "explicit": false
+      },
+      {
+        "id": 109713888,
+        "title": "In Space",
+        "explicit": false
+      },
+      {
+        "id": 109713890,
+        "title": "Poor Leno",
+        "explicit": false
+      },
+      {
+        "id": 109713892,
+        "title": "A Higher Place",
+        "explicit": false
+      },
+      {
+        "id": 109713894,
+        "title": "Röyksopp's Night Out",
+        "explicit": false
+      },
+      {
+        "id": 109713896,
+        "title": "Remind Me",
+        "explicit": false
+      },
+      {
+        "id": 109713898,
+        "title": "She's So",
+        "explicit": false
+      },
+      {
+        "id": 109713900,
+        "title": "40 Years Back \\ Come",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 301287,
+    "artistId": 480,
+    "artist": "Röyksopp",
+    "title": "The Understanding",
+    "year": 2005,
+    "yearSource": "https://en.wikipedia.org/wiki/The_Understanding_(Röyksopp_album)",
+    "sourceReleaseDate": "2005-06-27",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/b3cc07880bdcdc9d6703b6f99c70a602/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 3122435,
+        "title": "Triumphant",
+        "explicit": false
+      },
+      {
+        "id": 3122436,
+        "title": "Only This Moment",
+        "explicit": false
+      },
+      {
+        "id": 3122437,
+        "title": "49 Percent",
+        "explicit": false
+      },
+      {
+        "id": 3122438,
+        "title": "Sombre detune",
+        "explicit": false
+      },
+      {
+        "id": 3122439,
+        "title": "Follow My Ruin",
+        "explicit": false
+      },
+      {
+        "id": 3122440,
+        "title": "Beautiful Day Without You",
+        "explicit": false
+      },
+      {
+        "id": 3122441,
+        "title": "What Else Is There?",
+        "explicit": false
+      },
+      {
+        "id": 3122442,
+        "title": "Circuit Breaker",
+        "explicit": false
+      },
+      {
+        "id": 3122443,
+        "title": "Alpha Male",
+        "explicit": false
+      },
+      {
+        "id": 3122444,
+        "title": "Someone Like Me",
+        "explicit": false
+      },
+      {
+        "id": 3122445,
+        "title": "Dead to the World",
+        "explicit": false
+      },
+      {
+        "id": 3122446,
+        "title": "Tristesse Globale",
+        "explicit": false
+      },
+      {
+        "id": 3122447,
+        "title": "Go Away",
+        "explicit": false
+      },
+      {
+        "id": 3122448,
+        "title": "Clean Sweep",
+        "explicit": false
+      },
+      {
+        "id": 3122449,
+        "title": "Boys",
+        "explicit": false
+      },
+      {
+        "id": 3122450,
+        "title": "Head",
+        "explicit": false
+      },
+      {
+        "id": 3122451,
+        "title": "Looser Now",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 1233213,
+    "artistId": 480,
+    "artist": "Röyksopp",
+    "title": "Junior",
+    "year": 2009,
+    "yearSource": "https://en.wikipedia.org/wiki/Junior_(Röyksopp_album)",
+    "sourceReleaseDate": "2009-03-20",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/920d5d7f64d1ceab94d1670f72f1bc0b/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 13464142,
+        "title": "Happy Up Here",
+        "explicit": false
+      },
+      {
+        "id": 13464143,
+        "title": "The Girl and the Robot",
+        "explicit": false
+      },
+      {
+        "id": 13464144,
+        "title": "Vision One",
+        "explicit": false
+      },
+      {
+        "id": 13464145,
+        "title": "This Must Be It",
+        "explicit": false
+      },
+      {
+        "id": 13464146,
+        "title": "Röyksopp Forever",
+        "explicit": false
+      },
+      {
+        "id": 13464147,
+        "title": "Miss It So Much",
+        "explicit": false
+      },
+      {
+        "id": 13464148,
+        "title": "Tricky Tricky",
+        "explicit": false
+      },
+      {
+        "id": 13464149,
+        "title": "You Don't Have a Clue",
+        "explicit": false
+      },
+      {
+        "id": 13464150,
+        "title": "Silver Cruiser",
+        "explicit": false
+      },
+      {
+        "id": 13464151,
+        "title": "True to Life",
+        "explicit": false
+      },
+      {
+        "id": 13464152,
+        "title": "It's What I Want",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 8015732,
+    "artistId": 1189,
+    "artist": "Seether",
+    "title": "Disclaimer II",
+    "year": 2004,
+    "yearSource": "https://en.wikipedia.org/wiki/Disclaimer_II",
+    "sourceReleaseDate": "2014-06-24",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/df6a7bb6fc214350e4aceff7a032ad39/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 80276088,
+        "title": "Gasoline",
+        "explicit": false
+      },
+      {
+        "id": 80276090,
+        "title": "69 Tea",
+        "explicit": false
+      },
+      {
+        "id": 80276092,
+        "title": "Fine Again",
+        "explicit": false
+      },
+      {
+        "id": 80276094,
+        "title": "Needles",
+        "explicit": true
+      },
+      {
+        "id": 80276096,
+        "title": "Driven Under",
+        "explicit": false
+      },
+      {
+        "id": 80276098,
+        "title": "Pride",
+        "explicit": true
+      },
+      {
+        "id": 80276100,
+        "title": "Sympathetic",
+        "explicit": false
+      },
+      {
+        "id": 80276102,
+        "title": "Your Bore",
+        "explicit": true
+      },
+      {
+        "id": 80276104,
+        "title": "Fade Away",
+        "explicit": false
+      },
+      {
+        "id": 80276106,
+        "title": "Pig",
+        "explicit": false
+      },
+      {
+        "id": 80276108,
+        "title": "Fuck It",
+        "explicit": true
+      },
+      {
+        "id": 80276110,
+        "title": "Broken",
+        "explicit": false
+      },
+      {
+        "id": 80276112,
+        "title": "Sold Me",
+        "explicit": false
+      },
+      {
+        "id": 80276114,
+        "title": "Cigarettes",
+        "explicit": false
+      },
+      {
+        "id": 80276116,
+        "title": "Love Her",
+        "explicit": false
+      },
+      {
+        "id": 80276118,
+        "title": "Take Me Away",
+        "explicit": false
+      },
+      {
+        "id": 80276120,
+        "title": "Got It Made",
+        "explicit": false
+      },
+      {
+        "id": 80276122,
+        "title": "Out Of My Way",
+        "explicit": false
+      },
+      {
+        "id": 80276124,
+        "title": "Hang On",
+        "explicit": false
+      },
+      {
+        "id": 80276126,
+        "title": "Broken",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 8015752,
+    "artistId": 1189,
+    "artist": "Seether",
+    "title": "Karma and Effect",
+    "year": 2005,
+    "yearSource": "https://en.wikipedia.org/wiki/Karma_and_Effect",
+    "sourceReleaseDate": "2009-09-11",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/66fcbcea3f7828851ca51e9c58b49c1b/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 80276368,
+        "title": "Because Of Me",
+        "explicit": false
+      },
+      {
+        "id": 80276370,
+        "title": "Remedy",
+        "explicit": false
+      },
+      {
+        "id": 80276372,
+        "title": "Truth",
+        "explicit": false
+      },
+      {
+        "id": 80276374,
+        "title": "The Gift",
+        "explicit": false
+      },
+      {
+        "id": 80276376,
+        "title": "Burrito",
+        "explicit": false
+      },
+      {
+        "id": 80276378,
+        "title": "Given",
+        "explicit": false
+      },
+      {
+        "id": 80276380,
+        "title": "Never Leave",
+        "explicit": false
+      },
+      {
+        "id": 80276382,
+        "title": "World Falls Away",
+        "explicit": false
+      },
+      {
+        "id": 80276384,
+        "title": "Tongue",
+        "explicit": false
+      },
+      {
+        "id": 80276386,
+        "title": "I'm The One",
+        "explicit": false
+      },
+      {
+        "id": 80276388,
+        "title": "Simplest Mistake",
+        "explicit": false
+      },
+      {
+        "id": 80276390,
+        "title": "Diseased",
+        "explicit": false
+      },
+      {
+        "id": 80276392,
+        "title": "Plastic Man",
+        "explicit": false
+      },
+      {
+        "id": 80276394,
+        "title": "Interlude/Outro",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 8015762,
+    "artistId": 1189,
+    "artist": "Seether",
+    "title": "Finding Beauty In Negative Spaces (Bonus Track Version)",
+    "year": 2007,
+    "yearSource": "https://en.wikipedia.org/wiki/Finding_Beauty_in_Negative_Spaces",
+    "sourceReleaseDate": "2014-06-24",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/7b828bdaa512c9061bb6df1a9255142b/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 80276488,
+        "title": "Like Suicide",
+        "explicit": true
+      },
+      {
+        "id": 80276490,
+        "title": "Fake It",
+        "explicit": true
+      },
+      {
+        "id": 80276492,
+        "title": "Breakdown",
+        "explicit": false
+      },
+      {
+        "id": 80276494,
+        "title": "FMLYHM",
+        "explicit": true
+      },
+      {
+        "id": 80276496,
+        "title": "Fallen",
+        "explicit": false
+      },
+      {
+        "id": 80276498,
+        "title": "Rise Above This",
+        "explicit": false
+      },
+      {
+        "id": 80276500,
+        "title": "No Jesus Christ",
+        "explicit": false
+      },
+      {
+        "id": 80276502,
+        "title": "6 Gun Quota",
+        "explicit": false
+      },
+      {
+        "id": 80276504,
+        "title": "Walk Away From The Sun",
+        "explicit": false
+      },
+      {
+        "id": 80276506,
+        "title": "Eyes Of The Devil",
+        "explicit": false
+      },
+      {
+        "id": 80276508,
+        "title": "Don't Believe",
+        "explicit": false
+      },
+      {
+        "id": 80276510,
+        "title": "Waste",
+        "explicit": false
+      },
+      {
+        "id": 80276512,
+        "title": "Careless Whisper",
+        "explicit": false
+      },
+      {
+        "id": 80276514,
+        "title": "Careless Whisper (Strings Version)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 1240724,
+    "artistId": 6691,
+    "artist": "Shinedown",
+    "title": "The Sound of Madness",
+    "year": 2008,
+    "yearSource": "https://en.wikipedia.org/wiki/The_Sound_of_Madness",
+    "sourceReleaseDate": "2008-06-24",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/afd8aca1f753382eaaf18070e1901ac2/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 13547716,
+        "title": "Devour",
+        "explicit": false
+      },
+      {
+        "id": 13547717,
+        "title": "Sound of Madness",
+        "explicit": false
+      },
+      {
+        "id": 13547718,
+        "title": "Second Chance",
+        "explicit": false
+      },
+      {
+        "id": 13547719,
+        "title": "Cry for Help",
+        "explicit": false
+      },
+      {
+        "id": 13547720,
+        "title": "The Crow & the Butterfly",
+        "explicit": false
+      },
+      {
+        "id": 13547721,
+        "title": "If You Only Knew",
+        "explicit": false
+      },
+      {
+        "id": 13547722,
+        "title": "Sin with a Grin",
+        "explicit": false
+      },
+      {
+        "id": 13547723,
+        "title": "What a Shame",
+        "explicit": false
+      },
+      {
+        "id": 13547724,
+        "title": "Cyanide Sweet Tooth Suicide",
+        "explicit": true
+      },
+      {
+        "id": 13547725,
+        "title": "Breaking Inside",
+        "explicit": false
+      },
+      {
+        "id": 13547726,
+        "title": "Call Me",
+        "explicit": false
+      },
+      {
+        "id": 13547727,
+        "title": "The Energy",
+        "explicit": true
+      },
+      {
+        "id": 13547728,
+        "title": "Son of Sam",
+        "explicit": false
+      },
+      {
+        "id": 13547729,
+        "title": "I Own You",
+        "explicit": false
+      },
+      {
+        "id": 13547730,
+        "title": "Junkies for Fame",
+        "explicit": false
+      },
+      {
+        "id": 13547731,
+        "title": "Second Chance (Bonus Track)",
+        "explicit": false
+      },
+      {
+        "id": 13547732,
+        "title": "The Crow & the Butterfly (Bonus Track)",
+        "explicit": false
+      },
+      {
+        "id": 13547733,
+        "title": "Her Name Is Alice",
+        "explicit": false
+      },
+      {
+        "id": 13547734,
+        "title": "Diamond Eyes (Boom-Lay Boom-Lay Boom)",
+        "explicit": false
+      },
+      {
+        "id": 13547735,
+        "title": "Breaking Inside (feat. Lzzy Hale of Halestorm)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 1603045,
+    "artistId": 6691,
+    "artist": "Shinedown",
+    "title": "Amaryllis",
+    "year": 2012,
+    "yearSource": "https://en.wikipedia.org/wiki/Amaryllis_(Shinedown_album)",
+    "sourceReleaseDate": "2012-03-23",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/1afaaec12dfc26169d3a318cbc9718f4/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 17135198,
+        "title": "Adrenaline",
+        "explicit": false
+      },
+      {
+        "id": 17135199,
+        "title": "Bully",
+        "explicit": false
+      },
+      {
+        "id": 17135200,
+        "title": "Amaryllis",
+        "explicit": false
+      },
+      {
+        "id": 17135201,
+        "title": "Unity",
+        "explicit": false
+      },
+      {
+        "id": 17135202,
+        "title": "Enemies",
+        "explicit": false
+      },
+      {
+        "id": 17135203,
+        "title": "I'm Not Alright",
+        "explicit": false
+      },
+      {
+        "id": 17135204,
+        "title": "Nowhere Kids",
+        "explicit": true
+      },
+      {
+        "id": 17135205,
+        "title": "Miracle",
+        "explicit": false
+      },
+      {
+        "id": 17135206,
+        "title": "I'll Follow You",
+        "explicit": false
+      },
+      {
+        "id": 17135207,
+        "title": "For My Sake",
+        "explicit": false
+      },
+      {
+        "id": 17135208,
+        "title": "My Name (Wearing Me Out)",
+        "explicit": true
+      },
+      {
+        "id": 17135209,
+        "title": "Through the Ghost",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 62256972,
+    "artistId": 6691,
+    "artist": "Shinedown",
+    "title": "ATTENTION ATTENTION",
+    "year": 2018,
+    "yearSource": "https://en.wikipedia.org/wiki/Attention_Attention",
+    "sourceReleaseDate": "2018-05-04",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/d6ae8ccf4fc77fc693070a966058e0a6/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 491971582,
+        "title": "THE ENTRANCE",
+        "explicit": false
+      },
+      {
+        "id": 491971592,
+        "title": "DEVIL",
+        "explicit": false
+      },
+      {
+        "id": 491971602,
+        "title": "BLACK SOUL",
+        "explicit": false
+      },
+      {
+        "id": 491971612,
+        "title": "ATTENTION ATTENTION",
+        "explicit": false
+      },
+      {
+        "id": 491971622,
+        "title": "KILL YOUR CONSCIENCE",
+        "explicit": false
+      },
+      {
+        "id": 491971632,
+        "title": "PYRO",
+        "explicit": false
+      },
+      {
+        "id": 491971642,
+        "title": "MONSTERS",
+        "explicit": false
+      },
+      {
+        "id": 491971652,
+        "title": "DARKSIDE",
+        "explicit": false
+      },
+      {
+        "id": 491971662,
+        "title": "CREATURES",
+        "explicit": false
+      },
+      {
+        "id": 491971672,
+        "title": "EVOLVE",
+        "explicit": true
+      },
+      {
+        "id": 491971682,
+        "title": "GET UP",
+        "explicit": false
+      },
+      {
+        "id": 491971692,
+        "title": "special",
+        "explicit": false
+      },
+      {
+        "id": 491971702,
+        "title": "THE HUMAN RADIO",
+        "explicit": false
+      },
+      {
+        "id": 491971712,
+        "title": "BRILLIANT",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 14581962,
+    "artistId": 1865,
+    "artist": "Soundgarden",
+    "title": "Badmotorfinger (25th Anniversary Remaster)",
+    "year": 1991,
+    "yearSource": "https://en.wikipedia.org/wiki/Badmotorfinger",
+    "sourceReleaseDate": "1991-01-01",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/ed4bb82a29a4bea1282b79c41f5407a0/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 136340400,
+        "title": "Rusty Cage (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340402,
+        "title": "Outshined (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340404,
+        "title": "Slaves & Bulldozers (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340406,
+        "title": "Jesus Christ Pose (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340408,
+        "title": "Face Pollution (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340410,
+        "title": "Somewhere (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340412,
+        "title": "Searching With My Good Eye Closed (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340414,
+        "title": "Room A Thousand Years Wide (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340416,
+        "title": "Mind Riot (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340418,
+        "title": "Drawing Flies (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340420,
+        "title": "Holy Water (Remastered 2016)",
+        "explicit": false
+      },
+      {
+        "id": 136340422,
+        "title": "New Damage (Remastered 2016)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 7816775,
+    "artistId": 1865,
+    "artist": "Soundgarden",
+    "title": "Superunknown (20th Anniversary)",
+    "year": 1994,
+    "yearSource": "https://en.wikipedia.org/wiki/Superunknown",
+    "sourceReleaseDate": "2012-04-22",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/101e0b71e12c887ee137ac4a14e0475d/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 78573952,
+        "title": "Let Me Drown",
+        "explicit": false
+      },
+      {
+        "id": 78573955,
+        "title": "My Wave",
+        "explicit": false
+      },
+      {
+        "id": 78573957,
+        "title": "Fell On Black Days",
+        "explicit": false
+      },
+      {
+        "id": 78573959,
+        "title": "Mailman",
+        "explicit": false
+      },
+      {
+        "id": 78573962,
+        "title": "Superunknown",
+        "explicit": false
+      },
+      {
+        "id": 78573964,
+        "title": "Head Down",
+        "explicit": false
+      },
+      {
+        "id": 78573966,
+        "title": "Black Hole Sun",
+        "explicit": false
+      },
+      {
+        "id": 78573967,
+        "title": "Spoonman",
+        "explicit": false
+      },
+      {
+        "id": 78573969,
+        "title": "Limo Wreck",
+        "explicit": false
+      },
+      {
+        "id": 78573972,
+        "title": "The Day I Tried To Live",
+        "explicit": false
+      },
+      {
+        "id": 78573974,
+        "title": "Kickstand",
+        "explicit": false
+      },
+      {
+        "id": 78573975,
+        "title": "Fresh Tendrils",
+        "explicit": false
+      },
+      {
+        "id": 78573979,
+        "title": "4th Of July",
+        "explicit": false
+      },
+      {
+        "id": 78573980,
+        "title": "Half",
+        "explicit": false
+      },
+      {
+        "id": 78573983,
+        "title": "Like Suicide (Album Version)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 120874,
+    "artistId": 1865,
+    "artist": "Soundgarden",
+    "title": "Down On The Upside",
+    "year": 1996,
+    "yearSource": "https://en.wikipedia.org/wiki/Down_on_the_Upside",
+    "sourceReleaseDate": "1996-05-03",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/6f75e96ee98aeee6b028ea6e478c846a/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 1124303,
+        "title": "Pretty Noose",
+        "explicit": false
+      },
+      {
+        "id": 1124304,
+        "title": "Rhinosaur",
+        "explicit": false
+      },
+      {
+        "id": 1124305,
+        "title": "Zero Chance",
+        "explicit": false
+      },
+      {
+        "id": 1124306,
+        "title": "Dusty",
+        "explicit": false
+      },
+      {
+        "id": 1124307,
+        "title": "Ty Cobb",
+        "explicit": true
+      },
+      {
+        "id": 1124308,
+        "title": "Blow Up The Outside World",
+        "explicit": false
+      },
+      {
+        "id": 1124309,
+        "title": "Burden In My Hand",
+        "explicit": false
+      },
+      {
+        "id": 1124310,
+        "title": "Never Named",
+        "explicit": false
+      },
+      {
+        "id": 1124311,
+        "title": "Applebite",
+        "explicit": false
+      },
+      {
+        "id": 1124312,
+        "title": "Never The Machine Forever",
+        "explicit": false
+      },
+      {
+        "id": 1124313,
+        "title": "Tighter & Tighter",
+        "explicit": false
+      },
+      {
+        "id": 1124314,
+        "title": "No Attention",
+        "explicit": false
+      },
+      {
+        "id": 1124315,
+        "title": "Switch Opens",
+        "explicit": false
+      },
+      {
+        "id": 1124316,
+        "title": "Overfloater",
+        "explicit": false
+      },
+      {
+        "id": 1124317,
+        "title": "An Unkind",
+        "explicit": false
+      },
+      {
+        "id": 1124318,
+        "title": "Boot Camp",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 355921,
+    "artistId": 261212,
+    "artist": "The xx",
+    "title": "xx",
+    "year": 2009,
+    "yearSource": "https://en.wikipedia.org/wiki/Xx_(The_xx_album)",
+    "sourceReleaseDate": "2009-08-16",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/7037869230e2fbf86b91ec1b4c7e8b8d/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 3787855,
+        "title": "Intro",
+        "explicit": false
+      },
+      {
+        "id": 3787856,
+        "title": "VCR",
+        "explicit": false
+      },
+      {
+        "id": 3787857,
+        "title": "Crystalised",
+        "explicit": false
+      },
+      {
+        "id": 3787858,
+        "title": "Islands",
+        "explicit": false
+      },
+      {
+        "id": 3787859,
+        "title": "Heart Skipped A Beat",
+        "explicit": false
+      },
+      {
+        "id": 3787860,
+        "title": "Fantasy",
+        "explicit": false
+      },
+      {
+        "id": 3787861,
+        "title": "Shelter",
+        "explicit": false
+      },
+      {
+        "id": 3787862,
+        "title": "Basic Space",
+        "explicit": false
+      },
+      {
+        "id": 3787863,
+        "title": "Infinity",
+        "explicit": false
+      },
+      {
+        "id": 3787864,
+        "title": "Night Time",
+        "explicit": false
+      },
+      {
+        "id": 3787865,
+        "title": "Stars",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 5771751,
+    "artistId": 261212,
+    "artist": "The xx",
+    "title": "Coexist",
+    "year": 2012,
+    "yearSource": "https://en.wikipedia.org/wiki/Coexist_(album)",
+    "sourceReleaseDate": "2012-09-10",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/2eb83e06e6c14e0bed87c1f441bfd9d9/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 59054001,
+        "title": "Angels",
+        "explicit": false
+      },
+      {
+        "id": 59054011,
+        "title": "Chained",
+        "explicit": false
+      },
+      {
+        "id": 59054021,
+        "title": "Fiction",
+        "explicit": false
+      },
+      {
+        "id": 59054031,
+        "title": "Try",
+        "explicit": false
+      },
+      {
+        "id": 59054041,
+        "title": "Reunion",
+        "explicit": false
+      },
+      {
+        "id": 59054051,
+        "title": "Sunset",
+        "explicit": false
+      },
+      {
+        "id": 59054061,
+        "title": "Missing",
+        "explicit": false
+      },
+      {
+        "id": 59054071,
+        "title": "Tides",
+        "explicit": false
+      },
+      {
+        "id": 59054081,
+        "title": "Unfold",
+        "explicit": false
+      },
+      {
+        "id": 59054091,
+        "title": "Swept Away",
+        "explicit": false
+      },
+      {
+        "id": 59054101,
+        "title": "Our Song",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 15036387,
+    "artistId": 261212,
+    "artist": "The xx",
+    "title": "I See You",
+    "year": 2017,
+    "yearSource": "https://en.wikipedia.org/wiki/I_See_You_(The_xx_album)",
+    "sourceReleaseDate": "2017-01-13",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/ad408a2fc168621d17397f69b21aefa1/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 139787505,
+        "title": "Dangerous",
+        "explicit": false
+      },
+      {
+        "id": 139787507,
+        "title": "Say Something Loving",
+        "explicit": false
+      },
+      {
+        "id": 139787509,
+        "title": "Lips",
+        "explicit": false
+      },
+      {
+        "id": 139787511,
+        "title": "A Violent Noise",
+        "explicit": false
+      },
+      {
+        "id": 139787513,
+        "title": "Performance",
+        "explicit": false
+      },
+      {
+        "id": 139787515,
+        "title": "Replica",
+        "explicit": false
+      },
+      {
+        "id": 139787517,
+        "title": "Brave For You",
+        "explicit": false
+      },
+      {
+        "id": 139787519,
+        "title": "On Hold",
+        "explicit": false
+      },
+      {
+        "id": 139787521,
+        "title": "I Dare You",
+        "explicit": false
+      },
+      {
+        "id": 139787523,
+        "title": "Test Me",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 105614472,
+    "artistId": 689,
+    "artist": "TOOL",
+    "title": "Undertow",
+    "year": 1993,
+    "yearSource": "https://en.wikipedia.org/wiki/Undertow_(Tool_album)",
+    "sourceReleaseDate": "2019-08-02",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/83540df6a4dc5286dc04e5fe67b73b8c/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 722093112,
+        "title": "Intolerance",
+        "explicit": false
+      },
+      {
+        "id": 722093122,
+        "title": "Prison Sex",
+        "explicit": true
+      },
+      {
+        "id": 722093132,
+        "title": "Sober",
+        "explicit": true
+      },
+      {
+        "id": 722093142,
+        "title": "Bottom",
+        "explicit": true
+      },
+      {
+        "id": 722093152,
+        "title": "Crawl Away",
+        "explicit": true
+      },
+      {
+        "id": 722093162,
+        "title": "Swamp Song",
+        "explicit": true
+      },
+      {
+        "id": 722093172,
+        "title": "Undertow",
+        "explicit": false
+      },
+      {
+        "id": 722093182,
+        "title": "4°",
+        "explicit": false
+      },
+      {
+        "id": 722093192,
+        "title": "Flood",
+        "explicit": false
+      },
+      {
+        "id": 722093202,
+        "title": "Disgustipated",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 105614492,
+    "artistId": 689,
+    "artist": "TOOL",
+    "title": "Ænima",
+    "year": 1996,
+    "yearSource": "https://en.wikipedia.org/wiki/Ænima",
+    "sourceReleaseDate": "2019-08-02",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/9b817fcf4d085f7fe0a3910da0061bfd/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 722093222,
+        "title": "Stinkfist",
+        "explicit": false
+      },
+      {
+        "id": 722093232,
+        "title": "Eulogy",
+        "explicit": true
+      },
+      {
+        "id": 722093242,
+        "title": "H.",
+        "explicit": false
+      },
+      {
+        "id": 722093252,
+        "title": "Useful Idiot",
+        "explicit": false
+      },
+      {
+        "id": 722093262,
+        "title": "Forty Six & 2",
+        "explicit": false
+      },
+      {
+        "id": 722093272,
+        "title": "Message To Harry Manback",
+        "explicit": true
+      },
+      {
+        "id": 722093282,
+        "title": "Hooker With A Penis",
+        "explicit": true
+      },
+      {
+        "id": 722093292,
+        "title": "Intermission",
+        "explicit": false
+      },
+      {
+        "id": 722093302,
+        "title": "Jimmy",
+        "explicit": false
+      },
+      {
+        "id": 722093312,
+        "title": "Die Eier von Satan",
+        "explicit": false
+      },
+      {
+        "id": 722093322,
+        "title": "Pushit",
+        "explicit": true
+      },
+      {
+        "id": 722093332,
+        "title": "Cesaro Summability",
+        "explicit": false
+      },
+      {
+        "id": 722093342,
+        "title": "Ænema",
+        "explicit": true
+      },
+      {
+        "id": 722093352,
+        "title": "(-) Ions",
+        "explicit": false
+      },
+      {
+        "id": 722093362,
+        "title": "Third Eye",
+        "explicit": true
+      }
+    ]
+  },
+  {
+    "id": 105611632,
+    "artistId": 689,
+    "artist": "TOOL",
+    "title": "Lateralus",
+    "year": 2001,
+    "yearSource": "https://en.wikipedia.org/wiki/Lateralus",
+    "sourceReleaseDate": "2001-05-15",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/1645f3b192206dc412353b06491290d4/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 722078492,
+        "title": "The Grudge",
+        "explicit": false
+      },
+      {
+        "id": 722078502,
+        "title": "Eon Blue Apocalypse",
+        "explicit": false
+      },
+      {
+        "id": 722078512,
+        "title": "The Patient",
+        "explicit": false
+      },
+      {
+        "id": 722078522,
+        "title": "Mantra",
+        "explicit": false
+      },
+      {
+        "id": 722078532,
+        "title": "Schism",
+        "explicit": false
+      },
+      {
+        "id": 722078542,
+        "title": "Parabol",
+        "explicit": false
+      },
+      {
+        "id": 722078552,
+        "title": "Parabola",
+        "explicit": false
+      },
+      {
+        "id": 722078562,
+        "title": "Ticks & Leeches",
+        "explicit": false
+      },
+      {
+        "id": 722078572,
+        "title": "Lateralus",
+        "explicit": false
+      },
+      {
+        "id": 722078582,
+        "title": "Disposition",
+        "explicit": false
+      },
+      {
+        "id": 722078592,
+        "title": "Reflection",
+        "explicit": false
+      },
+      {
+        "id": 722078602,
+        "title": "Triad",
+        "explicit": false
+      },
+      {
+        "id": 722078612,
+        "title": "Faaip De Oiad",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 105611582,
+    "artistId": 689,
+    "artist": "TOOL",
+    "title": "10,000 Days",
+    "year": 2006,
+    "yearSource": "https://en.wikipedia.org/wiki/10,000_Days_(Tool_album)",
+    "sourceReleaseDate": "2019-08-02",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/c7a6f1259a8f9df284168a28988b8ad7/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 722078342,
+        "title": "Vicarious",
+        "explicit": false
+      },
+      {
+        "id": 722078352,
+        "title": "Jambi",
+        "explicit": false
+      },
+      {
+        "id": 722078362,
+        "title": "Wings For Marie (Pt 1)",
+        "explicit": false
+      },
+      {
+        "id": 722078372,
+        "title": "10,000 Days (Wings Pt 2)",
+        "explicit": false
+      },
+      {
+        "id": 722078382,
+        "title": "The Pot",
+        "explicit": true
+      },
+      {
+        "id": 722078392,
+        "title": "Lipan Conjuring",
+        "explicit": false
+      },
+      {
+        "id": 722078402,
+        "title": "Lost Keys (Blame Hofman)",
+        "explicit": false
+      },
+      {
+        "id": 722078412,
+        "title": "Rosetta Stoned",
+        "explicit": true
+      },
+      {
+        "id": 722078422,
+        "title": "Intension",
+        "explicit": false
+      },
+      {
+        "id": 722078432,
+        "title": "Right In Two",
+        "explicit": false
+      },
+      {
+        "id": 722078442,
+        "title": "Viginti Tres",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 108996972,
+    "artistId": 689,
+    "artist": "TOOL",
+    "title": "Fear Inoculum",
+    "year": 2019,
+    "yearSource": "https://en.wikipedia.org/wiki/Fear_Inoculum",
+    "sourceReleaseDate": "2019-08-30",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/4a039cbf6d0e98071d9fbd3fdfd73d82/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 740969212,
+        "title": "Fear Inoculum",
+        "explicit": false
+      },
+      {
+        "id": 740969222,
+        "title": "Pneuma",
+        "explicit": false
+      },
+      {
+        "id": 740969232,
+        "title": "Litanie contre la Peur",
+        "explicit": false
+      },
+      {
+        "id": 740969242,
+        "title": "Invincible",
+        "explicit": false
+      },
+      {
+        "id": 740969252,
+        "title": "Legion Inoculant",
+        "explicit": false
+      },
+      {
+        "id": 740969262,
+        "title": "Descending",
+        "explicit": false
+      },
+      {
+        "id": 740969272,
+        "title": "Culling Voices",
+        "explicit": false
+      },
+      {
+        "id": 740969282,
+        "title": "Chocolate Chip Trip",
+        "explicit": false
+      },
+      {
+        "id": 740969292,
+        "title": "7empest",
+        "explicit": true
+      },
+      {
+        "id": 740969302,
+        "title": "Mockingbeat",
+        "explicit": false
+      }
+    ]
+  }
+]

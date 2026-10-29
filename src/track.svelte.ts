@@ -102,8 +102,19 @@ export class TrackEngine {
     connection.signal.throwIfAborted();
     return connection;
   }
-  #streamUrl(trackId: string, descriptor: Descriptor, position?: number) {
-    return this.#connectionFor(descriptor).url(trackId, { format: descriptor.format, position });
+  async #streamUrl(
+    trackId: string,
+    descriptor: Descriptor,
+    signal: AbortSignal,
+    position?: number,
+  ) {
+    const url = await this.#connectionFor(descriptor).url(trackId, {
+      format: descriptor.format,
+      position,
+      signal,
+    });
+    signal.throwIfAborted();
+    return url;
   }
 
   #drain() {
@@ -273,12 +284,12 @@ export class TrackEngine {
         return {
           cached: false,
           offset,
-          url: this.#streamUrl(track.id, { ...descriptor, format: "mp3" }, offset),
+          url: await this.#streamUrl(track.id, { ...descriptor, format: "mp3" }, signal, offset),
           release() {},
         };
       return {
         cached: false,
-        url: this.#streamUrl(track.id, descriptor),
+        url: await this.#streamUrl(track.id, descriptor, signal),
         nativeSeeking: descriptor.format === "raw",
         release() {},
       };

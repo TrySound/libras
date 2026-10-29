@@ -492,13 +492,20 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicApi, request:
 }
 
 function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
-  const url = (id: string, options: { format: AudioFormat; position?: number }) => {
-    client.signal.throwIfAborted();
-    return client.getStreamUrl(id, {
+  const url = (
+    id: string,
+    options: { format: AudioFormat; position?: number; signal?: AbortSignal },
+  ) => {
+    const signal = options.signal
+      ? AbortSignal.any([client.signal, options.signal])
+      : client.signal;
+    signal.throwIfAborted();
+    const streamOptions = {
       format: options.format,
       estimateContentLength: true,
       timeOffset: options.position,
-    });
+    };
+    return client.getStreamUrl(id, streamOptions, signal);
   };
   return Object.freeze({
     account,
@@ -510,7 +517,10 @@ function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: R
       let response: Response | undefined;
       try {
         return await request(async () => {
-          response = await networkFetch(url(id, { format: options.format }), { signal });
+          const source = url(id, { format: options.format, signal });
+          response = await networkFetch(typeof source === "string" ? source : await source, {
+            signal,
+          });
           signal.throwIfAborted();
           if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
           return response;

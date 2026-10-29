@@ -4,7 +4,9 @@ import { readFileSync } from "node:fs";
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Demo from "./demo.svelte";
-import { assetsFixture, searchFixture } from "./fixtures";
+import { readDeezer } from "./deezer-api";
+vi.mock("./deezer-api", () => ({ readDeezer: vi.fn() }));
+const read = vi.mocked(readDeezer);
 import { installDisk } from "../tests/cache-test-helpers";
 import { installNavigation } from "../tests/router-test-helpers";
 
@@ -13,8 +15,8 @@ let cleanup: typeof import("./main").cleanup | undefined;
 const fetcher = vi.fn<typeof fetch>();
 async function catalogResponse(input: Parameters<typeof fetch>[0]) {
   const url = String(input);
-  if (url.endsWith("search3.json")) return new Response(JSON.stringify(searchFixture));
-  if (url.endsWith("assets.json")) return new Response(JSON.stringify(assetsFixture));
+  if (url.startsWith("https://cdn-images.dzcdn.net/"))
+    return new Response("art", { headers: { "Content-Type": "image/jpeg" } });
   if (url.endsWith(".svg"))
     return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', {
       headers: { "Content-Type": "image/svg+xml" },
@@ -29,6 +31,7 @@ beforeEach(() => {
   installDisk();
   installNavigation("/settings");
   vi.stubEnv("BASE_URL", "/");
+  read.mockReset().mockRejectedValue(new Error("Unexpected live Deezer request"));
   fetcher.mockReset().mockImplementation(catalogResponse);
   vi.stubGlobal("fetch", fetcher);
 });
@@ -52,7 +55,9 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   localStorage.setItem("navidrome-account", "regular account");
   localStorage.setItem("navidrome-offline-mode", "true");
   render();
-  await vi.waitFor(() => expect(document.body.textContent).toContain("Demo artist"));
+  await vi.waitFor(() =>
+    expect(document.querySelector(".tile")?.textContent).toContain("A Perfect Circle"),
+  );
   expect(document.querySelector("form")).toBeNull();
   expect(document.querySelector(".app-root.standalone")).not.toBeNull();
   expect(document.querySelector("[data-embedded]")).toBeNull();
@@ -61,11 +66,90 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   expect(localStorage.getItem("navidrome-offline-mode")).toBe("true");
   expect(localStorage.length).toBe(3);
   expect(register).not.toHaveBeenCalled();
-  expect(
-    fetcher.mock.calls.some(
-      ([url]) => String(url) === new URL("/catalog/search3.json", location.origin).href,
+  expect(read).not.toHaveBeenCalled();
+  expect(Array.from(document.querySelectorAll(".tile"), (tile) => tile.textContent)).toEqual(
+    expect.arrayContaining(
+      ["Archive", "Breaking Benjamin", "Metric", "Radiohead", "Seether", "Shinedown", "The xx"].map(
+        (artist) => expect.stringContaining(artist),
+      ),
     ),
-  ).toBe(true);
+  );
+  expect(document.getElementById("demo-credits-title")).toBeNull();
+});
+
+it.each([
+  { artistId: "702", albumId: "302117", year: 2000 },
+  { artistId: "1334", albumId: "59667692", year: 2009 },
+  { artistId: "5286", albumId: "11019040", year: 2004 },
+  { artistId: "5286", albumId: "13793191", year: 2006 },
+  { artistId: "5286", albumId: "426788", year: 2009 },
+  { artistId: "956", albumId: "320369597", year: 2009 },
+  { artistId: "399", albumId: "14879699", year: 1997 },
+  { artistId: "261212", albumId: "355921", year: 2009 },
+  { artistId: "1189", albumId: "8015732", year: 2004 },
+  { artistId: "1189", albumId: "8015752", year: 2005 },
+  { artistId: "1189", albumId: "8015762", year: 2007 },
+  { artistId: "6691", albumId: "1240724", year: 2008 },
+  { artistId: "6691", albumId: "1603045", year: 2012 },
+  { artistId: "6691", albumId: "62256972", year: 2018 },
+])("shows the album year for artist $artistId", async ({ artistId, albumId, year }) => {
+  installNavigation(`/library/artist/${artistId}`);
+  render();
+  const caption = () =>
+    document
+      .querySelector(`a[href$="/album/${albumId}"]`)
+      ?.closest(".track-row")
+      ?.querySelector(".caption")?.textContent;
+  await vi.waitFor(() => expect(caption()).toContain(String(year)));
+  expect(caption()).not.toContain("Unknown year");
+});
+
+it("renders demo credits as an HTML card inside Settings, not above the app", async () => {
+  render();
+  await vi.waitFor(() => expect(document.querySelector(".settings-view")).not.toBeNull());
+  const card = document.querySelector(
+    '.settings-view article.card[aria-labelledby="demo-credits-title"]',
+  );
+  expect(card?.querySelector("h2")?.textContent).toBe("Demo music credits");
+  expect(card?.textContent).toContain("Previews provided by Deezer");
+  expect(card?.textContent).toContain("Downloads may not work in this demo");
+  expect(card?.querySelectorAll("li")).toHaveLength(53);
+  expect(card?.querySelectorAll("a")).toHaveLength(53);
+  expect(card?.querySelectorAll('a[href*="/track/"]')).toHaveLength(0);
+  expect(Array.from(card!.querySelectorAll("a"), (link) => link.textContent?.trim())).toEqual(
+    expect.arrayContaining([
+      "A Perfect Circle — Mer De Noms (2000)",
+      "Archive — Controlling Crowds (Parts I-III) (2009)",
+      "Breaking Benjamin — We Are Not Alone (2004)",
+      "Seether — Disclaimer II (2004)",
+      "Shinedown — The Sound of Madness (2008)",
+    ]),
+  );
+  expect(Array.from(card!.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual(
+    expect.arrayContaining([
+      "https://www.deezer.com/album/302117",
+      "https://www.deezer.com/album/59667692",
+      "https://www.deezer.com/album/320369597",
+      "https://www.deezer.com/album/14879699",
+      "https://www.deezer.com/album/355921",
+      "https://www.deezer.com/album/11019040",
+      "https://www.deezer.com/album/13793191",
+      "https://www.deezer.com/album/426788",
+      "https://www.deezer.com/album/8015732",
+      "https://www.deezer.com/album/8015752",
+      "https://www.deezer.com/album/8015762",
+      "https://www.deezer.com/album/1240724",
+      "https://www.deezer.com/album/1603045",
+      "https://www.deezer.com/album/62256972",
+    ]),
+  );
+  expect(card?.textContent).toContain("Archive");
+  expect(card?.textContent).toContain("Breaking Benjamin");
+  expect(card?.textContent).toContain("Seether");
+  expect(card?.textContent).toContain("Shinedown");
+  expect(card?.textContent).not.toContain("Audioslave");
+  expect(card?.querySelectorAll("h3")).toHaveLength(0);
+  expect(document.querySelector('[aria-label="Demo music credits"]')).toBeNull();
 });
 
 it("mounts the demo page as a standalone app and cleans up on hot reload", async () => {
@@ -127,15 +211,21 @@ it("resets preferences on a new mount without writing to localStorage", async ()
   expect(localStorage.length).toBe(0);
 });
 
-it("uses shared app errors and Refresh library to retry catalog loading", async () => {
-  fetcher.mockImplementation(async () => new Response("missing", { status: 404 }));
+it("syncs and refreshes the snapshot even when live Deezer album responses would fail", async () => {
+  read.mockRejectedValue(new Error("Unexpected Deezer album or artist."));
   render();
-  await vi.waitFor(() => expect(document.body.textContent).toContain("HTTP 404"));
-  expect(document.querySelector("form")).toBeNull();
-  fetcher.mockImplementation(catalogResponse);
-  document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
-  await vi.waitFor(() => expect(document.body.textContent).not.toContain("HTTP 404"));
-  expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("search3.json"))).toHaveLength(
-    2,
+  await vi.waitFor(() =>
+    expect(document.querySelector("#settings-server-identity")?.textContent).toContain(
+      "deezer-preview-demo",
+    ),
   );
+  expect(document.querySelector("form")).toBeNull();
+  document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
+  flushSync();
+  await vi.waitFor(() =>
+    expect(document.querySelector("#settings-refresh")?.getAttribute("aria-busy")).toBe("false"),
+  );
+  expect(document.body.textContent).not.toContain("Synchronization needs attention");
+  expect(document.body.textContent).not.toContain("Unexpected Deezer album or artist");
+  expect(read).not.toHaveBeenCalled();
 });
