@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 
 // Exact editions from #79, excluding Puscifer. Original years are curated
 // independently of Deezer's edition dates; the final column records the source.
@@ -42,6 +43,13 @@ export const selections = [
   [11429868, 480, 10, 2001, "Melody_A.M."],
   [301287, 480, 17, 2005, "The_Understanding_(Röyksopp_album)"],
   [1233213, 480, 11, 2009, "Junior_(Röyksopp_album)"],
+  [8015732, 1189, 20, 2004, "Disclaimer_II"],
+  [8015752, 1189, 14, 2005, "Karma_and_Effect"],
+  [8015762, 1189, 14, 2007, "Finding_Beauty_in_Negative_Spaces"],
+  // The 20-track Sound of Madness edition includes the additional/bonus recordings.
+  [1240724, 6691, 20, 2008, "The_Sound_of_Madness"],
+  [1603045, 6691, 12, 2012, "Amaryllis_(Shinedown_album)"],
+  [62256972, 6691, 14, 2018, "Attention_Attention"],
   [14581962, 1865, 12, 1991, "Badmotorfinger"],
   [7816775, 1865, 15, 1994, "Superunknown"],
   [120874, 1865, 16, 1996, "Down_on_the_Upside"],
@@ -59,6 +67,8 @@ export async function refreshCatalog() {
   const albums = [];
   const trackIds = new Set();
   for (const [id, artistId, count, year, source] of selections) {
+    // Avoid bursting the entire catalog at the metadata API.
+    await delay(200);
     const response = await fetch(`https://api.deezer.com/album/${id}`, {
       signal: AbortSignal.timeout(20_000),
       cache: "no-store",
@@ -116,9 +126,9 @@ export async function refreshCatalog() {
     });
   }
   if (
-    albums.length !== 47 ||
-    new Set(albums.map((album) => album.artistId)).size !== 14 ||
-    trackIds.size !== 569
+    albums.length !== 53 ||
+    new Set(albums.map((album) => album.artistId)).size !== 16 ||
+    trackIds.size !== 663
   ) {
     throw new Error("Catalog totals changed; review the selection before refreshing.");
   }
@@ -127,7 +137,7 @@ export async function refreshCatalog() {
     new URL("./deezer-catalog.json", import.meta.url),
     JSON.stringify(albums, null, 2) + "\n",
   );
-  console.log("Refreshed 14 artists, 47 albums, 569 preview entries. No audio downloaded.");
+  console.log("Refreshed 16 artists, 53 albums, 663 preview entries. No audio downloaded.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

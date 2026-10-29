@@ -69,8 +69,8 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   expect(read).not.toHaveBeenCalled();
   expect(Array.from(document.querySelectorAll(".tile"), (tile) => tile.textContent)).toEqual(
     expect.arrayContaining(
-      ["Archive", "Breaking Benjamin", "Metric", "Radiohead", "The xx"].map((artist) =>
-        expect.stringContaining(artist),
+      ["Archive", "Breaking Benjamin", "Metric", "Radiohead", "Seether", "Shinedown", "The xx"].map(
+        (artist) => expect.stringContaining(artist),
       ),
     ),
   );
@@ -86,6 +86,12 @@ it.each([
   { artistId: "956", albumId: "320369597", year: 2009 },
   { artistId: "399", albumId: "14879699", year: 1997 },
   { artistId: "261212", albumId: "355921", year: 2009 },
+  { artistId: "1189", albumId: "8015732", year: 2004 },
+  { artistId: "1189", albumId: "8015752", year: 2005 },
+  { artistId: "1189", albumId: "8015762", year: 2007 },
+  { artistId: "6691", albumId: "1240724", year: 2008 },
+  { artistId: "6691", albumId: "1603045", year: 2012 },
+  { artistId: "6691", albumId: "62256972", year: 2018 },
 ])("shows the album year for artist $artistId", async ({ artistId, albumId, year }) => {
   installNavigation(`/library/artist/${artistId}`);
   render();
@@ -107,7 +113,7 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
   expect(card?.querySelector("h2")?.textContent).toBe("Demo music credits");
   expect(card?.textContent).toContain("Previews provided by Deezer");
   expect(card?.textContent).toContain("Downloads may not work in this demo");
-  expect(card?.querySelectorAll("li")).toHaveLength(569);
+  expect(card?.querySelectorAll("li")).toHaveLength(663);
   expect(Array.from(card!.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual(
     expect.arrayContaining([
       "https://www.deezer.com/album/302117",
@@ -122,10 +128,18 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
       "https://www.deezer.com/album/11019040",
       "https://www.deezer.com/album/13793191",
       "https://www.deezer.com/album/426788",
+      "https://www.deezer.com/album/8015732",
+      "https://www.deezer.com/album/8015752",
+      "https://www.deezer.com/album/8015762",
+      "https://www.deezer.com/album/1240724",
+      "https://www.deezer.com/album/1603045",
+      "https://www.deezer.com/album/62256972",
     ]),
   );
   expect(card?.textContent).toContain("Archive");
   expect(card?.textContent).toContain("Breaking Benjamin");
+  expect(card?.textContent).toContain("Seether");
+  expect(card?.textContent).toContain("Shinedown");
   expect(card?.textContent).not.toContain("Audioslave");
   expect(card?.textContent).toContain("Bullets");
   expect(card?.textContent).toContain("Judith (explicit)");

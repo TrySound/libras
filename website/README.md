@@ -17,11 +17,13 @@ The demo synchronizes metadata from the snapshot shipped with the website, so br
 
 ## Deezer previews
 
-The demo includes the full revised shortlist from #79: **14 artists, 47 albums, and 569 previews**, excluding Puscifer. _Mer De Noms_ now includes all 12 tracks rather than the initial three.
+The demo includes the full revised shortlist from #79: **16 artists, 53 albums, and 663 previews**, excluding Puscifer. _Mer De Noms_ now includes all 12 tracks rather than the initial three.
 
-Artists: A Perfect Circle, Archive, Arctic Monkeys, Breaking Benjamin, Foo Fighters, Metric, Nothing But Thieves, Poets of the Fall, Queens of the Stone Age, Radiohead, Röyksopp, Soundgarden, The xx, and TOOL.
+Artists: A Perfect Circle, Archive, Arctic Monkeys, Breaking Benjamin, Foo Fighters, Metric, Nothing But Thieves, Poets of the Fall, Queens of the Stone Age, Radiohead, Röyksopp, Seether, Shinedown, Soundgarden, The xx, and TOOL.
 
 Breaking Benjamin replaces Audioslave with _We Are Not Alone_ (2004; 12-track Deezer edition including the alternate Rain (2005)), _Phobia (Explicit Version)_ (2006), and _Dear Agony_ (2009).
+
+Seether includes _Disclaimer II_ (2004, 20 tracks), _Karma and Effect_ (2005, 14 tracks), and _Finding Beauty In Negative Spaces (Bonus Track Version)_ (2007, 14 tracks). Shinedown includes _The Sound of Madness_ (2008, the 20-track edition with bonus recordings), _Amaryllis_ (2012, 12 tracks), and _ATTENTION ATTENTION_ (2018, 14 tracks).
 
 `deezer-catalog.json` contains the exact recording IDs, titles, explicit flags, original release years, year-source links and artwork URLs used by the adapter and Settings credits. Artwork is loaded directly from Deezer's image CDN; no image files are committed. `deezer-catalog.ts` exports that data. Original years are curated independently of Deezer edition dates, which are retained separately as `sourceReleaseDate`. Album ordering and selected edition labels (including Deluxe and anniversary/remaster labels) are preserved. The player measures actual clip duration instead of using the full-song duration.
 
@@ -94,4 +96,4 @@ node website/verify-build.mjs --root pages
 
 `pnpm check` and `pnpm test` cover both workspaces. Tests cover static landing content, demo navigation and bootstrap, adapter pagination, cancellation, API-independent sync, playback errors, fresh preview URL resolution, restricted media origins, Settings credits, in-memory preferences, account isolation, and no demo service-worker registration. They use synthetic metadata rather than live Deezer or private export requests. The original static adapter retains its own fixtures and tests.
 
-A live headless Chromium check loaded the full library and played one preview per artist (14 total). Earlier checks also covered seeking and queue advancement. This does not establish playback for every recording or other browser/device behavior. Optional browser tests verify track lists and years for all 47 albums with Deezer API access blocked, desktop/mobile layout and playback errors; their preview audio requests are aborted, so they do not verify successful playback.
+Live headless Chromium checks cover library sync, representative previews, seeking and queue advancement. This does not establish playback for every recording or other browser/device behavior. Optional browser tests verify track lists and years for all 53 albums with Deezer API access blocked, desktop/mobile layout and playback errors; their preview audio requests are aborted, so they do not verify successful playback.

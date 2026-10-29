@@ -19,7 +19,7 @@ const pagination = {
   songOffset: 0,
 };
 
-it("loads 14 unique artists, 47 editions and 569 recordings without persisting preview URLs or song durations", async () => {
+it("loads 16 unique artists, 53 editions and 663 recordings without persisting preview URLs or song durations", async () => {
   const read = vi.fn().mockRejectedValue(new Error("Unexpected live catalog request"));
   const client = new DeezerSubsonicClient(auth, read);
   await client.ping();
@@ -36,13 +36,15 @@ it("loads 14 unique artists, 47 editions and 569 recordings without persisting p
     "Queens of the Stone Age",
     "Radiohead",
     "Röyksopp",
+    "Seether",
+    "Shinedown",
     "Soundgarden",
     "The xx",
     "TOOL",
   ]);
-  expect(result.albums).toHaveLength(47);
-  expect(result.tracks).toHaveLength(569);
-  expect(new Set(result.tracks.map((track) => track.id)).size).toBe(569);
+  expect(result.albums).toHaveLength(53);
+  expect(result.tracks).toHaveLength(663);
+  expect(new Set(result.tracks.map((track) => track.id)).size).toBe(663);
   for (const fixture of albumFixtures) {
     expect(client.getCoverArtUrl(String(fixture.id))).toBe(fixture.cover_medium);
     expect(
@@ -67,18 +69,18 @@ it("paginates artists, albums and tracks without duplicate artists or missing re
   const client = new DeezerSubsonicClient(auth);
   const page = await client.search3({
     ...pagination,
-    artistOffset: 13,
+    artistOffset: 15,
     artistCount: 2,
-    albumOffset: 46,
+    albumOffset: 52,
     albumCount: 2,
-    songOffset: 568,
+    songOffset: 662,
     songCount: 2,
   });
   expect(page.artists.map((artist) => artist.id)).toEqual(["689"]);
   expect(page.albums.map((album) => album.id)).toEqual(["108996972"]);
   expect(page.tracks).toHaveLength(1);
   const tracks = [];
-  for (let songOffset = 0; songOffset < 600; songOffset += 50) {
+  for (let songOffset = 0; songOffset < 700; songOffset += 50) {
     tracks.push(
       ...(
         await client.search3({
@@ -107,15 +109,21 @@ it("uses original release years rather than Deezer edition dates", async () => {
   expect(years.get("320369597")).toBe(2009);
   expect(years.get("14880317")).toBe(1995);
   expect(years.get("105614472")).toBe(1993);
+  expect(years.get("8015732")).toBe(2004);
+  expect(years.get("8015752")).toBe(2005);
+  expect(years.get("8015762")).toBe(2007);
+  expect(years.get("1240724")).toBe(2008);
+  expect(years.get("1603045")).toBe(2012);
+  expect(years.get("62256972")).toBe(2018);
 });
 
 it("syncs the committed snapshot even when live Deezer data is unavailable or mismatched", async () => {
   const read = vi.fn().mockRejectedValue(new Error("Deezer unavailable"));
   const client = new DeezerSubsonicClient(auth, read);
   await expect(client.ping()).resolves.toMatchObject({ openSubsonic: true });
-  expect((await client.search3(pagination)).tracks).toHaveLength(569);
+  expect((await client.search3(pagination)).tracks).toHaveLength(663);
   read.mockResolvedValue({ ...album, id: 999, artist: { id: 999, name: "Unexpected artist" } });
-  expect((await client.search3(pagination)).albums).toHaveLength(47);
+  expect((await client.search3(pagination)).albums).toHaveLength(53);
   expect(read).not.toHaveBeenCalled();
 });
 

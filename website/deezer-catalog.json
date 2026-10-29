@@ -2607,6 +2607,548 @@
     ]
   },
   {
+    "id": 8015732,
+    "artistId": 1189,
+    "artist": "Seether",
+    "title": "Disclaimer II",
+    "year": 2004,
+    "yearSource": "https://en.wikipedia.org/wiki/Disclaimer_II",
+    "sourceReleaseDate": "2014-06-24",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/df6a7bb6fc214350e4aceff7a032ad39/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 80276088,
+        "title": "Gasoline",
+        "explicit": false
+      },
+      {
+        "id": 80276090,
+        "title": "69 Tea",
+        "explicit": false
+      },
+      {
+        "id": 80276092,
+        "title": "Fine Again",
+        "explicit": false
+      },
+      {
+        "id": 80276094,
+        "title": "Needles",
+        "explicit": true
+      },
+      {
+        "id": 80276096,
+        "title": "Driven Under",
+        "explicit": false
+      },
+      {
+        "id": 80276098,
+        "title": "Pride",
+        "explicit": true
+      },
+      {
+        "id": 80276100,
+        "title": "Sympathetic",
+        "explicit": false
+      },
+      {
+        "id": 80276102,
+        "title": "Your Bore",
+        "explicit": true
+      },
+      {
+        "id": 80276104,
+        "title": "Fade Away",
+        "explicit": false
+      },
+      {
+        "id": 80276106,
+        "title": "Pig",
+        "explicit": false
+      },
+      {
+        "id": 80276108,
+        "title": "Fuck It",
+        "explicit": true
+      },
+      {
+        "id": 80276110,
+        "title": "Broken",
+        "explicit": false
+      },
+      {
+        "id": 80276112,
+        "title": "Sold Me",
+        "explicit": false
+      },
+      {
+        "id": 80276114,
+        "title": "Cigarettes",
+        "explicit": false
+      },
+      {
+        "id": 80276116,
+        "title": "Love Her",
+        "explicit": false
+      },
+      {
+        "id": 80276118,
+        "title": "Take Me Away",
+        "explicit": false
+      },
+      {
+        "id": 80276120,
+        "title": "Got It Made",
+        "explicit": false
+      },
+      {
+        "id": 80276122,
+        "title": "Out Of My Way",
+        "explicit": false
+      },
+      {
+        "id": 80276124,
+        "title": "Hang On",
+        "explicit": false
+      },
+      {
+        "id": 80276126,
+        "title": "Broken",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 8015752,
+    "artistId": 1189,
+    "artist": "Seether",
+    "title": "Karma and Effect",
+    "year": 2005,
+    "yearSource": "https://en.wikipedia.org/wiki/Karma_and_Effect",
+    "sourceReleaseDate": "2009-09-11",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/66fcbcea3f7828851ca51e9c58b49c1b/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 80276368,
+        "title": "Because Of Me",
+        "explicit": false
+      },
+      {
+        "id": 80276370,
+        "title": "Remedy",
+        "explicit": false
+      },
+      {
+        "id": 80276372,
+        "title": "Truth",
+        "explicit": false
+      },
+      {
+        "id": 80276374,
+        "title": "The Gift",
+        "explicit": false
+      },
+      {
+        "id": 80276376,
+        "title": "Burrito",
+        "explicit": false
+      },
+      {
+        "id": 80276378,
+        "title": "Given",
+        "explicit": false
+      },
+      {
+        "id": 80276380,
+        "title": "Never Leave",
+        "explicit": false
+      },
+      {
+        "id": 80276382,
+        "title": "World Falls Away",
+        "explicit": false
+      },
+      {
+        "id": 80276384,
+        "title": "Tongue",
+        "explicit": false
+      },
+      {
+        "id": 80276386,
+        "title": "I'm The One",
+        "explicit": false
+      },
+      {
+        "id": 80276388,
+        "title": "Simplest Mistake",
+        "explicit": false
+      },
+      {
+        "id": 80276390,
+        "title": "Diseased",
+        "explicit": false
+      },
+      {
+        "id": 80276392,
+        "title": "Plastic Man",
+        "explicit": false
+      },
+      {
+        "id": 80276394,
+        "title": "Interlude/Outro",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 8015762,
+    "artistId": 1189,
+    "artist": "Seether",
+    "title": "Finding Beauty In Negative Spaces (Bonus Track Version)",
+    "year": 2007,
+    "yearSource": "https://en.wikipedia.org/wiki/Finding_Beauty_in_Negative_Spaces",
+    "sourceReleaseDate": "2014-06-24",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/7b828bdaa512c9061bb6df1a9255142b/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 80276488,
+        "title": "Like Suicide",
+        "explicit": true
+      },
+      {
+        "id": 80276490,
+        "title": "Fake It",
+        "explicit": true
+      },
+      {
+        "id": 80276492,
+        "title": "Breakdown",
+        "explicit": false
+      },
+      {
+        "id": 80276494,
+        "title": "FMLYHM",
+        "explicit": true
+      },
+      {
+        "id": 80276496,
+        "title": "Fallen",
+        "explicit": false
+      },
+      {
+        "id": 80276498,
+        "title": "Rise Above This",
+        "explicit": false
+      },
+      {
+        "id": 80276500,
+        "title": "No Jesus Christ",
+        "explicit": false
+      },
+      {
+        "id": 80276502,
+        "title": "6 Gun Quota",
+        "explicit": false
+      },
+      {
+        "id": 80276504,
+        "title": "Walk Away From The Sun",
+        "explicit": false
+      },
+      {
+        "id": 80276506,
+        "title": "Eyes Of The Devil",
+        "explicit": false
+      },
+      {
+        "id": 80276508,
+        "title": "Don't Believe",
+        "explicit": false
+      },
+      {
+        "id": 80276510,
+        "title": "Waste",
+        "explicit": false
+      },
+      {
+        "id": 80276512,
+        "title": "Careless Whisper",
+        "explicit": false
+      },
+      {
+        "id": 80276514,
+        "title": "Careless Whisper (Strings Version)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 1240724,
+    "artistId": 6691,
+    "artist": "Shinedown",
+    "title": "The Sound of Madness",
+    "year": 2008,
+    "yearSource": "https://en.wikipedia.org/wiki/The_Sound_of_Madness",
+    "sourceReleaseDate": "2008-06-24",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/afd8aca1f753382eaaf18070e1901ac2/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 13547716,
+        "title": "Devour",
+        "explicit": false
+      },
+      {
+        "id": 13547717,
+        "title": "Sound of Madness",
+        "explicit": false
+      },
+      {
+        "id": 13547718,
+        "title": "Second Chance",
+        "explicit": false
+      },
+      {
+        "id": 13547719,
+        "title": "Cry for Help",
+        "explicit": false
+      },
+      {
+        "id": 13547720,
+        "title": "The Crow & the Butterfly",
+        "explicit": false
+      },
+      {
+        "id": 13547721,
+        "title": "If You Only Knew",
+        "explicit": false
+      },
+      {
+        "id": 13547722,
+        "title": "Sin with a Grin",
+        "explicit": false
+      },
+      {
+        "id": 13547723,
+        "title": "What a Shame",
+        "explicit": false
+      },
+      {
+        "id": 13547724,
+        "title": "Cyanide Sweet Tooth Suicide",
+        "explicit": true
+      },
+      {
+        "id": 13547725,
+        "title": "Breaking Inside",
+        "explicit": false
+      },
+      {
+        "id": 13547726,
+        "title": "Call Me",
+        "explicit": false
+      },
+      {
+        "id": 13547727,
+        "title": "The Energy",
+        "explicit": true
+      },
+      {
+        "id": 13547728,
+        "title": "Son of Sam",
+        "explicit": false
+      },
+      {
+        "id": 13547729,
+        "title": "I Own You",
+        "explicit": false
+      },
+      {
+        "id": 13547730,
+        "title": "Junkies for Fame",
+        "explicit": false
+      },
+      {
+        "id": 13547731,
+        "title": "Second Chance (Bonus Track)",
+        "explicit": false
+      },
+      {
+        "id": 13547732,
+        "title": "The Crow & the Butterfly (Bonus Track)",
+        "explicit": false
+      },
+      {
+        "id": 13547733,
+        "title": "Her Name Is Alice",
+        "explicit": false
+      },
+      {
+        "id": 13547734,
+        "title": "Diamond Eyes (Boom-Lay Boom-Lay Boom)",
+        "explicit": false
+      },
+      {
+        "id": 13547735,
+        "title": "Breaking Inside (feat. Lzzy Hale of Halestorm)",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 1603045,
+    "artistId": 6691,
+    "artist": "Shinedown",
+    "title": "Amaryllis",
+    "year": 2012,
+    "yearSource": "https://en.wikipedia.org/wiki/Amaryllis_(Shinedown_album)",
+    "sourceReleaseDate": "2012-03-23",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/1afaaec12dfc26169d3a318cbc9718f4/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 17135198,
+        "title": "Adrenaline",
+        "explicit": false
+      },
+      {
+        "id": 17135199,
+        "title": "Bully",
+        "explicit": false
+      },
+      {
+        "id": 17135200,
+        "title": "Amaryllis",
+        "explicit": false
+      },
+      {
+        "id": 17135201,
+        "title": "Unity",
+        "explicit": false
+      },
+      {
+        "id": 17135202,
+        "title": "Enemies",
+        "explicit": false
+      },
+      {
+        "id": 17135203,
+        "title": "I'm Not Alright",
+        "explicit": false
+      },
+      {
+        "id": 17135204,
+        "title": "Nowhere Kids",
+        "explicit": true
+      },
+      {
+        "id": 17135205,
+        "title": "Miracle",
+        "explicit": false
+      },
+      {
+        "id": 17135206,
+        "title": "I'll Follow You",
+        "explicit": false
+      },
+      {
+        "id": 17135207,
+        "title": "For My Sake",
+        "explicit": false
+      },
+      {
+        "id": 17135208,
+        "title": "My Name (Wearing Me Out)",
+        "explicit": true
+      },
+      {
+        "id": 17135209,
+        "title": "Through the Ghost",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 62256972,
+    "artistId": 6691,
+    "artist": "Shinedown",
+    "title": "ATTENTION ATTENTION",
+    "year": 2018,
+    "yearSource": "https://en.wikipedia.org/wiki/Attention_Attention",
+    "sourceReleaseDate": "2018-05-04",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/d6ae8ccf4fc77fc693070a966058e0a6/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 491971582,
+        "title": "THE ENTRANCE",
+        "explicit": false
+      },
+      {
+        "id": 491971592,
+        "title": "DEVIL",
+        "explicit": false
+      },
+      {
+        "id": 491971602,
+        "title": "BLACK SOUL",
+        "explicit": false
+      },
+      {
+        "id": 491971612,
+        "title": "ATTENTION ATTENTION",
+        "explicit": false
+      },
+      {
+        "id": 491971622,
+        "title": "KILL YOUR CONSCIENCE",
+        "explicit": false
+      },
+      {
+        "id": 491971632,
+        "title": "PYRO",
+        "explicit": false
+      },
+      {
+        "id": 491971642,
+        "title": "MONSTERS",
+        "explicit": false
+      },
+      {
+        "id": 491971652,
+        "title": "DARKSIDE",
+        "explicit": false
+      },
+      {
+        "id": 491971662,
+        "title": "CREATURES",
+        "explicit": false
+      },
+      {
+        "id": 491971672,
+        "title": "EVOLVE",
+        "explicit": true
+      },
+      {
+        "id": 491971682,
+        "title": "GET UP",
+        "explicit": false
+      },
+      {
+        "id": 491971692,
+        "title": "special",
+        "explicit": false
+      },
+      {
+        "id": 491971702,
+        "title": "THE HUMAN RADIO",
+        "explicit": false
+      },
+      {
+        "id": 491971712,
+        "title": "BRILLIANT",
+        "explicit": false
+      }
+    ]
+  },
+  {
     "id": 14581962,
     "artistId": 1865,
     "artist": "Soundgarden",

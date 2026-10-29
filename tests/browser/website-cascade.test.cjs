@@ -64,7 +64,7 @@ test("static website links to the full-width standalone demo", async () => {
     await page.getByRole("link", { name: "Try live demo", exact: true }).click();
     await page.waitForURL("**/demo/**");
     await page.locator(".app-root.standalone .tile a").first().waitFor();
-    assert.equal(await page.locator(".tile a").count(), 14);
+    assert.equal(await page.locator(".tile a").count(), 16);
     assert.equal(await page.locator(".website, [data-embedded], .site-demo-toolbar").count(), 0);
     assert.equal(await page.locator(".app-sidebar").isVisible(), true);
     const app = await page.locator(".app-root").elementHandle();
@@ -112,8 +112,8 @@ test("every planned album is browsable without live Deezer API access", async ()
     await page.goto(`${base}demo/#/settings`);
     const credits = page.locator('article[aria-labelledby="demo-credits-title"]');
     await credits.waitFor();
-    assert.equal(await credits.locator("li").count(), 569);
-    assert.equal(await credits.locator("h3").count(), 47);
+    assert.equal(await credits.locator("li").count(), 663);
+    assert.equal(await credits.locator("h3").count(), 53);
     assert.equal(await credits.getByRole("link", { name: "Bullets", exact: true }).count(), 1);
     assert.deepEqual(requests, []);
   } finally {
