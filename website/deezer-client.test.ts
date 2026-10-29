@@ -29,7 +29,10 @@ it("loads both artists and 16 selected recordings without persisting preview URL
   await client.ping();
   const result = await client.search3(pagination);
   expect(result.artists.map((artist) => artist.name)).toEqual(["A Perfect Circle", "Archive"]);
-  expect(result.albums.map((album) => album.id)).toEqual(["302117", "59667692"]);
+  expect(result.albums.map((album) => ({ id: album.id, year: album.year }))).toEqual([
+    { id: "302117", year: 2000 },
+    { id: "59667692", year: 2009 },
+  ]);
   expect(result.tracks).toHaveLength(16);
   expect(result.tracks.slice(0, 3).map((track) => track.id)).toEqual([
     "3135439",
@@ -64,6 +67,17 @@ it("loads both artists and 16 selected recordings without persisting preview URL
   expect(page.artists.map((artist) => artist.id)).toEqual(["1334"]);
   expect(page.albums.map((album) => album.id)).toEqual(["59667692"]);
   expect(page.tracks.map((track) => track.id)).toEqual(["3135444", "476972622", "476972632"]);
+});
+
+it("uses original release years rather than Deezer edition dates", async () => {
+  const read = vi.fn(async (path: string) => ({
+    ...(await readAlbumFixture(path)),
+    release_date: "2026-01-01",
+  }));
+  const client = new DeezerSubsonicClient(auth, read);
+  expect((await client.search3(pagination)).albums.map((album) => album.year)).toEqual([
+    2000, 2009,
+  ]);
 });
 
 it("does not require playback fields to browse the albums", async () => {

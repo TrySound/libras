@@ -85,6 +85,7 @@ export class DeezerSubsonicClient implements SubsonicApi {
         {
           id: albumId,
           name: album.title,
+          year: selection.year,
           artists: [artist],
           displayArtist: artist.name,
           coverArt: albumId,

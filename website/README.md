@@ -19,10 +19,10 @@ The demo loads metadata online on every launch. Auth and preferences reset on re
 
 The demo catalog for #79 contains two artists, two albums, and 16 previews:
 
-- A Perfect Circle (artist **702**), _Mer De Noms_ (album **302117**): **The Hollow** (3135439), **Judith** (3135442, explicit), and **3 Libras** (3135444).
-- Archive (artist **1334**), _Controlling Crowds (Parts I–III)_ (album **59667692**): all 13 tracks, including **Bullets** (476972632).
+- A Perfect Circle (artist **702**), _Mer De Noms_ (2000, album **302117**): **The Hollow** (3135439), **Judith** (3135442, explicit), and **3 Libras** (3135444).
+- Archive (artist **1334**), _Controlling Crowds (Parts I–III)_ (2009, album **59667692**): all 13 tracks, including **Bullets** (476972632).
 
-Exact album/track IDs and Settings credits are defined in `deezer-catalog.ts`. Album ordering is retained. Track labels identify previews and explicit content; Settings contains attribution and source links. The player measures actual clip duration instead of using the full-song duration.
+Exact album/track IDs, original release years with source links, and Settings credits are defined in `deezer-catalog.ts`. Years are curated rather than inferred from Deezer edition dates. Album ordering is retained. Track labels identify previews and explicit content; Settings contains attribution and source links. The player measures actual clip duration instead of using the full-song duration.
 
 `deezer-api.ts` uses JSONP at `https://api.deezer.com/` because the API did not provide browser fetch CORS headers during testing. JSONP executes third-party JavaScript with page privileges. Requests are limited to the selected album/tracks, with cancellation and a timeout. No Libras credentials are sent. Preview audio plays directly from Deezer's CDN; there is no proxy or separate backend process.
 

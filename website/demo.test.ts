@@ -75,6 +75,18 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   expect(document.getElementById("demo-credits-title")).toBeNull();
 });
 
+it.each([
+  { artistId: "702", year: 2000 },
+  { artistId: "1334", year: 2009 },
+])("shows the album year for artist $artistId", async ({ artistId, year }) => {
+  installNavigation(`/library/artist/${artistId}`);
+  render();
+  await vi.waitFor(() =>
+    expect(document.querySelector(".track-row .caption")?.textContent).toContain(String(year)),
+  );
+  expect(document.querySelector(".track-row .caption")?.textContent).not.toContain("Unknown year");
+});
+
 it("renders demo credits as an HTML card inside Settings, not above the app", async () => {
   render();
   await vi.waitFor(() => expect(document.querySelector(".settings-view")).not.toBeNull());

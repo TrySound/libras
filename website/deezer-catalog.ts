@@ -5,6 +5,7 @@ export const demoAlbums = [
     artistId: 702,
     artist: "A Perfect Circle",
     title: "Mer De Noms",
+    year: 2000, // Original release: https://en.wikipedia.org/wiki/Mer_de_Noms
     tracks: [
       { id: 3135439, title: "The Hollow", explicit: false },
       { id: 3135442, title: "Judith", explicit: true },
@@ -16,6 +17,7 @@ export const demoAlbums = [
     artistId: 1334,
     artist: "Archive",
     title: "Controlling Crowds (Parts I-III)",
+    year: 2009, // Original release: https://en.wikipedia.org/wiki/Controlling_Crowds
     tracks: [
       { id: 476972622, title: "Controlling Crowds", explicit: false },
       { id: 476972632, title: "Bullets", explicit: false },
