@@ -17,19 +17,23 @@ The demo loads metadata online on every launch. Auth and preferences reset on re
 
 ## Deezer previews
 
-The demo catalog for #79 contains five artists, five albums, and 49 previews:
+The demo includes the full revised shortlist from #79: **14 artists, 47 albums, and 571 previews**, excluding Puscifer. _Mer De Noms_ now includes all 12 tracks rather than the initial three.
 
-- A Perfect Circle (artist **702**), _Mer De Noms_ (2000, album **302117**): **The Hollow** (3135439), **Judith** (3135442, explicit), and **3 Libras** (3135444).
-- Archive (artist **1334**), _Controlling Crowds (Parts I–III)_ (2009, album **59667692**): all 13 tracks, including **Bullets** (476972632).
-- Metric (artist **956**), _Fantasies_ (2009, album **320369597**): all 10 tracks.
-- Radiohead (artist **399**), _OK Computer_ (1997, album **14879699**): all 12 tracks.
-- The xx (artist **261212**), _xx_ (2009, album **355921**): all 11 tracks.
+Artists: A Perfect Circle, Archive, Arctic Monkeys, Audioslave, Foo Fighters, Metric, Nothing But Thieves, Poets of the Fall, Queens of the Stone Age, Radiohead, Röyksopp, Soundgarden, The xx, and TOOL.
 
-Exact album/track IDs, original release years with source links, and Settings credits are defined in `deezer-catalog.ts`. Years are curated rather than inferred from Deezer edition dates. Album ordering is retained. Track labels identify previews and explicit content; Settings contains attribution and source links. The player measures actual clip duration instead of using the full-song duration.
+`deezer-catalog.json` contains the exact recording IDs, titles, explicit flags, original release years and year-source links used by the adapter and Settings credits. `deezer-catalog.ts` exports that data. Original years are curated independently of Deezer edition dates, which are retained separately as `sourceReleaseDate`. Album ordering and selected edition labels (including Deluxe and anniversary/remaster labels) are preserved. The player measures actual clip duration instead of using the full-song duration.
+
+To refresh the committed metadata from the explicit edition list:
+
+```sh
+node website/refresh-deezer-catalog.mjs
+```
+
+The script checks artist/album relationships, unique track IDs, preview availability and the expected counts before replacing the JSON. It stores no preview URLs, tokens or audio. Review the generated diff before committing; CI uses the snapshot and synthetic responses, not live requests.
 
 `deezer-api.ts` uses JSONP at `https://api.deezer.com/` because the API did not provide browser fetch CORS headers during testing. JSONP executes third-party JavaScript with page privileges. Requests are limited to the selected album/tracks, with cancellation and a timeout. No Libras credentials are sent. Preview audio plays directly from Deezer's CDN; there is no proxy or separate backend process.
 
-Approval is reported in #79; detailed conditions for JSONP access, metadata/artwork storage, and attribution are not recorded here. The larger catalog, unavailable-track UI, and deployment migration remain follow-up work in that issue.
+Approval is reported in #79; detailed conditions for JSONP access, metadata/artwork storage, and attribution are not recorded here. Unavailable-track UI and deployment migration remain follow-up work in that issue.
 
 ## Local development
 
@@ -88,4 +92,4 @@ node website/verify-build.mjs --root pages
 
 `pnpm check` and `pnpm test` cover both workspaces. Tests cover static landing content, demo navigation and bootstrap, adapter pagination, cancellation, retries, fresh preview URL resolution, restricted media origins, Settings credits, in-memory preferences, account isolation, and no demo service-worker registration. They use synthetic metadata rather than live Deezer or private export requests. The original static adapter retains its own fixtures and tests.
 
-A live headless Chromium check played the three A Perfect Circle previews (29.988563s each), sought The Hollow to 10s, and checked queue advancement after seeking near a clip's end. Subsequent checks played Archive's Bullets and sought it to 10s, then played Help I'm Alive, Airbag, and Intro and checked their album years and track counts. This does not establish other browser/device behavior. Optional browser tests cover desktop/mobile layout and demo errors; their preview audio requests are aborted, so they do not verify successful playback.
+A live headless Chromium check loaded the full library and played one preview per artist (14 total). Earlier checks also covered seeking and queue advancement. This does not establish playback for every recording or other browser/device behavior. Optional browser tests verify track lists and years for all 47 albums, desktop/mobile layout and demo errors; their preview audio requests are aborted, so they do not verify successful playback.

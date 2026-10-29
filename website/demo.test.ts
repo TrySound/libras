@@ -78,18 +78,21 @@ it("opens preconnected without touching regular settings or registering a PWA", 
 });
 
 it.each([
-  { artistId: "702", year: 2000 },
-  { artistId: "1334", year: 2009 },
-  { artistId: "956", year: 2009 },
-  { artistId: "399", year: 1997 },
-  { artistId: "261212", year: 2009 },
-])("shows the album year for artist $artistId", async ({ artistId, year }) => {
+  { artistId: "702", albumId: "302117", year: 2000 },
+  { artistId: "1334", albumId: "59667692", year: 2009 },
+  { artistId: "956", albumId: "320369597", year: 2009 },
+  { artistId: "399", albumId: "14879699", year: 1997 },
+  { artistId: "261212", albumId: "355921", year: 2009 },
+])("shows the album year for artist $artistId", async ({ artistId, albumId, year }) => {
   installNavigation(`/library/artist/${artistId}`);
   render();
-  await vi.waitFor(() =>
-    expect(document.querySelector(".track-row .caption")?.textContent).toContain(String(year)),
-  );
-  expect(document.querySelector(".track-row .caption")?.textContent).not.toContain("Unknown year");
+  const caption = () =>
+    document
+      .querySelector(`a[href$="/album/${albumId}"]`)
+      ?.closest(".track-row")
+      ?.querySelector(".caption")?.textContent;
+  await vi.waitFor(() => expect(caption()).toContain(String(year)));
+  expect(caption()).not.toContain("Unknown year");
 });
 
 it("renders demo credits as an HTML card inside Settings, not above the app", async () => {
@@ -101,7 +104,7 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
   expect(card?.querySelector("h2")?.textContent).toBe("Demo music credits");
   expect(card?.textContent).toContain("Previews provided by Deezer");
   expect(card?.textContent).toContain("Downloads may not work in this demo");
-  expect(card?.querySelectorAll("li")).toHaveLength(49);
+  expect(card?.querySelectorAll("li")).toHaveLength(571);
   expect(Array.from(card!.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual(
     expect.arrayContaining([
       "https://www.deezer.com/album/302117",
@@ -188,5 +191,5 @@ it("uses shared app errors and Refresh library to retry catalog loading", async 
   read.mockImplementation(readAlbumFixture);
   document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
   await vi.waitFor(() => expect(document.body.textContent).not.toContain("Deezer unavailable"));
-  expect(read).toHaveBeenCalledTimes(10);
+  expect(read).toHaveBeenCalledTimes(94);
 });

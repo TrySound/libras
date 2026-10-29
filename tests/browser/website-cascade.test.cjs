@@ -3,94 +3,41 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { chromium } = require("playwright");
+const catalog = require("../../website/deezer-catalog.json");
 
 const base = `${(process.env.PREVIEW_URL ?? "http://127.0.0.1:5180").replace(/\/$/, "")}/`;
 
 async function mockDeezer(page, unavailable = false) {
-  const artist = { id: 702, name: "A Perfect Circle" };
-  const tracks = [3135439, 3135442, 3135444].map((id, index) => ({
-    id,
-    title: ["The Hollow", "Judith", "3 Libras"][index],
-    duration: 178,
-    explicit_lyrics: index === 1,
-    readable: true,
-    artist,
-    album: { id: 302117 },
-    preview: "https://cdnt-preview.dzcdn.net/fixture.mp3",
-  }));
-  const archiveArtist = { id: 1334, name: "Archive" };
-  const archiveTracks = Array.from({ length: 13 }, (_, index) => ({
-    id: 476972622 + index * 10,
-    title: index === 1 ? "Bullets" : `Archive track ${index + 1}`,
-    explicit_lyrics: index === 9,
-    readable: true,
-    artist: archiveArtist,
-    album: { id: 59667692 },
-    preview: "https://cdnt-preview.dzcdn.net/archive-fixture.mp3",
-  }));
-  const additionalAlbums = [
-    {
-      id: 320369597,
-      title: "Fantasies",
-      artist: { id: 956, name: "Metric" },
-      firstId: 1758502927,
-      step: 10,
-      count: 10,
-      firstTitle: "Help I'm Alive",
-    },
-    {
-      id: 14879699,
-      title: "OK Computer",
-      artist: { id: 399, name: "Radiohead" },
-      firstId: 138539971,
-      step: 2,
-      count: 12,
-      firstTitle: "Airbag",
-    },
-    {
-      id: 355921,
-      title: "xx",
-      artist: { id: 261212, name: "The xx" },
-      firstId: 3787855,
-      step: 1,
-      count: 11,
-      firstTitle: "Intro",
-    },
-  ].map(({ firstId, step, count, firstTitle, ...album }) => ({
-    ...album,
-    tracks: {
-      data: Array.from({ length: count }, (_, index) => ({
-        id: firstId + index * step,
-        title: index === 0 ? firstTitle : `Fixture track ${index + 1}`,
-        explicit_lyrics: false,
-        readable: true,
-        artist: album.artist,
-        album: { id: album.id },
-        preview: "https://cdnt-preview.dzcdn.net/fixture.mp3",
-      })),
-    },
-  }));
+  const albums = catalog.map((album) => {
+    const artist = { id: album.artistId, name: album.artist };
+    return {
+      id: album.id,
+      title: album.title,
+      artist,
+      cover_medium: "https://cdn-images.dzcdn.net/fixture.svg",
+      tracks: {
+        data: album.tracks.map((track) => ({
+          id: track.id,
+          title: track.title,
+          explicit_lyrics: track.explicit,
+          artist,
+          album: { id: album.id },
+          readable: true,
+          preview: "https://cdnt-preview.dzcdn.net/fixture.mp3",
+        })),
+      },
+    };
+  });
   await page.route("https://api.deezer.com/**", (route) => {
     if (unavailable) return route.fulfill({ status: 500, body: "Unavailable" });
     const url = new URL(route.request().url());
     const callback = url.searchParams.get("callback");
     assert.match(callback, /^librasDeezer_[a-z0-9]+$/);
-    const albums = [
-      { id: 302117, title: "Mer De Noms", artist, tracks: { data: tracks } },
-      {
-        id: 59667692,
-        title: "Controlling Crowds (Parts I-III)",
-        artist: archiveArtist,
-        tracks: { data: archiveTracks },
-      },
-      ...additionalAlbums,
-    ];
-    const album = albums.find((album) => url.pathname === `/album/${album.id}`);
-    const data = album
-      ? { ...album, cover_medium: "https://cdn-images.dzcdn.net/fixture.svg" }
-      : albums
-          .flatMap((album) => album.tracks.data)
-          .find((track) => url.pathname === `/track/${track.id}`);
+    const data =
+      albums.find((album) => url.pathname === `/album/${album.id}`) ??
+      albums
+        .flatMap((album) => album.tracks.data)
+        .find((track) => url.pathname === `/track/${track.id}`);
     return route.fulfill({
       contentType: "text/javascript",
       body: `${callback}(${JSON.stringify(data)})`,
@@ -127,10 +74,7 @@ test("static website links to the full-width standalone demo", async () => {
     await page.getByRole("link", { name: "Try live demo", exact: true }).click();
     await page.waitForURL("**/demo/**");
     await page.locator(".app-root.standalone .tile a").first().waitFor();
-    assert.equal(await page.locator(".tile a").count(), 5);
-    for (const id of [956, 399, 261212]) {
-      assert.equal(await page.locator(`.tile a[href="#/library/artist/${id}"]`).count(), 1);
-    }
+    assert.equal(await page.locator(".tile a").count(), 14);
     assert.equal(await page.locator(".website, [data-embedded], .site-demo-toolbar").count(), 0);
     assert.equal(await page.locator(".app-sidebar").isVisible(), true);
     const app = await page.locator(".app-root").elementHandle();
@@ -163,26 +107,23 @@ test("static website links to the full-width standalone demo", async () => {
   }
 });
 
-test("Archive album shows all 13 tracks including Bullets and Settings credits", async () => {
+test("every planned album has its track list and original year in the UI", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ reducedMotion: "reduce" });
   await mockDeezer(page);
   try {
-    await page.goto(`${base}demo/`);
-    await page.locator('a[href="#/library/artist/1334"]').click();
-    await page
-      .getByRole("link", { name: "Open Controlling Crowds (Parts I-III)", exact: true })
-      .click();
-    await page.getByRole("button", { name: "Play Bullets — Preview", exact: true }).waitFor();
-    assert.equal(await page.locator(".track-row").count(), 13);
-    await page.getByRole("link", { name: "Settings", exact: true }).first().click();
+    for (const album of catalog) {
+      await page.goto(`${base}demo/#/library/artist/${album.artistId}/album/${album.id}`);
+      const details = page.locator('section[aria-label="Album details"]');
+      await details.getByRole("heading", { name: album.title, exact: true, level: 1 }).waitFor();
+      assert.equal(await details.locator(".track-row").count(), album.tracks.length);
+      assert.ok((await details.textContent()).includes(String(album.year)));
+    }
+    await page.goto(`${base}demo/#/settings`);
     const credits = page.locator('article[aria-labelledby="demo-credits-title"]');
     await credits.waitFor();
-    assert.equal(await credits.locator("li").count(), 49);
-    assert.equal(
-      await credits.locator('a[href="https://www.deezer.com/album/59667692"]').count(),
-      1,
-    );
+    assert.equal(await credits.locator("li").count(), 571);
+    assert.equal(await credits.locator("h3").count(), 47);
     assert.equal(await credits.getByRole("link", { name: "Bullets", exact: true }).count(), 1);
   } finally {
     await browser.close();

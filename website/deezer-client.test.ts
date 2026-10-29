@@ -2,9 +2,9 @@
 import { expect, it, vi } from "vitest";
 import { DeezerSubsonicClient } from "./deezer-client";
 import {
+  albumFixtures,
   deezerAlbumFixture as album,
   archiveAlbumFixture,
-  additionalAlbumFixtures,
   readAlbumFixture,
 } from "./deezer-fixtures";
 import { Network } from "../src/network.svelte";
@@ -16,15 +16,15 @@ const auth = {
   salt: "local",
 };
 const pagination = {
-  artistCount: 10,
+  artistCount: 100,
   artistOffset: 0,
-  albumCount: 10,
+  albumCount: 100,
   albumOffset: 0,
-  songCount: 100,
+  songCount: 1000,
   songOffset: 0,
 };
 
-it("loads five artists and 49 selected recordings without persisting preview URLs or original durations", async () => {
+it("loads 14 unique artists, 47 editions and 571 recordings without persisting preview URLs or song durations", async () => {
   const read = vi.fn(readAlbumFixture);
   const client = new DeezerSubsonicClient(auth, read);
   await client.ping();
@@ -32,35 +32,23 @@ it("loads five artists and 49 selected recordings without persisting preview URL
   expect(result.artists.map((artist) => artist.name)).toEqual([
     "A Perfect Circle",
     "Archive",
+    "Arctic Monkeys",
+    "Audioslave",
+    "Foo Fighters",
     "Metric",
+    "Nothing But Thieves",
+    "Poets of the Fall",
+    "Queens of the Stone Age",
     "Radiohead",
+    "Röyksopp",
+    "Soundgarden",
     "The xx",
+    "TOOL",
   ]);
-  expect(result.albums.map((album) => ({ id: album.id, year: album.year }))).toEqual([
-    { id: "302117", year: 2000 },
-    { id: "59667692", year: 2009 },
-    { id: "320369597", year: 2009 },
-    { id: "14879699", year: 1997 },
-    { id: "355921", year: 2009 },
-  ]);
-  expect(result.tracks).toHaveLength(49);
-  expect(result.tracks.slice(0, 3).map((track) => track.id)).toEqual([
-    "3135439",
-    "3135442",
-    "3135444",
-  ]);
-  expect(result.tracks.slice(3, 16).map((track) => track.id)).toEqual(
-    archiveAlbumFixture.tracks.data.map((track) => String(track.id)),
-  );
-  expect(result.tracks[4]).toMatchObject({
-    title: "Bullets — Preview",
-    albumId: "59667692",
-    track: 2,
-  });
-  expect(result.tracks[12].title).toContain("Explicit");
-  expect(client.getCoverArtUrl("302117")).toBe(album.cover_medium);
-  expect(client.getCoverArtUrl("59667692")).toBe(archiveAlbumFixture.cover_medium);
-  for (const fixture of additionalAlbumFixtures) {
+  expect(result.albums).toHaveLength(47);
+  expect(result.tracks).toHaveLength(571);
+  expect(new Set(result.tracks.map((track) => track.id)).size).toBe(571);
+  for (const fixture of albumFixtures) {
     expect(client.getCoverArtUrl(String(fixture.id))).toBe(fixture.cover_medium);
     expect(
       result.tracks
@@ -68,26 +56,49 @@ it("loads five artists and 49 selected recordings without persisting preview URL
         .map((track) => track.id),
     ).toEqual(fixture.tracks.data.map((track) => String(track.id)));
   }
-  expect(result.tracks[18].title).toContain("Explicit");
-  expect(result.tracks[1].title).toContain("Explicit");
+  expect(result.tracks.find((track) => track.id === "476972632")).toMatchObject({
+    title: "Bullets — Preview",
+    albumId: "59667692",
+    track: 2,
+  });
+  expect(result.tracks.find((track) => track.id === "3135442")?.title).toContain("Explicit");
+  expect(result.tracks.find((track) => track.id === "1758502947")?.title).toContain("Explicit");
   expect(JSON.stringify(result)).not.toContain("temporary");
-  expect(result.tracks[0]).not.toHaveProperty("duration");
-  expect((await client.search3({ ...pagination, songOffset: 1, songCount: 1 })).tracks[0].id).toBe(
-    "3135442",
-  );
-  expect(read).toHaveBeenCalledTimes(5);
+  expect(result.tracks.every((track) => !("duration" in track))).toBe(true);
+  expect(read).toHaveBeenCalledTimes(47);
+});
+
+it("paginates artists, albums and tracks without duplicate artists or missing recordings", async () => {
+  const client = new DeezerSubsonicClient(auth, readAlbumFixture);
   const page = await client.search3({
     ...pagination,
-    artistOffset: 1,
-    artistCount: 1,
-    albumOffset: 1,
-    albumCount: 1,
-    songOffset: 2,
-    songCount: 3,
+    artistOffset: 13,
+    artistCount: 2,
+    albumOffset: 46,
+    albumCount: 2,
+    songOffset: 570,
+    songCount: 2,
   });
-  expect(page.artists.map((artist) => artist.id)).toEqual(["1334"]);
-  expect(page.albums.map((album) => album.id)).toEqual(["59667692"]);
-  expect(page.tracks.map((track) => track.id)).toEqual(["3135444", "476972622", "476972632"]);
+  expect(page.artists.map((artist) => artist.id)).toEqual(["689"]);
+  expect(page.albums.map((album) => album.id)).toEqual(["108996972"]);
+  expect(page.tracks).toHaveLength(1);
+  const tracks = [];
+  for (let songOffset = 0; songOffset < 600; songOffset += 50) {
+    tracks.push(
+      ...(
+        await client.search3({
+          ...pagination,
+          artistCount: 0,
+          albumCount: 0,
+          songCount: 50,
+          songOffset,
+        })
+      ).tracks,
+    );
+  }
+  expect(tracks.map((track) => track.id)).toEqual(
+    albumFixtures.flatMap((album) => album.tracks.data.map((track) => String(track.id))),
+  );
 });
 
 it("uses original release years rather than Deezer edition dates", async () => {
@@ -95,10 +106,14 @@ it("uses original release years rather than Deezer edition dates", async () => {
     ...(await readAlbumFixture(path)),
     release_date: "2026-01-01",
   }));
-  const client = new DeezerSubsonicClient(auth, read);
-  expect((await client.search3(pagination)).albums.map((album) => album.year)).toEqual([
-    2000, 2009, 2009, 1997, 2009,
-  ]);
+  const result = await new DeezerSubsonicClient(auth, read).search3(pagination);
+  const years = new Map(result.albums.map((album) => [album.id, album.year]));
+  expect(years.get("302117")).toBe(2000);
+  expect(years.get("59667692")).toBe(2009);
+  expect(years.get("98920")).toBe(2002);
+  expect(years.get("320369597")).toBe(2009);
+  expect(years.get("14880317")).toBe(1995);
+  expect(years.get("105614472")).toBe(1993);
 });
 
 it("does not require playback fields to browse the albums", async () => {
@@ -116,11 +131,10 @@ it("does not require playback fields to browse the albums", async () => {
       },
     };
   });
-  const client = new DeezerSubsonicClient(auth, read);
-  expect((await client.search3(pagination)).tracks).toHaveLength(49);
+  expect((await new DeezerSubsonicClient(auth, read).search3(pagination)).tracks).toHaveLength(571);
 });
 
-it.each(additionalAlbumFixtures)("resolves a preview for $artist.name", async (fixture) => {
+it.each(albumFixtures)("resolves a preview for $artist.name — $title", async (fixture) => {
   const track = fixture.tracks.data[0];
   const read = vi.fn().mockResolvedValue({ ...track, album: { id: fixture.id } });
   const client = new DeezerSubsonicClient(auth, read);
@@ -180,8 +194,7 @@ it("resolves Bullets only for the selected Archive album and artist", async () =
     .fn()
     .mockResolvedValue({ ...archiveAlbumFixture.tracks.data[1], album: { id: 59667692 } });
   const client = new DeezerSubsonicClient(auth, read);
-  expect(await client.getStreamUrl("476972632")).toContain("archive-example.mp3");
-  expect(read).toHaveBeenCalledWith("track/476972632", expect.any(AbortSignal));
+  expect(await client.getStreamUrl("476972632")).toContain("fixture.mp3");
   read.mockResolvedValue({ ...archiveAlbumFixture.tracks.data[1], album: { id: 302117 } });
   await expect(client.getStreamUrl("476972632")).rejects.toThrow();
 });
@@ -192,10 +205,10 @@ it("rejects missing recordings and mismatched artists", async () => {
     return path === "album/59667692" ? { ...input, artist: album.artist } : input;
   });
   await expect(new DeezerSubsonicClient(auth, read).ping()).rejects.toThrow("Unexpected");
-  read.mockImplementation(async (path) => {
-    const input = await readAlbumFixture(path);
-    return { ...input, tracks: { data: [] } };
-  });
+  read.mockImplementation(async (path) => ({
+    ...(await readAlbumFixture(path)),
+    tracks: { data: [] },
+  }));
   await expect(new DeezerSubsonicClient(auth, read).ping()).rejects.toThrow("missing");
 });
 

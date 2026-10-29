@@ -109,7 +109,11 @@ export class DeezerSubsonicClient implements SubsonicApi {
         .then((catalogs) => {
           combined.throwIfAborted();
           const catalog = {
-            artists: catalogs.flatMap((catalog) => catalog.artists),
+            artists: [
+              ...new Map(
+                catalogs.flatMap((catalog) => catalog.artists).map((artist) => [artist.id, artist]),
+              ).values(),
+            ],
             albums: catalogs.flatMap((catalog) => catalog.albums),
             tracks: catalogs.flatMap((catalog) => catalog.tracks),
             artwork: Object.fromEntries(
