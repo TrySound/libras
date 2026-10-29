@@ -97,6 +97,23 @@ test("static website links to the full-width standalone demo", async () => {
   }
 });
 
+test("website music credits open the demo Settings card", async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ reducedMotion: "reduce" });
+  const requests = await mockDeezer(page, true);
+  try {
+    await page.goto(base);
+    await page.getByRole("link", { name: "Music credits", exact: true }).click();
+    await page.waitForURL("**/demo/#/settings");
+    const credits = page.locator('article[aria-labelledby="demo-credits-title"]');
+    await credits.waitFor();
+    assert.equal(await credits.locator("li").count(), 53);
+    assert.deepEqual(requests, []);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("every planned album is browsable without live Deezer API access", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ reducedMotion: "reduce" });

@@ -76,7 +76,8 @@ it("serves the complete landing page without executing JavaScript", () => {
   expect(page.querySelector('link[rel="preload"][as="font"]')?.getAttribute("href")).toBe(
     "../src/fonts/rajdhani-700-latin.woff2",
   );
-  expect(page.querySelector('a[href="/catalog/credits.html"]')).not.toBeNull();
+  expect(page.querySelector('a[href="/demo/#/settings"]')?.textContent).toBe("Music credits");
+  expect(page.querySelector('a[href^="/catalog/"]')).toBeNull();
   expect(page.querySelectorAll(".site-waveform span")).toHaveLength(25);
 
   for (const link of page.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')) {

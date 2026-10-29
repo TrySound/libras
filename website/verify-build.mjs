@@ -10,6 +10,8 @@ async function verify(root) {
   async function walk(directory, prefix = "") {
     for (const name of await readdir(directory)) {
       const path = prefix + name;
+      if (path === "catalog")
+        throw new ArtifactError("Legacy static catalog must not be published.");
       const info = await lstat(join(directory, name));
       if (info.isSymbolicLink())
         throw new ArtifactError("Pages artifact must not contain symlinks.");
@@ -55,17 +57,6 @@ async function verify(root) {
   }
   if (!(await read("webapp/index.html")).includes('href="/webapp/manifest.webmanifest"')) {
     throw new ArtifactError("App HTML must declare its scoped PWA manifest.");
-  }
-  for (const name of [
-    "search3.json",
-    "assets.json",
-    "credits.html",
-    "credits.json",
-    "dates.json",
-    "sources.json",
-  ]) {
-    if (!files.has("catalog/" + name))
-      throw new ArtifactError("Demo catalog metadata is incomplete.");
   }
   if (size > 1024 ** 3) throw new ArtifactError("Combined Pages site exceeds 1 GiB.");
   console.log(`Pages artifact verified: ${(size / 1024 ** 2).toFixed(1)} MiB total`);
