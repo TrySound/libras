@@ -1325,7 +1325,6 @@
   .tile-grid-item {
     --tile-padding: var(--space-md);
     aspect-ratio: 1;
-    max-width: 20rem;
   }
 
   .tile {
