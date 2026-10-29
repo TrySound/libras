@@ -69,7 +69,9 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   expect(read).not.toHaveBeenCalled();
   expect(Array.from(document.querySelectorAll(".tile"), (tile) => tile.textContent)).toEqual(
     expect.arrayContaining(
-      ["Archive", "Metric", "Radiohead", "The xx"].map((artist) => expect.stringContaining(artist)),
+      ["Archive", "Breaking Benjamin", "Metric", "Radiohead", "The xx"].map((artist) =>
+        expect.stringContaining(artist),
+      ),
     ),
   );
   expect(document.getElementById("demo-credits-title")).toBeNull();
@@ -78,6 +80,9 @@ it("opens preconnected without touching regular settings or registering a PWA", 
 it.each([
   { artistId: "702", albumId: "302117", year: 2000 },
   { artistId: "1334", albumId: "59667692", year: 2009 },
+  { artistId: "5286", albumId: "11019040", year: 2004 },
+  { artistId: "5286", albumId: "13793191", year: 2006 },
+  { artistId: "5286", albumId: "426788", year: 2009 },
   { artistId: "956", albumId: "320369597", year: 2009 },
   { artistId: "399", albumId: "14879699", year: 1997 },
   { artistId: "261212", albumId: "355921", year: 2009 },
@@ -102,7 +107,7 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
   expect(card?.querySelector("h2")?.textContent).toBe("Demo music credits");
   expect(card?.textContent).toContain("Previews provided by Deezer");
   expect(card?.textContent).toContain("Downloads may not work in this demo");
-  expect(card?.querySelectorAll("li")).toHaveLength(571);
+  expect(card?.querySelectorAll("li")).toHaveLength(569);
   expect(Array.from(card!.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual(
     expect.arrayContaining([
       "https://www.deezer.com/album/302117",
@@ -114,9 +119,14 @@ it("renders demo credits as an HTML card inside Settings, not above the app", as
       "https://www.deezer.com/album/320369597",
       "https://www.deezer.com/album/14879699",
       "https://www.deezer.com/album/355921",
+      "https://www.deezer.com/album/11019040",
+      "https://www.deezer.com/album/13793191",
+      "https://www.deezer.com/album/426788",
     ]),
   );
   expect(card?.textContent).toContain("Archive");
+  expect(card?.textContent).toContain("Breaking Benjamin");
+  expect(card?.textContent).not.toContain("Audioslave");
   expect(card?.textContent).toContain("Bullets");
   expect(card?.textContent).toContain("Judith (explicit)");
   expect(document.querySelector('[aria-label="Demo music credits"]')).toBeNull();

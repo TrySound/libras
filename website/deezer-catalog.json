@@ -653,227 +653,217 @@
     ]
   },
   {
-    "id": 98920,
-    "artistId": 843,
-    "artist": "Audioslave",
-    "title": "Audioslave",
-    "year": 2002,
-    "yearSource": "https://en.wikipedia.org/wiki/Audioslave_(album)",
-    "sourceReleaseDate": "2007-06-01",
-    "artwork": "https://cdn-images.dzcdn.net/images/cover/cb931b7607ff8426e3203e0d6b58867f/250x250-000000-80-0-0.jpg",
+    "id": 11019040,
+    "artistId": 5286,
+    "artist": "Breaking Benjamin",
+    "title": "We Are Not Alone",
+    "year": 2004,
+    "yearSource": "https://en.wikipedia.org/wiki/We_Are_Not_Alone_(Breaking_Benjamin_album)",
+    "sourceReleaseDate": "2009-09-01",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/e7aca189d514a6ad80ccc0b4d82f6abc/250x250-000000-80-0-0.jpg",
     "tracks": [
       {
-        "id": 866618,
-        "title": "Cochise",
+        "id": 105746414,
+        "title": "So Cold (Remix)",
         "explicit": false
       },
       {
-        "id": 866619,
-        "title": "Show Me How to Live",
-        "explicit": false
-      },
-      {
-        "id": 866620,
-        "title": "Gasoline",
-        "explicit": false
-      },
-      {
-        "id": 866621,
-        "title": "What You Are",
-        "explicit": false
-      },
-      {
-        "id": 866622,
-        "title": "Like a Stone",
-        "explicit": false
-      },
-      {
-        "id": 866623,
-        "title": "Set It Off",
+        "id": 105746416,
+        "title": "Simple Design",
         "explicit": true
       },
       {
-        "id": 866624,
-        "title": "Shadow on the Sun",
+        "id": 105746418,
+        "title": "Follow (Radio Edit)",
         "explicit": false
       },
       {
-        "id": 866625,
-        "title": "I Am the Highway",
+        "id": 105746420,
+        "title": "Firefly",
+        "explicit": true
+      },
+      {
+        "id": 105746422,
+        "title": "Break My Fall",
+        "explicit": true
+      },
+      {
+        "id": 105746424,
+        "title": "Forget It",
         "explicit": false
       },
       {
-        "id": 866626,
-        "title": "Exploder",
+        "id": 105746426,
+        "title": "Sooner Or Later",
         "explicit": false
       },
       {
-        "id": 866627,
-        "title": "Hypnotize",
+        "id": 105746428,
+        "title": "Breakdown",
         "explicit": false
       },
       {
-        "id": 866628,
-        "title": "Bring Em Back Alive",
+        "id": 105746430,
+        "title": "Away",
         "explicit": false
       },
       {
-        "id": 866629,
-        "title": "Light My Way",
+        "id": 105746432,
+        "title": "Believe",
         "explicit": false
       },
       {
-        "id": 866630,
-        "title": "Getaway Car",
+        "id": 105746434,
+        "title": "Rain",
         "explicit": false
       },
       {
-        "id": 866631,
-        "title": "The Last Remaining Light",
+        "id": 105746436,
+        "title": "Rain (2005) (Alternate Single Version)",
         "explicit": false
       }
     ]
   },
   {
-    "id": 108923,
-    "artistId": 843,
-    "artist": "Audioslave",
-    "title": "Out of Exile",
-    "year": 2005,
-    "yearSource": "https://en.wikipedia.org/wiki/Out_of_Exile",
-    "sourceReleaseDate": "2005-01-01",
-    "artwork": "https://cdn-images.dzcdn.net/images/cover/77565ef29f9525992a2fdddcf44ca9de/250x250-000000-80-0-0.jpg",
-    "tracks": [
-      {
-        "id": 978820,
-        "title": "Your Time Has Come",
-        "explicit": false
-      },
-      {
-        "id": 978821,
-        "title": "Out Of Exile",
-        "explicit": false
-      },
-      {
-        "id": 978822,
-        "title": "Be Yourself",
-        "explicit": false
-      },
-      {
-        "id": 978823,
-        "title": "Doesn't Remind Me",
-        "explicit": false
-      },
-      {
-        "id": 978824,
-        "title": "Drown Me Slowly",
-        "explicit": false
-      },
-      {
-        "id": 978825,
-        "title": "Heaven's Dead",
-        "explicit": false
-      },
-      {
-        "id": 978826,
-        "title": "The Worm",
-        "explicit": false
-      },
-      {
-        "id": 978827,
-        "title": "Man Or Animal",
-        "explicit": false
-      },
-      {
-        "id": 978828,
-        "title": "Yesterday To Tomorrow",
-        "explicit": false
-      },
-      {
-        "id": 978829,
-        "title": "Dandelion",
-        "explicit": false
-      },
-      {
-        "id": 978830,
-        "title": "#1 Zero",
-        "explicit": false
-      },
-      {
-        "id": 978831,
-        "title": "The Curse",
-        "explicit": false
-      }
-    ]
-  },
-  {
-    "id": 73462,
-    "artistId": 843,
-    "artist": "Audioslave",
-    "title": "Revelations",
+    "id": 13793191,
+    "artistId": 5286,
+    "artist": "Breaking Benjamin",
+    "title": "Phobia (Explicit Version)",
     "year": 2006,
-    "yearSource": "https://en.wikipedia.org/wiki/Revelations_(Audioslave_album)",
-    "sourceReleaseDate": "2006-08-29",
-    "artwork": "https://cdn-images.dzcdn.net/images/cover/b7345fd9ef03bdb875135ece3f120331/250x250-000000-80-0-0.jpg",
+    "yearSource": "https://en.wikipedia.org/wiki/Phobia_(Breaking_Benjamin_album)",
+    "sourceReleaseDate": "2006-08-08",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/5198ae93044a7edf3fa22e69fc09f6cb/250x250-000000-80-0-0.jpg",
     "tracks": [
       {
-        "id": 563763,
-        "title": "Revelations",
+        "id": 130132897,
+        "title": "Intro",
         "explicit": false
       },
       {
-        "id": 563764,
-        "title": "One And The Same (Album Version)",
+        "id": 130132899,
+        "title": "The Diary of Jane (Single Version)",
         "explicit": false
       },
       {
-        "id": 563765,
-        "title": "Sound Of A Gun (Album Version)",
+        "id": 130132901,
+        "title": "Breath",
         "explicit": false
       },
       {
-        "id": 563766,
-        "title": "Until We Fall (Album Version)",
+        "id": 130132903,
+        "title": "You",
         "explicit": false
       },
       {
-        "id": 563767,
-        "title": "Original Fire",
+        "id": 130132905,
+        "title": "Evil Angel",
         "explicit": false
       },
       {
-        "id": 563768,
-        "title": "Broken City (Album Version)",
+        "id": 130132907,
+        "title": "Until The End",
+        "explicit": true
+      },
+      {
+        "id": 130132909,
+        "title": "Dance With The Devil",
         "explicit": false
       },
       {
-        "id": 563769,
-        "title": "Somedays (Album Version)",
+        "id": 130132911,
+        "title": "Topless",
+        "explicit": true
+      },
+      {
+        "id": 130132913,
+        "title": "Here We Are",
         "explicit": false
       },
       {
-        "id": 563770,
-        "title": "Shape of Things to Come",
+        "id": 130132915,
+        "title": "Unknown Soldier",
         "explicit": false
       },
       {
-        "id": 563771,
-        "title": "Jewel Of The Summertime (Album Version)",
+        "id": 130132917,
+        "title": "Had Enough",
         "explicit": false
       },
       {
-        "id": 563772,
-        "title": "Wide Awake (Album Version)",
+        "id": 130132919,
+        "title": "You Fight Me",
         "explicit": false
       },
       {
-        "id": 563773,
-        "title": "Nothing Left To Say But Goodbye (Album Version)",
+        "id": 130132921,
+        "title": "Outro",
+        "explicit": false
+      }
+    ]
+  },
+  {
+    "id": 426788,
+    "artistId": 5286,
+    "artist": "Breaking Benjamin",
+    "title": "Dear Agony",
+    "year": 2009,
+    "yearSource": "https://en.wikipedia.org/wiki/Dear_Agony",
+    "sourceReleaseDate": "2009-10-14",
+    "artwork": "https://cdn-images.dzcdn.net/images/cover/8ef941f2eaf2785987dc77d75f1bdc1f/250x250-000000-80-0-0.jpg",
+    "tracks": [
+      {
+        "id": 4638670,
+        "title": "Fade Away",
         "explicit": false
       },
       {
-        "id": 563774,
-        "title": "Moth (Album Version)",
+        "id": 4638671,
+        "title": "I Will Not Bow",
+        "explicit": false
+      },
+      {
+        "id": 4638672,
+        "title": "Crawl",
+        "explicit": false
+      },
+      {
+        "id": 4638673,
+        "title": "Give Me A Sign",
+        "explicit": false
+      },
+      {
+        "id": 4638674,
+        "title": "Hopeless",
+        "explicit": false
+      },
+      {
+        "id": 4638675,
+        "title": "What Lies Beneath",
+        "explicit": false
+      },
+      {
+        "id": 4638676,
+        "title": "Anthem Of The Angels",
+        "explicit": false
+      },
+      {
+        "id": 4638677,
+        "title": "Lights Out",
+        "explicit": false
+      },
+      {
+        "id": 4638678,
+        "title": "Dear Agony",
+        "explicit": false
+      },
+      {
+        "id": 4638679,
+        "title": "Into The Nothing",
+        "explicit": false
+      },
+      {
+        "id": 4638680,
+        "title": "Without You",
         "explicit": false
       }
     ]

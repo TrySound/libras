@@ -14,9 +14,10 @@ export const selections = [
   [401340, 1182, 13, 2006, "Whatever_People_Say_I_Am,_That's_What_I'm_Not"],
   [401346, 1182, 12, 2007, "Favourite_Worst_Nightmare"],
   [6899610, 1182, 12, 2013, "AM_(Arctic_Monkeys_album)"],
-  [98920, 843, 14, 2002, "Audioslave_(album)"],
-  [108923, 843, 12, 2005, "Out_of_Exile"],
-  [73462, 843, 12, 2006, "Revelations_(Audioslave_album)"],
+  // The 12-track We Are Not Alone edition includes the alternate Rain (2005).
+  [11019040, 5286, 12, 2004, "We_Are_Not_Alone_(Breaking_Benjamin_album)"],
+  [13793191, 5286, 13, 2006, "Phobia_(Breaking_Benjamin_album)"],
+  [426788, 5286, 11, 2009, "Dear_Agony"],
   [78721, 566, 12, 1995, "Foo_Fighters_(album)"],
   [8247832, 566, 14, 1997, "The_Colour_and_the_Shape"],
   [1205341, 566, 12, 2007, "Echoes,_Silence,_Patience_&_Grace"],
@@ -117,7 +118,7 @@ export async function refreshCatalog() {
   if (
     albums.length !== 47 ||
     new Set(albums.map((album) => album.artistId)).size !== 14 ||
-    trackIds.size !== 571
+    trackIds.size !== 569
   ) {
     throw new Error("Catalog totals changed; review the selection before refreshing.");
   }
@@ -126,7 +127,7 @@ export async function refreshCatalog() {
     new URL("./deezer-catalog.json", import.meta.url),
     JSON.stringify(albums, null, 2) + "\n",
   );
-  console.log("Refreshed 14 artists, 47 albums, 571 preview entries. No audio downloaded.");
+  console.log("Refreshed 14 artists, 47 albums, 569 preview entries. No audio downloaded.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

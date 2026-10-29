@@ -19,7 +19,7 @@ const pagination = {
   songOffset: 0,
 };
 
-it("loads 14 unique artists, 47 editions and 571 recordings without persisting preview URLs or song durations", async () => {
+it("loads 14 unique artists, 47 editions and 569 recordings without persisting preview URLs or song durations", async () => {
   const read = vi.fn().mockRejectedValue(new Error("Unexpected live catalog request"));
   const client = new DeezerSubsonicClient(auth, read);
   await client.ping();
@@ -28,7 +28,7 @@ it("loads 14 unique artists, 47 editions and 571 recordings without persisting p
     "A Perfect Circle",
     "Archive",
     "Arctic Monkeys",
-    "Audioslave",
+    "Breaking Benjamin",
     "Foo Fighters",
     "Metric",
     "Nothing But Thieves",
@@ -41,8 +41,8 @@ it("loads 14 unique artists, 47 editions and 571 recordings without persisting p
     "TOOL",
   ]);
   expect(result.albums).toHaveLength(47);
-  expect(result.tracks).toHaveLength(571);
-  expect(new Set(result.tracks.map((track) => track.id)).size).toBe(571);
+  expect(result.tracks).toHaveLength(569);
+  expect(new Set(result.tracks.map((track) => track.id)).size).toBe(569);
   for (const fixture of albumFixtures) {
     expect(client.getCoverArtUrl(String(fixture.id))).toBe(fixture.cover_medium);
     expect(
@@ -71,7 +71,7 @@ it("paginates artists, albums and tracks without duplicate artists or missing re
     artistCount: 2,
     albumOffset: 46,
     albumCount: 2,
-    songOffset: 570,
+    songOffset: 568,
     songCount: 2,
   });
   expect(page.artists.map((artist) => artist.id)).toEqual(["689"]);
@@ -101,7 +101,9 @@ it("uses original release years rather than Deezer edition dates", async () => {
   const years = new Map(result.albums.map((album) => [album.id, album.year]));
   expect(years.get("302117")).toBe(2000);
   expect(years.get("59667692")).toBe(2009);
-  expect(years.get("98920")).toBe(2002);
+  expect(years.get("11019040")).toBe(2004);
+  expect(years.get("13793191")).toBe(2006);
+  expect(years.get("426788")).toBe(2009);
   expect(years.get("320369597")).toBe(2009);
   expect(years.get("14880317")).toBe(1995);
   expect(years.get("105614472")).toBe(1993);
@@ -111,7 +113,7 @@ it("syncs the committed snapshot even when live Deezer data is unavailable or mi
   const read = vi.fn().mockRejectedValue(new Error("Deezer unavailable"));
   const client = new DeezerSubsonicClient(auth, read);
   await expect(client.ping()).resolves.toMatchObject({ openSubsonic: true });
-  expect((await client.search3(pagination)).tracks).toHaveLength(571);
+  expect((await client.search3(pagination)).tracks).toHaveLength(569);
   read.mockResolvedValue({ ...album, id: 999, artist: { id: 999, name: "Unexpected artist" } });
   expect((await client.search3(pagination)).albums).toHaveLength(47);
   expect(read).not.toHaveBeenCalled();

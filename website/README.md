@@ -17,9 +17,11 @@ The demo synchronizes metadata from the snapshot shipped with the website, so br
 
 ## Deezer previews
 
-The demo includes the full revised shortlist from #79: **14 artists, 47 albums, and 571 previews**, excluding Puscifer. _Mer De Noms_ now includes all 12 tracks rather than the initial three.
+The demo includes the full revised shortlist from #79: **14 artists, 47 albums, and 569 previews**, excluding Puscifer. _Mer De Noms_ now includes all 12 tracks rather than the initial three.
 
-Artists: A Perfect Circle, Archive, Arctic Monkeys, Audioslave, Foo Fighters, Metric, Nothing But Thieves, Poets of the Fall, Queens of the Stone Age, Radiohead, Röyksopp, Soundgarden, The xx, and TOOL.
+Artists: A Perfect Circle, Archive, Arctic Monkeys, Breaking Benjamin, Foo Fighters, Metric, Nothing But Thieves, Poets of the Fall, Queens of the Stone Age, Radiohead, Röyksopp, Soundgarden, The xx, and TOOL.
+
+Breaking Benjamin replaces Audioslave with _We Are Not Alone_ (2004; 12-track Deezer edition including the alternate Rain (2005)), _Phobia (Explicit Version)_ (2006), and _Dear Agony_ (2009).
 
 `deezer-catalog.json` contains the exact recording IDs, titles, explicit flags, original release years, year-source links and artwork URLs used by the adapter and Settings credits. Artwork is loaded directly from Deezer's image CDN; no image files are committed. `deezer-catalog.ts` exports that data. Original years are curated independently of Deezer edition dates, which are retained separately as `sourceReleaseDate`. Album ordering and selected edition labels (including Deluxe and anniversary/remaster labels) are preserved. The player measures actual clip duration instead of using the full-song duration.
 
