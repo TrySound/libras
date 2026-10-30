@@ -15,7 +15,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     genres: [],
   }));
   const match = vi.spyOn(fuzzysort, "go");
-  const playback = { replaceQueueAndPlay: vi.fn(), enqueue: vi.fn() };
+  const playback = { replaceQueueAndPlay: vi.fn(), enqueue: vi.fn(), toggleTrack: vi.fn() };
   const cover = { load: vi.fn(), source: undefined };
   const downloadMany = vi.fn();
   const props = {
@@ -53,7 +53,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     input.value = "Song";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flushSync();
-    expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(3);
+    expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(3);
     expect(target.querySelectorAll("section .track-row")).toHaveLength(3);
     expect(
       target.querySelector('section[aria-label="Tracks"] .track-row .caption')?.textContent,
@@ -66,12 +66,21 @@ it("focuses the input, expands results, retains route state, and uses album play
     button("Show more tracks").click();
     flushSync();
     expect(match).not.toHaveBeenCalled();
-    expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(12);
-    button("Play Song").click();
-    expect(playback.replaceQueueAndPlay).toHaveBeenCalledWith(
+    expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(12);
+    button("Toggle playback for Song").click();
+    button("Toggle playback for Song").click();
+    expect(playback.toggleTrack).toHaveBeenCalledTimes(2);
+    expect(playback.toggleTrack).toHaveBeenLastCalledWith(
+      "0",
       tracks.map((t) => t.id),
-      0,
     );
+    expect(playback.replaceQueueAndPlay).not.toHaveBeenCalled();
+    button("Play Song").click();
+    expect(playback.toggleTrack).toHaveBeenLastCalledWith(
+      "1",
+      tracks.map((t) => t.id),
+    );
+    expect(playback.replaceQueueAndPlay).not.toHaveBeenCalled();
     const menuButton = button("Open menu for Song");
     const desktopMenu = target.querySelector<HTMLButtonElement>(
       '.only-desktop[aria-label="Open menu for Song"]',
@@ -89,7 +98,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     button("Play last").click();
     expect(playback.enqueue).toHaveBeenLastCalledWith(["0"], "last");
     // Long press focuses its invoker before opening the same shared dialog.
-    const trackRows = target.querySelectorAll<HTMLButtonElement>('[aria-label="Play Song"]');
+    const trackRows = target.querySelectorAll<HTMLButtonElement>(".track-row button.link-target");
     expect(trackRows[1].getAttribute("data-longpressfor")).toBe("search-menu");
     trackRows[1].focus();
     flushSync();
@@ -104,7 +113,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     input.value = "Artist";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flushSync();
-    expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(3);
+    expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(3);
     for (const name of ["Artist", "Album"]) {
       button(`Open menu for ${name}`).click();
       flushSync();
@@ -133,7 +142,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     input.value = "Song";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flushSync();
-    expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(3);
+    expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(3);
     button("Show more tracks").click();
     flushSync();
     button("Toggle route").click();
@@ -142,7 +151,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     flushSync();
     input = target.querySelector("input")!;
     expect(input.value).toBe("Song");
-    expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(12);
+    expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(12);
     // Native search cancellation emits an input event with an empty value.
     input.value = "";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -153,7 +162,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     input.value = "Song";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flushSync();
-    expect(target.querySelectorAll('[aria-label="Play Song"]')).toHaveLength(3);
+    expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(3);
     input.value = "zzzzzzzzzz";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flushSync();

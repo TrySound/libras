@@ -254,11 +254,15 @@
     else void playback.replaceQueueAndPlay(menuTrackIds);
   }
 
-  function play(id: string) {
+  function trackContext(id: string) {
     const track = cache.tracks.get(id);
-    if (!track) return;
-    const ids = availableTrackIds(cache.albumTracks.get(track.albumId) ?? [], isAvailable);
-    if (ids.includes(id)) void playback.replaceQueueAndPlay(ids, ids.indexOf(id));
+    return track ? availableTrackIds(cache.albumTracks.get(track.albumId) ?? [], isAvailable) : [];
+  }
+
+  function play(id: string) {
+    const ids = trackContext(id);
+    const index = ids.indexOf(id);
+    if (index >= 0) void playback.replaceQueueAndPlay(ids, index);
   }
 </script>
 
@@ -363,11 +367,13 @@
                   {:else}
                     <button
                       class="button-quiet link-target"
-                      aria-label={`Play ${record.title}`}
+                      aria-label={currentTrackId === record.id
+                        ? `Toggle playback for ${record.title}`
+                        : `Play ${record.title}`}
                       data-longpressfor="search-menu"
                       data-longpress="show-modal"
                       onfocus={() => selectMenu(group, record.id)}
-                      onclick={() => play(record.id)}
+                      onclick={() => playback.toggleTrack(record.id, trackContext(record.id))}
                     ></button>
                   {/if}
                   <div class="row-sm">

@@ -189,9 +189,22 @@ it("shows compact track credits, durations, and padded numbers in albums and que
     expect(rows.map(duration)).toEqual(["4:32", "0:00", ""]);
   }
   expect(albumRows[0].getAttribute("aria-current")).toBe("true");
+  expect(
+    albumRows[0]
+      .querySelector('[aria-label="Current track, not playing"] use')
+      ?.getAttribute("href"),
+  ).toBe("#icon-pause");
   expect(queueRows[0].querySelector('[aria-label="Current track, not playing"]')).not.toBeNull();
   for (const row of queueRows) expect(row.textContent).not.toContain("Album title");
   expect(albumRows[1].querySelector('[aria-label="Actions for Second track"]')).not.toBeNull();
+  const toggle = vi.spyOn(mocks.options!.playback, "toggle").mockResolvedValue();
+  const replace = vi.spyOn(mocks.options!.playback, "replaceQueueAndPlay").mockResolvedValue();
+  (albumRows[0].querySelector("button.link-target") as HTMLButtonElement).click();
+  (albumRows[0].querySelector("button.link-target") as HTMLButtonElement).click();
+  expect(toggle).toHaveBeenCalledTimes(2);
+  expect(replace).not.toHaveBeenCalled();
+  (albumRows[1].querySelector("button.link-target") as HTMLButtonElement).click();
+  expect(replace).toHaveBeenCalledWith(["one", "two", "three"], 1);
 });
 
 it("keeps queue occurrence indexes when offline rows are filtered", async () => {
@@ -223,8 +236,12 @@ it("keeps queue occurrence indexes when offline rows are filtered", async () => 
   const rows = [...target.querySelectorAll('[aria-label="Queue"] .track-row')];
   expect(rows).toHaveLength(2);
   expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual([null, "true"]);
+  const toggle = vi.spyOn(mocks.options!.playback, "toggle").mockResolvedValue();
   (rows[1].querySelector("button") as HTMLButtonElement).click();
-  expect(playIndex).toHaveBeenCalledWith(3);
+  expect(toggle).toHaveBeenCalledOnce();
+  expect(playIndex).not.toHaveBeenCalled();
+  (rows[0].querySelector("button") as HTMLButtonElement).click();
+  expect(playIndex).toHaveBeenCalledWith(1);
   expect(cache.queue.tracks).toEqual(["missing", "one", "two", "one"]);
 });
 
@@ -251,8 +268,12 @@ it("groups queue occurrences without changing their order or current index", asy
   expect(rows[40].querySelector(".track-row-number")?.textContent?.trim()).toBe("41");
   expect(rows[99].getAttribute("aria-current")).toBe("true");
   const playIndex = vi.spyOn(mocks.options!.playback, "playIndex").mockResolvedValue();
+  const toggle = vi.spyOn(mocks.options!.playback, "toggle").mockResolvedValue();
   (rows[99].querySelector("button") as HTMLButtonElement).click();
-  expect(playIndex).toHaveBeenCalledWith(99);
+  expect(toggle).toHaveBeenCalledOnce();
+  expect(playIndex).not.toHaveBeenCalled();
+  (rows[40].querySelector("button") as HTMLButtonElement).click();
+  expect(playIndex).toHaveBeenCalledWith(40);
 });
 
 it("restores downloads silently without flashing the empty state", () => {

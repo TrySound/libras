@@ -156,6 +156,10 @@
                 <span role="img" aria-label="Playing">
                   <Icon name="sound-bars" color="var(--accent)" />
                 </span>
+              {:else if currentTrack?.id === track.id}
+                <span role="img" aria-label="Current track, not playing">
+                  <Icon name="pause" color="var(--accent)" />
+                </span>
               {:else if downloadStatus === "downloading"}
                 <span role="img" aria-label="Downloading">
                   <Loader />
@@ -176,8 +180,8 @@
             </div>
             <button
               class="button-quiet link-target"
-              aria-label={`Play ${track.title}`}
-              onclick={() => playTrack(track)}
+              aria-label={`${currentTrack?.id === track.id && playbackState !== "paused" ? "Pause" : "Play"} ${track.title}`}
+              onclick={() => playback.toggleTrack(track.id, visibleTrackIds)}
               data-longpressfor="album-detail-menu"
               data-longpress="show-modal"
               onfocus={() => (menuTrackId = track.id)}

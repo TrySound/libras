@@ -233,6 +233,20 @@ export class Playback {
       this.pause();
     else await this.play();
   }
+  /** Toggle the current track without replacing its queue or resetting its position. */
+  async toggleTrack(trackId: string, contextTrackIds: readonly string[]) {
+    if (this.#destroyed) return;
+    const index = contextTrackIds.indexOf(trackId);
+    if (index < 0) return;
+    if (this.track?.id === trackId) await this.toggle();
+    else await this.replaceQueueAndPlay(contextTrackIds, index);
+  }
+  /** Toggle only the selected occurrence; duplicate track IDs remain distinct. */
+  async toggleQueueIndex(index: number) {
+    if (this.#destroyed) return;
+    if (index >= 0 && index === this.#localQueue.index) await this.toggle();
+    else await this.playIndex(index);
+  }
   /** Replace the queue without starting audio. Explicit replacements permit uploads
    * on this connection; progress alone never promotes an offline queue. */
   setQueue(state: QueueState) {

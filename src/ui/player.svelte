@@ -318,8 +318,8 @@
                   </div>
                   <button
                     class="button-quiet link-target"
-                    aria-label={`Play ${track.title}`}
-                    onclick={() => playback.playIndex(index)}
+                    aria-label={`${index === cache.queue.index && (playing || loading) ? "Pause" : "Play"} ${track.title}`}
+                    onclick={() => playback.toggleQueueIndex(index)}
                   ></button>
                   <div class="row-sm">
                     <span class="metadata text-subtle">

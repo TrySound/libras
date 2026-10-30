@@ -569,6 +569,64 @@ describe("playback", () => {
     expect(audio.src).toBe("");
   });
 
+  it("toggles the current track without replacing its context or resetting position", async () => {
+    const { player, selection, audio, tracks } = setup();
+    await player.play();
+    await player.seek(17);
+    await player.toggleTrack("a", ["c", "a"]);
+    expect(audio.paused).toBe(true);
+    expect(selection.cache!.queue).toEqual({ tracks: ["a", "b"], index: 0, position: 17 });
+    await player.toggleTrack("a", ["c", "a"]);
+    expect(audio.paused).toBe(false);
+    expect(audio.currentTime).toBe(17);
+    expect(tracks.getSource).toHaveBeenCalledOnce();
+    expect(selection.cache!.queue).toEqual({ tracks: ["a", "b"], index: 0, position: 17 });
+  });
+
+  it("selects a different track using the supplied context", async () => {
+    const { player, selection, audio } = setup();
+    await player.play();
+    await player.toggleTrack("c", ["b", "c"]);
+    expect(selection.cache!.queue).toEqual({ tracks: ["b", "c"], index: 1, position: 0 });
+    expect(audio.src).toBe("blob:c");
+    expect(audio.paused).toBe(false);
+    await player.toggleTrack("missing", ["b", "c"]);
+    await player.toggleTrack("c", []);
+    expect(selection.cache!.queue).toEqual({ tracks: ["b", "c"], index: 1, position: 0 });
+    expect(audio.paused).toBe(false);
+  });
+
+  it("toggles queue occurrences rather than matching duplicate track IDs", async () => {
+    const { player, selection, audio } = setup();
+    await player.replaceQueueAndPlay(["a", "b", "a"]);
+    await player.seek(13);
+    await player.toggleQueueIndex(2);
+    expect(selection.cache!.queue).toEqual({ tracks: ["a", "b", "a"], index: 2, position: 0 });
+    expect(audio.paused).toBe(false);
+    await player.seek(27);
+    await player.toggleQueueIndex(2);
+    expect(audio.paused).toBe(true);
+    await player.toggleQueueIndex(2);
+    expect(audio.paused).toBe(false);
+    expect(audio.currentTime).toBe(27);
+    expect(selection.cache!.queue).toEqual({ tracks: ["a", "b", "a"], index: 2, position: 27 });
+    for (const index of [-1, 3, 0.5, NaN, Infinity]) await player.toggleQueueIndex(index);
+    expect(selection.cache!.queue.index).toBe(2);
+    expect(audio.paused).toBe(false);
+  });
+
+  it("does not toggle an unselected or destroyed queue", async () => {
+    const { player } = setup();
+    const toggle = vi.spyOn(player, "toggle");
+    player.stop();
+    await player.toggleQueueIndex(-1);
+    expect(toggle).not.toHaveBeenCalled();
+    await player.destroy();
+    await player.toggleTrack("a", ["a"]);
+    await player.toggleQueueIndex(0);
+    expect(toggle).not.toHaveBeenCalled();
+  });
+
   it("starts at raw index zero and leaves out-of-range navigation unchanged", async () => {
     const { player, tracks, selection } = setup();
     player.setQueue({ tracks: ["missing", "a"], position: 0 });
