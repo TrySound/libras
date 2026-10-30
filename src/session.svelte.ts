@@ -40,6 +40,7 @@ export class Session {
   status = $state<ConnectionStatus>("disconnected");
   error = $state("");
   localReady = $state(false);
+  loadingAfterConnect = $state(false);
 
   #options: SessionOptions;
   #account?: Readonly<Account>;
@@ -105,6 +106,7 @@ export class Session {
   }
 
   #detach() {
+    this.loadingAfterConnect = false;
     this.#libraryProgress = undefined;
     this.#refreshPending = undefined;
     this.#syncState = "idle";
@@ -276,6 +278,7 @@ export class Session {
       if (!this.#isCurrentOperation(operationId)) return false;
       this.#commitWorkspace(cache, credentials, connection);
       this.status = "connected";
+      this.loadingAfterConnect = true;
       void this.#refresh(false);
       return true;
     } catch (error) {
@@ -355,7 +358,13 @@ export class Session {
     this.#refreshError = undefined;
     return (this.#refreshPending = (async () => {
       try {
-        await this.#refreshLibrary(force, operationId);
+        try {
+          await this.#refreshLibrary(force, operationId);
+        } finally {
+          // Only the owning operation can reveal content after an explicit connect.
+          // Artwork, playlists and queue synchronization must not block the library.
+          if (this.#isCurrentOperation(operationId)) this.loadingAfterConnect = false;
+        }
         if (!this.#isCurrentOperation(operationId)) return;
         this.error = "";
         await covers.refresh(force);

@@ -38,6 +38,65 @@ afterEach(async () => {
 });
 
 describe("session library workflow", () => {
+  it("blocks only post-connect metadata loading, not artwork or queue synchronization", async () => {
+    const { session, metadata, covers, playback, selection } = setup(false);
+    const response = deferred<Library>();
+    const artwork = deferred();
+    metadata.readLibrary.mockReturnValueOnce(response.promise);
+    covers.refresh.mockReturnValueOnce(artwork.promise);
+
+    expect(session.loadingAfterConnect).toBe(false);
+    expect(await session.connect(input)).toBe(true);
+    expect(session.loadingAfterConnect).toBe(true);
+    await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
+    response.resolve(snapshot());
+    await vi.waitFor(() => expect(covers.refresh).toHaveBeenCalledOnce());
+    expect(selection.cache!.savedAt).toBeDefined();
+    expect(session.loadingAfterConnect).toBe(false);
+    expect(session.syncing).toBe(true);
+    expect(playback.refreshQueue).not.toHaveBeenCalled();
+    artwork.resolve();
+    await vi.waitFor(() => expect(session.syncing).toBe(false));
+  });
+
+  it("does not block startup or manual refresh metadata loading", async () => {
+    const { session, metadata } = setup();
+    const startup = deferred<Library>();
+    metadata.readLibrary.mockReturnValueOnce(startup.promise);
+    session.start();
+    await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
+    expect(session.loadingAfterConnect).toBe(false);
+    startup.resolve(snapshot());
+    await vi.waitFor(() => expect(session.syncing).toBe(false));
+    const response = deferred<Library>();
+    metadata.readLibrary.mockReturnValueOnce(response.promise);
+    const refreshing = session.refresh();
+    await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledTimes(2));
+    expect(session.loadingAfterConnect).toBe(false);
+    response.resolve(snapshot());
+    await refreshing;
+  });
+
+  it("ignores stale metadata completion after disconnect and reconnect", async () => {
+    const { session, metadata } = setup(false);
+    const oldResponse = deferred<Library>();
+    const newResponse = deferred<Library>();
+    metadata.readLibrary
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockReturnValueOnce(newResponse.promise);
+    expect(await session.connect(input)).toBe(true);
+    await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
+    session.disconnect();
+    expect(session.loadingAfterConnect).toBe(false);
+    expect(await session.connect(input)).toBe(true);
+    await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledTimes(2));
+    oldResponse.resolve(snapshot());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(session.loadingAfterConnect).toBe(true);
+    newResponse.resolve(snapshot());
+    await vi.waitFor(() => expect(session.loadingAfterConnect).toBe(false));
+  });
+
   it("marks only explicit refreshes as refreshing and clears that state on disconnect", async () => {
     const { session, metadata } = await restored();
     const response = deferred<Library>();
@@ -112,6 +171,7 @@ describe("session library workflow", () => {
     expect(session.localReady).toBe(true);
     expect(selection.cache!.tracks.size).toBe(0);
     expect(session.refreshError).toContain("Library unavailable");
+    expect(session.loadingAfterConnect).toBe(false);
   });
 
   it("revalidates rather than refetching an unchanged library after explicit login", async () => {

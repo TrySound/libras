@@ -20,6 +20,7 @@ function mount(component: typeof App, { target }: { target: HTMLElement }) {
 
 const mocks = vi.hoisted(() => ({
   localReady: true,
+  loadingAfterConnect: false,
   isOffline: (): boolean => false,
   cache: undefined as import("../src/cache.svelte").Cache | undefined,
   navigate: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("../src/session.svelte", () => ({
       return mocks.isOffline();
     }
     localReady = mocks.localReady;
+    loadingAfterConnect = mocks.loadingAfterConnect;
     constructor(options: NonNullable<typeof mocks.options>) {
       mocks.options = options;
     }
@@ -52,6 +54,7 @@ vi.mock("virtual:pwa-register", () => ({ registerSW: () => async () => {} }));
 
 beforeEach(() => {
   mocks.localReady = true;
+  mocks.loadingAfterConnect = false;
   mocks.isOffline = () => false;
   installNavigation("/library", mocks.navigate);
 });
@@ -77,6 +80,31 @@ function library(name: string, savedAt: number): LibrarySnapshot {
     savedAt,
   };
 }
+
+it.each([false, true])(
+  "shows the post-connect loader instead of library content (cached=%s)",
+  async (cached) => {
+    installDisk();
+    const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+    if (cached) await cache.replaceLibrary(library("Cached artist", 1));
+    mocks.cache = cache;
+    mocks.loadingAfterConnect = true;
+    const target = document.createElement("main");
+    document.body.append(target);
+    const component = mount(App, { target });
+    cleanups.push(() => unmount(component));
+    flushSync();
+    const region = target.querySelector('[aria-labelledby="library-heading"]')!;
+    expect(region.querySelector('[role="status"]')?.textContent).toContain("Loading your library…");
+    expect(region.querySelector('.loader[data-size="xl"]')).not.toBeNull();
+    expect(
+      region.querySelector('[role="status"] .metadata')?.textContent?.replace(/\s+/g, " ").trim(),
+    ).toBe("0 albums · 0 tracks");
+    expect(region.textContent).not.toContain("Connect your library");
+    expect(region.textContent).not.toContain("Cached artist");
+    expect(region.querySelector(".tile-grid")).toBeNull();
+  },
+);
 
 it("shows compact track credits, durations, and padded numbers in albums and queues", async () => {
   installDisk();

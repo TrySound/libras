@@ -1908,6 +1908,7 @@
 }
 
 .app-page {
+  display: grid;
   container-type: inline-size;
   box-sizing: border-box;
   flex: 1;

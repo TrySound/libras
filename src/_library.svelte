@@ -3,6 +3,7 @@
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
+  import Loader from "./ui/loader.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Artist } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -66,25 +67,36 @@
 </script>
 
 <section aria-labelledby="library-heading">
-  <div class="stack-lg scroll-runway">
-    <h1 class="visually-hidden" id="library-heading">Your library</h1>
-    {#if libraryError && libraryAvailable}
-      <div class="card stack-md">
-        <h2 class="heading-sm">Library needs attention</h2>
-        <p class="body">
-          {libraryError}
-        </p>
-        <p class="body">Available music is still listed below.</p>
-        <div class="row-sm">
-          <a class="button" data-variant="secondary" data-size="text" href="#/settings"
-            >Open settings</a
-          >
+  <h1 class="visually-hidden" id="library-heading">Your library</h1>
+  {#if session.loadingAfterConnect}
+    <div class="library-loading" role="status">
+      <Loader size="xl" />
+      <p class="heading-md">Loading your library…</p>
+      <p class="metadata text-subtle">
+        {(session.libraryProgress?.albums ?? 0).toLocaleString()} albums ·
+        {(session.libraryProgress?.tracks ?? 0).toLocaleString()} tracks
+      </p>
+    </div>
+  {:else if libraryAvailable}
+    <div class="stack-lg scroll-runway">
+      {#if libraryError}
+        <div class="card stack-md">
+          <h2 class="heading-sm">Library needs attention</h2>
+          <p class="body">
+            {libraryError}
+          </p>
+          <p class="body">Available music is still listed below.</p>
+          <div class="row-sm">
+            <a class="button" data-variant="secondary" data-size="text" href="#/settings"
+              >Open settings</a
+            >
+          </div>
         </div>
-      </div>
-    {/if}
-    {#if libraryAvailable}
+      {/if}
       <header class="row-md row-justify">
-        <h2 class="heading-lg uppercase">{offlineMode ? "Downloaded artists" : "Artists"}</h2>
+        <h2 class="heading-lg uppercase">
+          {offlineMode ? "Downloaded artists" : "Artists"}
+        </h2>
         <span class="metadata text-subtle">{visibleArtists.length} artists</span>
       </header>
       {#if visibleArtists.length > 0}
@@ -147,7 +159,9 @@
         {/if}
       {:else if !loading}
         <div class="stack-md">
-          <h3 class="heading-sm">{offlineMode ? "No downloaded artists." : "No artists found."}</h3>
+          <h3 class="heading-sm">
+            {offlineMode ? "No downloaded artists." : "No artists found."}
+          </h3>
           <p class="body">
             {offlineMode
               ? "Download music from the library to listen offline."
@@ -155,18 +169,30 @@
           </p>
         </div>
       {/if}
-    {:else if !loading}
-      <div class="stack-md">
-        <h2 class="heading-sm">{libraryError ? "Library unavailable" : "Connect your library"}</h2>
-        <p class="body">{libraryError || "Add your music server to start listening."}</p>
-        <div class="row-sm">
-          <a class="button" data-size="text" data-variant="secondary" href="#/settings"
-            >Open settings</a
+    </div>
+  {:else if !loading}
+    <div class="stack-md scroll-runway">
+      <h2 class="heading-sm">
+        {libraryError ? "Library unavailable" : "Connect your library"}
+      </h2>
+      <p class="body">
+        {libraryError || "Add your music server to start listening."}
+      </p>
+      <div class="row-sm">
+        {#if libraryError && session.auth && !offlineMode}
+          <button
+            class="button"
+            data-size="text"
+            disabled={session.syncing}
+            onclick={() => session.refresh()}>Retry</button
           >
-        </div>
+        {/if}
+        <a class="button" data-size="text" data-variant="secondary" href="#/settings"
+          >Open settings</a
+        >
       </div>
-    {/if}
-  </div>
+    </div>
+  {/if}
 </section>
 
 <dialog
@@ -254,3 +280,17 @@
     </div>
   </div>
 {/snippet}
+
+<style>
+  section {
+    display: grid;
+  }
+
+  .library-loading {
+    place-self: center;
+    display: grid;
+    gap: var(--space-lg);
+    justify-items: center;
+    text-align: center;
+  }
+</style>
