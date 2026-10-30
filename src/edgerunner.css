@@ -1369,36 +1369,21 @@
     grid-template-columns: minmax(0, 1fr) max-content;
 
     &:has(> .track-row-number) {
-      grid-template-columns: max(2ch, 24px) minmax(0, 1fr) max-content;
+      grid-template-columns: max(3ch, 24px) minmax(0, 1fr) max-content;
     }
+  }
+
+  /* Contain batches, not individual rows, so offscreen track grids can be skipped together.
+   * All tracks remain in the DOM; this is rendering deferral, not virtualization. */
+  .track-group {
+    content-visibility: auto;
+    /* Estimate whole rows plus internal gaps; auto remembers the measured group height. */
+    contain-intrinsic-block-size: auto
+      calc(var(--track-group-rows) * 65px + (var(--track-group-rows) - 1) * var(--space-sm));
   }
 
   .track-row-number {
     text-align: center;
-  }
-
-  .track-row,
-  .tile-grid-item {
-    @media (prefers-reduced-motion: no-preference) {
-      @supports (animation-timeline: view()) {
-        animation: --edgerunner-list-entry auto linear both;
-        animation-timeline: view(block);
-        animation-range: entry 0% cover 20%;
-        &:has(:focus-visible) {
-          animation: none;
-        }
-      }
-    }
-  }
-
-  @keyframes --edgerunner-list-entry {
-    from {
-      transform: translateY(20px) scale(0.96);
-    }
-
-    to {
-      transform: translateY(0) scale(1);
-    }
   }
 
   /* Collection browsing: intrinsic columns adapt to the app, including embeds. */

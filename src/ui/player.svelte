@@ -35,6 +35,13 @@
         : [];
     }),
   );
+  // Batch layout work while retaining every queue occurrence and its original playback index.
+  const queueGroupSize = 40;
+  const queueGroups = $derived(
+    Array.from({ length: Math.ceil(queue.length / queueGroupSize) }, (_, index) =>
+      queue.slice(index * queueGroupSize, (index + 1) * queueGroupSize),
+    ),
+  );
   const playing = $derived(audio?.playing ?? false);
   const loading = $derived(["loading", "buffering", "seeking"].includes(audio?.status ?? "idle"));
   const duration = $derived(audio?.duration || track?.duration || 0);
@@ -260,64 +267,69 @@
           {/if}
         </div>
         <div class="stack-sm">
-          {#each queue as { track, index }, visibleIndex (index)}
-            {@const downloadStatus = trackEngine.getStatus(track.id)}
-            {@const credit =
-              track.displayArtist?.trim() ||
-              track.artistIds
-                .map((id) => cache.artists.get(id)?.name)
-                .filter(Boolean)
-                .join(", ")}
-            <div
-              class="menu-item track-row"
-              aria-current={index === cache.queue.index ? "true" : undefined}
-            >
-              <span class="track-row-number metadata text-subtle">
-                {#if index === cache.queue.index && loading}
-                  <span role="img" aria-label="Loading playback">
-                    <Loader />
+          {#each queueGroups as group, groupIndex (groupIndex)}
+            <div class="stack-sm track-group" style:--track-group-rows={group.length}>
+              {#each group as { track, index }, rowIndex (index)}
+                {@const visibleIndex = groupIndex * queueGroupSize + rowIndex}
+                {@const downloadStatus = trackEngine.getStatus(track.id)}
+                {@const credit =
+                  track.displayArtist?.trim() ||
+                  track.artistIds
+                    .map((id) => cache.artists.get(id)?.name)
+                    .filter(Boolean)
+                    .join(", ")}
+                <div
+                  class="menu-item track-row"
+                  aria-current={index === cache.queue.index ? "true" : undefined}
+                >
+                  <span class="track-row-number metadata text-subtle">
+                    {#if index === cache.queue.index && loading}
+                      <span role="img" aria-label="Loading playback">
+                        <Loader />
+                      </span>
+                    {:else if index === cache.queue.index && playing}
+                      <span role="img" aria-label="Playing">
+                        <Icon name="sound-bars" color="var(--accent)" />
+                      </span>
+                    {:else if index === cache.queue.index}
+                      <span role="img" aria-label="Current track, not playing">
+                        <Icon name="pause" color="var(--accent)" />
+                      </span>
+                    {:else if downloadStatus === "downloading"}
+                      <span role="img" aria-label="Downloading">
+                        <Loader />
+                      </span>
+                    {:else if downloadStatus === "queued"}
+                      <span role="img" aria-label="Queued for download">
+                        <Icon name="clock" />
+                      </span>
+                    {:else}
+                      {String(visibleIndex + 1).padStart(2, "0")}
+                    {/if}
                   </span>
-                {:else if index === cache.queue.index && playing}
-                  <span role="img" aria-label="Playing">
-                    <Icon name="sound-bars" color="var(--accent)" />
-                  </span>
-                {:else if index === cache.queue.index}
-                  <span role="img" aria-label="Current track, not playing">
-                    <Icon name="pause" color="var(--accent)" />
-                  </span>
-                {:else if downloadStatus === "downloading"}
-                  <span role="img" aria-label="Downloading">
-                    <Loader />
-                  </span>
-                {:else if downloadStatus === "queued"}
-                  <span role="img" aria-label="Queued for download">
-                    <Icon name="clock" />
-                  </span>
-                {:else}
-                  {String(visibleIndex + 1).padStart(2, "0")}
-                {/if}
-              </span>
-              <div class="row-sm">
-                <Artwork {covers} id={track.artworkId} size="sm" />
-                <div>
-                  <p class="label">{track.title}</p>
-                  {#if credit}
-                    <p class="caption text-secondary">{credit}</p>
-                  {/if}
+                  <div class="row-sm">
+                    <Artwork {covers} id={track.artworkId} size="sm" />
+                    <div>
+                      <p class="label">{track.title}</p>
+                      {#if credit}
+                        <p class="caption text-secondary">{credit}</p>
+                      {/if}
+                    </div>
+                  </div>
+                  <button
+                    class="button-quiet link-target"
+                    aria-label={`Play ${track.title}`}
+                    onclick={() => playback.playIndex(index)}
+                  ></button>
+                  <div class="row-sm">
+                    <span class="metadata text-subtle">
+                      {#if track.duration !== undefined}
+                        {formatDuration(track.duration)}
+                      {/if}
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <button
-                class="button-quiet link-target"
-                aria-label={`Play ${track.title}`}
-                onclick={() => playback.playIndex(index)}
-              ></button>
-              <div class="row-sm">
-                <span class="metadata text-subtle">
-                  {#if track.duration !== undefined}
-                    {formatDuration(track.duration)}
-                  {/if}
-                </span>
-              </div>
+              {/each}
             </div>
           {:else}
             <p class="body">

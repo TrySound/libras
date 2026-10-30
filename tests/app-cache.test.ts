@@ -228,6 +228,33 @@ it("keeps queue occurrence indexes when offline rows are filtered", async () => 
   expect(cache.queue.tracks).toEqual(["missing", "one", "two", "one"]);
 });
 
+it("groups queue occurrences without changing their order or current index", async () => {
+  installDisk();
+  const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+  await cache.replaceLibrary({
+    ...library("Artist", 1),
+    tracks: [{ id: "track", title: "Track", artistIds: ["artist"], albumId: "album", genres: [] }],
+  });
+  cache.setQueue({ tracks: Array(100).fill("track"), index: 99, position: 0 });
+  mocks.cache = cache;
+  const target = document.createElement("main");
+  document.body.append(target);
+  const component = mount(App, { target });
+  cleanups.push(() => unmount(component));
+  flushSync();
+  const rows = [...target.querySelectorAll(".track-group > .track-row")];
+  expect(rows).toHaveLength(100);
+  const groups = [...target.querySelectorAll<HTMLElement>(".track-group")];
+  expect(groups.map((group) => group.querySelectorAll(".track-row").length)).toEqual([40, 40, 20]);
+  expect(groups[2].style.getPropertyValue("--track-group-rows")).toBe("20");
+  expect(rows[39].querySelector(".track-row-number")?.textContent?.trim()).toBe("40");
+  expect(rows[40].querySelector(".track-row-number")?.textContent?.trim()).toBe("41");
+  expect(rows[99].getAttribute("aria-current")).toBe("true");
+  const playIndex = vi.spyOn(mocks.options!.playback, "playIndex").mockResolvedValue();
+  (rows[99].querySelector("button") as HTMLButtonElement).click();
+  expect(playIndex).toHaveBeenCalledWith(99);
+});
+
 it("restores downloads silently without flashing the empty state", () => {
   mocks.localReady = false;
   installNavigation("/downloads", mocks.navigate);
