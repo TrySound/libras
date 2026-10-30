@@ -89,6 +89,8 @@ describe("router", () => {
           },
         }),
       );
+      // Capture waits for pending Svelte updates rather than forcing a synchronous flush.
+      expect(start).not.toHaveBeenCalled();
       await finished;
       expect(target.querySelector("p")!.textContent).toBe("player:{}");
       expect(start).toHaveBeenCalledTimes(reducedMotion ? 0 : 1);

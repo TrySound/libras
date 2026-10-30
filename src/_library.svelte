@@ -91,7 +91,13 @@
         <div class="tile-grid" aria-busy={loading}>
           {#each artistPage as artist (artist.id)}
             <article class="tile tile-grid-item">
-              <Artwork {covers} id={artist.artworkId} size="fill" class="tile-artwork" />
+              <Artwork
+                {covers}
+                id={artist.artworkId}
+                size="fill"
+                class="tile-artwork"
+                transitionName={menuArtistId === artist.id ? "artist-artwork" : undefined}
+              />
               <div class="tile-content stack-sm">
                 <h3 class="heading-sm">{artist.name}</h3>
               </div>
@@ -102,6 +108,7 @@
                 data-longpressfor="artist-menu"
                 data-longpress="show-modal"
                 onfocus={() => (menuArtistId = artist.id)}
+                onclick={() => (menuArtistId = artist.id)}
               ></a>
               <div class="row-sm tile-actions">
                 <button

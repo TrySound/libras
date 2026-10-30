@@ -63,13 +63,14 @@
 <Atmosphere src={libraryAvailable && artist ? atmosphere?.source : undefined} />
 <section class="split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
-    <div class="viewport-panel">
+    <div class="viewport-panel view-slide-up">
       <Artwork
         {covers}
         id={artist.artworkId}
         size="cover"
         loading="eager"
         class="viewport-panel-cover"
+        transitionName="artist-artwork"
       />
       <div class="stack-sm">
         <div class="row-md row-justify">
@@ -116,7 +117,7 @@
         {/if}
       </div>
     </div>
-    <div class="stack-lg scroll-runway">
+    <div class="stack-lg scroll-runway view-slide-left">
       <h2 class="heading-lg uppercase">{offlineMode ? "Downloaded albums" : "Albums"}</h2>
       <div class="stack-sm">
         {#each visibleAlbums as album (album.id)}

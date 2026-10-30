@@ -44,7 +44,7 @@
 </script>
 
 {#if track}
-  <footer class="mini-player app-player" aria-label="Music player">
+  <footer class="mini-player app-player view-shell" aria-label="Music player">
     <input
       class="seek mini-player-seek"
       type="range"

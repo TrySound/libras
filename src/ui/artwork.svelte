@@ -9,9 +9,17 @@
     size?: "sm" | "md" | "lg" | "cover" | "fill";
     loading?: "lazy" | "eager";
     class?: string;
+    transitionName?: string;
   }
 
-  let { covers, id, size = "md", loading = "lazy", class: className }: Props = $props();
+  let {
+    covers,
+    id,
+    size = "md",
+    loading = "lazy",
+    class: className,
+    transitionName,
+  }: Props = $props();
   const cover = $derived(id === undefined ? undefined : covers.ensureCover(id));
 
   function acquire(node: Element) {
@@ -24,7 +32,13 @@
   }
 </script>
 
-<span class={["artwork", className]} data-size={size} aria-hidden="true" {@attach acquire}>
+<span
+  class={["artwork", className]}
+  style:view-transition-name={transitionName}
+  data-size={size}
+  aria-hidden="true"
+  {@attach acquire}
+>
   <img src={cover?.source} hidden={!cover?.source} alt="" />
   <Icon name="music" size={size === "cover" ? "xl" : "md"} class="artwork-placeholder" />
 </span>

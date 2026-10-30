@@ -279,11 +279,11 @@
           </button>
         {/if}
       {/snippet}
-      <aside class="sidebar app-sidebar stack-lg" aria-label="Navigation">
+      <aside class="sidebar app-sidebar stack-lg view-shell" aria-label="Navigation">
         {@render brand()}
         {@render navigation()}
       </aside>
-      <header class="topbar app-header row-md row-justify row-wrap">
+      <header class="topbar app-header row-md row-justify row-wrap view-shell">
         {@render brand()}
         <div class="row-sm">
           {@render actions()}

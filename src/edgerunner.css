@@ -222,8 +222,8 @@
   /* Shared motion values; component-specific loops and artwork zoom stay local. */
   --motion-duration-press: 80ms;
   --motion-duration-feedback: 120ms;
-  --motion-duration-enter: 280ms;
-  --motion-duration-exit: 160ms;
+  --motion-duration-enter: 200ms;
+  --motion-duration-exit: 120ms;
   --motion-ease-enter: ease-out;
   --motion-ease-exit: ease-in;
   --press-offset: 1px;
@@ -305,6 +305,88 @@
 
 [hidden] {
   display: none !important;
+}
+
+/* Keep app chrome static above transitioning content. */
+::view-transition-group(.shell) {
+  animation: none;
+  z-index: var(--layer-header);
+}
+
+/* Move the cover during the exit phase, before the incoming page fades in. */
+::view-transition-group(.artwork) {
+  animation-duration: var(--motion-duration-exit);
+  animation-timing-function: linear;
+  z-index: 2;
+}
+
+::view-transition-old(root) {
+  animation-duration: var(--motion-duration-exit);
+}
+
+::view-transition-new(root) {
+  animation-delay: var(--motion-duration-exit);
+  animation-duration: var(--motion-duration-enter);
+}
+
+::view-transition-group(.slide-up),
+::view-transition-group(.slide-left) {
+  animation: none;
+  z-index: 1;
+}
+
+/* Retain the browser's fade-out, independent of the disabled group animation. */
+::view-transition-old(.slide-up),
+::view-transition-old(.slide-left) {
+  animation-duration: var(--motion-duration-exit);
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+::view-transition-new(.slide-up) {
+  animation: slide-up var(--motion-duration-enter) linear var(--motion-duration-exit) both;
+}
+
+::view-transition-new(.slide-left) {
+  animation: slide-left var(--motion-duration-enter) linear var(--motion-duration-exit) both;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    translate: 0 48px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes slide-left {
+  from {
+    opacity: 0;
+    translate: 48px 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/* Transition behavior is opt-in and independent of component layout. */
+.view-shell {
+  view-transition-name: match-element;
+  view-transition-class: shell;
+}
+
+.view-slide-up {
+  view-transition-name: match-element;
+  view-transition-class: slide-up;
+}
+
+.view-slide-left {
+  view-transition-name: match-element;
+  view-transition-class: slide-left;
 }
 
 /* Shared utilities, typography and cards opt in at an explicit design-system
@@ -901,6 +983,7 @@
 @scope (.app-root, .design-reference) {
   /* Foreground artwork shares surfaces, crop, geometry and missing-cover state. */
   .artwork {
+    view-transition-class: artwork;
     box-sizing: border-box;
     position: relative;
     display: block;
@@ -1592,7 +1675,6 @@
   }
 
   .mini-player {
-    view-transition-name: mini-player;
     box-sizing: border-box;
     background: var(--shell-bg);
     backdrop-filter: blur(4px);
@@ -1786,19 +1868,6 @@
   position-area: none;
   inset: 16px;
   margin: auto;
-}
-
-/* Route transitions must not crossfade or duplicate the persistent player. */
-::view-transition-group(mini-player) {
-  z-index: 20;
-  animation: none;
-}
-
-::view-transition-old(mini-player) {
-  display: none;
-}
-::view-transition-new(mini-player) {
-  animation: none;
 }
 
 /* The host supplies the embedded viewport; standalone apps scroll the document. */

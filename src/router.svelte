@@ -104,6 +104,10 @@
             return;
           }
 
+          // Commit click-triggered transition names before capturing the outgoing view.
+          await tick();
+          if (event.signal?.aborted) return;
+
           const transition = document.startViewTransition(async () => {
             await update();
             if (event.signal?.aborted) return;
