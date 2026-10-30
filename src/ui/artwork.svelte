@@ -36,6 +36,7 @@
   class={["artwork", className]}
   style:view-transition-name={transitionName}
   data-size={size}
+  data-pending={cover?.pending ? "" : undefined}
   aria-hidden="true"
   {@attach acquire}
 >

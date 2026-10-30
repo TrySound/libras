@@ -6,9 +6,10 @@ import type { ImageMetadata, ImageRecord } from "./schema";
 
 interface Cover {
   readonly source: string | undefined;
+  readonly pending: boolean;
   readonly load: () => void;
 }
-const emptyCover: Cover = { source: undefined, load() {} };
+const emptyCover: Cover = { source: undefined, pending: false, load() {} };
 
 interface CoverEntry {
   id: string;
@@ -16,6 +17,7 @@ interface CoverEntry {
   generation: number;
   source?: string;
   demanded: boolean;
+  settled: boolean;
 }
 interface InstalledImage {
   source: string;
@@ -168,7 +170,10 @@ export class Covers {
       !signal.aborted &&
       cache === this.#selection.cache &&
       request === entry.generation;
-    if (!cache) return;
+    if (!cache) {
+      entry.settled = true;
+      return;
+    }
     try {
       const record = cache.images.get(id);
       const image =
@@ -176,6 +181,7 @@ export class Covers {
       if (!valid()) return;
       if (image && image === this.#currentImage(id)) {
         entry.source = image.source;
+        entry.settled = true;
         if (revalidate) this.#cacheImage(id);
         return;
       }
@@ -185,6 +191,7 @@ export class Covers {
     if (!valid()) return;
     entry.source = undefined;
     if (revalidate) this.#cacheImage(id);
+    if (!this.#downloads.has(id)) entry.settled = true;
   }
 
   /** Refresh only this image's handle, never the whole catalog. */
@@ -275,7 +282,11 @@ export class Covers {
     })()
       .catch(() => {})
       .finally(() => {
-        if (this.#downloads.get(id) === controller) this.#downloads.delete(id);
+        if (this.#downloads.get(id) === controller) {
+          this.#downloads.delete(id);
+          const entry = this.#covers.get(id);
+          if (entry) entry.settled = true;
+        }
       });
   }
 
@@ -290,9 +301,13 @@ export class Covers {
       id,
       generation: 0,
       demanded: false,
+      settled: false,
       cover: {
         get source() {
           return entry.source;
+        },
+        get pending() {
+          return !entry.source && !entry.settled;
         },
         load() {
           untrack(() => {

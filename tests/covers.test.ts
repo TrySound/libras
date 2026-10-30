@@ -85,6 +85,16 @@ afterEach(() => {
 });
 
 describe("cover engine using Cache", () => {
+  it("settles unavailable offline artwork so tiles can show their fallback", async () => {
+    installOpfs();
+    const { covers } = await engine();
+    const cover = covers.ensureCover("missing-cover");
+    expect(cover.pending).toBe(true);
+    cover.load();
+    await vi.waitFor(() => expect(cover.pending).toBe(false));
+    expect(cover.source).toBeUndefined();
+  });
+
   it("uses an inert placeholder for missing artwork IDs", async () => {
     installOpfs();
     const { cache, covers } = await engine();
@@ -97,6 +107,7 @@ describe("cover engine using Cache", () => {
     await covers.refresh();
     expect(covers.ensureCover(undefined)).toBe(missing);
     expect(missing.source).toBeUndefined();
+    expect(missing.pending).toBe(false);
     expect(read).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
@@ -384,7 +395,7 @@ describe("cover engine using Cache", () => {
     const cover = covers.ensureCover("album-cover");
     cover.load();
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
-    await new Promise((done) => setTimeout(done, 0));
+    await vi.waitFor(() => expect(cover.pending).toBe(false));
     expect(cover.source).toBeUndefined();
     cover.load();
     await vi.waitFor(() => expect(cover.source).toMatch(/^blob:/));
@@ -795,6 +806,34 @@ describe("cover engine using Cache", () => {
       expect(URL.createObjectURL).toHaveBeenCalledOnce();
     },
   );
+
+  it("reveals a fallback on cancellation and keeps it visible while reconnecting", async () => {
+    installOpfs();
+    const { covers } = await engine();
+    const response = deferred<Response>();
+    const fetcher = vi
+      .fn()
+      .mockReturnValueOnce(response.promise)
+      .mockResolvedValueOnce(new Response("image", { headers: { "Content-Type": "image/jpeg" } }));
+    vi.stubGlobal("fetch", fetcher);
+    covers.setConnection(createConnection());
+    const cover = covers.ensureCover("album-cover");
+    cover.load();
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    expect(cover.pending).toBe(true);
+    covers.setConnection(undefined);
+    await vi.waitFor(() => expect(cover.pending).toBe(false));
+    expect(cover.source).toBeUndefined();
+    covers.setConnection(createConnection());
+    expect(cover.pending).toBe(false);
+    await vi.waitFor(() => expect(cover.source).toMatch(/^blob:/));
+    const source = cover.source;
+    response.resolve(new Response("late image", { headers: { "Content-Type": "image/jpeg" } }));
+    await new Promise((done) => setTimeout(done, 0));
+    expect(cover.source).toBe(source);
+    expect(cover.pending).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 
   it("resumes demanded artwork on reconnect without loading undemanded covers", async () => {
     installOpfs();

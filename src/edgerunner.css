@@ -1426,6 +1426,11 @@
     color: var(--text-primary);
     translate: 0;
     scale: 1;
+    opacity: 1;
+    &:has(> .tile-artwork[data-pending]):not(:focus-within) {
+      opacity: 0;
+      pointer-events: none;
+    }
     &:has(> .link-target:where(:hover, :focus-visible)) {
       border-color: var(--item-border-hover);
       > .tile-artwork {
@@ -1446,7 +1451,8 @@
       transition:
         border-color var(--motion-duration-feedback),
         translate var(--motion-duration-press),
-        scale var(--motion-duration-press);
+        scale var(--motion-duration-press),
+        opacity 180ms linear;
       &:has(> .link-target:active) {
         translate: 0 var(--press-offset);
         scale: var(--press-scale);

@@ -80,6 +80,7 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     ensureCover: vi.spyOn(coverEngine, "ensureCover").mockImplementation((id) => {
       if (!coverHandles.has(id))
         coverHandles.set(id, {
+          pending: false,
           get source() {
             return id === undefined ? undefined : artwork.get("source");
           },
@@ -899,6 +900,7 @@ describe("playback", () => {
     covers.ensureCover.mockImplementation((id) => {
       if (!handles.has(id))
         handles.set(id, {
+          pending: false,
           get source() {
             return id === undefined ? undefined : sources.get(id);
           },

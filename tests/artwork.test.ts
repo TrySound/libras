@@ -19,7 +19,11 @@ function setup(overrides: Partial<Props> = {}, observation = true) {
   const covers = new Covers(new TestSelection());
   const sources = new SvelteMap<string, string>();
   const loads = new Map<string, ReturnType<typeof vi.fn>>();
-  const handles = new Map<string, { readonly source: string | undefined; load(): void }>();
+  const settled = new SvelteMap<string, boolean>();
+  const handles = new Map<
+    string,
+    { readonly source: string | undefined; readonly pending: boolean; load(): void }
+  >();
   const handle = (key: string) => {
     if (!handles.has(key)) {
       const load = vi.fn();
@@ -27,6 +31,9 @@ function setup(overrides: Partial<Props> = {}, observation = true) {
       handles.set(key, {
         get source() {
           return sources.get(key);
+        },
+        get pending() {
+          return !sources.get(key) && !settled.get(key);
         },
         load,
       });
@@ -84,6 +91,7 @@ function setup(overrides: Partial<Props> = {}, observation = true) {
     target,
     covers,
     sources,
+    settled,
     loads,
     ensureCover,
     observe,
@@ -108,6 +116,23 @@ function setup(overrides: Partial<Props> = {}, observation = true) {
 }
 
 describe("Artwork", () => {
+  it("marks pending artwork until decoded bytes or a fallback are ready", () => {
+    const { target, sources, settled, set } = setup();
+    const root = target.firstElementChild!;
+    expect(root.hasAttribute("data-pending")).toBe(true);
+    sources.set("a", "blob:decoded");
+    flushSync();
+    expect(root.hasAttribute("data-pending")).toBe(false);
+    set({ id: "b" });
+    expect(root.hasAttribute("data-pending")).toBe(true);
+    settled.set("b", true);
+    flushSync();
+    expect(root.hasAttribute("data-pending")).toBe(false);
+    expect(target.querySelector("img")?.hidden).toBe(true);
+    set({ id: undefined });
+    expect(root.hasAttribute("data-pending")).toBe(false);
+  });
+
   it.each(["sm", "md", "cover"] as const)("uses the shared artwork class for %s", (size) => {
     const { target } = setup({ size });
     const root = target.firstElementChild!;

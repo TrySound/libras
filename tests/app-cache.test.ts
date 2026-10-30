@@ -1142,6 +1142,7 @@ it.each([
   installDisk();
   const load = vi.fn();
   vi.spyOn(Covers.prototype, "ensureCover").mockImplementation((id) => ({
+    pending: true,
     source: undefined,
     load: id === "album-cover" ? load : () => {},
   }));
