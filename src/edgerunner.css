@@ -1386,7 +1386,7 @@
 
   @keyframes --edgerunner-list-entry {
     from {
-      transform: translateY(16px) scale(0.96);
+      transform: translateY(20px) scale(0.96);
     }
 
     to {
