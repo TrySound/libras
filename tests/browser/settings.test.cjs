@@ -75,7 +75,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
 
   try {
     await page.goto(base);
-    await page.locator(".settings-view").waitFor();
+    await page.locator("[aria-labelledby=settings-heading]").waitFor();
     await t.test("browser validation blocks submission without shifting the card", async () => {
       await page.evaluate(() => document.fonts.ready);
       const box = await page.locator("#settings-server").boundingBox();
@@ -128,7 +128,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
     pingFailure = false;
     pingGate = undefined;
     await page.getByRole("button", { name: "Connect", exact: true }).click();
-    await page.locator(".library-view .tile").waitFor();
+    await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
     await page.getByRole("link", { name: "Settings", exact: true }).click();
     await waitConnected();
 
@@ -140,16 +140,18 @@ test("Settings native controls, layout, and persistence", async (t) => {
         [1440, 3 / 2],
       ]) {
         await page.setViewportSize({ width, height: 900 });
-        const geometry = await page.locator(".settings-view").evaluate((element) => {
-          const server = element.querySelector("#settings-server").getBoundingClientRect();
-          const offline = element.querySelector("#settings-offline-card").getBoundingClientRect();
-          return {
-            stacked: offline.top >= server.bottom,
-            separated: offline.left >= server.right,
-            ratio: server.width / offline.width,
-            fits: element.scrollWidth <= element.clientWidth,
-          };
-        });
+        const geometry = await page
+          .locator("[aria-labelledby=settings-heading]")
+          .evaluate((element) => {
+            const server = element.querySelector("#settings-server").getBoundingClientRect();
+            const offline = element.querySelector("#settings-offline-card").getBoundingClientRect();
+            return {
+              stacked: offline.top >= server.bottom,
+              separated: offline.left >= server.right,
+              ratio: server.width / offline.width,
+              fits: element.scrollWidth <= element.clientWidth,
+            };
+          });
         assert.equal(ratio === null ? geometry.stacked : geometry.separated, true);
         if (ratio !== null) assert.ok(Math.abs(geometry.ratio - ratio) < 0.02);
         assert.equal(geometry.fits, true);
@@ -157,7 +159,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
       await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
       await page.setViewportSize({ width: 320, height: 900 });
       assert.equal(
-        await page.locator(".settings-view").evaluate(
+        await page.locator("[aria-labelledby=settings-heading]").evaluate(
           (element) =>
             element.scrollWidth <= element.clientWidth &&
             [...element.querySelectorAll("button, a")].every((control) => {
@@ -217,7 +219,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
       await waitConnected();
       assert.equal(calls.filter((method) => method === "search3").length, searches);
       await page.getByRole("link", { name: "Libras home", exact: true }).click();
-      await page.locator(".library-view .tile").waitFor();
+      await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
       await page.getByRole("link", { name: "Settings", exact: true }).click();
       await waitConnected();
     });

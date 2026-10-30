@@ -203,7 +203,7 @@
                 <span>{formatDuration(duration)}</span>
               </div>
             </div>
-            <div class="player-controls row-md row-center">
+            <div class="row-md row-center" role="group" aria-label="Playback controls">
               <button
                 class="button"
                 aria-label="Previous"

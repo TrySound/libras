@@ -94,7 +94,7 @@ async function save(cache: Cache, id: string, timestamp: number, format: "mp3" |
 
 it("restores silently with a native heading and shows the empty state only once ready", () => {
   const { target, set } = setup();
-  expect(target.querySelector(".downloads-view")?.getAttribute("aria-labelledby")).toBe(
+  expect(target.querySelector("section")?.getAttribute("aria-labelledby")).toBe(
     "downloads-heading",
   );
   expect(target.querySelector("h1")?.textContent).toBe("Downloads");

@@ -425,7 +425,9 @@ test("Edgerunner foundations and native controls", async (t) => {
         const player = page.locator("#guide-player");
         await player.evaluate((node) => node.showModal());
         try {
-          const controls = player.locator(".player-controls > .button");
+          const controls = player
+            .getByRole("group", { name: "Playback controls" })
+            .getByRole("button");
           const sizes = () =>
             controls.evaluateAll((buttons) =>
               buttons.map((button) => {

@@ -65,7 +65,7 @@
   }
 </script>
 
-<section class="library-view" aria-labelledby="library-heading">
+<section aria-labelledby="library-heading">
   <div class="stack-lg scroll-runway">
     <h1 class="visually-hidden" id="library-heading">Your library</h1>
     {#if libraryError && libraryAvailable}

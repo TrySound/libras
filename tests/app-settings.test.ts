@@ -168,7 +168,7 @@ describe("app settings", () => {
           }),
         );
         await intercept.mock.calls[0][0].handler();
-        expect(target.querySelector(".settings-view")).toBeNull();
+        expect(target.querySelector("[aria-labelledby=settings-heading]")).toBeNull();
       }
       pending.resolve();
       await vi.waitFor(() => expect(session.auth).not.toBeNull());
@@ -222,7 +222,9 @@ describe("app settings", () => {
 
   it("uses shared cards, labeled native fields, and a native switch", async () => {
     const { target } = await setup();
-    expect(target.querySelector(".settings-view h1")?.textContent).toBe("Settings");
+    expect(target.querySelector("[aria-labelledby=settings-heading] h1")?.textContent).toBe(
+      "Settings",
+    );
     const server = target.querySelector("#settings-server")!;
     const offline = target.querySelector("#settings-offline-card")!;
     expect(server.classList.contains("card")).toBe(true);
@@ -336,7 +338,9 @@ describe("app settings", () => {
       expect(target.querySelector("#update-popover")).toBeNull();
       expect(target.querySelector('[commandfor="update-popover"]')).toBeNull();
       expect(target.querySelector(".app-status-actions")).toBeNull();
-      expect(target.querySelector('.settings-view [aria-label="App update"]')).toBeNull();
+      expect(
+        target.querySelector('[aria-labelledby=settings-heading] [aria-label="App update"]'),
+      ).toBeNull();
       expect(target.querySelector('#player-dialog [aria-label="App update"]')).toBeNull();
       target
         .querySelector<HTMLButtonElement>(`${selector} [aria-label="App update"] button`)!

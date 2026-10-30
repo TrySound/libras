@@ -59,7 +59,7 @@
   }
 </script>
 
-<section bind:this={view} class="settings-view" aria-labelledby="settings-heading">
+<section bind:this={view} aria-labelledby="settings-heading">
   <div class="stack-lg scroll-runway">
     <h1 class="heading-xl" id="settings-heading">Settings</h1>
 

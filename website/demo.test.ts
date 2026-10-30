@@ -106,9 +106,11 @@ it.each([
 
 it("renders demo credits as an HTML card inside Settings, not above the app", async () => {
   render();
-  await vi.waitFor(() => expect(document.querySelector(".settings-view")).not.toBeNull());
+  await vi.waitFor(() =>
+    expect(document.querySelector("[aria-labelledby=settings-heading]")).not.toBeNull(),
+  );
   const card = document.querySelector(
-    '.settings-view article.card[aria-labelledby="demo-credits-title"]',
+    '[aria-labelledby=settings-heading] article.card[aria-labelledby="demo-credits-title"]',
   );
   expect(card?.querySelector("h2")?.textContent).toBe("Demo music credits");
   expect(card?.textContent).toContain("Previews provided by Deezer");

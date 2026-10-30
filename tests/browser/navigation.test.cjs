@@ -14,7 +14,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
   page.on("pageerror", (error) => errors.push(error.message));
   try {
     await page.goto(base);
-    await page.locator(".settings-view").waitFor();
+    await page.locator("[aria-labelledby=settings-heading]").waitFor();
     // Keep native page overscroll (including pull-to-refresh) enabled.
     // Headless Chromium can only verify the scroll owner's policy.
     assert.equal(
@@ -24,7 +24,9 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     await page.setViewportSize({ width: 1280, height: 1600 });
     const background = await page.evaluate(() => {
       const rootStyle = getComputedStyle(document.documentElement);
-      const routeStyle = getComputedStyle(document.querySelector(".settings-view"));
+      const routeStyle = getComputedStyle(
+        document.querySelector("[aria-labelledby=settings-heading]"),
+      );
       return {
         fillsViewport:
           document.querySelector(".app-shell").getBoundingClientRect().bottom >= innerHeight,
@@ -105,7 +107,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     await page.waitForURL("**/#/downloads");
     await menu.click();
     await page.evaluate(() => window.navigation.navigate("#/settings").finished);
-    await page.locator(".settings-view").waitFor();
+    await page.locator("[aria-labelledby=settings-heading]").waitFor();
     assert.equal(await drawer.isVisible(), true, "route changes alone do not dismiss the drawer");
     assert.equal(
       await drawer
@@ -138,7 +140,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     await sidebar.waitFor();
     assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "#/library");
     await page.evaluate(() => window.navigation.navigate("#/settings").finished);
-    await page.locator(".settings-view").waitFor();
+    await page.locator("[aria-labelledby=settings-heading]").waitFor();
     for (const width of [320, 375, 768, 800, 810, 811, 1280]) {
       await page.setViewportSize({ width, height: 700 });
       assert.equal(
@@ -348,7 +350,7 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
     const player = await page.locator(".mini-player").boundingBox();
     assert.ok(sidebar.y + sidebar.height <= player.y, "the player does not overlap navigation");
     await page.locator('.app-sidebar a[href="#/downloads"]').click();
-    await page.locator(".downloads-view").waitFor();
+    await page.locator("[aria-labelledby=downloads-heading]").waitFor();
     assert.equal(await transport.evaluate((audio) => !audio.paused), true);
     await page.setViewportSize({ width: 1280, height: 200 });
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));

@@ -81,9 +81,15 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     await page.locator("#server-host").waitFor();
     await navigate("/downloads");
     await t.test("empty route uses the shared app shell", async () => {
-      assert.equal(await page.locator(".downloads-view h1").textContent(), "Downloads");
+      assert.equal(
+        await page.locator("[aria-labelledby=downloads-heading] h1").textContent(),
+        "Downloads",
+      );
       assert.equal(await page.getByRole("heading", { name: "No downloads yet" }).isVisible(), true);
-      assert.equal(await page.locator('.downloads-view a[href="#/library"]').isVisible(), true);
+      assert.equal(
+        await page.locator('[aria-labelledby=downloads-heading] a[href="#/library"]').isVisible(),
+        true,
+      );
       assert.equal(await page.locator(".app-sidebar").isVisible(), true);
     });
 
@@ -109,9 +115,11 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       "real active and queued jobs render readonly rows with accessible status",
       async () => {
         await page.waitForFunction(
-          () => document.querySelectorAll('.downloads-view [role="listitem"]').length === 6,
+          () =>
+            document.querySelectorAll('[aria-labelledby=downloads-heading] [role="listitem"]')
+              .length === 6,
         );
-        const rows = page.locator('.downloads-view [role="listitem"]');
+        const rows = page.locator('[aria-labelledby=downloads-heading] [role="listitem"]');
         assert.equal(await rows.locator('[role="img"][aria-label="Downloading"]').count(), 3);
         assert.equal(
           await rows.locator('[role="img"][aria-label="Queued for download"]').count(),
@@ -133,7 +141,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
           before,
         );
         await page.waitForFunction(() =>
-          document.querySelector(".downloads-view .artwork img:not([hidden])"),
+          document.querySelector("[aria-labelledby=downloads-heading] .artwork img:not([hidden])"),
         );
         assert.equal(await rows.nth(1).locator(".artwork-placeholder").isVisible(), true);
         for (const width of [320, 375, 768, 800, 810, 811, 1440]) {
@@ -144,7 +152,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
           assert.equal(await rows.first().locator(".artwork").isVisible(), desktop);
           assert.ok(
             await page
-              .locator(".downloads-view")
+              .locator("[aria-labelledby=downloads-heading]")
               .evaluate((element) => element.scrollWidth <= element.clientWidth),
           );
         }
@@ -152,7 +160,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
         await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
         assert.ok(
           await page
-            .locator(".downloads-view")
+            .locator("[aria-labelledby=downloads-heading]")
             .evaluate((element) => element.scrollWidth <= element.clientWidth),
         );
         await page.evaluate(() => document.documentElement.style.removeProperty("font-size"));
@@ -164,13 +172,22 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       "completion and failure update the real cache without discarding saved rows",
       async () => {
         await page.waitForFunction(
-          () => document.querySelectorAll('.downloads-view [aria-label="Downloaded"]').length === 5,
+          () =>
+            document.querySelectorAll(
+              '[aria-labelledby=downloads-heading] [aria-label="Downloaded"]',
+            ).length === 5,
         );
         await page.getByRole("heading", { name: "Download failed", exact: true }).waitFor();
-        assert.equal(await page.locator('.downloads-view [role="listitem"]').count(), 5);
-        assert.equal(await page.locator(".downloads-view time").count(), 5);
+        assert.equal(
+          await page.locator('[aria-labelledby=downloads-heading] [role="listitem"]').count(),
+          5,
+        );
+        assert.equal(await page.locator("[aria-labelledby=downloads-heading] time").count(), 5);
         assert.match(
-          await page.locator('.downloads-view [role="listitem"]').first().textContent(),
+          await page
+            .locator('[aria-labelledby=downloads-heading] [role="listitem"]')
+            .first()
+            .textContent(),
           /MP3|audio\/mpeg/,
         );
         assert.equal(streams, 6);
@@ -201,9 +218,11 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       await navigate("/downloads");
       await page.reload();
       await page.waitForFunction(
-        () => document.querySelectorAll('.downloads-view [aria-label="Downloaded"]').length === 5,
+        () =>
+          document.querySelectorAll('[aria-labelledby=downloads-heading] [aria-label="Downloaded"]')
+            .length === 5,
       );
-      assert.equal(await page.locator(".downloads-view time").count(), 5);
+      assert.equal(await page.locator("[aria-labelledby=downloads-heading] time").count(), 5);
       assert.equal(await page.getByRole("heading", { name: "No downloads yet" }).count(), 0);
       assert.equal(streams, 6);
     });

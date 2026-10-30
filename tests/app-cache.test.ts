@@ -209,7 +209,7 @@ it("restores downloads silently without flashing the empty state", () => {
   cleanups.push(() => unmount(component));
   flushSync();
   expect(target.textContent).not.toContain("Restoring local library…");
-  expect(target.querySelector(".downloads-view .loader")).toBeNull();
+  expect(target.querySelector("[aria-labelledby=downloads-heading] .loader")).toBeNull();
   expect(target.textContent).not.toContain("No downloads yet");
 });
 
@@ -271,7 +271,7 @@ it("uses the empty fallback before account selection and when selection is clear
   flushSync();
   expect(target.querySelector(".tile-content")).toBeNull();
   expect(target.textContent).toContain("Connect your library");
-  const empty = target.querySelector(".library-view h2")!.parentElement!;
+  const empty = target.querySelector("[aria-labelledby=library-heading] h2")!.parentElement!;
   expect(empty.classList.contains("stack-md")).toBe(true);
   expect(empty.querySelector("p")?.classList.contains("body")).toBe(true);
   expect(empty.querySelector('a[href="#/settings"]')).not.toBeNull();
@@ -322,7 +322,9 @@ it("automatically loads another batch each time the new sentinel is nearby", asy
   expect(target.textContent).toContain("100 artists");
   expect(target.textContent).not.toContain("Load more");
   const sentinel = () =>
-    [...observed].find((node) => node.matches('.library-view [aria-hidden="true"]'));
+    [...observed].find((node) =>
+      node.matches('[aria-labelledby=library-heading] [aria-hidden="true"]'),
+    );
   for (const count of [96, 100]) {
     const node = sentinel()!;
     expect(node).toBeDefined();
@@ -439,7 +441,9 @@ it("preserves artist pagination when offline eligibility changes", async () => {
   flushSync();
   const count = () => target.querySelectorAll(".tile > a.link-target").length;
   const load = () => {
-    const node = [...observed].find((node) => node.matches('.library-view [aria-hidden="true"]'))!;
+    const node = [...observed].find((node) =>
+      node.matches('[aria-labelledby=library-heading] [aria-hidden="true"]'),
+    )!;
     callback!(
       [{ target: node, isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver,
@@ -583,7 +587,9 @@ it.each([
   expect(dialog.querySelector("#playing-title")?.textContent).toBe("Now Playing");
   expect(dialog.querySelector('input[aria-label="Playback position"]')).not.toBeNull();
   expect(dialog.querySelector('[aria-label="Queue"] h2')?.textContent).toBe("Up next");
-  const transportButtons = [...dialog.querySelectorAll(".player-controls > .button")];
+  const transportButtons = [
+    ...dialog.querySelectorAll("[role=group][aria-label='Playback controls'] > button"),
+  ];
   expect(transportButtons).toHaveLength(3);
   for (const button of transportButtons) {
     expect(button.hasAttribute("data-size")).toBe(false);
@@ -634,7 +640,9 @@ it.each([
     cleanups.push(() => unmount(component));
     flushSync();
     expect(target.textContent).not.toContain("Restoring local library…");
-    expect(target.querySelector(".library-view .loader, .scan-spinner")).toBeNull();
+    expect(
+      target.querySelector("[aria-labelledby=library-heading] .loader, .scan-spinner"),
+    ).toBeNull();
     expect(target.querySelector(selector)).not.toBeNull();
     target.querySelector<HTMLElement>(selector)!.focus();
     flushSync();
@@ -663,7 +671,9 @@ it.each([true, false])(
     expect(target.textContent).toContain(saved ? "Library needs attention" : "Library unavailable");
     expect(target.querySelectorAll(".tile")).toHaveLength(saved ? 1 : 0);
     expect(target.textContent).not.toContain("No artists found.");
-    expect(target.querySelector('.library-view a[href="#/settings"]')).not.toBeNull();
+    expect(
+      target.querySelector('[aria-labelledby=library-heading] a[href="#/settings"]'),
+    ).not.toBeNull();
   },
 );
 

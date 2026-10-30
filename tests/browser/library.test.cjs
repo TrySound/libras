@@ -157,7 +157,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     );
     await first.getByRole("link", { name: artists[0].name, exact: true }).click();
     await page.waitForURL(/artist%200/);
-    assert.equal(await page.locator(".library-view").count(), 0);
+    assert.equal(await page.locator("[aria-labelledby=library-heading]").count(), 0);
     const artistView = page.getByRole("region", { name: "Artist details" });
     await artistView.getByRole("heading", { name: artists[0].name, exact: true }).waitFor();
     assert.equal(await artistView.locator(".track-row").count(), 1);
@@ -311,7 +311,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     await albumView.getByRole("heading", { name: "Album 1", exact: true }).waitFor();
     assert.notEqual(await checkAtmosphere(), artistBackground);
     await page.locator('a[href="#/library"]').filter({ visible: true }).first().click();
-    await page.locator(".library-view").waitFor();
+    await page.locator("[aria-labelledby=library-heading]").waitFor();
     assert.equal(await page.locator(".app-page .atmosphere").isVisible(), false);
     assert.equal(await page.locator(".app-page .atmosphere-lines").count(), 1);
     assert.deepEqual(errors, []);
