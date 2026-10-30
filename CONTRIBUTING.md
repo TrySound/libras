@@ -231,6 +231,14 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
   node --test tests/browser/downloads.test.cjs
 ```
 
+The startup browser check verifies that new users enter Settings without rendering Library or
+starting a view transition, including hard reloads. Subsequent navigation and Back still animate:
+
+```sh
+NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
+  node --test tests/browser/startup.test.cjs
+```
+
 The Library browser check exercises real cached artists, lazy batches, wrapping/missing artwork,
 responsive options, native overlay dismissal/focus, and the Library → Artist → Album journey,
 including contextual track/collection actions:

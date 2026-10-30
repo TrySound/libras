@@ -1,11 +1,12 @@
 <script lang="ts">
   import Router, { route, type RouteParams } from "../src/router.svelte";
 
-  let { embedded = false }: { embedded?: boolean } = $props();
+  let { embedded = false, onRender }: { embedded?: boolean; onRender?: (name: string) => void } =
+    $props();
 </script>
 
 {#snippet page(name: string, params: RouteParams)}
-  <p>{name}:{JSON.stringify(params)}</p>
+  <p {@attach () => onRender?.(name)}>{name}:{JSON.stringify(params)}</p>
 {/snippet}
 {#snippet library(params: RouteParams)}
   {@render page("library", params)}

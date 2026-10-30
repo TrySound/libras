@@ -20,7 +20,7 @@
   import { Cache } from "./cache.svelte";
   import { Session } from "./session.svelte";
   import type { Network } from "./network.svelte";
-  import Router, { isCurrentPage, navigate, type RouteParams } from "./router.svelte";
+  import Router, { isCurrentPage, type RouteParams } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { installSwipeToDismiss } from "./swipe-to-dismiss";
 
@@ -99,6 +99,7 @@
         ? String(player.error)
         : "",
   );
+  let initialized = $state(false);
   let loading = $derived(!session.localReady);
   const alerts = $derived([
     { id: "session", message: error },
@@ -132,7 +133,14 @@
 
   onMount(() => {
     const savedAuth = session.start();
-    if (!savedAuth && cache.key === undefined) navigate("/settings", "replace");
+    if (!savedAuth && cache.key === undefined) {
+      // Startup chooses the first page; it is not an animated navigation.
+      const url = new URL(window.location.href);
+      url.hash = "/settings";
+      if (url.href !== window.location.href)
+        window.history.replaceState(window.history.state, "", url);
+    }
+    initialized = true;
   });
 </script>
 
@@ -312,17 +320,19 @@
         <div class="row-sm app-status-actions">{@render actions()}</div>
       {/if}
       <main class="app-page">
-        <Router
-          {embedded}
-          routes={[
-            { pattern: "/library", render: libraryRoute },
-            { pattern: "/search", render: searchRoute },
-            { pattern: "/library/artist/:artistId/album/:albumId", render: albumRoute },
-            { pattern: "/library/artist/:artistId", render: artistRoute },
-            { pattern: "/settings", render: settingsRoute },
-            { pattern: "/downloads", render: downloadsRoute },
-          ]}
-        />
+        {#if initialized}
+          <Router
+            {embedded}
+            routes={[
+              { pattern: "/library", render: libraryRoute },
+              { pattern: "/search", render: searchRoute },
+              { pattern: "/library/artist/:artistId/album/:albumId", render: albumRoute },
+              { pattern: "/library/artist/:artistId", render: artistRoute },
+              { pattern: "/settings", render: settingsRoute },
+              { pattern: "/downloads", render: downloadsRoute },
+            ]}
+          />
+        {/if}
       </main>
       <Player {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
       {#if hasErrors}

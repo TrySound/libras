@@ -241,7 +241,31 @@ it("restores downloads silently without flashing the empty state", () => {
   expect(target.textContent).not.toContain("No downloads yet");
 });
 
-it("uses the empty fallback before account selection and when selection is cleared", async () => {
+it.each(["", "/library", "/settings"])(
+  "initializes Settings without navigation for a new user at #%s",
+  (path) => {
+    installDisk();
+    window.history.replaceState(null, "", `#${path}`);
+    const start = vi.fn();
+    const original = document.startViewTransition;
+    document.startViewTransition = start;
+    cleanups.push(async () => {
+      document.startViewTransition = original;
+    });
+    const target = document.createElement("main");
+    document.body.append(target);
+    const component = mount(App, { target });
+    cleanups.push(() => unmount(component));
+    flushSync();
+    expect(window.location.hash).toBe("#/settings");
+    expect(target.querySelector('input[name="host"]')).not.toBeNull();
+    expect(target.querySelector("#library-heading")).toBeNull();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+  },
+);
+
+it("uses the empty fallback when visiting Library without an account and when selection is cleared", async () => {
   const disk = installDisk();
   const target = document.createElement("main");
   document.body.append(target);
@@ -249,6 +273,23 @@ it("uses the empty fallback before account selection and when selection is clear
   cleanups.push(() => unmount(component));
   flushSync();
   expect(mocks.options!.selection.cache).toBeUndefined();
+  expect(window.location.hash).toBe("#/settings");
+  // The user can still explicitly visit Library after the startup redirect.
+  const url = new URL("#/library", window.location.href);
+  window.history.replaceState(window.history.state, "", url);
+  let finished: Promise<void> | undefined;
+  window.navigation.dispatchEvent(
+    Object.assign(new Event("navigate"), {
+      canIntercept: true,
+      navigationType: "push",
+      destination: { url: url.href },
+      intercept({ handler }: { handler: () => Promise<void> }) {
+        finished = handler();
+      },
+    }),
+  );
+  await finished;
+  flushSync();
   expect(target.textContent).toContain("Connect your library");
   const brand = target.querySelector('.app-header a[aria-label="Libras home"] svg');
   expect(brand?.getAttribute("aria-hidden")).toBe("true");
@@ -276,7 +317,7 @@ it("uses the empty fallback before account selection and when selection is clear
   ]);
   const dialog = target.querySelector<HTMLDialogElement>("#player-dialog")!;
   expect(dialog.querySelector(".topbar-brand")).toBeNull();
-  expect(mocks.navigate).toHaveBeenCalledWith("/settings", "replace");
+  expect(mocks.navigate).not.toHaveBeenCalled();
   expect(disk.getDirectory).not.toHaveBeenCalled();
 
   const selected = new Cache(
@@ -590,6 +631,7 @@ it.each([
   "/library/artist/:artistId/album/:albumId",
 ])("keeps shell navigation and the player on %s", (route) => {
   installDisk();
+  mocks.cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   window.history.replaceState(null, "", `#${route}`);
   const target = document.createElement("main");
   document.body.append(target);

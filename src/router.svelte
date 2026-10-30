@@ -16,6 +16,8 @@
 
   /** Paths are slash-prefixed, without a hash. */
   export function navigate(path: string, history: "push" | "replace" = "push") {
+    const destination = new URL(`#${path}`, window.location.href);
+    if (destination.href === window.location.href) return;
     void window.navigation.navigate(`#${path}`, { history }).finished?.catch(() => {});
   }
 
@@ -47,10 +49,19 @@
       })),
     };
   });
-  let match = $state.raw<{ route: RenderRoute; params: RouteParams }>({
-    route: initial.fallback,
-    params: {},
-  });
+  let match = $state.raw<{ route: RenderRoute; params: RouteParams }>(
+    untrack(() => {
+      const url = new URL(window.location.href);
+      if (!url.hash.startsWith("#/") && !embedded) {
+        url.hash = initial.fallback.pattern;
+        window.history.replaceState(window.history.state, "", url);
+      }
+      const resolved = resolve(url);
+      route.url = url;
+      route.pattern = resolved.route.pattern;
+      return resolved;
+    }),
+  );
 
   function resolve(url: URL) {
     for (const { route, pattern } of initial.compiled) {
@@ -97,6 +108,7 @@
           };
           if (
             embedded ||
+            destination.href === route.url?.href ||
             !document.startViewTransition ||
             window.matchMedia("(prefers-reduced-motion: reduce)").matches
           ) {
@@ -122,9 +134,6 @@
       });
     };
     window.navigation.addEventListener("navigate", handleNavigation);
-    const url = new URL(window.location.href);
-    updateRoute(url);
-    if (!url.hash.startsWith("#/") && !embedded) navigate(initial.fallback.pattern, "replace");
     return () => window.navigation.removeEventListener("navigate", handleNavigation);
   });
 </script>

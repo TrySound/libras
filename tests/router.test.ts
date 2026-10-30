@@ -19,10 +19,19 @@ function setup(path = "/library", embedded = false) {
   const navigation = installNavigation(path);
   const target = document.createElement("main");
   document.body.append(target);
-  const component = mount(RouterTestApp, { target, props: { embedded } });
+  const rendered: string[] = [];
+  const component = mount(RouterTestApp, {
+    target,
+    props: {
+      embedded,
+      onRender(name) {
+        rendered.push(name);
+      },
+    },
+  });
   cleanups.push(() => unmount(component));
   flushSync();
-  return { navigation, target };
+  return { navigation, target, rendered };
 }
 
 describe("router", () => {
@@ -59,8 +68,9 @@ describe("router", () => {
     ["/library/artist/artist-1/album/album-1", 'album:{"artistId":"artist-1","albumId":"album-1"}'],
     ["/unknown", "library:{}"],
   ])("renders the initial route %s with decoded parameters", (path, expected) => {
-    const { target } = setup(path);
+    const { target, rendered } = setup(path);
     expect(target.querySelector("p")!.textContent).toBe(expected);
+    expect(rendered).toEqual([expected.split(":")[0]]);
   });
 
   it.each([false, true])(
@@ -128,17 +138,43 @@ describe("router", () => {
     expect(start).not.toHaveBeenCalled();
   });
 
+  it("does not navigate to the current URL", () => {
+    const navigation = installNavigation("/library");
+    navigate("/library");
+    navigate("/library", "replace");
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it("does not animate redundant same-URL navigation events", async () => {
+    const { navigation } = setup();
+    const start = vi.fn();
+    document.startViewTransition = start;
+    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+    navigation.dispatchEvent(
+      Object.assign(new Event("navigate"), {
+        navigationType: "replace",
+        canIntercept: true,
+        destination: { url: window.location.href },
+        intercept,
+      }),
+    );
+    await intercept.mock.results[0].value;
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it("navigates through the browser with hash paths", () => {
     const navigation = installNavigation("/library");
     navigate("/player");
     expect(navigation.navigate).toHaveBeenCalledWith("#/player", { history: "push" });
-    navigate("/library", "replace");
-    expect(navigation.navigate).toHaveBeenLastCalledWith("#/library", { history: "replace" });
+    navigate("/player", "replace");
+    expect(navigation.navigate).toHaveBeenLastCalledWith("#/player", { history: "replace" });
   });
 
   it.each(["", "section"])("replaces an initial non-route hash: %s", (path) => {
     const { navigation, target } = setup(path);
-    expect(navigation.navigate).toHaveBeenCalledWith("#/library", { history: "replace" });
+    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("#/library");
+    expect(route.url?.hash).toBe("#/library");
     expect(target.querySelector("p")!.textContent).toBe("library:{}");
   });
 
