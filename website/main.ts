@@ -2,6 +2,7 @@ import "dialog-closedby-polyfill";
 import { mount, unmount } from "svelte";
 import Demo from "./demo.svelte";
 import "../src/edgerunner.css";
+import "../src/halloween-font.css";
 
 const target = document.getElementById("app");
 if (!target) throw new Error("App target was not found.");

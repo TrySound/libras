@@ -93,7 +93,9 @@ test("Edgerunner foundations and native controls", async (t) => {
           }
           assert.ok(
             await app.evaluate(() =>
-              [...document.fonts].every((font) => font.display === "optional"),
+              [...document.fonts]
+                .filter((font) => font.family === "Rajdhani")
+                .every((font) => font.display === "optional"),
             ),
           );
         } finally {

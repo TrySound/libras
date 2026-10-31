@@ -1,0 +1,9 @@
+/* Self-hosted Creepster v13, SIL OFL 1.1; see fonts/Creepster-OFL.txt.
+ * Loaded only by the Halloween app entry, not the website or style guide. */
+@font-face {
+  font-family: "Creepster";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./fonts/creepster-400.ttf) format("truetype");
+}

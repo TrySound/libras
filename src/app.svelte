@@ -270,7 +270,7 @@
   {/if}
 {/snippet}
 
-<div class="app-root" class:standalone={!embedded}>
+<div class="app-root" data-theme="halloween" class:standalone={!embedded}>
   <div class="app-shell" data-embedded={embedded || undefined}>
     <div class="app-stage">
       {#snippet actions()}
