@@ -2,7 +2,7 @@
 
 /* Edgerunner owns typography, utilities, cards and buttons. Only marketing
  * sizing, composition and decorative illustrations belong here. */
-@scope (.website) to (.app-root) {
+@scope (.website) {
   :scope {
     --heading-xl-size: clamp(3rem, 7.6vw, 6.4rem);
     --heading-xl-weight: var(--font-weight-bold);

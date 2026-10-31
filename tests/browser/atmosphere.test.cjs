@@ -21,19 +21,13 @@ async function fixture(browser, mode) {
   const content =
     mode === "dialog"
       ? `<dialog class="large-player"><div class="large-player-stage">${backdrop}</div></dialog>`
-      : `<div class="app-shell" ${mode === "embedded" ? "data-embedded" : ""}>
-        <div class="app-stage">${backdrop}</div></div>`;
-  const root =
-    mode === "embedded"
-      ? `<div class="app-root" style="height:600px">${content}</div>`
-      : `<div class="app-root standalone">${content}</div>`;
+      : `<div class="app-shell"><div class="app-stage">${backdrop}</div></div>`;
+  const root = `<div class="app-root">${content}</div>`;
   await page.setContent(`<!doctype html><style>${css} body { margin:0; }</style>${root}`);
   await page.evaluate((mode) => {
     if (mode === "dialog") document.querySelector("dialog").showModal();
     window.scrollOwner =
-      mode === "document"
-        ? document.scrollingElement
-        : document.querySelector(mode === "embedded" ? ".app-shell" : "dialog");
+      mode === "document" ? document.scrollingElement : document.querySelector("dialog");
   }, mode);
   return page;
 }
@@ -69,7 +63,7 @@ async function position(page, scroll) {
   });
 }
 
-for (const mode of ["document", "embedded", "dialog"]) {
+for (const mode of ["document", "dialog"]) {
   test(`${mode}: CSS-only depth stays proportional across the full scroll range`, async () => {
     const browser = await chromium.launch({ headless: true });
     try {

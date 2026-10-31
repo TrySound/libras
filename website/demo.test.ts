@@ -59,8 +59,7 @@ it("opens preconnected without touching regular settings or registering a PWA", 
     expect(document.querySelector(".tile")?.textContent).toContain("A Perfect Circle"),
   );
   expect(document.querySelector("form")).toBeNull();
-  expect(document.querySelector(".app-root.standalone")).not.toBeNull();
-  expect(document.querySelector("[data-embedded]")).toBeNull();
+  expect(document.querySelector(".app-root")).not.toBeNull();
   expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
   expect(localStorage.getItem("navidrome-account")).toBe("regular account");
   expect(localStorage.getItem("navidrome-offline-mode")).toBe("true");
@@ -160,9 +159,7 @@ it("mounts the demo page as a standalone app and cleans up on hot reload", async
   document.body.append(page.querySelector("#app")!);
   cleanup = (await import("./main")).cleanup;
   flushSync();
-  await vi.waitFor(() =>
-    expect(document.querySelector("#app .app-root.standalone")).not.toBeNull(),
-  );
+  await vi.waitFor(() => expect(document.querySelector("#app .app-root")).not.toBeNull());
   expect(document.querySelector(".website, .site-demo-dialog")).toBeNull();
   expect(page.querySelector('link[rel="manifest"]')).toBeNull();
   expect(page.querySelector("noscript")?.textContent).toContain("Enable JavaScript");

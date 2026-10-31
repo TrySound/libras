@@ -1,6 +1,6 @@
 /* Self-hosted Rajdhani, SIL OFL 1.1; see fonts/Rajdhani-OFL.txt.
  * Google Fonts Rajdhani v17, Latin only; other characters use system fallbacks.
- * Local asset URLs let both app and embedded website builds emit the fonts. */
+ * Local asset URLs let both app and website builds emit the fonts. */
 @font-face {
   font-family: "Rajdhani";
   font-style: normal;

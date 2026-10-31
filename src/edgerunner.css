@@ -5,10 +5,7 @@
  */
 @import "./edgerunner-fonts.css";
 
-/* Re-establish the theme at the app root: scoped host declarations can still
- * inherit custom properties into an embedded application. */
-:root,
-.app-root {
+:root {
   /* Color primitives: literal palette values, including published anchors and scales. */
   --palette-maroon: #550000;
 
@@ -230,7 +227,7 @@
   --press-scale: 0.995;
   --press-scale-compact: 0.96;
 
-  /* Shared layout roles; embedded instances respond to their app container. */
+  /* Shared layout roles. */
   --content-padding-block: var(--space-lg);
   --content-padding-inline: max(
     var(--space-lg),
@@ -246,8 +243,8 @@
   color-scheme: dark;
 }
 
-/* Paint only standalone documents, never an embedded application's host. */
-:root:has(.app-root.standalone),
+/* App and reference documents own their canvas and scrolling. */
+:root:has(.app-root),
 :root.design-reference {
   background: var(--canvas-bg);
   background-attachment: local;
@@ -255,8 +252,7 @@
 }
 
 @media (width <= 50rem) {
-  :root,
-  .app-root {
+  :root {
     --content-padding-inline: max(
       var(--space-md),
       env(safe-area-inset-left),
@@ -280,7 +276,7 @@
   }
 }
 
-/* Type contexts never reset the browser's root font size or paint an embed's host. */
+/* Explicit typography contexts preserve the browser's root font size. */
 .app-root,
 .design-reference,
 .website {
@@ -1083,8 +1079,8 @@
       var(
         --panel-height,
         calc(
-          var(--app-viewport-height, 100dvh) - var(--topbar-min-height) - var(--player-min-height) -
-            2 * var(--content-padding-block)
+          100dvh - var(--topbar-min-height) - var(--player-min-height) - 2 *
+            var(--content-padding-block)
         )
       )
     );
@@ -1094,10 +1090,7 @@
         0px,
         var(
           --panel-height,
-          calc(
-            var(--app-viewport-height, 100dvh) - var(--player-min-height) - 2 *
-              var(--content-padding-block)
-          )
+          calc(100dvh - var(--player-min-height) - 2 * var(--content-padding-block))
         )
       );
     }
@@ -1386,7 +1379,7 @@
     text-align: center;
   }
 
-  /* Collection browsing: intrinsic columns adapt to the app, including embeds. */
+  /* Collection browsing: intrinsic columns adapt to the app's available width. */
   .tile-grid {
     --tile-min-size: 8.5rem;
     display: grid;
@@ -1714,8 +1707,7 @@
     }
   }
 
-  /* Fullscreen presentation. Only the native dialog scrolls;
-   * the embedded variant below keeps the host's viewport and size budget. */
+  /* Fullscreen presentation. Only the native dialog scrolls. */
   .large-player {
     box-sizing: border-box;
     position: fixed;
@@ -1871,21 +1863,13 @@
   margin: auto;
 }
 
-/* The host supplies the embedded viewport; standalone apps scroll the document. */
+/* The application scrolls the document and responds to its available width. */
 .app-root {
-  container: app / size;
+  container: app / inline-size;
   position: relative;
   isolation: isolate;
   inline-size: 100%;
-  block-size: 100%;
-  overflow: clip;
-
-  &.standalone {
-    block-size: auto;
-    min-block-size: 100%;
-    overflow: visible;
-    container-type: inline-size;
-  }
+  min-block-size: 100%;
 }
 
 /* App composition: one column, shared page gutters, a fixed
@@ -1897,15 +1881,14 @@
   isolation: isolate;
   min-block-size: 100dvh;
   container: navigation / inline-size;
-  anchor-name: --app-shell;
-  anchor-scope: --app-shell, --mini-player, --app-status-actions;
+  anchor-scope: --mini-player, --app-status-actions;
 }
 
 .app-stage {
-  --atmosphere-viewport-height: var(--app-viewport-height, 100dvh);
+  --atmosphere-viewport-height: 100dvh;
   display: flex;
   flex-direction: column;
-  min-block-size: var(--app-viewport-height, 100dvh);
+  min-block-size: 100dvh;
 }
 
 .app-page {
@@ -1973,61 +1956,5 @@
     background: var(--surface-bg);
     border-inline-end: var(--border-width) solid var(--shell-border);
     z-index: var(--layer-header);
-  }
-}
-
-/* Embedded variant: the host supplies a viewport, without body-owned layout.
- * Native top-layer overlays remain bounded to that same app viewport. */
-.app-shell[data-embedded] {
-  /* Resolve height units at the panel against the app's size container,
-   * not the browser viewport or the page's inline-only container. */
-  --app-viewport-height: 100cqh;
-  min-block-size: 100%;
-  block-size: 100%;
-  overflow: auto;
-  overscroll-behavior: none;
-  background: var(--canvas-bg);
-  background-attachment: local;
-
-  .app-sidebar {
-    position: absolute;
-    inset-block-end: auto;
-    block-size: calc(
-      var(--app-viewport-height) - anchor-size(--mini-player height, 0px) -
-        anchor-size(--app-status-actions height, 0px)
-    );
-  }
-  @container navigation (width > 50rem) {
-    .app-status-actions {
-      position: absolute;
-      /* The stage can exceed the viewport; keep chrome in its original budget. */
-      inset-block-end: calc(
-        100% - var(--app-viewport-height) + anchor-size(--mini-player height, 0px)
-      );
-    }
-  }
-  .large-player {
-    position-anchor: --app-shell;
-    inset: anchor(top) auto auto anchor(left);
-    inline-size: anchor-size(width);
-    block-size: anchor-size(height);
-  }
-  .right-sheet {
-    position-anchor: --app-shell;
-    inset: anchor(top) anchor(right) auto auto;
-    inline-size: min(360px, calc(anchor-size(width) - 2 * var(--space-md)));
-    block-size: anchor-size(height);
-  }
-  .bottom-sheet {
-    position-anchor: --app-shell;
-    inset: auto auto anchor(bottom) anchor(left);
-    inline-size: anchor-size(width);
-    max-block-size: calc(anchor-size(height) - var(--space-lg));
-  }
-  .notification-popover {
-    position-anchor: --app-shell;
-    inset: calc(anchor(top) + var(--space-md)) calc(anchor(right) + var(--space-md)) auto auto;
-    inline-size: min(26rem, calc(anchor-size(width) - 2 * var(--space-md)));
-    max-block-size: calc(anchor-size(height) - 2 * var(--space-md));
   }
 }

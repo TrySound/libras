@@ -28,18 +28,11 @@
     network: Network;
     auth: AuthStore;
     updaterComponent: typeof WebappUpdater | undefined;
-    embedded?: boolean;
     settingsContent?: Snippet;
   }
 
   // Entry points explicitly supply infrastructure; UI and domain state belong to App.
-  let {
-    network,
-    auth,
-    updaterComponent: Updater,
-    embedded = false,
-    settingsContent,
-  }: Props = $props();
+  let { network, auth, updaterComponent: Updater, settingsContent }: Props = $props();
 
   let navigationDrawer: HTMLDialogElement;
   let navigationOpen = $state(false);
@@ -270,8 +263,8 @@
   {/if}
 {/snippet}
 
-<div class="app-root" class:standalone={!embedded}>
-  <div class="app-shell" data-embedded={embedded || undefined}>
+<div class="app-root">
+  <div class="app-shell">
     <div class="app-stage">
       {#snippet actions()}
         {#if hasErrors}
@@ -322,7 +315,6 @@
       <main class="app-page">
         {#if initialized}
           <Router
-            {embedded}
             routes={[
               { pattern: "/library", render: libraryRoute },
               { pattern: "/search", render: searchRoute },

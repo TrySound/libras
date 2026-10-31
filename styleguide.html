@@ -92,10 +92,6 @@
       .topbar-example-content {
         padding: var(--content-padding-block) var(--content-padding-inline);
       }
-      .shell-example {
-        block-size: 26rem;
-        container: app / size;
-      }
       .sidebar-state-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
@@ -617,10 +613,9 @@
           <h2 class="heading-md uppercase" id="navigation-heading">Navigation shell</h2>
           <p class="body">
             A 280px independently scrolling sidebar above 50rem; at or below that, a sticky header
-            and right-side native modal drawer. Embedded apps respond to their own width. The
-            document owns standalone scrolling, and sidebar/content clearance follows the existing
-            player's actual height. The session, routes, and audio player remain mounted through
-            resizing.
+            and right-side native modal drawer. The document owns scrolling, and sidebar/content
+            clearance follows the player's actual height. The session, routes, and audio player
+            remain mounted through resizing.
           </p>
           <div class="topbar-example">
             <header class="topbar row-md row-justify">
@@ -798,116 +793,17 @@
           </p>
         </section>
 
-        <section class="card stack-lg specimen-wide" aria-labelledby="shell-heading">
-          <h2 class="heading-md uppercase" id="shell-heading">Shared shell composition</h2>
+        <section class="card stack-lg" aria-labelledby="shell-heading">
+          <h2 class="heading-md uppercase" id="shell-heading">Application composition</h2>
           <p class="body">
-            This bounded embedded specimen uses the same app-shell, app-stage, app-page,
-            app-sidebar, and app-player composition as the app. Only the reference frame's size is
-            local. CSS anchor sizing reserves the player's intrinsic height without script
-            measurements.
+            Review document scrolling, responsive navigation, and player clearance in the
+            <a href="./">running application</a>. Shell layout is tested there rather than in a
+            second, bounded rendering mode.
           </p>
-          <div class="shell-example">
-            <div class="app-shell" data-embedded id="guide-shell">
-              <div class="app-stage">
-                <div class="atmosphere-frame" aria-hidden="true">
-                  <div class="atmosphere-lines"></div>
-                </div>
-                <aside class="sidebar app-sidebar stack-lg" aria-label="Shell specimen navigation">
-                  <span class="brand uppercase">Libras</span>
-                  <nav class="stack-sm" aria-label="Shell specimen links">
-                    <a class="menu-item" href="#shell-heading" aria-current="page">Your library</a>
-                    <a class="menu-item" href="#shell-heading">Search</a>
-                  </nav>
-                </aside>
-                <header class="topbar app-header row-md row-justify">
-                  <span class="brand uppercase">Libras</span>
-                  <button
-                    class="button"
-                    commandfor="guide-navigation"
-                    command="show-modal"
-                    aria-label="Open shell specimen menu"
-                  >
-                    <svg width="24" height="24" aria-hidden="true">
-                      <use href="#icon-menu-lines"></use>
-                    </svg>
-                  </button>
-                </header>
-                <div class="app-page">
-                  <div class="stack-lg scroll-runway">
-                    <h3 class="heading-lg">Content with shared gutters</h3>
-                    <p class="body">
-                      The main region grows above the player. A wide container reserves the sidebar;
-                      a narrow container exposes the sticky topbar instead.
-                    </p>
-                    <p class="body">
-                      Scroll this frame to see native content scrolling while the player remains
-                      visible. The sidebar has its own scroll region and ends above the actual
-                      player height.
-                    </p>
-                  </div>
-                </div>
-                <footer class="mini-player app-player" aria-label="Music player specimen">
-                  <input
-                    class="seek mini-player-seek"
-                    type="range"
-                    min="0"
-                    max="200"
-                    value="102"
-                    style="--progress: 51%"
-                    aria-label="Playback position specimen"
-                    aria-valuetext="1:42 of 3:20"
-                  />
-                  <progress
-                    class="playback-progress mini-player-progress"
-                    max="200"
-                    value="102"
-                    aria-label="Playback progress specimen"
-                  ></progress>
-                  <button
-                    class="button-quiet row-sm"
-                    commandfor="guide-player"
-                    command="show-modal"
-                    aria-label="Open Now Playing specimen"
-                    aria-describedby="guide-track-title guide-track-artist"
-                  >
-                    <span class="artwork" data-size="md" aria-hidden="true">
-                      <svg class="artwork-placeholder" width="24" height="24" aria-hidden="true">
-                        <use href="#icon-music"></use>
-                      </svg>
-                    </span>
-                    <span class="stack-xs">
-                      <strong id="guide-track-title" class="label truncate"
-                        >A long track title with missing artwork</strong
-                      >
-                      <small id="guide-track-artist" class="caption text-secondary truncate"
-                        >Artist and guest artist</small
-                      >
-                    </span>
-                  </button>
-                  <div class="row-md">
-                    <button
-                      class="button only-desktop"
-                      aria-label="Previous track specimen"
-                      disabled
-                    >
-                      <svg width="24" height="24" aria-hidden="true">
-                        <use href="#icon-previous"></use>
-                      </svg>
-                    </button>
-                    <button class="button" data-variant="primary" aria-label="Play specimen">
-                      <svg width="24" height="24" aria-hidden="true">
-                        <use href="#icon-play"></use>
-                      </svg>
-                    </button>
-                    <button class="button only-desktop" aria-label="Next track specimen">
-                      <svg width="24" height="24" aria-hidden="true">
-                        <use href="#icon-next"></use>
-                      </svg>
-                    </button>
-                  </div>
-                </footer>
-              </div>
-            </div>
+          <div class="row-sm">
+            <button class="button" data-size="text" commandfor="guide-player" command="show-modal">
+              Open Now Playing specimen
+            </button>
           </div>
         </section>
 

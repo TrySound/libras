@@ -4,8 +4,8 @@ This pnpm workspace (`@libras/website`) serves the static landing page at `https
 
 ## Architecture
 
-- `index.html` contains the complete static landing page, feature illustrations, FAQ, calls to action, and SEO/social metadata. It has no JavaScript entry, live preview, or demo dialog. “Try live demo” is a normal link to `demo/`. `website.css` imports `src/edgerunner.css` directly and reuses its typography, row/stack utilities, semantic color roles, cards, and buttons. Only marketing layout, decorative illustrations, and website-specific sizing remain in the website stylesheet. Website rules stop at `.app-root` so they cannot restyle an embedded player. The landing page uses the same maroon/gold palette and self-hosted Rajdhani headings, with a preloaded bold font and system-color fallbacks for forced-colors mode.
-- `demo/index.html` and `main.ts` mount Demo into `#app`, with the same `src/edgerunner.css`, dialog polyfill, full-width layout and hash navigation as the regular app. There is no marketing wrapper or `embedded` mode. Hot reload unmounts the component.
+- `index.html` contains the complete static landing page, feature illustrations, FAQ, calls to action, and SEO/social metadata. It has no JavaScript entry, live preview, or demo dialog. “Try live demo” is a normal link to `demo/`. `website.css` imports `src/edgerunner.css` directly and reuses its typography, row/stack utilities, semantic color roles, cards, and buttons. Only marketing layout, decorative illustrations, and website-specific sizing remain in the website stylesheet. Marketing rules are scoped to `.website`; the demo is a separate page. The landing page uses the same maroon/gold palette and self-hosted Rajdhani headings, with a preloaded bold font and system-color fallbacks for forced-colors mode.
+- `demo/index.html` and `main.ts` mount Demo into `#app`, with the same `src/edgerunner.css`, dialog polyfill, full-width layout and hash navigation as the regular app. There is no marketing wrapper. Hot reload unmounts the component.
 - `demo.svelte` constructs auth and network synchronously and renders the shared App directly, explicitly passing `undefined` for the updater. `DeezerSubsonicClient` is injected through the existing `Network` factory; library, settings, playback, downloads, errors and queue UI use the normal app components. Credits are HTML supplied through App's optional `settingsContent` snippet and rendered as a card in Settings: Deezer attribution followed by one linked artist/album/year entry per album, without a track-by-track list.
 - Cache/OPFS isolation comes from the synthetic `deezer-preview-demo` account identity, resolved against the website build base (not the `/demo/` page URL). Auth and preferences use a per-runtime `MemoryStorage` instance and never read or write localStorage.
 - `deezer-client.ts` adapts the committed catalog snapshot into the existing library pagination interface, without live album requests during sync. It resolves current preview URLs at playback time; playback URLs are not persisted in library or queue records. Server-queue reads return empty and writes are ignored; the app's local playback queue is sufficient.
@@ -17,13 +17,7 @@ The demo synchronizes metadata from the snapshot shipped with the website, so br
 
 ## Deezer previews
 
-The demo includes the full revised shortlist from #79: **16 artists, 53 albums, and 663 previews**, excluding Puscifer. _Mer De Noms_ now includes all 12 tracks rather than the initial three.
-
-Artists: A Perfect Circle, Archive, Arctic Monkeys, Breaking Benjamin, Foo Fighters, Metric, Nothing But Thieves, Poets of the Fall, Queens of the Stone Age, Radiohead, Röyksopp, Seether, Shinedown, Soundgarden, The xx, and TOOL.
-
-Breaking Benjamin replaces Audioslave with _We Are Not Alone_ (2004; 12-track Deezer edition including the alternate Rain (2005)), _Phobia (Explicit Version)_ (2006), and _Dear Agony_ (2009).
-
-Seether includes _Disclaimer II_ (2004, 20 tracks), _Karma and Effect_ (2005, 14 tracks), and _Finding Beauty In Negative Spaces (Bonus Track Version)_ (2007, 14 tracks). Shinedown includes _The Sound of Madness_ (2008, the 20-track edition with bonus recordings), _Amaryllis_ (2012, 12 tracks), and _ATTENTION ATTENTION_ (2018, 14 tracks).
+The committed catalog contains **16 artists, 53 albums, and 663 previews**. The selection and edition metadata live in `deezer-catalog.json`; see #79 for selection history.
 
 `deezer-catalog.json` contains the exact recording IDs, titles, explicit flags, original release years, year-source links and artwork URLs used by the adapter and Settings credits. Artwork is loaded directly from Deezer's image CDN; no image files are committed. `deezer-catalog.ts` exports that data. Original years are curated independently of Deezer edition dates, which are retained separately as `sourceReleaseDate`. Album ordering and selected edition labels (including Deluxe and anniversary/remaster labels) are preserved. The player measures actual clip duration instead of using the full-song duration.
 
@@ -74,10 +68,8 @@ node website/verify-build.mjs --root pages
 
 `verify-build.mjs` checks all three HTML entry points, PWA separation and `/webapp/` scope, a script-free landing page, and the 1 GiB size limit. It rejects any leftover root `catalog/` export so old music files cannot accidentally be published. If you still have a local `website/public/catalog/` directory from the previous demo, move it outside `public/` or remove it before building. The landing page's Music credits link opens the demo's Settings card.
 
-The obsolete `DEMO_EXPORT_URL` and `DEMO_MEDIA_PASSWORD` repository secrets are no longer used and can be removed from GitHub settings.
-
 ## Tests
 
 `pnpm check` and `pnpm test` cover both workspaces. Tests cover static landing content, demo navigation and bootstrap, adapter pagination, cancellation, API-independent sync, playback errors, fresh preview URL resolution, restricted media origins, Settings credits, in-memory preferences, account isolation, and no demo service-worker registration. They use synthetic metadata and stubbed responses rather than live Deezer requests. Build verification tests cover the combined artifact, PWA separation and rejection of legacy catalog exports.
 
-Live headless Chromium checks cover library sync, representative previews, seeking and queue advancement. This does not establish playback for every recording or other browser/device behavior. Optional browser tests verify track lists and years for all 53 albums with Deezer API access blocked, desktop/mobile layout and playback errors; their preview audio requests are aborted, so they do not verify successful playback.
+Live headless Chromium checks cover library sync, representative previews, seeking and queue advancement. This does not establish playback for every recording or other browser/device behavior. Optional browser tests verify script-free landing layout, keyboard focus and FAQ interaction, plus track lists and years for all 53 albums with Deezer API access blocked, desktop/mobile layout and playback errors. Their preview audio requests are aborted, so they do not verify successful playback. See [CONTRIBUTING.md](../CONTRIBUTING.md#optional-browser-suites) for commands.

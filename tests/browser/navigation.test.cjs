@@ -249,13 +249,11 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
     await page.getByLabel("Username", { exact: true }).fill("listener");
     await page.getByLabel("Password", { exact: true }).fill("test-password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
-    const tile = page.getByRole("link", { name: artist.name, exact: true });
-    await tile.waitFor();
-    await tile.hover();
-    await page.mouse.down();
-    await page.waitForTimeout(600);
-    await page.mouse.up();
-    await page.locator("#artist-menu").getByRole("button", { name: "Play", exact: true }).click();
+    await page.getByRole("button", { name: `Actions for ${artist.name}`, exact: true }).click();
+    await page
+      .locator("#artist-popover")
+      .getByRole("button", { name: "Play", exact: true })
+      .click();
     await page.waitForFunction(
       () =>
         window.__audioInstances.length === 1 &&
@@ -325,7 +323,7 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
         "metadata and transports share a row without overlapping",
       );
     }
-    // A narrow host on a desktop browser must use phone controls too.
+    // Component controls follow the app's available width, not just the viewport.
     await page.locator(".app-root").evaluate((element) => (element.style.inlineSize = "400px"));
     assert.equal(await seek.isVisible(), false);
     assert.equal(
@@ -349,6 +347,22 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
     const sidebar = await page.locator(".app-sidebar").boundingBox();
     const player = await page.locator(".mini-player").boundingBox();
     assert.ok(sidebar.y + sidebar.height <= player.y, "the player does not overlap navigation");
+    const title = mini.locator("strong");
+    await title.evaluate((element) => {
+      element.style.whiteSpace = "normal";
+      element.textContent = "Player content can grow intrinsically. ".repeat(20);
+    });
+    const grownPlayer = await mini.boundingBox();
+    const resizedSidebar = await page.locator(".app-sidebar").boundingBox();
+    assert.ok(grownPlayer.height > player.height);
+    assert.ok(
+      resizedSidebar.y + resizedSidebar.height <= grownPlayer.y,
+      "sidebar clearance follows intrinsic player growth",
+    );
+    await title.evaluate((element, text) => {
+      element.style.removeProperty("white-space");
+      element.textContent = text;
+    }, song.title);
     await page.locator('.app-sidebar a[href="#/downloads"]').click();
     await page.locator("[aria-labelledby=downloads-heading]").waitFor();
     assert.equal(await transport.evaluate((audio) => !audio.paused), true);

@@ -33,11 +33,9 @@
   interface Props {
     routes: readonly RenderRoute[];
     fallback?: RenderRoute;
-    /** Leave the host page's scroll, focus, and view transitions alone. */
-    embedded?: boolean;
   }
 
-  let { routes, fallback = routes[0], embedded = false }: Props = $props();
+  let { routes, fallback = routes[0] }: Props = $props();
 
   const initial = untrack(() => {
     if (!fallback) throw new Error("Router requires at least one route.");
@@ -52,7 +50,7 @@
   let match = $state.raw<{ route: RenderRoute; params: RouteParams }>(
     untrack(() => {
       const url = new URL(window.location.href);
-      if (!url.hash.startsWith("#/") && !embedded) {
+      if (!url.hash.startsWith("#/")) {
         url.hash = initial.fallback.pattern;
         window.history.replaceState(window.history.state, "", url);
       }
@@ -98,8 +96,6 @@
         return;
 
       event.intercept({
-        scroll: embedded ? "manual" : undefined,
-        focusReset: embedded ? "manual" : undefined,
         handler: async () => {
           const update = async () => {
             if (event.signal?.aborted) return;
@@ -107,7 +103,6 @@
             await tick();
           };
           if (
-            embedded ||
             destination.href === route.url?.href ||
             !document.startViewTransition ||
             window.matchMedia("(prefers-reduced-motion: reduce)").matches

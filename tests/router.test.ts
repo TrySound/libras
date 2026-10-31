@@ -15,7 +15,7 @@ afterEach(async () => {
   document.startViewTransition = originalStartViewTransition;
 });
 
-function setup(path = "/library", embedded = false) {
+function setup(path = "/library") {
   const navigation = installNavigation(path);
   const target = document.createElement("main");
   document.body.append(target);
@@ -23,7 +23,6 @@ function setup(path = "/library", embedded = false) {
   const component = mount(RouterTestApp, {
     target,
     props: {
-      embedded,
       onRender(name) {
         rendered.push(name);
       },
@@ -107,36 +106,6 @@ describe("router", () => {
       expect(scroll).toHaveBeenCalledTimes(reducedMotion ? 0 : 1);
     },
   );
-
-  it("leaves host anchors intact when embedded", () => {
-    const { navigation, target } = setup("features", true);
-    expect(navigation.navigate).not.toHaveBeenCalled();
-    expect(target.querySelector("p")!.textContent).toBe("library:{}");
-  });
-
-  it("preserves host scrolling and focus without page-wide transitions when embedded", async () => {
-    const { navigation, target } = setup("/library", true);
-    const start = vi.fn();
-    document.startViewTransition = start;
-    const scroll = vi.fn();
-    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
-    navigation.dispatchEvent(
-      Object.assign(new Event("navigate"), {
-        navigationType: "push",
-        canIntercept: true,
-        destination: { url: new URL("#/player", window.location.href).href },
-        scroll,
-        intercept,
-      }),
-    );
-    await intercept.mock.results[0].value;
-    expect(intercept).toHaveBeenCalledWith(
-      expect.objectContaining({ scroll: "manual", focusReset: "manual" }),
-    );
-    expect(target.querySelector("p")!.textContent).toBe("player:{}");
-    expect(scroll).not.toHaveBeenCalled();
-    expect(start).not.toHaveBeenCalled();
-  });
 
   it("does not navigate to the current URL", () => {
     const navigation = installNavigation("/library");
@@ -227,7 +196,7 @@ describe("router", () => {
   });
 
   it("publishes reactive metadata, including URL changes within the same pattern", async () => {
-    const { navigation, target } = setup("/unknown", true);
+    const { navigation, target } = setup("/unknown");
     const summary = target.querySelector<HTMLElement>("[data-route-pattern]")!;
     expect(summary.dataset.routePattern).toBe("/library");
     expect(route.url?.hash).toBe("#/unknown");
@@ -249,7 +218,7 @@ describe("router", () => {
   });
 
   it("leaves route metadata unchanged for aborted navigation", async () => {
-    const { navigation, target } = setup("/library", true);
+    const { navigation, target } = setup("/library");
     const summary = target.querySelector<HTMLElement>("[data-route-pattern]")!;
     const committedUrl = route.url;
     const controller = new AbortController();

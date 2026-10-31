@@ -48,7 +48,7 @@
     const sourceURL = window.location.href;
     if (await session.connect({ host, username, password })) {
       host = username = password = "";
-      // Session may finish after navigation starts or an embedded app is hidden.
+      // Session may finish after navigation starts or Settings is hidden.
       if (window.location.href === sourceURL && view?.checkVisibility()) navigate("/library");
     }
   }
