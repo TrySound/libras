@@ -154,7 +154,8 @@ It uses the same styles as production, not a separate component library.
   Error details remain in the shared shell popover. Presentation examples belong in
   `styleguide.html`; behavior contracts are covered by `tests/app-settings.test.ts`.
 - Library (`src/_library.svelte`) uses shared collection tiles and an app-container-aware
-  auto-fit grid. Preserve artist ordering, 48-item lazy batches, offline filtering, and real
+  auto-fill grid so small collections retain normal tile sizing. Preserve artist ordering,
+  48-item lazy batches, offline filtering, and real
   collection actions. Explicit options open a mobile modal or desktop popover; long-press
   retains the shared modal with Escape/close-button/swipe dismissal (light-dismiss would
   consume the long-press release). Overlay dismissal stays native rather than resize-driven.

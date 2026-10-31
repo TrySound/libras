@@ -1390,7 +1390,8 @@
   .tile-grid {
     --tile-min-size: 8.5rem;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(var(--tile-min-size), 100%), 1fr));
+    /* Keep empty columns so small collections don't stretch across the row. */
+    grid-template-columns: repeat(auto-fill, minmax(min(var(--tile-min-size), 100%), 1fr));
     gap: var(--space-md);
     @container app (width > 50rem) {
       --tile-min-size: 12rem;
