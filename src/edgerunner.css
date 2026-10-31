@@ -1,7 +1,7 @@
 /* Edgerunner design system.
  * Published Maroon/Gold primitives → semantic color and typography roles.
  * Components opt in by class; containers own spacing and layout.
- * Additional themes and selection are separate work in #54.
+ * Halloween is selected declaratively; runtime theme selection remains separate.
  */
 @import "./edgerunner-fonts.css";
 
@@ -244,6 +244,118 @@
   --layer-player: 20;
 
   color-scheme: dark;
+}
+
+/* Reapply semantic recipes at both roots: .app-root resets the default roles.
+ * Keep the published Maroon/Gold primitives and the default theme intact. */
+:root[data-theme="halloween"],
+:root[data-theme="halloween"] .app-root {
+  --palette-halloween-ink: #100e0c;
+  --palette-halloween-charcoal: #27231f;
+  --palette-halloween-charcoal-deep: #1b1815;
+  --palette-halloween-charcoal-hover: #39312a;
+  --palette-halloween-charcoal-active: #493b2e;
+  --palette-halloween-ash: #c18146;
+  --palette-halloween-ash-light: #e8ab67;
+  --palette-halloween-ember: #48240c;
+  --palette-halloween-ember-deep: #26170d;
+  --palette-halloween-orange: #ff9b38;
+  --palette-halloween-orange-hover: #ffb45e;
+  --palette-halloween-orange-active: #e58025;
+  --palette-halloween-ivory: #fff3df;
+  --palette-halloween-muted: #d5c5af;
+  --palette-halloween-error: #ff9caa;
+
+  /* One round, scalloped web, painted only by the atmosphere layer.
+   * Quadratic threads sag between knotted spokes.
+   * SVG paint is self-contained; custom properties cannot cross image boundaries. */
+  --halloween-web-bg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='720' height='720' viewBox='0 0 720 720'%3E%3Cdefs%3E%3Cg id='ring'%3E%3Cpath d='M0-100Q18-54 70.7-70.7Q54-18 100 0Q54 18 70.7 70.7Q18 54 0 100Q-18 54-70.7 70.7Q-54 18-100 0Q-54-18-70.7-70.7Q-18-54 0-100Z' fill='none' stroke='%23fff3df' stroke-opacity='.15' stroke-width='1.15' vector-effect='non-scaling-stroke'/%3E%3Cg fill='%23fff3df' fill-opacity='.3'%3E%3Cellipse cy='-100' rx='1' ry='1.5'/%3E%3Cellipse cx='70.7' cy='-70.7' rx='1.3' ry='1'/%3E%3Cellipse cx='100' rx='1.5' ry='1'/%3E%3Cellipse cx='70.7' cy='70.7' rx='1' ry='1.3'/%3E%3Cellipse cy='100' rx='1' ry='1.5'/%3E%3Cellipse cx='-70.7' cy='70.7' rx='1.3' ry='1'/%3E%3Cellipse cx='-100' rx='1.5' ry='1'/%3E%3Cellipse cx='-70.7' cy='-70.7' rx='1' ry='1.3'/%3E%3C/g%3E%3C/g%3E%3C/defs%3E%3Cpath d='M0 0L720 720M720 0L0 720M0 360H720M360 0V720' fill='none' stroke='%23fff3df' stroke-opacity='.12' stroke-width='1'/%3E%3Cg transform='translate(360 360)'%3E%3Cuse href='%23ring' transform='scale(.48)'/%3E%3Cuse href='%23ring' transform='scale(.98)'/%3E%3Cuse href='%23ring' transform='scale(1.58)'/%3E%3Cuse href='%23ring' transform='scale(2.28)'/%3E%3Cuse href='%23ring' transform='scale(3.08)'/%3E%3Cellipse rx='3' ry='4' fill='%23fff3df' fill-opacity='.3'/%3E%3C/g%3E%3C/svg%3E")
+    right -70px top -100px / 720px 720px no-repeat;
+  --atmosphere-lines-bg: var(--halloween-web-bg);
+  --canvas-bg:
+    radial-gradient(
+      ellipse at 100% 0% in oklab,
+      rgb(from var(--palette-halloween-orange) r g b / 22%),
+      transparent 55%
+    ),
+    radial-gradient(
+        ellipse at 0% 100% in oklab,
+        rgb(from var(--palette-halloween-orange-active) r g b / 12%),
+        transparent 60%
+      )
+      var(--palette-halloween-ink);
+  --surface-bg: linear-gradient(
+    135deg in oklab,
+    var(--palette-halloween-ember),
+    var(--palette-halloween-charcoal-deep) 75%
+  );
+  --shell-bg: linear-gradient(
+    135deg in oklab,
+    var(--palette-halloween-ember-deep),
+    var(--palette-halloween-ink)
+  );
+
+  /* Artwork labels remain white over their existing dark scrim. */
+  --tile-text: var(--palette-white);
+  --text-primary: var(--palette-halloween-ivory);
+  --text-secondary: var(--palette-halloween-muted);
+  --text-subtle: var(--palette-halloween-muted);
+  --error-text: var(--palette-halloween-error);
+  --loader-bg: var(--palette-halloween-ash);
+  --primary-bg: var(--palette-halloween-orange);
+  --primary-bg-hover: var(--palette-halloween-orange-hover);
+  --primary-bg-active: var(--palette-halloween-orange-active);
+  --primary-text: var(--palette-halloween-ink);
+  --secondary-bg: var(--palette-halloween-charcoal);
+  --secondary-bg-hover: var(--palette-halloween-charcoal-hover);
+  --secondary-bg-active: var(--palette-halloween-charcoal-active);
+  --secondary-text: var(--palette-halloween-ivory);
+  --ghost-bg: transparent;
+  --ghost-bg-hover: var(--palette-halloween-charcoal-hover);
+  --ghost-bg-active: var(--palette-halloween-charcoal-active);
+  --ghost-text: var(--palette-halloween-ivory);
+  --quiet-text-hover: var(--palette-halloween-orange-hover);
+  --quiet-text-active: var(--palette-halloween-orange-active);
+  --item-bg: transparent;
+  --item-bg-hover: var(--palette-halloween-charcoal-hover);
+  --item-bg-active: var(--palette-halloween-charcoal-active);
+  --item-text: var(--palette-halloween-ivory);
+  --item-border: var(--palette-halloween-ash);
+  --item-border-hover: var(--palette-halloween-ash-light);
+  --item-border-active: var(--palette-halloween-orange);
+  --surface-border: var(--palette-halloween-ash);
+  --shell-border: var(--palette-halloween-ash);
+  --scrollbar-bg: var(--palette-halloween-charcoal);
+  --accent: var(--palette-halloween-orange);
+
+  /* Unsupported corner-shape leaves the existing border-radius as a fallback. */
+  --corner-shape: scoop;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  /* Creepster has one weight. Keep body and control typography intact. */
+  --brand-font: "Creepster", var(--font-display);
+  --brand-weight: 400;
+  --heading-xl-font: "Creepster", var(--font-display);
+  --heading-lg-font: "Creepster", var(--font-display);
+  --heading-md-font: "Creepster", var(--font-display);
+  --heading-sm-font: "Creepster", var(--font-display);
+  --heading-xl-weight: 400;
+  --heading-lg-weight: 400;
+  --heading-md-weight: 400;
+  --heading-sm-weight: 400;
+  --heading-xl-tracking: 0.025em;
+  --heading-lg-tracking: 0.025em;
+  --heading-md-tracking: 0.025em;
+  --heading-sm-tracking: 0.025em;
+}
+
+/* The checked track must contrast with its accent-colored thumb. */
+:root[data-theme="halloween"] .switch {
+  --primary-bg: var(--palette-halloween-ember);
 }
 
 /* Paint only standalone documents, never an embedded application's host. */
