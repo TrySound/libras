@@ -920,6 +920,7 @@
 
     &[data-size="text"] {
       --button-padding-inline: var(--space-md);
+      font-weight: var(--font-weight-semibold);
     }
 
     &:not(:disabled) {

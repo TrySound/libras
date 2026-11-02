@@ -53,272 +53,201 @@
       }
     </style>
   </head>
-  <body>
-    <div class="website">
-      <a class="site-skip-link" href="#main-content">Skip to content</a>
-      <section
-        class="site-hero site-container stack-lg"
-        id="main-content"
-        tabindex="-1"
-        aria-labelledby="hero-title"
+  <body class="website">
+    <a class="site-skip-link" href="#main-content">Skip to content</a>
+    <header class="site-topbar site-container">
+      <a
+        class="row-sm brand uppercase"
+        href="%BASE_URL%"
+        aria-label="Libras home"
+        target="_blank"
+        rel="noopener"
       >
-        <a class="row-sm brand uppercase" href="%BASE_URL%" aria-label="Libras home">
-          <svg aria-hidden="true" width="32" height="32">
-            <use href="#icon-brand"></use>
-          </svg>
-          <span>Libras</span>
-        </a>
+        <svg aria-hidden="true" width="32" height="32"><use href="#icon-brand"></use></svg>
+        <span>Libras</span>
+      </a>
+      <nav class="site-topbar-links row-sm body" aria-label="Primary">
+        <a
+          class="button"
+          data-size="text"
+          data-variant="secondary"
+          href="https://github.com/TrySound/libras"
+          target="_blank"
+          rel="noopener"
+          >GitHub</a
+        >
+        <a
+          class="button"
+          data-size="text"
+          data-variant="primary"
+          href="/webapp/"
+          target="_blank"
+          rel="noopener"
+          >Log in</a
+        >
+      </nav>
+    </header>
+    <main id="main-content" tabindex="-1">
+      <section class="site-hero site-container stack-lg" aria-labelledby="hero-title">
         <h1 class="heading-xl container-md" id="hero-title">
           <span>Connect your music library</span>
           <span>and listen anywhere.</span>
         </h1>
-        <p class="site-hero-description body text-subtle">
-          A music player for Navidrome and OpenSubsonic-compatible servers. Stream your library or
-          download music for offline listening.
+        <p class="site-hero-description site-subtitle body">
+          A music player for your Navidrome server. Stream your library or download music for
+          offline listening.
         </p>
         <div class="row-md row-wrap row-center">
-          <a class="button" data-size="text" data-variant="primary" href="/webapp/"
+          <a
+            class="button"
+            data-size="large-text"
+            data-variant="primary"
+            href="/webapp/"
+            target="_blank"
+            rel="noopener"
             >Connect your server</a
           >
-          <a class="button" data-size="text" data-variant="secondary" href="%BASE_URL%demo/"
+          <a
+            class="button"
+            data-size="large-text"
+            data-variant="secondary"
+            href="%BASE_URL%demo/"
+            target="_blank"
+            rel="noopener"
             >Try live demo</a
           >
         </div>
       </section>
 
-      <section
-        class="site-section site-container stack-xl"
-        id="features"
-        aria-labelledby="features-title"
-      >
-        <h2 class="heading-lg" id="features-title">Everything you need.</h2>
-        <div class="site-feature-grid">
-          <article class="card site-feature site-feature-library">
+      <div class="site-preview site-container">
+        <img
+          class="site-screenshot"
+          src="%BASE_URL%screenshots/hero.webp"
+          width="1440"
+          height="900"
+          fetchpriority="high"
+          alt="Libras’s desktop library with 3 Libras by A Perfect Circle playing in the compact bottom player."
+        />
+      </div>
+
+      <div class="site-section site-container site-features" id="features">
+        <div class="site-feature-list">
+          <article class="site-feature">
             <div class="site-feature-copy stack-md">
-              <div class="row-sm">
-                <span class="site-feature-icon">
-                  <svg aria-hidden="true" width="20" height="20">
-                    <use href="#icon-music"></use>
-                  </svg>
-                </span>
-                <h3 class="heading-md">Your collection.</h3>
-              </div>
-              <p class="body text-subtle">
-                Browse artists, explore albums, and search for the track stuck in your head.
+              <h2 class="heading-lg text-subtle">Not another gray music player.</h2>
+              <p class="site-subtitle body">
+                The design takes cues from video game interfaces, with bright colors and angular
+                controls. Album artwork gets plenty of space, whether you’re browsing your library
+                or choosing the next track.
+                <a class="text-link" href="%BASE_URL%demo/">Explore the live demo →</a>
               </p>
             </div>
-            <div class="site-record-scene" aria-hidden="true">
-              <div class="site-record-sleeve">
-                <svg aria-hidden="true" width="64" height="64">
-                  <use href="#icon-brand"></use>
-                </svg>
-              </div>
-              <div class="site-vinyl">
-                <div>
-                  <svg aria-hidden="true" width="20" height="20">
-                    <use href="#icon-brand"></use>
-                  </svg>
-                </div>
-              </div>
+            <div class="site-feature-media">
+              <img
+                class="site-screenshot"
+                src="%BASE_URL%screenshots/desktop.webp"
+                width="1440"
+                height="900"
+                loading="lazy"
+                decoding="async"
+                alt="Archive’s Controlling Crowds album and Bullets in Libras’s bright, game-inspired desktop interface."
+              />
             </div>
           </article>
-          <article class="card site-feature stack-md">
-            <div class="row-sm">
-              <span class="site-feature-icon">
-                <svg aria-hidden="true" width="20" height="20">
-                  <use href="#icon-download"></use>
-                </svg>
-              </span>
-              <h3 class="heading-md">Take the long way home.</h3>
+          <article class="site-feature site-feature-compact">
+            <div class="site-feature-copy stack-md">
+              <h2 class="heading-lg text-subtle">Your music goes where your browser goes.</h2>
+              <p class="site-subtitle body">
+                Open Libras on your computer, tablet, or phone and connect to your Navidrome server.
+                There’s nothing to install, but you can add it to your home screen or desktop if
+                you’d rather use it as a separate app.
+              </p>
             </div>
-            <p class="body text-subtle">
-              Download your favorites, switch to Offline Library, and keep listening when the
-              connection doesn’t come along.
-            </p>
-            <div class="site-download-visual" aria-hidden="true">
-              <div class="row-sm caption">
-                <span class="site-download-art">
-                  <svg aria-hidden="true" width="20" height="20">
-                    <use href="#icon-music"></use>
-                  </svg>
-                </span>
-                <span>Available offline</span>
-                <span class="site-download-check">
-                  <svg aria-hidden="true" width="20" height="20">
-                    <use href="#icon-check"></use>
-                  </svg>
-                </span>
-              </div>
-              <div class="site-download-line"></div>
+            <div class="site-feature-media site-feature-media-compact">
+              <img
+                class="site-screenshot"
+                src="%BASE_URL%screenshots/queue.webp"
+                width="1000"
+                height="800"
+                loading="lazy"
+                decoding="async"
+                alt="Now Playing with album artwork, playback controls, and the Up Next queue alongside it."
+              />
             </div>
           </article>
-          <article class="card site-feature stack-md">
-            <div class="row-sm">
-              <span class="site-feature-icon">
-                <svg aria-hidden="true" width="20" height="20">
-                  <use href="#icon-clock"></use>
-                </svg>
-              </span>
-              <h3 class="heading-md">Right where you left off.</h3>
+          <article class="site-feature site-feature-mobile">
+            <div class="site-feature-copy stack-md">
+              <h2 class="heading-lg text-subtle">Your downloads don’t need a signal.</h2>
+              <p class="site-subtitle body">
+                Download music before you head out, then turn on Offline Library in Settings. You’ll
+                see only the music saved on this device, instead of a library full of tracks you
+                can’t play. Downloads stay on this device. Clearing site data deletes saved music.
+              </p>
             </div>
-            <p class="body text-subtle">
-              Your queue and playback position are saved between sessions.
-            </p>
-            <div class="site-waveform row-xs row-justify" aria-hidden="true">
-              <span class="site-waveform-played" style="height: 18%"></span>
-              <span class="site-waveform-played" style="height: 32%"></span>
-              <span class="site-waveform-played" style="height: 24%"></span>
-              <span class="site-waveform-played" style="height: 48%"></span>
-              <span class="site-waveform-played" style="height: 36%"></span>
-              <span class="site-waveform-played" style="height: 64%"></span>
-              <span class="site-waveform-played" style="height: 42%"></span>
-              <span class="site-waveform-played" style="height: 76%"></span>
-              <span class="site-waveform-played" style="height: 56%"></span>
-              <span class="site-waveform-played" style="height: 88%"></span>
-              <span class="site-waveform-played" style="height: 64%"></span>
-              <span class="site-waveform-played" style="height: 44%"></span>
-              <span class="site-waveform-played" style="height: 72%"></span>
-              <span class="site-waveform-played" style="height: 96%"></span>
-              <span style="height: 58%"></span><span style="height: 80%"></span>
-              <span style="height: 48%"></span><span style="height: 68%"></span>
-              <span style="height: 38%"></span><span style="height: 56%"></span>
-              <span style="height: 30%"></span><span style="height: 44%"></span>
-              <span style="height: 22%"></span><span style="height: 34%"></span>
-              <span style="height: 18%"></span>
+            <div class="site-feature-media site-feature-media-mobile">
+              <img
+                class="site-screenshot"
+                src="%BASE_URL%screenshots/mobile.webp"
+                width="390"
+                height="844"
+                loading="lazy"
+                decoding="async"
+                alt="Libras’s mobile settings with the Offline Library switch enabled to show downloaded music only."
+              />
             </div>
-          </article>
-          <article class="card site-feature stack-md">
-            <div class="row-sm">
-              <span class="site-feature-icon">
-                <svg aria-hidden="true" width="20" height="20">
-                  <use href="#icon-home"></use>
-                </svg>
-              </span>
-              <h3 class="heading-md">Browser or app.</h3>
-            </div>
-            <p class="body text-subtle">
-              Listen right in your browser, or install Libras as a standalone web app. No app store
-              required.
-            </p>
-            <div class="site-install-visual card row-sm caption" aria-hidden="true">
-              <span class="site-app-icon">
-                <svg aria-hidden="true" width="32" height="32">
-                  <use href="#icon-brand"></use>
-                </svg>
-              </span>
-              <span
-                >Libras<small class="caption text-subtle">Make room for your music.</small></span
-              >
-            </div>
-          </article>
-          <article class="card site-feature stack-md">
-            <div class="row-sm">
-              <span class="site-feature-icon metadata" aria-hidden="true"> &lt;/&gt; </span>
-              <h3 class="heading-md">Open, in every sense.</h3>
-            </div>
-            <p class="body text-subtle">
-              Your server holds the music. You hold the keys. Libras is free, MIT-licensed, and open
-              for you to explore or make your own.
-            </p>
-            <a class="text-link row-sm" href="https://github.com/TrySound/libras" target="_blank">
-              Look under the hood
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path
-                  d="M3 8h10M8 3l5 5-5 5"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </a>
           </article>
         </div>
-      </section>
+      </div>
 
-      <section class="site-section site-faq site-container" aria-labelledby="faq-title">
-        <h2 class="heading-lg" id="faq-title">Before you press play.</h2>
-        <div class="site-faq-list">
-          <details name="faq">
-            <summary>Is Libras a music streaming service?</summary>
-            <p class="body text-subtle">
-              Libras is a player, not a music hosting service. Bring your own music library on a
-              compatible server. The live demo lets you try a few Deezer previews before connecting
-              your own. Downloads may not work in the demo.
-            </p>
-          </details>
-          <details name="faq">
-            <summary>Is it really free?</summary>
-            <p class="body text-subtle">
-              Yes. Libras is free and open source under the MIT license, with no Libras
-              subscription. You’re responsible for your own music server and any hosting costs.
-            </p>
-          </details>
-          <details name="faq">
-            <summary>How does offline listening work?</summary>
-            <p class="body text-subtle">
-              Download tracks while online, then turn on Offline Library. Downloads are stored on
-              your device. Clearing site data deletes your saved music.
-            </p>
-          </details>
-          <details name="faq">
-            <summary>Can I use it on my phone?</summary>
-            <p class="body text-subtle">
-              Yes, use it in your browser or add it to your home screen. On iPhone and iPad, use
-              Safari’s Share → Add to Home Screen. Installation varies by browser; offline storage
-              and background playback have not yet been verified on iOS.
-            </p>
-          </details>
-          <details name="faq">
-            <summary>Which servers are supported?</summary>
-            <p class="body text-subtle">
-              Use a reachable HTTPS server with a Subsonic-compatible API, such as Navidrome. It
-              needs OpenSubsonic empty-query search3 support and CORS configured to allow requests
-              from the Libras origin.
-              <a
-                class="text-link"
-                href="https://github.com/TrySound/libras#get-started"
-                target="_blank"
-                >Read the setup requirements.</a
-              >
-            </p>
-          </details>
-        </div>
-      </section>
-
-      <section class="site-final-cta site-container stack-xl" aria-labelledby="cta-title">
-        <div class="site-cta-emblem" aria-hidden="true">
-          <svg aria-hidden="true" width="64" height="64">
-            <use href="#icon-brand"></use>
-          </svg>
-        </div>
-        <h2 class="heading-lg container-md" id="cta-title">
-          Your favorite songs are already in your library.
+      <section
+        class="site-section site-servers site-container stack-lg"
+        aria-labelledby="servers-title"
+      >
+        <h2 class="heading-lg text-subtle" id="servers-title">
+          Your library stays on your server.
         </h2>
-        <a class="button" data-size="text" data-variant="primary" href="/webapp/"
-          >Start listening</a
+        <p class="site-subtitle body">
+          Libras connects to
+          <a class="text-link" href="https://www.navidrome.org/" target="_blank" rel="noopener"
+            >Navidrome</a
+          >, which hosts your music and streams it to your devices. Enter your server address and
+          sign in with your existing account. Libras doesn’t host or upload your music.
+        </p>
+        <p class="site-subtitle body">
+          Other Subsonic-compatible servers may also work if they meet the setup requirements. Your
+          server needs to be reachable over HTTPS and allow browser connections from Libras through
+          CORS.
+        </p>
+        <a
+          class="button"
+          data-size="large-text"
+          data-variant="secondary"
+          href="https://github.com/TrySound/libras#get-started"
+          target="_blank"
+          rel="noopener"
+          >Check server requirements</a
         >
       </section>
-      <footer class="site-footer site-container row-lg row-wrap row-justify">
-        <div>
-          <a class="row-sm brand uppercase" href="%BASE_URL%">
-            <svg aria-hidden="true" width="20" height="20">
-              <use href="#icon-brand"></use>
-            </svg>
-            <span>Libras</span>
-          </a>
+
+      <section class="site-final-cta site-container stack-lg" aria-labelledby="cta-title">
+        <div class="site-cta-emblem" aria-hidden="true">
+          <svg aria-hidden="true" width="64" height="64"><use href="#icon-brand"></use></svg>
         </div>
-        <nav class="row-lg text-subtle body" aria-label="Footer navigation">
-          <a class="text-link" href="https://github.com/TrySound/libras" target="_blank">GitHub</a>
-          <a
-            class="text-link"
-            href="https://github.com/TrySound/libras/blob/main/LICENSE"
-            target="_blank"
-            >MIT License</a
-          >
-          <a class="text-link" href="%BASE_URL%demo/#/settings">Music credits</a>
-        </nav>
-      </footer>
-    </div>
+        <h2 class="heading-lg container-md text-subtle" id="cta-title">Free and open source.</h2>
+        <p class="site-subtitle body site-open-source-description">
+          Libras is released under the MIT license. You can read the code, change it, or run your
+          own copy. Bugs and suggestions are welcome on GitHub.
+        </p>
+        <a
+          class="button"
+          data-size="large-text"
+          data-variant="primary"
+          href="https://github.com/TrySound/libras"
+          target="_blank"
+          rel="noopener"
+          >View on GitHub</a
+        >
+      </section>
+    </main>
   </body>
 </html>
