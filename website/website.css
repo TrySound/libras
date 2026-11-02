@@ -129,12 +129,18 @@
   }
   .site-hero-description {
     max-inline-size: 52rem;
-    text-wrap: balance;
   }
   .site-subtitle {
     font-size: clamp(1.125rem, 1rem + 0.4vw, 1.375rem);
     font-weight: 500;
     line-height: 1.65;
+    text-wrap: balance;
+  }
+  .site-body {
+    font-size: clamp(1rem, 0.95rem + 0.3vw, 1.1875rem);
+    font-weight: 500;
+    line-height: 1.65;
+    text-wrap: pretty;
   }
   .button[data-size="large-text"] {
     --button-padding-inline: var(--space-md);

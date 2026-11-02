@@ -30,7 +30,9 @@ it("serves landing content and destinations without executing JavaScript", () =>
   expect(page.querySelector(".site-feature-step")).toBeNull();
   expect(page.querySelector(".site-hero-description")?.textContent).toContain("Navidrome server");
   expect(page.body.textContent).not.toContain("OpenSubsonic");
-  expect(page.querySelectorAll(".site-feature-copy .site-subtitle")).toHaveLength(3);
+  expect(page.querySelectorAll(".site-feature-copy .site-body")).toHaveLength(3);
+  expect(page.querySelectorAll(".site-subtitle")).toHaveLength(1);
+  expect(page.querySelector(".site-hero .site-subtitle")).not.toBeNull();
 
   for (const anchor of page.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')) {
     expect(page.getElementById(anchor.hash.slice(1))).not.toBeNull();
@@ -41,10 +43,10 @@ it("removes the FAQ and keeps server descriptions in regular text color", () => 
   const page = landingPage();
   expect(page.querySelector(".site-faq")).toBeNull();
   expect(page.querySelector("details")).toBeNull();
-  expect(page.querySelectorAll(".site-servers .site-subtitle")).toHaveLength(2);
+  expect(page.querySelectorAll(".site-servers .site-body")).toHaveLength(2);
   expect(page.querySelector(".site-servers p.text-subtle")).toBeNull();
   expect(page.querySelectorAll("h2.text-subtle")).toHaveLength(5);
-  expect(page.querySelector(".site-subtitle.text-subtle")).toBeNull();
+  expect(page.querySelector(".site-body.text-subtle")).toBeNull();
   expect(page.body.textContent).toContain("Clearing site data deletes");
 });
 
@@ -75,7 +77,7 @@ it("focuses features on the interface, browser access, and downloaded-only offli
   expect(page.getElementById("features-title")).toBeNull();
   expect(page.querySelectorAll(".site-feature h2")).toHaveLength(3);
   expect(page.querySelector(".site-features h3")).toBeNull();
-  const descriptions = [...page.querySelectorAll(".site-feature-copy .site-subtitle")];
+  const descriptions = [...page.querySelectorAll(".site-feature-copy .site-body")];
   expect(descriptions[0].textContent).toContain("video game interfaces");
   expect(descriptions[1].textContent).toContain("computer, tablet, or phone");
   expect(descriptions[2].textContent?.replace(/\s+/g, " ")).toContain(
