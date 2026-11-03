@@ -120,6 +120,12 @@
   --scrollbar-bg: var(--palette-maroon-shade-4);
   --accent: var(--palette-gold-tint-0);
 
+  /* Elevation: centered contact + ambient blur, independent of overlapping edge. */
+  --shadow-sm: 0 0 4px #0004, 0 0 12px #0003;
+  --shadow-md: 0 0 4px #0004, 0 0 16px #0003;
+  --shadow-lg: 0 0 6px #0006, 0 0 28px #0005;
+  --shadow-xl: 0 0 12px #0007, 0 0 56px #0006;
+
   /* Shape primitives: literal values, consumed directly. */
   --corner-shape: square bevel;
   --radius-xs: 2px;
@@ -602,6 +608,7 @@
   }
 
   .card {
+    box-shadow: var(--shadow-md);
     min-inline-size: 0;
     padding: var(--space-lg);
     border: var(--border-width) solid var(--shell-border);
@@ -742,6 +749,7 @@
   /* Native checkbox behavior; a fixed gold thumb slides between grid cells. */
   .switch {
     --press-scale: var(--press-scale-compact);
+    box-shadow: var(--shadow-sm);
     appearance: none;
     box-sizing: border-box;
     display: inline-grid;
@@ -783,7 +791,12 @@
       outline-offset: var(--focus-ring-offset);
     }
 
+    &:active:not(:disabled) {
+      box-shadow: none;
+    }
+
     &:disabled {
+      box-shadow: none;
       opacity: 0.4;
       cursor: default;
     }
@@ -927,6 +940,7 @@
       &:hover,
       &:focus-visible {
         background: var(--ghost-bg-hover);
+        box-shadow: var(--shadow-sm);
       }
 
       &:active {
@@ -935,6 +949,7 @@
     }
 
     &[data-variant="primary"] {
+      box-shadow: var(--shadow-sm);
       background: var(--primary-bg);
       color: var(--primary-text);
 
@@ -955,6 +970,7 @@
     }
 
     &[data-variant="secondary"] {
+      box-shadow: var(--shadow-sm);
       color: var(--secondary-text);
       background: var(--secondary-bg);
 
@@ -970,7 +986,13 @@
       }
     }
 
+    /* Pressed elevation wins over hover/focus, including on ghost buttons. */
+    &:active:not(:disabled) {
+      box-shadow: none;
+    }
+
     &:disabled {
+      box-shadow: none;
       opacity: 0.4;
       cursor: not-allowed;
     }
@@ -980,6 +1002,7 @@
 @scope (.app-root, .design-reference) {
   /* Foreground artwork shares surfaces, crop, geometry and missing-cover state. */
   .artwork {
+    box-shadow: var(--shadow-md);
     view-transition-class: artwork;
     box-sizing: border-box;
     position: relative;
@@ -1018,6 +1041,8 @@
     }
 
     &[data-size="fill"] {
+      /* The enclosing tile owns elevation for full-bleed artwork. */
+      box-shadow: none;
       inline-size: 100%;
       block-size: 100%;
       border: 0;
@@ -1183,6 +1208,7 @@
 
   /* Navigation appearance is independent of app placement. */
   .topbar {
+    box-shadow: var(--shadow-lg);
     position: sticky;
     top: 0;
     z-index: var(--layer-header);
@@ -1209,6 +1235,7 @@
   .bottom-sheet,
   .right-sheet,
   .popover {
+    box-shadow: var(--shadow-xl);
     box-sizing: border-box;
     position: fixed;
     margin: 0;
@@ -1316,6 +1343,7 @@
   }
 
   .notification-popover {
+    box-shadow: var(--shadow-xl);
     box-sizing: border-box;
     inset: 1rem 1rem auto auto;
     margin: 0;
@@ -1398,6 +1426,7 @@
   }
 
   .tile {
+    box-shadow: var(--shadow-md);
     box-sizing: border-box;
     position: relative;
     display: flex;
@@ -1670,6 +1699,7 @@
   }
 
   .mini-player {
+    box-shadow: var(--shadow-lg);
     box-sizing: border-box;
     background: var(--shell-bg);
     backdrop-filter: blur(4px);
