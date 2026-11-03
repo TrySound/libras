@@ -903,7 +903,7 @@
     border: 0;
     border-radius: var(--radius-sm);
     corner-shape: var(--corner-shape);
-    font-family: var(--label-font);
+    font-family: var(--font-display);
     font-size: var(--label-size);
     font-weight: var(--label-weight);
     line-height: var(--label-leading);

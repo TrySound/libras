@@ -128,6 +128,18 @@ it("describes server compatibility between the features and open-source section"
   );
 });
 
+it("preloads both hero and section heading font weights", () => {
+  const fonts = [...landingPage().querySelectorAll('link[rel="preload"][as="font"]')];
+  expect(fonts.map((font) => font.getAttribute("href"))).toEqual([
+    "../src/fonts/rajdhani-600-latin.woff2",
+    "../src/fonts/rajdhani-700-latin.woff2",
+  ]);
+  for (const font of fonts) {
+    expect(font.getAttribute("type")).toBe("font/woff2");
+    expect(font.hasAttribute("crossorigin")).toBe(true);
+  }
+});
+
 it("references existing sprite symbols", () => {
   const sprite = new DOMParser().parseFromString(
     readFileSync("src/sprite.svg", "utf8"),

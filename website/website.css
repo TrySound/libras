@@ -147,7 +147,6 @@
   }
   .button[data-size="large-text"] {
     --button-padding-inline: var(--space-md);
-    font-family: var(--font-display);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-semibold);
   }

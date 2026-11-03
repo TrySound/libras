@@ -32,6 +32,9 @@ test("Edgerunner foundations and native controls", async (t) => {
           background: card.backgroundImage,
           inputPadding: input.padding,
           font: heading.fontFamily,
+          buttonFonts: [...document.querySelectorAll(".button")].map(
+            (button) => getComputedStyle(button).fontFamily,
+          ),
           fontDisplays: [...document.fonts].map((font) => font.display),
         };
       });
@@ -41,6 +44,8 @@ test("Edgerunner foundations and native controls", async (t) => {
       assert.match(styles.background, /linear-gradient/);
       assert.equal(styles.inputPadding, "8px 16px");
       assert.match(styles.font, /Rajdhani/);
+      assert.ok(styles.buttonFonts.length > 0);
+      assert.ok(styles.buttonFonts.every((font) => /Rajdhani/.test(font)));
       assert.equal(styles.fontDisplays.length, 3);
       assert.ok(styles.fontDisplays.every((display) => display === "optional"));
       assert.equal(await page.locator('link[rel="preload"][as="font"][crossorigin]').count(), 3);
