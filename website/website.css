@@ -63,6 +63,7 @@
     background: var(--text-primary);
     color: var(--palette-maroon-shade-7);
     border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
     translate: 0 -200%;
   }
   .site-skip-link:focus {
@@ -79,6 +80,8 @@
   }
   .site-topbar .brand {
     font-size: 2rem;
+    border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
   }
   .site-topbar-links {
     margin-inline-start: auto;

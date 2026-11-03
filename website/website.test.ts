@@ -47,7 +47,7 @@ it("removes the FAQ and keeps server descriptions in regular text color", () => 
   expect(page.querySelector(".site-servers p.text-subtle")).toBeNull();
   expect(page.querySelectorAll("h2.text-subtle")).toHaveLength(5);
   expect(page.querySelector(".site-body.text-subtle")).toBeNull();
-  expect(page.body.textContent).toContain("Clearing site data deletes");
+  expect(page.body.textContent).not.toContain("Clearing site data");
 });
 
 it("shows a desktop preview, progressively narrower feature screenshots, and a final open-source CTA", () => {
@@ -81,7 +81,7 @@ it("focuses features on the interface, browser access, and downloaded-only offli
   expect(descriptions[0].textContent).toContain("video game interfaces");
   expect(descriptions[1].textContent).toContain("computer, tablet, or phone");
   expect(descriptions[2].textContent?.replace(/\s+/g, " ")).toContain(
-    "only the music saved on this device",
+    "browse and play your downloads without a connection",
   );
   expect(page.querySelector(".site-preview img")?.getAttribute("alt")).toContain("3 Libras");
   expect(page.querySelector(".site-feature img")?.getAttribute("alt")).toContain("Bullets");
@@ -94,10 +94,14 @@ it("places branding and new-tab navigation in the top bar instead of the hero", 
   expect(page.querySelectorAll('header nav a.button[data-size="text"]')).toHaveLength(2);
   expect(page.querySelectorAll('main .button[data-size="large-text"]')).toHaveLength(4);
   expect(page.querySelector("header nav a[data-variant='primary']")?.textContent?.trim()).toBe(
-    "Log in",
+    "Open player",
   );
   const links = [...page.querySelectorAll("header a")];
-  expect(links.map((link) => link.textContent?.trim())).toEqual(["Libras", "GitHub", "Log in"]);
+  expect(links.map((link) => link.textContent?.trim())).toEqual([
+    "Libras",
+    "GitHub",
+    "Open player",
+  ]);
   expect(links.map((link) => link.getAttribute("href"))).toEqual([
     "/",
     "https://github.com/TrySound/libras",
