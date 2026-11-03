@@ -1224,7 +1224,7 @@
   .sidebar {
     box-sizing: border-box;
     background: var(--surface-bg);
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(1px);
     padding: var(--content-padding-block) var(--content-padding-inline);
     overflow: auto;
     overscroll-behavior: contain;
