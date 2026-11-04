@@ -8,7 +8,7 @@ Libras is a browser-based minimalistic music player that connects to your own mu
 
 > Named after “3 Libras” by A Perfect Circle.
 
-![Libras music player interface](libras-ui.jpg)
+![Libras music player interface](website/public/screenshots/hero.webp)
 
 ## Features
 
