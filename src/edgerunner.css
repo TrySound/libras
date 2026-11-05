@@ -181,7 +181,7 @@
   --heading-md-tracking: var(--tracking-tight);
 
   --heading-sm-font: var(--font-display);
-  --heading-sm-size: clamp(var(--font-size-sm), 1.7vw, var(--font-size-lg));
+  --heading-sm-size: clamp(1.125rem, 1.7vw, var(--font-size-lg));
   --heading-sm-weight: var(--font-weight-semibold);
   --heading-sm-leading: var(--leading-tight);
   --heading-sm-tracking: var(--tracking-tight);

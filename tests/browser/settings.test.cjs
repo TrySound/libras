@@ -220,6 +220,10 @@ test("Settings native controls, layout, and persistence", async (t) => {
         (node) => getComputedStyle(node, "::before").backgroundColor,
       );
       assert.equal(onThumb, "rgb(239, 191, 4)");
+      assert.equal(
+        await control.evaluate((node) => getComputedStyle(node).backgroundColor),
+        "rgb(129, 0, 0)",
+      );
       assert.equal(calls.filter((method) => method === "ping").length, pings);
       const searches = calls.filter((method) => method === "search3").length;
       await control.focus();

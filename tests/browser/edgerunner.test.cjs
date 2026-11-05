@@ -99,6 +99,70 @@ test("Edgerunner foundations and native controls", async (t) => {
       assert.deepEqual(sizing, ["16px", "20px"]);
     });
 
+    await t.test("small headings remain readable on narrow screens and enlarged text", async () => {
+      await page.setViewportSize({ width: 375, height: 900 });
+      const heading = page.locator(".heading-sm").first();
+      assert.equal(await heading.evaluate((node) => getComputedStyle(node).fontSize), "18px");
+      await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
+      assert.equal(await heading.evaluate((node) => getComputedStyle(node).fontSize), "36px");
+      await page.evaluate(() => document.documentElement.style.removeProperty("font-size"));
+      await page.setViewportSize({ width: 1280, height: 900 });
+    });
+
+    await t.test(
+      "primary buttons preserve readable contrast in every interaction state",
+      async (t) => {
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        const primary = page.locator('.control-example .button[data-variant="primary"]').first();
+        const luminance = (color) => {
+          const [r, g, b] = color
+            .match(/[\d.]+/g)
+            .slice(0, 3)
+            .map((channel) => {
+              const value = Number(channel) / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            });
+          return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        };
+        const contrast = (a, b) => {
+          const values = [luminance(a), luminance(b)].sort((a, b) => b - a);
+          return (values[0] + 0.05) / (values[1] + 0.05);
+        };
+        const colors = () =>
+          primary.evaluate((node) => {
+            const style = getComputedStyle(node);
+            return { text: style.color, background: style.backgroundColor };
+          });
+        await primary.scrollIntoViewIfNeeded();
+        await page.mouse.move(0, 0);
+        const normal = await colors();
+        await primary.hover();
+        const hover = await colors();
+        let pressed;
+        try {
+          await page.mouse.down();
+          pressed = await colors();
+        } finally {
+          await page.mouse.up();
+        }
+        await page.mouse.move(0, 0);
+        await primary.focus();
+        let keyboardPressed;
+        try {
+          await page.keyboard.down("Space");
+          keyboardPressed = await colors();
+        } finally {
+          await page.keyboard.up("Space");
+        }
+        for (const [state, value] of Object.entries({ normal, hover, pressed, keyboardPressed })) {
+          const ratio = contrast(value.text, value.background);
+          assert.ok(ratio >= 4.5, `${state} text contrast ${ratio}`);
+          t.diagnostic(`${state} primary text contrast: ${ratio.toFixed(2)}:1`);
+        }
+        await page.emulateMedia({ reducedMotion: null });
+      },
+    );
+
     await t.test("app entry preloads all swap faces without duplicate font requests", async () => {
       const context = await browser.newContext();
       const app = await context.newPage();

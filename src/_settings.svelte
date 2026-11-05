@@ -99,11 +99,9 @@
               </span>
             {:else}
               <span>
-                {#if connectionState !== "connected"}{connectionLabel}{/if}
+                {connectionLabel}
                 {#if session.auth && !connectionLoading}
-                  {#if connectionState === "offline" || connectionFailed}
-                    ·
-                  {/if}
+                  ·
                   <span id="settings-server-identity">{session.auth.username}@{serverAddress}</span>
                 {/if}
               </span>
@@ -145,7 +143,7 @@
               : "settings-auth-help"}
           >
             <p class="caption text-secondary" id="settings-auth-help">
-              Sign in to your Navidrome server to listen to your music.
+              Connect to your Navidrome server to browse your library and stream music.
             </p>
             <div class="stack-xs">
               <label class="label" for="server-host">Host</label>
@@ -276,10 +274,13 @@
             {demo
               ? "Reload the demo to browse online. Your downloaded previews remain available."
               : "Connect to a server to browse online. Your saved music remains available."}
-          {:else}
-            Show downloaded music only. Turn this off to browse and stream {demo
+          {:else if session.offlineMode}
+            Showing downloaded music only. Turn this off to browse and stream {demo
               ? "demo previews"
               : "from your server"}.
+          {:else}
+            Browse your full library and stream {demo ? "demo previews" : "from your server"}. Turn
+            this on to show downloaded music only.
           {/if}
         </p>
         <div class="row-sm">
