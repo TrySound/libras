@@ -14,6 +14,16 @@ class TestElement {
 }
 class TestDialog extends TestElement {
   open = false;
+  attributes = new Map<string, string>([["closedby", "any"]]);
+  getAttribute(name: string) {
+    return this.attributes.get(name) ?? null;
+  }
+  setAttribute(name: string, value: string) {
+    this.attributes.set(name, value);
+  }
+  removeAttribute(name: string) {
+    this.attributes.delete(name);
+  }
   showModal = vi.fn(() => {
     this.open = true;
   });
@@ -56,8 +66,16 @@ describe("delegated long press", () => {
     expect(dialog.showModal).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(dialog.showModal).toHaveBeenCalledOnce();
+    expect(dialog.getAttribute("closedby")).toBe("closerequest");
     dispatch("pointerup");
     expect(dispatch("click").defaultPrevented).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(dialog.getAttribute("closedby")).toBe("any");
+    dispatch("pointerdown", { button: 2 });
+    expect(dispatch("contextmenu").defaultPrevented).toBe(false);
+    dispatch("pointerdown");
+    dispatch("pointerup");
+    expect(dispatch("click").defaultPrevented).toBe(false);
   });
 
   it("leaves short taps alone", () => {
@@ -87,6 +105,14 @@ describe("delegated long press", () => {
     expect(dispatch("keydown", { key: "F10", shiftKey: true }).defaultPrevented).toBe(false);
     expect(dispatch("keydown", { key: "ContextMenu" }).defaultPrevented).toBe(false);
     expect(dialog.showModal).not.toHaveBeenCalled();
+  });
+
+  it("preserves native context menus without a completed hold", () => {
+    const { dispatch } = setup();
+    expect(dispatch("contextmenu").defaultPrevented).toBe(false);
+    dispatch("pointerdown");
+    dispatch("pointermove", { clientY: 20 });
+    expect(dispatch("contextmenu").defaultPrevented).toBe(false);
   });
 
   it("ignores missing targets and detached triggers", () => {

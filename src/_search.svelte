@@ -137,6 +137,7 @@
     trackEngine,
     session,
     playback,
+    appName = "Libras",
     state: searchState,
   }: {
     cache: Cache;
@@ -145,6 +146,7 @@
     session: Session;
     playback: Playback;
     state: SearchState;
+    appName?: string;
   } = $props();
 
   const index = $derived(
@@ -265,6 +267,8 @@
     if (index >= 0) void playback.replaceQueueAndPlay(ids, index);
   }
 </script>
+
+<svelte:head><title>Search | {appName}</title></svelte:head>
 
 <section class="stack-lg scroll-runway">
   <h1 class="heading-xl">Search</h1>

@@ -21,9 +21,19 @@
     session: Session;
     playbackState: "loading" | "playing" | "paused";
     playback: Playback;
+    appName?: string;
   }
 
-  let { params, cache, covers, trackEngine, session, playbackState, playback }: Props = $props();
+  let {
+    params,
+    cache,
+    covers,
+    trackEngine,
+    session,
+    playbackState,
+    playback,
+    appName = "Libras",
+  }: Props = $props();
 
   const offlineMode = $derived(session.offlineMode);
   const loading = $derived(!session.localReady);
@@ -67,17 +77,13 @@
   }
 </script>
 
+<svelte:head><title>{album?.title ?? "Album"} | {appName}</title></svelte:head>
+
 <Atmosphere src={libraryAvailable && artist && album ? atmosphere?.source : undefined} />
 <section class="split-layout" aria-label="Album details">
   {#if libraryAvailable && artist && album}
-    <div class="viewport-panel view-slide-up">
-      <Artwork
-        {covers}
-        id={album.artworkId}
-        size="cover"
-        loading="eager"
-        class="viewport-panel-cover"
-      />
+    <div class="detail-panel view-slide-up">
+      <Artwork {covers} id={album.artworkId} size="cover" loading="eager" />
       <div class="stack-sm">
         <div class="row-md row-justify">
           <div class="stack-xs">

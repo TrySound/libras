@@ -58,7 +58,7 @@ it("opens preconnected without touching regular settings or registering a PWA", 
   await vi.waitFor(() =>
     expect(document.querySelector(".tile")?.textContent).toContain("A Perfect Circle"),
   );
-  expect(document.querySelector("form")).toBeNull();
+  expect(document.querySelector("#settings-server form")).toBeNull();
   expect(document.querySelector(".app-root")).not.toBeNull();
   expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
   expect(localStorage.getItem("navidrome-account")).toBe("regular account");
@@ -168,31 +168,51 @@ it("mounts the demo page as a standalone app and cleans up on hot reload", async
   expect(document.querySelector(".app-root")).toBeNull();
 });
 
-it("rejects switching the demo into a real account", async () => {
+it("explains the fixed demo account and offers reload instead of an unusable login form", async () => {
   localStorage.setItem("navidrome-auth", "regular credentials");
   render();
   await vi.waitFor(() => expect(document.querySelector("#settings-disconnect")).not.toBeNull());
+  expect(document.body.textContent).toContain("This demo uses a fixed music library");
+  expect(document.body.textContent).not.toContain("Disconnect to change servers");
   document.querySelector<HTMLButtonElement>("#settings-disconnect")!.click();
   flushSync();
-  for (const [id, value] of [
-    ["server-host", "https://regular.example.test"],
-    ["server-username", "listener"],
-    ["server-password", "not-a-real-secret"],
-  ]) {
-    const input = document.getElementById(id) as HTMLInputElement;
-    input.value = value;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  }
-  document
-    .querySelector("form")!
-    .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-  flushSync();
-  await vi.waitFor(() => expect(document.body.textContent).toContain("fixed to its local library"));
+  expect(document.querySelector("#settings-server form")).toBeNull();
+  expect(document.body.textContent).toContain("cannot connect to other servers");
+  expect(
+    [...document.querySelectorAll("button")].some((button) => button.textContent === "Reload demo"),
+  ).toBe(true);
   expect(localStorage.getItem("navidrome-auth")).toBe("regular credentials");
   expect(localStorage.length).toBe(1);
   expect(fetcher.mock.calls.every(([url]) => !String(url).includes("regular.example.test"))).toBe(
     true,
   );
+});
+
+it.each([
+  ["/library", "Your library"],
+  ["/search", "Search"],
+  ["/settings", "Settings"],
+  ["/downloads", "Downloads"],
+  ["/library/artist/702", "A Perfect Circle"],
+  ["/library/album/302117", "Mer De Noms"],
+])("titles the demo route %s", async (path, title) => {
+  installNavigation(path);
+  render();
+  await vi.waitFor(() => expect(document.title).toBe(`${title} | Libras demo`));
+});
+
+it("renders supplied track names verbatim without UI badges", async () => {
+  installNavigation("/library/album/302117");
+  render();
+  await vi.waitFor(() => expect(document.querySelectorAll(".track-row")).toHaveLength(12));
+  const rows = [...document.querySelectorAll(".track-row")];
+  expect(rows[0].querySelector(".label")?.textContent).toBe("The Hollow — Preview");
+  expect(document.querySelector(".badge, .track-badges")).toBeNull();
+  const judith = rows.find((row) => row.textContent?.includes("Judith"))!;
+  expect(judith.querySelector(".label")?.textContent).toBe("Judith — Preview [Explicit]");
+  expect(
+    judith.querySelector('button[aria-label="Play Judith — Preview [Explicit]"]'),
+  ).not.toBeNull();
 });
 
 it("resets preferences on a new mount without writing to localStorage", async () => {
@@ -218,7 +238,7 @@ it("syncs and refreshes the snapshot even when live Deezer album responses would
       "deezer-preview-demo",
     ),
   );
-  expect(document.querySelector("form")).toBeNull();
+  expect(document.querySelector("#settings-server form")).toBeNull();
   document.querySelector<HTMLButtonElement>('[aria-label="Refresh library"]')!.click();
   flushSync();
   await vi.waitFor(() =>

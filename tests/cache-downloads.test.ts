@@ -36,6 +36,66 @@ afterEach(() => {
 });
 
 describe("download cache foundation", () => {
+  it("restores and merges downloads without losing saved bytes or queue occurrences", async () => {
+    const disk = installDisk();
+    const original = new Cache(getAccountKey(account));
+    await save(original, "original audio");
+    const queue = { tracks: [track.id, track.id, "next", track.id], index: 1, position: 23.5 };
+    original.setQueue(queue);
+    await original.flush();
+    const originalCatalog = catalog(disk);
+    const oldRecord = originalCatalog[0];
+    const oldBlobs = new Map(disk.blobs);
+    const writes = disk.state.writes;
+
+    const restored = new Cache(getAccountKey(account));
+    await restored.load();
+    expect(restored.error).toBeUndefined();
+    expect(restored.downloads.get(key)).toEqual(oldRecord);
+    expect(restored.queue).toEqual(queue);
+    expect(disk.state.writes).toBe(writes);
+    expect(catalog(disk)).toEqual(originalCatalog);
+    expect(await (await restored.readDownload(track.id, "mp3"))!.text()).toBe("original audio");
+
+    // A fresh cache also lazily decodes the old catalog during save/merge.
+    const merging = new Cache(getAccountKey(account));
+    await merging.saveDownload(
+      { ...track, id: "next" },
+      "mp3",
+      "audio/mpeg",
+      new Response("new audio"),
+      signal(),
+    );
+    expect(catalog(disk)).toEqual(originalCatalog);
+    await merging.flush();
+    expect(catalog(disk)).toHaveLength(2);
+    expect(catalog(disk)[0]).toEqual(oldRecord);
+    for (const [name, blob] of oldBlobs) expect(disk.blobs.get(name)).toBe(blob);
+    const final = new Cache(getAccountKey(account));
+    await final.load();
+    expect(final.queue).toEqual(queue);
+    expect(final.downloads.get(key)?.fileName).toBe(oldRecord.fileName);
+    expect(await (await final.readDownload(track.id, "mp3"))!.text()).toBe("original audio");
+    expect(await (await final.readDownload("next", "mp3"))!.text()).toBe("new audio");
+  });
+
+  it.each([{ unrelated: true }, { id: "" }, { title: 42 }])(
+    "rejects invalid persisted download metadata %j",
+    async (extra) => {
+      const disk = installDisk();
+      const original = new Cache(getAccountKey(account));
+      await save(original);
+      await original.flush();
+      const record = catalog(disk)[0];
+      disk.files.set(path(disk), JSON.stringify([{ ...record, track: { ...track, ...extra } }]));
+      const restored = new Cache(getAccountKey(account));
+      await expect(restored.load()).rejects.toBeInstanceOf(AggregateError);
+      expect(restored.error).toBeDefined();
+      expect(restored.downloads.size).toBe(0);
+      expect(disk.blobs.size).toBe(1);
+    },
+  );
+
   it("restores independent descriptions without library metadata or eager binary reads", async () => {
     const disk = installDisk();
     const cache = new Cache(getAccountKey(account));

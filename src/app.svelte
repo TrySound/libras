@@ -29,10 +29,11 @@
     auth: AuthStore;
     updaterComponent: typeof WebappUpdater | undefined;
     settingsContent?: Snippet;
+    demo?: boolean;
   }
 
   // Entry points explicitly supply infrastructure; UI and domain state belong to App.
-  let { network, auth, updaterComponent: Updater, settingsContent }: Props = $props();
+  let { network, auth, updaterComponent: Updater, settingsContent, demo = false }: Props = $props();
 
   let navigationDrawer: HTMLDialogElement;
   let navigationOpen = $state(false);
@@ -43,6 +44,7 @@
   const selection = $state<{ cache: Cache | undefined }>({ cache: undefined });
   const emptyCache = new Cache();
   const cache = $derived(selection.cache ?? emptyCache);
+  const appName = $derived(demo ? "Libras demo" : "Libras");
   function newSearchState() {
     const state = $state(createSearchState());
     return state;
@@ -151,28 +153,28 @@
 
 {#snippet settingsRoute()}
   <Atmosphere />
-  <Settings {session}>
+  <Settings {session} {demo} {appName}>
     {@render settingsContent?.()}
   </Settings>
 {/snippet}
 
 {#snippet downloadsRoute()}
   <Atmosphere />
-  <Downloads {cache} {covers} {trackEngine} {loading} />
+  <Downloads {cache} {covers} {trackEngine} {loading} {appName} />
 {/snippet}
 
 {#snippet libraryRoute()}
   <Atmosphere />
-  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} />
+  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
 {/snippet}
 
 {#snippet searchRoute()}
   <Atmosphere />
-  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} state={searchState} />
+  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} {appName} state={searchState} />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
-  <ArtistRoute {params} {cache} {covers} {trackEngine} {session} {playback} />
+  <ArtistRoute {params} {cache} {covers} {trackEngine} {session} {playback} {appName} />
 {/snippet}
 
 {#snippet albumRoute(params: RouteParams)}
@@ -183,6 +185,7 @@
     {trackEngine}
     {session}
     {playback}
+    {appName}
     playbackState={playbackLoading ? "loading" : player?.playing ? "playing" : "paused"}
   />
 {/snippet}
@@ -333,7 +336,21 @@
           <div class="stack-sm">
             {#each alerts as alert (alert.id)}
               {#if alert.message}
-                <p class="card caption" role="alert">{alert.message}</p>
+                <div class="card stack-sm" role="alert">
+                  <p class="caption">{alert.message}</p>
+                  {#if alert.id === "playback" && playback.track}
+                    <p class="caption text-secondary">{playback.track.title}</p>
+                    <button
+                      class="button"
+                      data-size="text"
+                      data-variant="secondary"
+                      onclick={(event) => {
+                        event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
+                        void playback.play();
+                      }}>Retry playback</button
+                    >
+                  {/if}
+                </div>
               {/if}
             {/each}
           </div>

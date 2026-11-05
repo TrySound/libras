@@ -468,12 +468,13 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
     ]) {
       await page.setViewportSize({ width, height });
       const layout = await dialog.evaluate((node) => {
-        const panel = node.querySelector(".viewport-panel").getBoundingClientRect();
+        const panel = node.querySelector(".player-panel").getBoundingClientRect();
         const queue = node.querySelector('[aria-label="Queue"]').getBoundingClientRect();
         return {
           overflow: node.scrollWidth > node.clientWidth,
           beside: queue.left >= panel.right,
-          cover: getComputedStyle(node.querySelector(".viewport-panel-cover")).display !== "none",
+          cover:
+            getComputedStyle(node.querySelector(".player-panel > .artwork")).display !== "none",
         };
       });
       assert.equal(layout.overflow, false);
@@ -554,8 +555,12 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
     assert.equal(await dialog.isVisible(), false);
     assert.equal(await transport.evaluate((audio) => !audio.paused), true);
     await mini.getByRole("button", { name: "Open Now Playing", exact: true }).click();
-    await dialog.getByRole("button", { name: "Clear", exact: true }).focus();
+    await dialog.getByRole("button", { name: "Clear queue", exact: true }).focus();
     await page.keyboard.press("Enter");
+    await page
+      .getByRole("dialog", { name: "Clear queue?", exact: true })
+      .getByRole("button", { name: "Clear queue", exact: true })
+      .click();
     await dialog.waitFor({ state: "hidden" });
     assert.equal(await mini.count(), 0);
     assert.equal(await transport.evaluate((audio) => audio.paused), true);

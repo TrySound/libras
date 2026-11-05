@@ -869,7 +869,7 @@ it("derives artist genres from albums and reacts to library updates", async () =
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const genreRow = () => target.querySelector('.viewport-panel [aria-label="Genres"]');
+  const genreRow = () => target.querySelector('.detail-panel [aria-label="Genres"]');
   const labels = () => genreRow()?.textContent?.trim().split(" · ") ?? [];
   expect(labels()).toEqual(["Rock", "Jazz", "Soul"]);
   expect(genreRow()?.tagName).toBe("P");
@@ -928,11 +928,11 @@ it.each([
     .map((id) => document.getElementById(id)?.textContent)
     .join(" ");
   expect(description).toBe(`Track ${expected}`);
-  const artistLink = target.querySelector("#player-dialog .viewport-panel a");
+  const artistLink = target.querySelector("#player-dialog .player-panel a");
   expect(artistLink?.textContent?.trim()).toBe(expected);
   expect(artistLink?.getAttribute("href")).toBe("?/library/artist/artist");
   expect(artistLink?.querySelector("span.label")?.textContent).toBe(expected);
-  const albumLink = target.querySelectorAll("#player-dialog .viewport-panel a")[1];
+  const albumLink = target.querySelectorAll("#player-dialog .player-panel a")[1];
   expect(albumLink?.querySelector("span.label")?.textContent).toBe("Album");
   expect(albumLink?.getAttribute("href")).toBe("?/library/album/album");
 });
@@ -1011,7 +1011,7 @@ it("shows the album display credit without changing its artist link", async () =
   const component = mount(App, { target });
   cleanups.push(() => unmount(component));
   flushSync();
-  const credit = target.querySelector(".viewport-panel a");
+  const credit = target.querySelector(".detail-panel a");
   expect(credit?.textContent?.trim()).toBe("Lead & Guest");
   expect(credit?.getAttribute("href")).toBe("?/library/artist/artist");
   expect(credit?.className).toBe("button-quiet");
@@ -1045,16 +1045,16 @@ it.each([{ genres: ["Jazz", "Soul"] }, { genres: [] }])(
     const component = mount(App, { target });
     cleanups.push(() => unmount(component));
     flushSync();
-    const metadata = target.querySelector(".viewport-panel > .stack-sm > .caption");
-    const genreRow = target.querySelector('.viewport-panel [aria-label="Genres"]');
+    const metadata = target.querySelector(".detail-panel > .stack-sm > .caption");
+    const genreRow = target.querySelector('.detail-panel [aria-label="Genres"]');
     expect(metadata?.textContent?.trim()).toBe("Unknown year · 1 track");
     expect(metadata?.classList.contains("text-subtle")).toBe(true);
-    expect(
-      target.querySelector(".viewport-panel .artwork-placeholder")?.getAttribute("width"),
-    ).toBe("96");
-    expect(
-      target.querySelector(".viewport-panel .artwork-placeholder")?.getAttribute("height"),
-    ).toBe("96");
+    expect(target.querySelector(".detail-panel .artwork-placeholder")?.getAttribute("width")).toBe(
+      "96",
+    );
+    expect(target.querySelector(".detail-panel .artwork-placeholder")?.getAttribute("height")).toBe(
+      "96",
+    );
     if (genres.length) {
       expect(genreRow?.tagName).toBe("P");
       expect(genreRow?.textContent).toBe("Jazz · Soul");
@@ -1062,8 +1062,8 @@ it.each([{ genres: ["Jazz", "Soul"] }, { genres: [] }])(
     } else {
       expect(genreRow).toBeNull();
     }
-    expect(target.querySelector(".viewport-panel")?.textContent).not.toContain("Track-only genre");
-    expect(target.querySelector(".viewport-panel a")?.getAttribute("href")).toBe(
+    expect(target.querySelector(".detail-panel")?.textContent).not.toContain("Track-only genre");
+    expect(target.querySelector(".detail-panel a")?.getAttribute("href")).toBe(
       "?/library/artist/artist",
     );
   },
@@ -1407,7 +1407,7 @@ it("follows normalized album artwork IDs without publishing a late old image", a
     savedAt: 2,
     albums: [{ ...data.albums[0], artworkId: "new-cover" }],
   });
-  const image = () => target.querySelector(".viewport-panel .artwork img")?.getAttribute("src");
+  const image = () => target.querySelector(".detail-panel .artwork img")?.getAttribute("src");
   const atmosphere = () => target.querySelector(".atmosphere")?.getAttribute("src");
   await vi.waitFor(() => {
     flushSync();
@@ -1439,6 +1439,6 @@ it("follows normalized album artwork IDs without publishing a late old image", a
   expect(image()).toBeNull();
   expect(atmosphere()).toBeNull();
   expect(target.querySelector(".atmosphere")?.hasAttribute("hidden")).toBe(true);
-  expect(target.querySelector(".viewport-panel .artwork img")?.hasAttribute("hidden")).toBe(true);
-  expect(target.querySelector(".viewport-panel .artwork svg")).not.toBeNull();
+  expect(target.querySelector(".detail-panel .artwork img")?.hasAttribute("hidden")).toBe(true);
+  expect(target.querySelector(".detail-panel .artwork svg")).not.toBeNull();
 });

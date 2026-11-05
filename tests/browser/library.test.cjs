@@ -170,7 +170,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       ]) {
         await page.setViewportSize({ width, height: 900 });
         const layout = await view.evaluate((node) => {
-          const panel = node.querySelector(".viewport-panel");
+          const panel = node.querySelector(".detail-panel");
           const panelBox = panel.getBoundingClientRect();
           const listBox = panel.nextElementSibling.getBoundingClientRect();
           return {
@@ -189,8 +189,8 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     async function checkCoverBudget(view) {
       for (const height of [450, 900]) {
         await page.setViewportSize({ width: 1440, height });
-        const cover = await view.locator(".viewport-panel").evaluate((panel) => {
-          const artwork = panel.querySelector(".viewport-panel-cover");
+        const cover = await view.locator(".detail-panel").evaluate((panel) => {
+          const artwork = panel.querySelector('.artwork[data-size="cover"]');
           const details = artwork.nextElementSibling;
           return {
             display: getComputedStyle(artwork).display,
@@ -288,7 +288,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       const background = page.locator(".app-page .atmosphere");
       await background.waitFor({ state: "visible" });
       await page.waitForFunction(() => {
-        const cover = document.querySelector(".viewport-panel .artwork img");
+        const cover = document.querySelector(".detail-panel .artwork img");
         return (
           cover?.getAttribute("src") &&
           cover.getAttribute("src") ===

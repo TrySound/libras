@@ -11,9 +11,10 @@
     covers: Covers;
     trackEngine: TrackEngine;
     loading: boolean;
+    appName?: string;
   }
 
-  let { cache, covers, trackEngine, loading }: Props = $props();
+  let { cache, covers, trackEngine, loading, appName = "Libras" }: Props = $props();
 
   const sizeFormatter = new Intl.NumberFormat(undefined, {
     style: "unit",
@@ -38,6 +39,8 @@
     return [...jobs, ...completed];
   });
 </script>
+
+<svelte:head><title>Downloads | {appName}</title></svelte:head>
 
 <section aria-labelledby="downloads-heading">
   <div class="stack-lg scroll-runway">

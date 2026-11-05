@@ -152,7 +152,7 @@ test("static website links to the full-width standalone demo", async () => {
     }
     await page.locator(".tile a").first().click();
     await page
-      .locator(".viewport-panel")
+      .locator(".detail-panel")
       .getByRole("button", { name: /^Play / })
       .click();
     await page.getByRole("button", { name: "Open Now Playing", exact: true }).click();

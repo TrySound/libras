@@ -149,6 +149,32 @@ it("preserves active-job precedence and newest-first saved files, including orph
   expect(rows.every((row) => row.querySelector("button, a, [tabindex]") === null)).toBe(true);
 });
 
+it("preserves a saved track name verbatim without adding badges", async () => {
+  const { target, cache } = setup();
+  await cache.saveDownload(
+    {
+      id: "preview",
+      title: "A preview — Preview [Explicit]",
+      artist: "Artist",
+      album: "Album",
+    },
+    "raw",
+    "audio/mpeg",
+    new Response("audio"),
+    new AbortController().signal,
+  );
+  await cache.flush();
+  flushSync();
+  expect(cache.tracks.size).toBe(0);
+  expect(target.querySelector(".label")?.textContent).toBe("A preview — Preview [Explicit]");
+  expect(target.querySelector(".badge, .track-badges")).toBeNull();
+  const restored = new Cache(getAccountKey(account));
+  await restored.load();
+  expect(restored.downloads.get(downloadKey("preview", "raw"))?.track.title).toBe(
+    "A preview — Preview [Explicit]",
+  );
+});
+
 it("updates mounted rows when jobs complete and preserves saved entries during restoration and failures", async () => {
   const { target, cache, set } = setup();
   await save(cache, "saved", 1000);

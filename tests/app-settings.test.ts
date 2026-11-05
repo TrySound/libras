@@ -205,7 +205,7 @@ describe("app settings", () => {
     await vi.waitFor(() => expect(session.syncing).toBe(false));
     flushSync();
     expect(target.querySelector("#settings-server")?.textContent).toContain("Library unavailable");
-    expect(target.querySelector("form")).toBeNull();
+    expect(target.querySelector("#settings-server form")).toBeNull();
     expect(button("Refresh library").disabled).toBe(false);
     button("Refresh library").click();
     await vi.waitFor(() => expect(session.syncing).toBe(false));
@@ -253,7 +253,9 @@ describe("app settings", () => {
     expect(offline.classList.contains("card")).toBe(true);
     const control = offline.querySelector('input[role="switch"]')!;
     expect(control.classList.contains("switch")).toBe(true);
-    expect(control.getAttribute("aria-labelledby")).toBe("settings-offline-title");
+    expect(control.getAttribute("aria-labelledby")).toBe("settings-offline-label");
+    expect(target.querySelector("#settings-offline-label")?.textContent).toBe("Offline library");
+    expect(target.querySelector("#settings-offline-title")?.textContent).toContain("is on");
     expect(control.getAttribute("aria-describedby")).toBe("settings-offline-help");
     expect(target.querySelector("select")).toBeNull();
   });
@@ -535,7 +537,7 @@ describe("app settings", () => {
     expect(server.querySelectorAll("button")).toHaveLength(2);
     expect(button("Refresh library")).toBeDefined();
     expect(button("Disconnect")).toBeDefined();
-    expect(target.querySelector("form")).toBeNull();
+    expect(target.querySelector("#settings-server form")).toBeNull();
     const refresh = deferred();
     metadata.readLibrary.mockImplementationOnce(async () => {
       await refresh.promise;
@@ -550,7 +552,7 @@ describe("app settings", () => {
     button("Disconnect").click();
     flushSync();
     expect(auth.load()).toBeNull();
-    expect(target.querySelector("form")).not.toBeNull();
+    expect(target.querySelector("#settings-server form")).not.toBeNull();
     expect(
       [...target.querySelectorAll<HTMLInputElement>("form input")].map((input) => input.value),
     ).toEqual(["", "", ""]);
@@ -582,20 +584,20 @@ describe("app settings", () => {
     await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
     pending.reject(new Error("Unauthorized"));
     await vi.waitFor(() =>
-      expect(target.querySelector('[role="alert"]')?.textContent).toBe("Unauthorized"),
+      expect(target.querySelector('[role="alert"]')?.textContent?.trim()).toBe("Unauthorized"),
     );
     expect(target.querySelector("#settings-server [role='alert']")).toBeNull();
     expect(target.querySelector("#settings-server-error")?.textContent).toBe("Unauthorized");
-    expect(target.querySelector("form")?.getAttribute("aria-describedby")).toContain(
-      "settings-server-error",
-    );
+    expect(
+      target.querySelector("#settings-server form")?.getAttribute("aria-describedby"),
+    ).toContain("settings-server-error");
     expect(target.querySelectorAll('[role="alert"]')).toHaveLength(1);
     expect(button("Show errors").getAttribute("commandfor")).toBe("error-popover");
     expect(session.error).toBe("Unauthorized");
     expect(offline().checked).toBe(true);
     expect(session.auth).toBeNull();
     fill("music.example");
-    await vi.waitFor(() => expect(target.querySelector("form")).toBeNull());
+    await vi.waitFor(() => expect(target.querySelector("#settings-server form")).toBeNull());
     expect(offline().checked).toBe(false);
     expect(offline().disabled).toBe(false);
     expect(navigate).toHaveBeenCalledOnce();

@@ -7,6 +7,18 @@ export function installLongPress(root: Document = document) {
   let y = 0;
   let suppressed: HTMLElement | undefined;
   let suppressUntil = 0;
+  let heldDialog: HTMLDialogElement | undefined;
+  let closedBy: string | null = null;
+  let restoreTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const restoreDismissal = () => {
+    clearTimeout(restoreTimer);
+    if (heldDialog) {
+      if (closedBy === null) heldDialog.removeAttribute("closedby");
+      else heldDialog.setAttribute("closedby", closedBy);
+      heldDialog = undefined;
+    }
+  };
 
   const find = (target: EventTarget | null) =>
     target instanceof Element ? target.closest<HTMLElement>(selector) : null;
@@ -25,6 +37,12 @@ export function installLongPress(root: Document = document) {
       return false;
     if (!target.open) {
       element.focus({ preventScroll: true });
+      // The opening gesture began outside this new top-layer sheet. Its release
+      // must not count as a backdrop dismissal (native or polyfilled).
+      restoreDismissal();
+      heldDialog = target;
+      closedBy = target.getAttribute("closedby");
+      target.setAttribute("closedby", "closerequest");
       target.showModal();
     }
     return true;
@@ -35,6 +53,9 @@ export function installLongPress(root: Document = document) {
       cancel();
       return;
     }
+    restoreDismissal();
+    suppressed = undefined;
+    suppressUntil = 0;
     if (!event.isPrimary || event.button !== 0) return;
     const element = find(event.target);
     if (!element) return;
@@ -59,13 +80,15 @@ export function installLongPress(root: Document = document) {
   const end = (event: PointerEvent) => {
     if (event.pointerId === pointerId) cancel();
     if (suppressed) suppressUntil = Date.now() + 750;
+    // Keep the release click in this gesture guarded, then restore normal menus.
+    restoreTimer = setTimeout(restoreDismissal, 0);
   };
   const click = (event: MouseEvent) => {
     if (
       event.detail !== 0 &&
       Date.now() < suppressUntil &&
       event.target instanceof Node &&
-      suppressed?.contains(event.target)
+      (suppressed?.contains(event.target) || event.target === heldDialog)
     ) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -74,7 +97,8 @@ export function installLongPress(root: Document = document) {
   };
   const context = (event: MouseEvent) => {
     const element = find(event.target);
-    if (element) event.preventDefault();
+    // Leave native context menus alone unless this exact hold opened our sheet.
+    if (element && element === suppressed && Date.now() < suppressUntil) event.preventDefault();
   };
 
   root.addEventListener("pointerdown", down);
@@ -88,6 +112,7 @@ export function installLongPress(root: Document = document) {
 
   return () => {
     cancel();
+    restoreDismissal();
     root.removeEventListener("pointerdown", down);
     root.removeEventListener("pointermove", move);
     root.removeEventListener("pointerup", end);

@@ -879,8 +879,8 @@
           </button>
         </header>
         <section class="split-layout large-player-content">
-          <div class="viewport-panel">
-            <span class="artwork viewport-panel-cover" data-size="cover" aria-hidden="true">
+          <div class="player-panel">
+            <span class="artwork" data-size="cover" aria-hidden="true">
               <svg class="artwork-placeholder" width="96" height="96" aria-hidden="true">
                 <use href="#icon-music"></use>
               </svg>
@@ -990,16 +990,11 @@
         </p>
       </div>
     </dialog>
-    <dialog
-      id="guide-dialog"
-      class="card overlay-example"
-      aria-labelledby="guide-dialog-title"
-      closedby="any"
-    >
+    <dialog id="guide-dialog" class="dialog" aria-labelledby="guide-dialog-title" closedby="any">
       <div class="stack-lg">
         <h2 class="heading-md" id="guide-dialog-title">Native dialog</h2>
         <p class="body">Escape or Close dismisses this dialog and restores focus to its invoker.</p>
-        <div class="row-sm">
+        <div class="row-sm row-end">
           <button
             class="button"
             data-size="text"

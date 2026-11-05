@@ -17,9 +17,18 @@
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
+    appName?: string;
   }
 
-  let { params, cache, covers, trackEngine, session, playback }: Props = $props();
+  let {
+    params,
+    cache,
+    covers,
+    trackEngine,
+    session,
+    playback,
+    appName = "Libras",
+  }: Props = $props();
 
   const loading = $derived(!session.localReady);
   const offlineMode = $derived(session.offlineMode);
@@ -60,16 +69,17 @@
   }
 </script>
 
+<svelte:head><title>{artist?.name ?? "Artist"} | {appName}</title></svelte:head>
+
 <Atmosphere src={libraryAvailable && artist ? atmosphere?.source : undefined} />
 <section class="split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
-    <div class="viewport-panel view-slide-up">
+    <div class="detail-panel view-slide-up">
       <Artwork
         {covers}
         id={artist.artworkId}
         size="cover"
         loading="eager"
-        class="viewport-panel-cover"
         transitionName="artist-artwork"
       />
       <div class="stack-sm">

@@ -474,6 +474,10 @@
     justify-content: center;
   }
 
+  .row-end {
+    justify-content: flex-end;
+  }
+
   .row-wrap {
     flex-wrap: wrap;
   }
@@ -1075,6 +1079,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
+    align-content: start;
     gap: var(--space-lg);
 
     @container (width > 50rem) {
@@ -1090,9 +1095,9 @@
     }
   }
 
-  /* Collection panels follow the prototype's CSS-only artwork budget. */
-  .viewport-panel {
-    container: viewport-panel / size;
+  /* Shared panel structure; detail pages and fullscreen playback own their sizing. */
+  .detail-panel,
+  .player-panel {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, max-content);
@@ -1100,18 +1105,13 @@
     gap: var(--space-lg);
     align-content: start;
     min-inline-size: 0;
-    block-size: max(
-      0px,
-      var(
-        --panel-height,
-        calc(
-          100dvh - var(--topbar-min-height) - var(--player-min-height) - 2 *
-            var(--content-padding-block)
-        )
-      )
-    );
+  }
 
-    @container app (width > 50rem) {
+  .detail-panel {
+    --cover-max-size: min(18rem, 40dvh);
+    @container (width > 50rem) {
+      container: artwork-panel / size;
+      --cover-max-size: 28rem;
       block-size: max(
         0px,
         var(
@@ -1119,25 +1119,33 @@
           calc(100dvh - var(--player-min-height) - 2 * var(--content-padding-block))
         )
       );
-    }
-
-    @container (width > 50rem) {
       position: sticky;
       inset-block-start: var(--panel-top, var(--content-padding-block));
     }
   }
 
-  .viewport-panel-cover {
+  .player-panel {
+    --cover-max-size: 28rem;
+    container: artwork-panel / size;
+    block-size: max(0px, var(--panel-height));
+
+    @container (width > 50rem) {
+      position: sticky;
+      inset-block-start: var(--panel-top);
+    }
+  }
+
+  :is(.detail-panel, .player-panel) > .artwork {
     contain: inline-size;
     contain-intrinsic-inline-size: 28rem;
     min-inline-size: 0;
     min-block-size: 0;
-    max-inline-size: min(100%, 28rem);
+    max-inline-size: min(100%, var(--cover-max-size));
     max-block-size: 100%;
     justify-self: center;
     align-self: start;
 
-    @container viewport-panel (height < 24rem) or (width < 10rem) {
+    @container artwork-panel (height < 24rem) or (width < 10rem) {
       display: none;
     }
   }
@@ -1445,7 +1453,6 @@
     opacity: 1;
     &:has(> .tile-artwork[data-pending]):not(:focus-within) {
       opacity: 0;
-      pointer-events: none;
     }
     &:has(> .link-target:where(:hover, :focus-visible)) {
       border-color: var(--item-border-hover);
@@ -1527,6 +1534,30 @@
     }
   }
 
+  .dialog {
+    box-sizing: border-box;
+    inline-size: min(28rem, calc(100% - var(--space-lg)));
+    max-block-size: calc(100dvh - var(--space-lg));
+    overflow: auto;
+    padding: var(--space-lg);
+    background: var(--shell-bg) var(--palette-maroon-shade-7);
+    color: var(--text-primary);
+    border: var(--border-width) solid var(--shell-border);
+    overscroll-behavior: contain;
+    &::backdrop {
+      background: alpha(from #130000 / 65%);
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+  }
+
+  .button-hidden-stub {
+    inline-size: 40px;
+    block-size: 40px;
+    flex-shrink: 0;
+    visibility: hidden;
+  }
+
   .tile-actions {
     position: relative;
     align-self: flex-end;
@@ -1580,14 +1611,14 @@
       translate: 0;
       pointer-events: none;
       transition:
-        opacity var(--motion-duration-exit) var(--motion-ease-exit),
-        translate var(--motion-duration-exit),
-        display var(--motion-duration-exit) allow-discrete,
-        overlay var(--motion-duration-exit) allow-discrete;
+        opacity 80ms var(--motion-ease-exit),
+        translate 80ms,
+        display 80ms allow-discrete,
+        overlay 80ms allow-discrete;
       &:popover-open {
         opacity: 1;
         pointer-events: auto;
-        transition-duration: var(--motion-duration-enter);
+        transition-duration: 120ms;
         transition-timing-function: var(--motion-ease-enter);
       }
       @starting-style {
@@ -1755,10 +1786,15 @@
     background-attachment: local;
     color: var(--text-primary);
     overflow: auto;
+    scroll-padding-block-start: calc(var(--topbar-min-height) + var(--space-md));
     /* Unlike contain, none also suppresses native overscroll bounce. */
     overscroll-behavior: none;
     container: playback / size;
     translate: 0 var(--swipe-offset, 0px);
+
+    @media (prefers-reduced-motion: no-preference) {
+      scroll-behavior: smooth;
+    }
 
     &::backdrop {
       background: transparent;

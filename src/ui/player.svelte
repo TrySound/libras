@@ -98,6 +98,7 @@
         class="button"
         data-variant="primary"
         aria-label={playing ? "Pause" : "Play"}
+        aria-describedby={`${id}-title`}
         aria-busy={loading}
         onclick={() => playback.toggle()}
       >
@@ -142,17 +143,11 @@
       </button>
     </header>
     <section class="split-layout large-player-content" aria-label="Playback and queue">
-      <div class="viewport-panel">
-        <Artwork
-          {covers}
-          id={track?.artworkId}
-          size="cover"
-          loading="eager"
-          class="viewport-panel-cover"
-        />
+      <div class="player-panel">
+        <Artwork {covers} id={track?.artworkId} size="cover" loading="eager" />
         <div class="stack-lg">
           <div class="stack-xs">
-            <h1 class="heading-xl">{track?.title ?? "Nothing playing"}</h1>
+            <h1 id={`${id}-now-title`} class="heading-xl">{track?.title ?? "Nothing playing"}</h1>
             {#if track}
               <p class="caption text-secondary">
                 {#if artist}
@@ -205,46 +200,70 @@
                 <span>{formatDuration(duration)}</span>
               </div>
             </div>
-            <div class="row-md row-center" role="group" aria-label="Playback controls">
-              <button
-                class="button"
-                aria-label="Previous"
-                disabled={cache.queue.index <= 0 && position <= 0}
-                onclick={() => playback.previous()}
-              >
-                <Icon name="previous" size="lg" />
-              </button>
-              <button
-                class="button"
-                data-variant="primary"
-                aria-label={playing ? "Pause" : "Play"}
-                aria-busy={loading}
-                disabled={!queue.length}
-                onclick={() => playback.toggle()}
-              >
-                {#if loading}
-                  <Loader size="lg" />
-                {:else}
-                  <Icon name={playing ? "pause" : "play"} size="lg" />
-                {/if}
-              </button>
-              <button
-                class="button"
-                aria-label="Next"
-                disabled={cache.queue.index < 0 ||
-                  cache.queue.index >= cache.queue.tracks.length - 1}
-                onclick={() => playback.next()}
-              >
-                <Icon name="next" size="lg" />
-              </button>
+            <div class="player-controls row-xs row-justify">
+              <div class="button-hidden-stub" aria-hidden="true"></div>
+              <div class="row-md" role="group" aria-label="Playback controls">
+                <button
+                  class="button"
+                  aria-label="Previous"
+                  disabled={cache.queue.index <= 0 && position <= 0}
+                  onclick={() => playback.previous()}
+                >
+                  <Icon name="previous" size="lg" />
+                </button>
+                <button
+                  class="button"
+                  data-variant="primary"
+                  aria-label={playing ? "Pause" : "Play"}
+                  aria-describedby={`${id}-now-title`}
+                  aria-busy={loading}
+                  disabled={!queue.length}
+                  onclick={() => playback.toggle()}
+                >
+                  {#if loading}
+                    <Loader size="lg" />
+                  {:else}
+                    <Icon name={playing ? "pause" : "play"} size="lg" />
+                  {/if}
+                </button>
+                <button
+                  class="button"
+                  aria-label="Next"
+                  disabled={cache.queue.index < 0 ||
+                    cache.queue.index >= cache.queue.tracks.length - 1}
+                  onclick={() => playback.next()}
+                >
+                  <Icon name="next" size="lg" />
+                </button>
+              </div>
+              <a class="button" href={`#${id}-queue`} aria-label="Show queue" title="Show queue">
+                <Icon name="queue" />
+              </a>
             </div>
           </div>
+          {#if audio?.status === "error"}
+            <div class="card stack-sm">
+              <p class="caption" role="alert">
+                {audio.error instanceof Error
+                  ? audio.error.message
+                  : String(audio.error ?? "Playback failed.")}
+              </p>
+              <button
+                class="button"
+                data-size="text"
+                data-variant="secondary"
+                onclick={() => void playback.play()}
+              >
+                Retry playback
+              </button>
+            </div>
+          {/if}
         </div>
       </div>
-      <div class="stack-lg scroll-runway" aria-label="Queue">
+      <div class="stack-lg scroll-runway" role="region" aria-label="Queue">
         <div class="row-md row-justify">
           <div class="stack-xs">
-            <h2 class="heading-lg uppercase">Up next</h2>
+            <h2 id={`${id}-queue`} class="heading-lg uppercase">Up next</h2>
             <p class="metadata text-subtle">{queue.length} track{queue.length === 1 ? "" : "s"}</p>
           </div>
           {#if cache.queue.tracks.length}
@@ -252,12 +271,10 @@
               class="button"
               data-size="text"
               data-variant="secondary"
-              onclick={(event) => {
-                event.currentTarget.closest("dialog")?.close();
-                playback.clearQueue();
-              }}
+              commandfor={`${id}-clear-confirmation`}
+              command="show-modal"
             >
-              Clear
+              Clear queue
             </button>
           {/if}
         </div>
@@ -334,5 +351,42 @@
         </div>
       </div>
     </section>
+  </div>
+</dialog>
+
+<dialog
+  id={`${id}-clear-confirmation`}
+  class="dialog"
+  closedby="any"
+  aria-labelledby={`${id}-clear-title`}
+  aria-describedby={`${id}-clear-description`}
+>
+  <div class="stack-lg">
+    <h2 id={`${id}-clear-title`} class="heading-md">Clear queue?</h2>
+    <p id={`${id}-clear-description`} class="body">
+      This will stop playback and remove all queued tracks.
+    </p>
+    <div class="row-md row-end row-wrap">
+      <!-- svelte-ignore a11y_autofocus (Safe initial action for a destructive confirmation.) -->
+      <button
+        class="button"
+        data-size="text"
+        data-variant="secondary"
+        commandfor={`${id}-clear-confirmation`}
+        command="close"
+        autofocus>Cancel</button
+      >
+      <button
+        class="button"
+        data-size="text"
+        data-variant="primary"
+        commandfor={`${id}-clear-confirmation`}
+        command="close"
+        onclick={() => {
+          document.getElementById("player-dialog")?.closest("dialog")?.close();
+          playback.clearQueue();
+        }}>Clear queue</button
+      >
+    </div>
   </div>
 </dialog>

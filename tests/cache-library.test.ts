@@ -9,6 +9,47 @@ afterEach(() => {
 });
 
 describe("cached library", () => {
+  it("restores and checkpoints library replacements without changing queue occurrences", async () => {
+    const storage = installMetadataStorage();
+    const clean = snapshot();
+    await storage.seed(account, clean);
+    const filePath = await snapshotPath(account);
+    const queuePath = filePath.replace("library.json", "queue.json");
+    const queue = { tracks: ["song", "song", "other", "song"], index: 1, position: 12.5 };
+    storage.files.set(queuePath, new File([JSON.stringify(queue)], "queue.json"));
+    const cache = new Cache(getAccountKey(account));
+    await cache.load();
+    expect(cache.error).toBeUndefined();
+    expect([...cache.tracks.values()]).toEqual(clean.tracks);
+    expect(cache.queue).toEqual(queue);
+    expect(storage.writes).toBe(0);
+    expect(JSON.parse(await storage.files.get(filePath)!.text())).toEqual(clean);
+
+    await cache.replaceLibrary({ ...clean, savedAt: 101 });
+    await cache.flush();
+    expect(JSON.parse(await storage.files.get(filePath)!.text())).toEqual({
+      ...clean,
+      savedAt: 101,
+    });
+    const restored = new Cache(getAccountKey(account));
+    await restored.load();
+    expect([...restored.tracks.values()]).toEqual(clean.tracks);
+    expect(restored.queue).toEqual(queue);
+  });
+
+  it.each([{ unrelated: true }, { duration: -1 }, { title: 42 }])(
+    "rejects invalid persisted library metadata %j",
+    async (extra) => {
+      const storage = installMetadataStorage();
+      const data = snapshot();
+      await storage.seed(account, { ...data, tracks: [{ ...data.tracks[0], ...extra }] });
+      const cache = new Cache(getAccountKey(account));
+      await expect(cache.load()).rejects.toBeInstanceOf(AggregateError);
+      expect(cache.error).toBeDefined();
+      expect(cache.tracks.size).toBe(0);
+    },
+  );
+
   it("restores sorted stable indexes without changing stored entity order", async () => {
     const storage = installMetadataStorage();
     const data = snapshot();

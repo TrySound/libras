@@ -48,7 +48,7 @@
   });
 </script>
 
-<App {network} {auth} updaterComponent={undefined}>
+<App {network} {auth} updaterComponent={undefined} demo>
   {#snippet settingsContent()}
     <article class="card stack-md" aria-labelledby="demo-credits-title">
       <h2 class="heading-md uppercase" id="demo-credits-title">Demo music credits</h2>

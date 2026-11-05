@@ -16,9 +16,10 @@
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
+    appName?: string;
   }
 
-  let { cache, covers, trackEngine, session, playback }: Props = $props();
+  let { cache, covers, trackEngine, session, playback, appName = "Libras" }: Props = $props();
 
   // Long-press focuses the primary target before opening the shared dialog.
   let menuArtistId = $state<string>();
@@ -65,6 +66,8 @@
     document.getElementById("artist-popover")?.hidePopover?.();
   }
 </script>
+
+<svelte:head><title>Your library | {appName}</title></svelte:head>
 
 <section aria-labelledby="library-heading">
   <h1 class="visually-hidden" id="library-heading">Your library</h1>

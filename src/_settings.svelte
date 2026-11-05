@@ -8,9 +8,11 @@
   interface Props {
     session: Session;
     children?: Snippet;
+    demo?: boolean;
+    appName?: string;
   }
 
-  let { session, children }: Props = $props();
+  let { session, children, demo = false, appName = "Libras" }: Props = $props();
   let host = $state("");
   let username = $state("");
   let password = $state("");
@@ -58,6 +60,8 @@
     host = username = password = "";
   }
 </script>
+
+<svelte:head><title>Settings | {appName}</title></svelte:head>
 
 <section bind:this={view} aria-labelledby="settings-heading">
   <div class="stack-lg scroll-runway">
@@ -118,7 +122,20 @@
           </div>
         {/if}
 
-        {#if !session.auth}
+        {#if !session.auth && demo}
+          <p class="body">
+            This demo uses a fixed music library and cannot connect to other servers. Reload to
+            reconnect to the demo.
+          </p>
+          <div class="row-sm">
+            <button
+              class="button"
+              data-size="text"
+              data-variant="secondary"
+              onclick={() => window.location.reload()}>Reload demo</button
+            >
+          </div>
+        {:else if !session.auth}
           <form
             class="stack-md"
             onsubmit={submitConnection}
@@ -197,7 +214,12 @@
         {:else}
           <div class="stack-md">
             <p class="caption text-secondary">
-              Disconnect to change servers. Your offline library will stay on this device.
+              {#if demo}
+                This demo uses a fixed music library. Disconnect stops streaming; reload to
+                reconnect. Your downloaded previews stay on this device.
+              {:else}
+                Disconnect to change servers. Your offline library will stay on this device.
+              {/if}
             </p>
             <div class="row-sm row-wrap">
               <button
@@ -232,13 +254,17 @@
         aria-labelledby="settings-offline-title"
       >
         <div class="row-md row-justify">
-          <h2 class="heading-md uppercase" id="settings-offline-title">Offline library</h2>
+          <h2 class="heading-md uppercase" id="settings-offline-title">
+            <span id="settings-offline-label">Offline library</span> is {session.offlineMode
+              ? "on"
+              : "off"}
+          </h2>
           <input
             class="switch"
             id="settings-offline"
             type="checkbox"
             role="switch"
-            aria-labelledby="settings-offline-title"
+            aria-labelledby="settings-offline-label"
             aria-describedby="settings-offline-help"
             checked={session.offlineMode}
             disabled={!session.auth || session.busy}
@@ -247,9 +273,13 @@
         </div>
         <p class="body" id="settings-offline-help">
           {#if !session.auth}
-            Connect to a server to browse online. Your saved music remains available.
+            {demo
+              ? "Reload the demo to browse online. Your downloaded previews remain available."
+              : "Connect to a server to browse online. Your saved music remains available."}
           {:else}
-            Show downloaded music only. Turn this off to browse and stream from your server.
+            Show downloaded music only. Turn this off to browse and stream {demo
+              ? "demo previews"
+              : "from your server"}.
           {/if}
         </p>
         <div class="row-sm">

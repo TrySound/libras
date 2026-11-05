@@ -17,6 +17,7 @@
     | "play"
     | "plus"
     | "previous"
+    | "queue"
     | "sound-bars"
     | "cross"
     | "error"

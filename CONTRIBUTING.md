@@ -92,15 +92,16 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
 
 Select suites for the behavior being changed:
 
-| Suite in `tests/browser/`                 | Coverage                                                                                    |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `edgerunner.test.cjs`                     | Shared styles, fonts, native controls, overlays, and reduced motion                         |
-| `navigation.test.cjs`                     | Document scrolling, shell, playback, query routes, anchors, and optional offline navigation |
-| `startup.test.cjs`                        | Initial Settings route, reloads, and subsequent animated navigation                         |
-| `library.test.cjs`, `search.test.cjs`     | Browsing, actions, responsive layouts, and native dismissal                                 |
-| `downloads.test.cjs`, `settings.test.cjs` | Actual app/OPFS behavior with intercepted Subsonic requests                                 |
-| `atmosphere.test.cjs`                     | Document/dialog scroll timelines; self-contained, no server required                        |
-| `website-cascade.test.cjs`                | Script-free landing layout, keyboard/FAQ behavior, and standalone demo journeys             |
+| Suite in `tests/browser/`                 | Coverage                                                                                                                                |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `edgerunner.test.cjs`                     | Shared styles, fonts, native controls, overlays, and reduced motion                                                                     |
+| `navigation.test.cjs`                     | Document scrolling, shell, playback, query routes, anchors, and optional offline navigation                                             |
+| `startup.test.cjs`                        | Initial Settings route, reloads, and subsequent animated navigation                                                                     |
+| `library.test.cjs`, `search.test.cjs`     | Browsing, actions, responsive layouts, and native dismissal                                                                             |
+| `downloads.test.cjs`, `settings.test.cjs` | Actual app/OPFS behavior with intercepted Subsonic requests                                                                             |
+| `atmosphere.test.cjs`                     | Document/dialog scroll timelines; self-contained, no server required                                                                    |
+| `website-cascade.test.cjs`                | Script-free landing layout, keyboard/FAQ behavior, and standalone demo journeys                                                         |
+| `design-improvements.test.cjs`            | Compact details, full-height player, queue anchors, confirmation, gradients, popover timing, titles, and demo guidance (website server) |
 
 Run the website suite against the website server, not the app:
 
