@@ -147,7 +147,9 @@
         <Artwork {covers} id={track?.artworkId} size="cover" loading="eager" />
         <div class="stack-lg">
           <div class="stack-xs">
-            <h1 id={`${id}-now-title`} class="heading-xl">{track?.title ?? "Nothing playing"}</h1>
+            <h1 id={`${id}-now-title`} class="heading-lg uppercase">
+              {track?.title ?? "Nothing playing"}
+            </h1>
             {#if track}
               <p class="caption text-secondary">
                 {#if artist}

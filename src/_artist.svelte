@@ -84,7 +84,7 @@
       />
       <div class="stack-sm">
         <div class="row-md row-justify">
-          <div class="stack-xs"><h1 class="heading-xl">{artist.name}</h1></div>
+          <div class="stack-xs"><h1 class="heading-lg uppercase">{artist.name}</h1></div>
           <div class="row-sm">
             <button
               class="button"

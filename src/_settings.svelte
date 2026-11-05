@@ -65,7 +65,7 @@
 
 <section bind:this={view} aria-labelledby="settings-heading">
   <div class="stack-lg scroll-runway">
-    <h1 class="heading-xl" id="settings-heading">Settings</h1>
+    <h1 class="heading-lg uppercase" id="settings-heading">Settings</h1>
 
     <div class="split-layout" data-ratio="3:2">
       <section class="card stack-md" id="settings-server" aria-labelledby="settings-server-title">
@@ -200,7 +200,7 @@
                 class="button"
                 type="submit"
                 data-size="text"
-                data-variant="secondary"
+                data-variant="primary"
                 aria-disabled={session.busy}
                 aria-busy={session.busy}
               >

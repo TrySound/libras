@@ -90,6 +90,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
   const page = await browser.newPage({
     viewport: { width: 1280, height: 800 },
     reducedMotion: "reduce",
+    hasTouch: true,
   });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -153,6 +154,8 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "?/settings");
     await sidebar.getByRole("link", { name: "Downloads", exact: true }).focus();
     await page.setViewportSize({ width: 768, height: 800 });
+    const menuTarget = await menu.boundingBox();
+    assert.ok(menuTarget.width >= 44 && menuTarget.height >= 44);
     assert.equal(
       await page.evaluate(() => getComputedStyle(document.scrollingElement).overscrollBehavior),
       "auto",

@@ -87,7 +87,7 @@
       <div class="stack-sm">
         <div class="row-md row-justify">
           <div class="stack-xs">
-            <h1 class="heading-xl">{album.title}</h1>
+            <h1 class="heading-lg uppercase">{album.title}</h1>
             <a class="button-quiet" href={`?/library/artist/${encodeURIComponent(artist.id)}`}
               ><span class="label text-secondary">{album.displayArtist ?? artist.name}</span></a
             >

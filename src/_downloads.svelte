@@ -45,7 +45,7 @@
 <section aria-labelledby="downloads-heading">
   <div class="stack-lg scroll-runway">
     <header class="stack-sm">
-      <h1 class="heading-xl" id="downloads-heading">Downloads</h1>
+      <h1 class="heading-lg uppercase" id="downloads-heading">Downloads</h1>
       <p class="body text-secondary">Tracks available for offline listening.</p>
     </header>
 

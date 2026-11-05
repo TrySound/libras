@@ -25,7 +25,18 @@ test("Edgerunner foundations and native controls", async (t) => {
         const card = getComputedStyle(document.querySelector(".card"));
         const input = getComputedStyle(document.querySelector(".input"));
         const heading = getComputedStyle(document.querySelector("h1"));
+        const probe = document.createElement("div");
+        probe.style.background = card.getPropertyValue("--shell-bg");
+        probe.style.borderColor = card.getPropertyValue("--shell-border");
+        document.body.append(probe);
+        const shell = getComputedStyle(probe);
+        const cardUsesShell =
+          card.backgroundImage === shell.backgroundImage &&
+          card.backgroundColor === shell.backgroundColor &&
+          card.borderTopColor === shell.borderTopColor;
+        probe.remove();
         return {
+          cardUsesShell,
           space: card.getPropertyValue("--space-xl").trim(),
           border: card.borderTopWidth,
           padding: card.paddingTop,
@@ -41,18 +52,35 @@ test("Edgerunner foundations and native controls", async (t) => {
       assert.equal(styles.space, "48px");
       assert.equal(styles.border, "2px");
       assert.equal(styles.padding, "24px");
+      assert.equal(styles.cardUsesShell, true);
       assert.match(styles.background, /linear-gradient/);
       assert.equal(styles.inputPadding, "8px 16px");
       assert.match(styles.font, /Rajdhani/);
       assert.ok(styles.buttonFonts.length > 0);
       assert.ok(styles.buttonFonts.every((font) => /Rajdhani/.test(font)));
       assert.equal(styles.fontDisplays.length, 3);
-      assert.ok(styles.fontDisplays.every((display) => display === "optional"));
+      assert.ok(styles.fontDisplays.every((display) => display === "swap"));
       assert.equal(await page.locator('link[rel="preload"][as="font"][crossorigin]').count(), 3);
 
       for (const width of [320, 375, 768, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        const buttons = await page.locator(".button, .button-quiet").evaluateAll((nodes) =>
+          nodes
+            .filter((node) => node.getClientRects().length)
+            .every((node) => {
+              const box = node.getBoundingClientRect();
+              return box.width >= 44 && box.height >= 44;
+            }),
+        );
+        assert.equal(buttons, true, `44px button targets at ${width}px`);
+        assert.equal(
+          await page
+            .locator(".card")
+            .first()
+            .evaluate((node) => getComputedStyle(node).paddingTop),
+          "24px",
+        );
       }
       await page.setViewportSize({ width: 320, height: 900 });
       await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
@@ -71,68 +99,83 @@ test("Edgerunner foundations and native controls", async (t) => {
       assert.deepEqual(sizing, ["16px", "20px"]);
     });
 
-    await t.test(
-      "app entry preloads all optional faces without duplicate font requests",
-      async () => {
-        const context = await browser.newContext();
-        const app = await context.newPage();
-        try {
-          await app.goto(base);
-          await app.locator(".app-root").waitFor();
-          await app.evaluate(() => document.fonts.ready);
-          const fonts = await app.evaluate(() => {
-            const preloads = [...document.querySelectorAll('link[rel="preload"][as="font"]')];
-            return preloads.map((link) => ({
-              href: link.href,
-              type: link.type,
-              cors: link.hasAttribute("crossorigin"),
-              requests: performance.getEntriesByName(link.href).length,
-            }));
-          });
-          assert.equal(fonts.length, 3);
-          for (const [index, font] of fonts.entries()) {
-            assert.match(font.href, new RegExp(`rajdhani-${[500, 600, 700][index]}-latin`));
-            assert.equal(font.type, "font/woff2");
-            assert.equal(font.cors, true);
-            assert.equal(font.requests, 1);
-          }
-          assert.ok(
-            await app.evaluate(() =>
-              [...document.fonts].every((font) => font.display === "optional"),
-            ),
-          );
-        } finally {
-          await context.close();
+    await t.test("app entry preloads all swap faces without duplicate font requests", async () => {
+      const context = await browser.newContext();
+      const app = await context.newPage();
+      try {
+        await app.goto(base);
+        await app.locator(".app-root").waitFor();
+        await app.evaluate(() => document.fonts.ready);
+        const fonts = await app.evaluate(() => {
+          const preloads = [...document.querySelectorAll('link[rel="preload"][as="font"]')];
+          return preloads.map((link) => ({
+            href: link.href,
+            type: link.type,
+            cors: link.hasAttribute("crossorigin"),
+            requests: performance.getEntriesByName(link.href).length,
+          }));
+        });
+        assert.equal(fonts.length, 3);
+        for (const [index, font] of fonts.entries()) {
+          assert.match(font.href, new RegExp(`rajdhani-${[500, 600, 700][index]}-latin`));
+          assert.equal(font.type, "font/woff2");
+          assert.equal(font.cors, true);
+          assert.equal(font.requests, 1);
         }
-      },
-    );
+        assert.ok(
+          await app.evaluate(() => [...document.fonts].every((font) => font.display === "swap")),
+        );
+      } finally {
+        await context.close();
+      }
+    });
 
-    await t.test("slow fonts keep the fallback without a late layout swap", async () => {
-      // A fresh context avoids warm font caches from the preceding specimens.
+    await t.test("slow fonts keep text visible then render Rajdhani", async (t) => {
       const context = await browser.newContext();
       const slowPage = await context.newPage();
+      let release;
+      const gate = new Promise((resolve) => (release = resolve));
       try {
+        await slowPage.addInitScript(() => {
+          window.fontLayoutShift = 0;
+          new PerformanceObserver((list) => {
+            for (const entry of list.getEntries())
+              if (!entry.hadRecentInput) window.fontLayoutShift += entry.value;
+          }).observe({ type: "layout-shift", buffered: true });
+        });
         await slowPage.route("**/*.woff2", async (route) => {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await gate;
           await route.continue();
         });
-        await slowPage.goto(new URL("styleguide.html", base).href, {
-          waitUntil: "domcontentloaded",
-        });
-        await slowPage.locator("h1").waitFor();
-        // Let the short optional-font window expire before measuring text.
+        await slowPage.goto(base, { waitUntil: "domcontentloaded" });
+        const heading = slowPage.locator("#settings-heading");
+        await heading.waitFor();
         await slowPage.waitForTimeout(200);
-        const textWidth = () =>
-          slowPage.locator("h1").evaluate((heading) => {
-            const range = document.createRange();
-            range.selectNodeContents(heading);
-            return range.getBoundingClientRect().width;
-          });
-        const fallbackWidth = await textWidth();
-        assert.ok(fallbackWidth > 0);
+        const cdp = await context.newCDPSession(slowPage);
+        await cdp.send("DOM.enable");
+        await cdp.send("CSS.enable");
+        const { root } = await cdp.send("DOM.getDocument");
+        const { nodeId } = await cdp.send("DOM.querySelector", {
+          nodeId: root.nodeId,
+          selector: "#settings-heading",
+        });
+        const platformFonts = async () =>
+          (await cdp.send("CSS.getPlatformFontsForNode", { nodeId })).fonts;
+        assert.ok((await heading.boundingBox()).height > 0);
+        assert.ok((await platformFonts()).every((font) => !font.isCustomFont));
+        release();
         await slowPage.evaluate(() => document.fonts.ready);
-        assert.equal(await textWidth(), fallbackWidth);
+        await slowPage.evaluate(
+          () =>
+            new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        );
+        assert.ok((await platformFonts()).some((font) => /Rajdhani/.test(font.familyName)));
+        t.diagnostic(
+          `Delayed-font layout shift: ${await slowPage.evaluate(() => window.fontLayoutShift)}`,
+        );
+        await cdp.detach();
       } finally {
+        release();
         await context.close();
       }
     });

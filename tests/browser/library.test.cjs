@@ -9,12 +9,18 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
   const page = await browser.newPage({
     viewport: { width: 1280, height: 800 },
     reducedMotion: "reduce",
+    hasTouch: true,
   });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const artists = Array.from({ length: 53 }, (_, i) => ({
     id: `artist ${i}`,
-    name: i ? `Artist ${i}` : "A very long artist name without artwork that should wrap naturally",
+    name:
+      i === 2
+        ? "BADBADNOTGOOD"
+        : i
+          ? `Artist ${i}`
+          : "A very long artist name without artwork that should wrap naturally",
     coverArt: i === 1 ? "artist-cover" : undefined,
   }));
   const albums = artists.map((artist, i) => ({
@@ -90,6 +96,15 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       true,
     );
     await page.setViewportSize({ width: 393, height: 852 });
+    const target = await options.filter({ visible: true }).boundingBox();
+    assert.ok(target.width >= 44 && target.height >= 44);
+    assert.deepEqual(
+      await first.locator("h3").evaluate((node) => {
+        const style = getComputedStyle(node);
+        return [style.wordBreak, style.overflowWrap, style.textWrap];
+      }),
+      ["normal", "anywhere", "balance"],
+    );
     await options.filter({ visible: true }).click();
     const sheet = page.locator("#artist-menu");
     await sheet.waitFor({ state: "visible" });
@@ -119,6 +134,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       await options.filter({ visible: true }).evaluate((node) => node === document.activeElement),
       true,
     );
+    await page.setViewportSize({ width: 320, height: 852 });
     await page.evaluate(() => {
       document.documentElement.style.fontSize = "200%";
     });
@@ -126,6 +142,16 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       await page.evaluate(
         () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
       ),
+      true,
+    );
+    assert.equal(
+      await first.locator("h3").evaluate((node) => {
+        const tile = node.closest(".tile").getBoundingClientRect();
+        const text = document.createRange();
+        text.selectNodeContents(node);
+        const title = text.getBoundingClientRect();
+        return title.left >= tile.left && title.right <= tile.right && title.bottom <= tile.bottom;
+      }),
       true,
     );
     await page.evaluate(() => {
@@ -146,6 +172,15 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     }
     await page.locator(".library-sentinel").scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.querySelectorAll(".tile").length === 53);
+    // This name sorts after the first lazy batch; check it only once loaded.
+    const longName = page.getByRole("link", { name: "BADBADNOTGOOD", exact: true });
+    assert.equal(await longName.count(), 1);
+    await page.keyboard.press("Tab");
+    await longName.focus();
+    assert.equal(
+      await longName.evaluate((node) => getComputedStyle(node.closest(".tile")).outlineWidth),
+      "4px",
+    );
     await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
     assert.equal(
       await page.evaluate(() => {

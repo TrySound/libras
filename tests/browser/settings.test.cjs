@@ -69,8 +69,9 @@ test("Settings native controls, layout, and persistence", async (t) => {
   const waitConnected = () =>
     page.waitForFunction(
       () =>
-        document.querySelector("#settings-connection-status")?.textContent.includes("Connected") &&
-        document.querySelector("#settings-refresh")?.getAttribute("aria-busy") !== "true",
+        !!document.querySelector("#settings-server-identity") &&
+        !document.querySelector("#settings-offline")?.checked &&
+        document.querySelector("#settings-refresh")?.getAttribute("aria-busy") === "false",
     );
 
   try {
@@ -78,6 +79,9 @@ test("Settings native controls, layout, and persistence", async (t) => {
     await page.locator("[aria-labelledby=settings-heading]").waitFor();
     await t.test("browser validation blocks submission without shifting the card", async () => {
       await page.evaluate(() => document.fonts.ready);
+      const connect = page.locator("#settings-connect");
+      assert.equal(await connect.getAttribute("data-variant"), "primary");
+      assert.ok((await connect.boundingBox()).height >= 44);
       const box = await page.locator("#settings-server").boundingBox();
       await page.getByRole("button", { name: "Connect", exact: true }).click();
       assert.equal(
@@ -212,11 +216,19 @@ test("Settings native controls, layout, and persistence", async (t) => {
         document.querySelector("#settings-connection-status")?.textContent.includes("Offline mode"),
       );
       assert.equal(await control.isChecked(), true);
+      const onThumb = await control.evaluate(
+        (node) => getComputedStyle(node, "::before").backgroundColor,
+      );
+      assert.equal(onThumb, "rgb(239, 191, 4)");
       assert.equal(calls.filter((method) => method === "ping").length, pings);
       const searches = calls.filter((method) => method === "search3").length;
       await control.focus();
       await page.keyboard.press("Space");
       await waitConnected();
+      assert.equal(
+        await control.evaluate((node) => getComputedStyle(node, "::before").backgroundColor),
+        onThumb,
+      );
       assert.equal(calls.filter((method) => method === "search3").length, searches);
       await page.getByRole("link", { name: "Libras home", exact: true }).click();
       await page.locator("[aria-labelledby=library-heading] .tile").waitFor();

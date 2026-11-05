@@ -217,6 +217,9 @@
   --space-lg: 24px;
   --space-xl: 48px;
 
+  /* All button primitives share a minimum target; content may grow beyond it. */
+  --control-min-size: 44px;
+
   /* Border/focus geometry; the outline deliberately composes geometry and color. */
   --border-width: 2px;
   --focus-ring: 4px solid var(--accent);
@@ -530,6 +533,8 @@
   }
 
   .heading-xl {
+    overflow-wrap: anywhere;
+    text-wrap: balance;
     margin: 0;
     font-size-adjust: from-font;
     font-family: var(--heading-xl-font);
@@ -540,6 +545,8 @@
   }
 
   .heading-lg {
+    overflow-wrap: anywhere;
+    text-wrap: balance;
     margin: 0;
     font-size-adjust: from-font;
     font-family: var(--heading-lg-font);
@@ -550,6 +557,8 @@
   }
 
   .heading-md {
+    overflow-wrap: anywhere;
+    text-wrap: balance;
     margin: 0;
     font-size-adjust: from-font;
     font-family: var(--heading-md-font);
@@ -560,6 +569,8 @@
   }
 
   .heading-sm {
+    overflow-wrap: anywhere;
+    text-wrap: balance;
     margin: 0;
     font-size-adjust: from-font;
     font-family: var(--heading-sm-font);
@@ -618,7 +629,7 @@
     border: var(--border-width) solid var(--shell-border);
     border-radius: var(--radius-xl);
     corner-shape: var(--corner-shape);
-    background: var(--surface-bg);
+    background: var(--shell-bg);
   }
 }
 
@@ -837,7 +848,8 @@
     -webkit-tap-highlight-color: transparent;
     margin: 0;
     padding: 0;
-    min-inline-size: 0;
+    min-inline-size: var(--control-min-size);
+    min-block-size: var(--control-min-size);
     translate: 0;
     scale: 1;
 
@@ -903,6 +915,8 @@
     flex-shrink: 0;
     gap: var(--space-sm);
     padding: var(--button-padding-block) var(--button-padding-inline);
+    min-inline-size: var(--control-min-size);
+    min-block-size: var(--control-min-size);
     max-inline-size: 100%;
     border: 0;
     border-radius: var(--radius-sm);

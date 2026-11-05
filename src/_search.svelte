@@ -271,7 +271,7 @@
 <svelte:head><title>Search | {appName}</title></svelte:head>
 
 <section class="stack-lg scroll-runway">
-  <h1 class="heading-xl">Search</h1>
+  <h1 class="heading-lg uppercase">Search</h1>
   <search class="stack-xs">
     <label class="label" for="library-search">Search library</label>
     <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
