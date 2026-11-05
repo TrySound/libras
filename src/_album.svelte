@@ -82,7 +82,7 @@
         <div class="row-md row-justify">
           <div class="stack-xs">
             <h1 class="heading-xl">{album.title}</h1>
-            <a class="button-quiet" href={`#/library/artist/${encodeURIComponent(artist.id)}`}
+            <a class="button-quiet" href={`?/library/artist/${encodeURIComponent(artist.id)}`}
               ><span class="label text-secondary">{album.displayArtist ?? artist.name}</span></a
             >
           </div>
@@ -227,7 +227,7 @@
           class="button"
           data-size="text"
           data-variant="secondary"
-          href={libraryAvailable ? "#/library" : "#/settings"}
+          href={libraryAvailable ? "?/library" : "?/settings"}
         >
           {libraryAvailable ? "Open library" : "Open settings"}</a
         >

@@ -176,7 +176,7 @@ test("website music credits open the demo Settings card", async () => {
   try {
     await page.goto(base);
     await page.getByRole("link", { name: "Music credits", exact: true }).click();
-    await page.waitForURL("**/demo/#/settings");
+    await page.waitForURL("**/demo/?/settings");
     const credits = page.locator('article[aria-labelledby="demo-credits-title"]');
     await credits.waitFor();
     assert.equal(await credits.locator("li").count(), 53);
@@ -192,13 +192,13 @@ test("every planned album is browsable without live Deezer API access", async ()
   const requests = await mockDeezer(page, true);
   try {
     for (const album of catalog) {
-      await page.goto(`${base}demo/#/library/artist/${album.artistId}/album/${album.id}`);
+      await page.goto(`${base}demo/?/library/artist/${album.artistId}/album/${album.id}`);
       const details = page.locator('section[aria-label="Album details"]');
       await details.getByRole("heading", { name: album.title, exact: true, level: 1 }).waitFor();
       assert.equal(await details.locator(".track-row").count(), album.tracks.length);
       assert.ok((await details.textContent()).includes(String(album.year)));
     }
-    await page.goto(`${base}demo/#/settings`);
+    await page.goto(`${base}demo/?/settings`);
     const credits = page.locator('article[aria-labelledby="demo-credits-title"]');
     await credits.waitFor();
     assert.equal(await credits.locator("li").count(), 53);

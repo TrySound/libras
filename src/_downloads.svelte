@@ -59,7 +59,7 @@
           Your saved files remain available. Open the library to try downloading again.
         </p>
         <div class="row-sm">
-          <a class="button" data-variant="secondary" data-size="text" href="#/library"
+          <a class="button" data-variant="secondary" data-size="text" href="?/library"
             >Open library</a
           >
         </div>
@@ -127,7 +127,7 @@
         <h2 class="heading-sm">No downloads yet</h2>
         <p class="body">Your saved tracks will appear here.</p>
         <div class="row-sm">
-          <a class="button" data-variant="secondary" data-size="text" href="#/library"
+          <a class="button" data-variant="secondary" data-size="text" href="?/library"
             >Open library</a
           >
         </div>

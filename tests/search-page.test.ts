@@ -125,7 +125,7 @@ it("focuses the input, expands results, retains route state, and uses album play
         ),
       ).toHaveLength(0);
       expect(target.querySelector(`a[aria-label="${name}"]`)?.getAttribute("href")).toContain(
-        "#/library/artist/artist",
+        "?/library/artist/artist",
       );
       button("Play").click();
       expect(playback.replaceQueueAndPlay).toHaveBeenLastCalledWith(tracks.map((t) => t.id));
@@ -209,7 +209,7 @@ it.each([
       expect(target.querySelector("section h2")?.textContent?.trim()).toBe(heading);
       if (heading)
         expect(target.querySelector("section a")?.getAttribute("href")).toBe(
-          savedAt === undefined ? "#/settings" : "#/library",
+          savedAt === undefined ? "?/settings" : "?/library",
         );
     } finally {
       await unmount(app);

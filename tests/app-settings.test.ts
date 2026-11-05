@@ -6,7 +6,7 @@ import WebappUpdater from "../src/webapp-updater.svelte";
 import { Network } from "../src/network.svelte";
 import { AuthStore } from "../src/auth";
 import { registerSW } from "virtual:pwa-register";
-import { installNavigation } from "./router-test-helpers";
+import { installNavigation, navigationEvent } from "./router-test-helpers";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
 const mocks = vi.hoisted(() => ({
@@ -155,15 +155,15 @@ describe("app settings", () => {
       fill();
       await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
       if (state === "hidden") target.style.display = "none";
-      else if (state === "navigating") window.history.replaceState(null, "", "#/downloads");
+      else if (state === "navigating") window.history.replaceState(null, "", "?/downloads");
       else {
         // Commit another route without destroying App or cancelling its Session.
         const intercept = vi.fn();
         window.navigation.dispatchEvent(
-          Object.assign(new Event("navigate"), {
+          Object.assign(navigationEvent(), {
             canIntercept: true,
             navigationType: "push",
-            destination: { url: new URL("#/downloads", window.location.href).href },
+            destination: { url: new URL("?/downloads", window.location.href).href },
             intercept,
           }),
         );

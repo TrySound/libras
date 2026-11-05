@@ -54,7 +54,7 @@ test("Search responsive layout and native actions", async () => {
     await page.getByLabel("Password", { exact: true }).fill("fictional-password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await page.locator(".tile").waitFor();
-    await page.locator('a[href="#/search"]').filter({ visible: true }).click();
+    await page.locator('a[href="?/search"]').filter({ visible: true }).click();
     const input = page.getByRole("searchbox", { name: "Search library" });
     await input.waitFor();
     assert.equal(await input.evaluate((node) => node === document.activeElement), true);

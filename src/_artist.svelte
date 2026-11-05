@@ -134,7 +134,7 @@
             </div>
             <a
               class="link-target"
-              href={`#/library/artist/${encodeURIComponent(artist.id)}/album/${encodeURIComponent(album.id)}`}
+              href={`?/library/artist/${encodeURIComponent(artist.id)}/album/${encodeURIComponent(album.id)}`}
               aria-label={`Open ${album.title}`}
               data-longpressfor="artist-detail-menu"
               data-longpress="show-modal"
@@ -178,7 +178,7 @@
           class="button"
           data-size="text"
           data-variant="secondary"
-          href={libraryAvailable ? "#/library" : "#/settings"}
+          href={libraryAvailable ? "?/library" : "?/settings"}
         >
           {libraryAvailable ? "Open library" : "Open settings"}</a
         >

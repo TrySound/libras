@@ -129,7 +129,8 @@
     if (!savedAuth && cache.key === undefined) {
       // Startup chooses the first page; it is not an animated navigation.
       const url = new URL(window.location.href);
-      url.hash = "/settings";
+      if (url.search !== "?/settings") url.hash = "";
+      url.search = "/settings";
       if (url.href !== window.location.href)
         window.history.replaceState(window.history.state, "", url);
     }
@@ -189,7 +190,7 @@
 {#snippet brand()}
   <a
     class="button-quiet row-sm"
-    href="#/library"
+    href="?/library"
     aria-label="Libras home"
     onclick={() => navigationDrawer?.close()}
   >
@@ -202,7 +203,7 @@
   <nav class="stack-sm" aria-label="Main navigation">
     <a
       class="menu-item"
-      href="#/library"
+      href="?/library"
       aria-current={isCurrentPage("/library") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
@@ -211,7 +212,7 @@
     </a>
     <a
       class="menu-item"
-      href="#/search"
+      href="?/search"
       aria-current={isCurrentPage("/search") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
@@ -220,7 +221,7 @@
     </a>
     <a
       class="menu-item"
-      href="#/downloads"
+      href="?/downloads"
       aria-current={isCurrentPage("/downloads") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
@@ -229,7 +230,7 @@
     </a>
     <a
       class="menu-item"
-      href="#/settings"
+      href="?/settings"
       aria-current={isCurrentPage("/settings") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
@@ -288,7 +289,7 @@
         {@render brand()}
         <div class="row-sm">
           {@render actions()}
-          <a class="button" href="#/search" aria-label="Search">
+          <a class="button" href="?/search" aria-label="Search">
             <Icon name="search" />
           </a>
           <button

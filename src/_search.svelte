@@ -51,7 +51,7 @@
       (album) => !available || albumIds.has(album.id),
     );
     const artistIds = new Set(eligibleAlbums.flatMap((album) => album.artistIds));
-    const artistPath = (id: string) => `#/library/artist/${encodeURIComponent(id)}`;
+    const artistPath = (id: string) => `?/library/artist/${encodeURIComponent(id)}`;
     const records: Record<SearchGroup, SearchRecord[]> = {
       Artists: [...artists.values()]
         .filter((artist) => !available || artistIds.has(artist.id))
@@ -291,7 +291,7 @@
       <p class="body">{libraryError}</p>
       {#if index.size > 0}<p class="body">Available music is still searchable below.</p>{/if}
       <div class="row-sm">
-        <a class="button" data-variant="secondary" data-size="text" href="#/settings"
+        <a class="button" data-variant="secondary" data-size="text" href="?/settings"
           >Open settings</a
         >
       </div>
@@ -320,7 +320,7 @@
               class="button"
               data-variant="secondary"
               data-size="text"
-              href={cache.savedAt === undefined ? "#/settings" : "#/library"}
+              href={cache.savedAt === undefined ? "?/settings" : "?/library"}
               >{cache.savedAt === undefined ? "Open settings" : "Open library"}</a
             >
           </div>

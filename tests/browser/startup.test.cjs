@@ -4,8 +4,8 @@ const { test } = require("node:test");
 const { chromium } = require("playwright");
 const base = process.env.PREVIEW_URL ?? "http://127.0.0.1:5173";
 
-for (const hash of ["", "#/library", "#/settings"]) {
-  test(`new user starts directly in Settings at ${hash || "the root"}`, async () => {
+for (const query of ["", "?/library", "?/settings"]) {
+  test(`new user starts directly in Settings at ${query || "the root"}`, async () => {
     const browser = await chromium.launch({ headless: true });
     try {
       const page = await browser.newPage({ reducedMotion: "no-preference" });
@@ -29,9 +29,9 @@ for (const hash of ["", "#/library", "#/settings"]) {
           }
         }).observe(document, { childList: true, subtree: true });
       });
-      await page.goto(`${base.replace(/\/$/, "")}/${hash}`);
+      await page.goto(`${base.replace(/\/$/, "")}/${query}`);
       await page.locator("#settings-heading").waitFor();
-      assert.equal(new URL(page.url()).hash, "#/settings");
+      assert.equal(new URL(page.url()).search, "?/settings");
       assert.deepEqual(
         await page.evaluate(() => ({
           transitions: window.startupTransitions,

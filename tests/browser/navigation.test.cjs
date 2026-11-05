@@ -4,6 +4,87 @@ const { test } = require("node:test");
 const { chromium } = require("playwright");
 const base = `${(process.env.PREVIEW_URL ?? "http://127.0.0.1:4173").replace(/\/$/, "")}/`;
 
+test("query routes preserve native anchors and history", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext({ reducedMotion: "reduce" });
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto(new URL("?/settings#settings-heading", base).href);
+    await page.locator("#settings-heading").waitFor();
+    assert.equal(new URL(page.url()).pathname, new URL(base).pathname);
+    assert.equal(new URL(page.url()).hash, "#settings-heading");
+    if (process.env.TEST_OFFLINE === "1") {
+      await page.evaluate(async () => {
+        await navigator.serviceWorker.ready;
+        if (!navigator.serviceWorker.controller)
+          await new Promise((resolve) =>
+            navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true }),
+          );
+      });
+    }
+
+    // An ordinary fragment link must preserve the route and page DOM.
+    await page.evaluate(() => {
+      const heading = document.querySelector("#settings-heading");
+      heading.dataset.retained = "true";
+      const target = document.createElement("div");
+      target.id = "anchor target";
+      target.style.marginTop = "2000px";
+      target.textContent = "Anchor destination";
+      const link = document.createElement("a");
+      link.href = "#anchor%20target";
+      link.textContent = "Jump to target";
+      heading.after(link, target);
+    });
+    await page.getByRole("link", { name: "Jump to target" }).click();
+    await page.waitForFunction(() => window.scrollY > 100);
+    assert.equal(new URL(page.url()).search, "?/settings");
+    assert.equal(new URL(page.url()).hash, "#anchor%20target");
+    assert.equal(await page.locator("#settings-heading").getAttribute("data-retained"), "true");
+    await page.goBack();
+    assert.equal(new URL(page.url()).hash, "#settings-heading");
+
+    // A route plus fragment is intercepted, rendered, and then scrolled by the browser.
+    await page.evaluate(() => window.navigation.navigate("?/downloads#downloads-heading").finished);
+    await page.locator("#downloads-heading").waitFor();
+    assert.equal(new URL(page.url()).hash, "#downloads-heading");
+    await page.goBack();
+    await page.locator("#settings-heading").waitFor();
+    await page.goForward();
+    await page.locator("#downloads-heading").waitFor();
+
+    // The query-free root is a fallback route, including during history traversal.
+    await page.evaluate(() => window.navigation.navigate(window.location.pathname).finished);
+    await page.locator("#library-heading").waitFor();
+    assert.equal(new URL(page.url()).search, "");
+    await page.evaluate(() => window.navigation.navigate("?/downloads").finished);
+    await page.locator("#downloads-heading").waitFor();
+    await page.goBack();
+    await page.locator("#library-heading").waitFor();
+    assert.equal(new URL(page.url()).search, "");
+    await page.goForward();
+    await page.locator("#downloads-heading").waitFor();
+
+    if (process.env.TEST_OFFLINE === "1") {
+      await context.setOffline(true);
+      const response = await page.reload();
+      assert.equal(response.fromServiceWorker(), true);
+      // A new user is redirected to Settings on a full startup, even offline.
+      await page.locator("#settings-heading").waitFor();
+      assert.equal(new URL(page.url()).search, "?/settings");
+      const offline = await page.goto(new URL("index.html?/settings#settings-heading", base).href);
+      assert.equal(offline.fromServiceWorker(), true);
+      await page.locator("#settings-heading").waitFor();
+      assert.equal(new URL(page.url()).hash, "#settings-heading");
+    }
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("responsive navigation, native drawer, focus, and document scrolling", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
@@ -69,7 +150,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
       true,
       "the hidden desktop topbar reserves no space",
     );
-    assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "#/settings");
+    assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "?/settings");
     await sidebar.getByRole("link", { name: "Downloads", exact: true }).focus();
     await page.setViewportSize({ width: 768, height: 800 });
     assert.equal(
@@ -104,9 +185,9 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     await menu.click();
     await drawer.getByRole("link", { name: "Downloads", exact: true }).click();
     await drawer.waitFor({ state: "hidden" });
-    await page.waitForURL("**/#/downloads");
+    await page.waitForURL("**/?/downloads");
     await menu.click();
-    await page.evaluate(() => window.navigation.navigate("#/settings").finished);
+    await page.evaluate(() => window.navigation.navigate("?/settings").finished);
     await page.locator("[aria-labelledby=settings-heading]").waitFor();
     assert.equal(await drawer.isVisible(), true, "route changes alone do not dismiss the drawer");
     assert.equal(
@@ -135,11 +216,13 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
       true,
     );
     assert.equal(await menu.isVisible(), false);
-    // Legacy deep links still resolve and select Library, not a second destination.
-    await page.goto(`${base}#/library/artist/missing/album/missing`);
+    // Deep routes select their parent section without a second navigation destination.
+    await page.evaluate(
+      () => window.navigation.navigate("?/library/artist/missing/album/missing").finished,
+    );
     await sidebar.waitFor();
-    assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "#/library");
-    await page.evaluate(() => window.navigation.navigate("#/settings").finished);
+    assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "?/library");
+    await page.evaluate(() => window.navigation.navigate("?/settings").finished);
     await page.locator("[aria-labelledby=settings-heading]").waitFor();
     for (const width of [320, 375, 768, 800, 810, 811, 1280]) {
       await page.setViewportSize({ width, height: 700 });
@@ -363,7 +446,7 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
       element.style.removeProperty("white-space");
       element.textContent = text;
     }, song.title);
-    await page.locator('.app-sidebar a[href="#/downloads"]').click();
+    await page.locator('.app-sidebar a[href="?/downloads"]').click();
     await page.locator("[aria-labelledby=downloads-heading]").waitFor();
     assert.equal(await transport.evaluate((audio) => !audio.paused), true);
     await page.setViewportSize({ width: 1280, height: 200 });

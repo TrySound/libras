@@ -87,7 +87,7 @@
           </p>
           <p class="body">Available music is still listed below.</p>
           <div class="row-sm">
-            <a class="button" data-variant="secondary" data-size="text" href="#/settings"
+            <a class="button" data-variant="secondary" data-size="text" href="?/settings"
               >Open settings</a
             >
           </div>
@@ -115,7 +115,7 @@
               </div>
               <a
                 class="link-target"
-                href={`#/library/artist/${encodeURIComponent(artist.id)}`}
+                href={`?/library/artist/${encodeURIComponent(artist.id)}`}
                 aria-label={artist.name}
                 data-longpressfor="artist-menu"
                 data-longpress="show-modal"
@@ -187,7 +187,7 @@
             onclick={() => session.refresh()}>Retry</button
           >
         {/if}
-        <a class="button" data-size="text" data-variant="secondary" href="#/settings"
+        <a class="button" data-size="text" data-variant="secondary" href="?/settings"
           >Open settings</a
         >
       </div>

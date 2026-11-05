@@ -253,7 +253,7 @@
           {/if}
         </p>
         <div class="row-sm">
-          <a class="button" data-size="text" data-variant="secondary" href="#/downloads"
+          <a class="button" data-size="text" data-variant="secondary" href="?/downloads"
             >View downloads</a
           >
         </div>

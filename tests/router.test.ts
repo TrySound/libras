@@ -3,7 +3,7 @@ import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { route, isCurrentPage, navigate } from "../src/router.svelte";
 import RouterTestApp from "./router-test-app.svelte";
-import { installNavigation } from "./router-test-helpers";
+import { installNavigation, navigationEvent } from "./router-test-helpers";
 
 const originalStartViewTransition = document.startViewTransition;
 const cleanups: (() => Promise<void>)[] = [];
@@ -15,8 +15,9 @@ afterEach(async () => {
   document.startViewTransition = originalStartViewTransition;
 });
 
-function setup(path = "/library") {
+function setup(path = "/library", url?: string) {
   const navigation = installNavigation(path);
+  if (url) window.history.replaceState(null, "", url);
   const target = document.createElement("main");
   document.body.append(target);
   const rendered: string[] = [];
@@ -35,17 +36,17 @@ function setup(path = "/library") {
 
 describe("router", () => {
   it.each(["reload", "push", "replace", "traverse"] as const)(
-    "leaves reloads to the browser while routing hash navigation: %s",
+    "leaves reloads to the browser while routing query navigation: %s",
     async (navigationType) => {
       const { navigation, target } = setup();
       const intercept = vi.fn((options: { handler: () => Promise<void>; scroll?: string }) =>
         options.handler(),
       );
-      const event = new Event("navigate");
+      const event = navigationEvent();
       Object.assign(event, {
         navigationType,
         canIntercept: true,
-        destination: { url: new URL("#/player", window.location.href).href },
+        destination: { url: new URL("?/player", window.location.href).href },
         intercept,
       });
       navigation.dispatchEvent(event);
@@ -64,6 +65,7 @@ describe("router", () => {
   it.each([
     ["/library", "library:{}"],
     ["/library/artist/artist%201", 'artist:{"artistId":"artist 1"}'],
+    ["/library/artist/a%2Fb%3Fc%23d%26e%25", 'artist:{"artistId":"a/b?c#d&e%"}'],
     ["/library/artist/artist-1/album/album-1", 'album:{"artistId":"artist-1","albumId":"album-1"}'],
     ["/unknown", "library:{}"],
   ])("renders the initial route %s with decoded parameters", (path, expected) => {
@@ -88,12 +90,14 @@ describe("router", () => {
       document.startViewTransition = start as unknown as typeof document.startViewTransition;
       let finished: Promise<void> | undefined;
       navigation.dispatchEvent(
-        Object.assign(new Event("navigate"), {
+        Object.assign(navigationEvent(), {
           navigationType: "push",
           canIntercept: true,
-          destination: { url: new URL("#/player", window.location.href).href },
+          destination: { url: new URL("?/player", window.location.href).href },
           scroll,
           intercept({ handler }: { handler: () => Promise<void> }) {
+            // The browser commits the destination URL before running the handler.
+            window.history.replaceState(null, "", "?/player");
             finished = handler();
           },
         }),
@@ -114,47 +118,51 @@ describe("router", () => {
     expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
-  it("does not animate redundant same-URL navigation events", async () => {
-    const { navigation } = setup();
-    const start = vi.fn();
-    document.startViewTransition = start;
-    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
-    navigation.dispatchEvent(
-      Object.assign(new Event("navigate"), {
-        navigationType: "replace",
-        canIntercept: true,
-        destination: { url: window.location.href },
-        intercept,
-      }),
-    );
-    await intercept.mock.results[0].value;
-    expect(start).not.toHaveBeenCalled();
-  });
+  it.each(["", "#section"])(
+    "does not animate same-URL events after native anchors: %s",
+    async (hash) => {
+      const { navigation } = setup();
+      window.history.replaceState(null, "", `?/library${hash}`);
+      const start = vi.fn();
+      document.startViewTransition = start;
+      const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+      navigation.dispatchEvent(
+        Object.assign(navigationEvent(), {
+          navigationType: "replace",
+          canIntercept: true,
+          destination: { url: window.location.href },
+          intercept,
+        }),
+      );
+      await intercept.mock.results[0].value;
+      expect(start).not.toHaveBeenCalled();
+    },
+  );
 
-  it("navigates through the browser with hash paths", () => {
+  it("navigates through the browser with query paths", () => {
     const navigation = installNavigation("/library");
     navigate("/player");
-    expect(navigation.navigate).toHaveBeenCalledWith("#/player", { history: "push" });
+    expect(navigation.navigate).toHaveBeenCalledWith("?/player", { history: "push" });
     navigate("/player", "replace");
-    expect(navigation.navigate).toHaveBeenLastCalledWith("#/player", { history: "replace" });
+    expect(navigation.navigate).toHaveBeenLastCalledWith("?/player", { history: "replace" });
   });
 
-  it.each(["", "section"])("replaces an initial non-route hash: %s", (path) => {
-    const { navigation, target } = setup(path);
+  it.each(["/webapp/", "/webapp/?section"])("renders the fallback without rewriting %s", (url) => {
+    const { navigation, target } = setup("/library", url);
+    expect(window.location.href).toBe(new URL(url, window.location.origin).href);
     expect(navigation.navigate).not.toHaveBeenCalled();
-    expect(window.location.hash).toBe("#/library");
-    expect(route.url?.hash).toBe("#/library");
+    expect(route.pattern).toBe("/library");
     expect(target.querySelector("p")!.textContent).toBe("library:{}");
   });
 
   it.each([
-    { canIntercept: false, destination: "#/player" },
-    { canIntercept: true, destination: "https://external.example/#/player" },
-    { canIntercept: true, destination: "#section" },
+    { canIntercept: false, destination: "?/player" },
+    { canIntercept: true, destination: "https://external.example/?/player" },
+    { canIntercept: true, destination: "/other/?/player" },
   ])("leaves unsupported navigation to the browser: %j", ({ canIntercept, destination }) => {
     const { navigation, target } = setup();
     const intercept = vi.fn();
-    const event = new Event("navigate");
+    const event = navigationEvent();
     Object.assign(event, {
       navigationType: "push",
       canIntercept,
@@ -165,7 +173,6 @@ describe("router", () => {
     expect(intercept).not.toHaveBeenCalled();
     expect(target.querySelector("p")!.textContent).toBe("library:{}");
     expect(route.pattern).toBe("/library");
-    expect(route.url?.hash).toBe("#/library");
   });
 
   it.each([
@@ -195,16 +202,16 @@ describe("router", () => {
     await expect(caught.mock.results[0].value).resolves.toBeUndefined();
   });
 
-  it("publishes reactive metadata, including URL changes within the same pattern", async () => {
+  it("publishes the route pattern and updates parameters within the same pattern", async () => {
     const { navigation, target } = setup("/unknown");
     const summary = target.querySelector<HTMLElement>("[data-route-pattern]")!;
     expect(summary.dataset.routePattern).toBe("/library");
-    expect(route.url?.hash).toBe("#/unknown");
+
     for (const id of ["artist%201", "artist%202"]) {
-      const url = new URL(`#/library/artist/${id}`, window.location.href);
+      const url = new URL(`?/library/artist/${id}`, window.location.href);
       const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
       navigation.dispatchEvent(
-        Object.assign(new Event("navigate"), {
+        Object.assign(navigationEvent(), {
           navigationType: "push",
           canIntercept: true,
           destination: { url: url.href },
@@ -213,30 +220,109 @@ describe("router", () => {
       );
       await intercept.mock.results[0].value;
       expect(summary.dataset.routePattern).toBe("/library/artist/:artistId");
-      expect(summary.dataset.routeUrl).toBe(url.href);
+      expect(target.querySelector("p")!.textContent).toBe(
+        `artist:${JSON.stringify({ artistId: decodeURIComponent(id) })}`,
+      );
     }
   });
 
   it("leaves route metadata unchanged for aborted navigation", async () => {
     const { navigation, target } = setup("/library");
     const summary = target.querySelector<HTMLElement>("[data-route-pattern]")!;
-    const committedUrl = route.url;
     const controller = new AbortController();
     controller.abort();
     const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
     navigation.dispatchEvent(
-      Object.assign(new Event("navigate"), {
+      Object.assign(navigationEvent(), {
         navigationType: "push",
         canIntercept: true,
         signal: controller.signal,
-        destination: { url: new URL("#/player", window.location.href).href },
+        destination: { url: new URL("?/player", window.location.href).href },
         intercept,
       }),
     );
     await intercept.mock.results[0].value;
     expect(route.pattern).toBe("/library");
-    expect(route.url).toBe(committedUrl);
-    expect(summary.dataset.routeUrl).toBe(committedUrl?.href);
+    expect(summary.dataset.routePattern).toBe("/library");
+    expect(target.querySelector("p")!.textContent).toBe("library:{}");
+  });
+
+  it.each(["/webapp/", "/demo/"])("preserves the deployment path at %s", (base) => {
+    const { navigation } = setup("/library", `${base}?/library`);
+    navigate("/player");
+    const href = navigation.navigate.mock.calls[0][0];
+    expect(new URL(href, window.location.href).pathname).toBe(base);
+  });
+
+  it("preserves and scrolls to an initial anchor after rendering", async () => {
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
+    const { target } = setup("/library", "/webapp/?/player#page%20heading");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(target.querySelector("p")!.textContent).toBe("player:{}");
+    expect(scroll).toHaveBeenCalledOnce();
+    expect(scroll.mock.instances[0]).toBe(target.querySelector("p"));
+    expect(window.location.hash).toBe("#page%20heading");
+  });
+
+  it("retains anchors on the query-free root", () => {
+    setup("/library", "/webapp/#page-heading");
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("#page-heading");
+  });
+
+  it("routes Back to the query-free root without a document reload", async () => {
+    const { navigation, target } = setup("/player", "/webapp/?/player");
+    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+    navigation.dispatchEvent(
+      Object.assign(navigationEvent(), {
+        navigationType: "traverse",
+        canIntercept: true,
+        destination: { url: new URL("/webapp/", window.location.origin).href },
+        intercept,
+      }),
+    );
+    await intercept.mock.results[0].value;
+    expect(route.pattern).toBe("/library");
+    expect(target.querySelector("p")!.textContent).toBe("library:{}");
+  });
+
+  it("leaves anchor traversal native without remounting or view transitions", () => {
+    const { navigation, rendered } = setup();
+    const intercept = vi.fn();
+    const start = vi.fn();
+    document.startViewTransition = start;
+    for (const navigationType of ["push", "traverse"]) {
+      navigation.dispatchEvent(
+        Object.assign(navigationEvent(), {
+          navigationType,
+          canIntercept: true,
+          hashChange: true,
+          destination: { url: new URL("#section", window.location.href).href },
+          intercept,
+        }),
+      );
+    }
+    expect(intercept).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    expect(rendered).toEqual(["library"]);
+  });
+
+  it("routes a new page with an anchor before browser scroll handling", async () => {
+    const { navigation, target } = setup();
+    const url = new URL("?/player#page%20heading", window.location.href);
+    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+    navigation.dispatchEvent(
+      Object.assign(navigationEvent(), {
+        navigationType: "push",
+        canIntercept: true,
+        destination: { url: url.href },
+        intercept,
+      }),
+    );
+    await intercept.mock.results[0].value;
+    expect(target.querySelector("p")!.textContent).toBe("player:{}");
+    expect(route.pattern).toBe("/player");
+    expect(intercept.mock.calls[0][0]).not.toHaveProperty("scroll");
   });
 
   it("removes the navigation listener on unmount", async () => {

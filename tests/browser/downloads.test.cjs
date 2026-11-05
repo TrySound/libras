@@ -75,7 +75,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       body: JSON.stringify({ "subsonic-response": { status: "ok", ...fields } }),
     });
   });
-  const navigate = (path) => page.goto(new URL(`#${path}`, base).href);
+  const navigate = (path) => page.goto(new URL(`?${path}`, base).href);
   try {
     await page.goto(base);
     await page.locator("#server-host").waitFor();
@@ -87,7 +87,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       );
       assert.equal(await page.getByRole("heading", { name: "No downloads yet" }).isVisible(), true);
       assert.equal(
-        await page.locator('[aria-labelledby=downloads-heading] a[href="#/library"]').isVisible(),
+        await page.locator('[aria-labelledby=downloads-heading] a[href="?/library"]').isVisible(),
         true,
       );
       assert.equal(await page.locator(".app-sidebar").isVisible(), true);

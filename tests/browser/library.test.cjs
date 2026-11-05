@@ -83,7 +83,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     );
     assert.equal(await popover.getByRole("heading").textContent(), artists[0].name);
     assert.equal(await page.locator("#artist-menu").isVisible(), false);
-    assert.equal(new URL(page.url()).hash, "#/library");
+    assert.equal(new URL(page.url()).search, "?/library");
     await page.keyboard.press("Escape");
     assert.equal(
       await options.filter({ visible: true }).evaluate((node) => node === document.activeElement),
@@ -282,7 +282,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     );
     await albumView.getByRole("link", { name: artists[0].name, exact: true }).click();
     await artistView.waitFor();
-    await page.locator('a[href="#/library"]').filter({ visible: true }).first().click();
+    await page.locator('a[href="?/library"]').filter({ visible: true }).first().click();
     await page.getByRole("link", { name: "Artist 1", exact: true }).click();
     async function checkAtmosphere() {
       const background = page.locator(".app-page .atmosphere");
@@ -310,7 +310,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     await artistView.getByRole("link", { name: "Open Album 1", exact: true }).click();
     await albumView.getByRole("heading", { name: "Album 1", exact: true }).waitFor();
     assert.notEqual(await checkAtmosphere(), artistBackground);
-    await page.locator('a[href="#/library"]').filter({ visible: true }).first().click();
+    await page.locator('a[href="?/library"]').filter({ visible: true }).first().click();
     await page.locator("[aria-labelledby=library-heading]").waitFor();
     assert.equal(await page.locator(".app-page .atmosphere").isVisible(), false);
     assert.equal(await page.locator(".app-page .atmosphere-lines").count(), 1);

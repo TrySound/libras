@@ -5,7 +5,7 @@ import { flushSync, mount as mountComponent, unmount } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
-import { installNavigation } from "./router-test-helpers";
+import { installNavigation, navigationEvent } from "./router-test-helpers";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { TrackEngine } from "../src/track.svelte";
@@ -290,10 +290,10 @@ it("restores downloads silently without flashing the empty state", () => {
 });
 
 it.each(["", "/library", "/settings"])(
-  "initializes Settings without navigation for a new user at #%s",
+  "initializes Settings without navigation for a new user at ?%s",
   (path) => {
     installDisk();
-    window.history.replaceState(null, "", `#${path}`);
+    window.history.replaceState(null, "", `?${path}`);
     const start = vi.fn();
     const original = document.startViewTransition;
     document.startViewTransition = start;
@@ -305,7 +305,7 @@ it.each(["", "/library", "/settings"])(
     const component = mount(App, { target });
     cleanups.push(() => unmount(component));
     flushSync();
-    expect(window.location.hash).toBe("#/settings");
+    expect(window.location.search).toBe("?/settings");
     expect(target.querySelector('input[name="host"]')).not.toBeNull();
     expect(target.querySelector("#library-heading")).toBeNull();
     expect(mocks.navigate).not.toHaveBeenCalled();
@@ -321,13 +321,13 @@ it("uses the empty fallback when visiting Library without an account and when se
   cleanups.push(() => unmount(component));
   flushSync();
   expect(mocks.options!.selection.cache).toBeUndefined();
-  expect(window.location.hash).toBe("#/settings");
+  expect(window.location.search).toBe("?/settings");
   // The user can still explicitly visit Library after the startup redirect.
-  const url = new URL("#/library", window.location.href);
+  const url = new URL("?/library", window.location.href);
   window.history.replaceState(window.history.state, "", url);
   let finished: Promise<void> | undefined;
   window.navigation.dispatchEvent(
-    Object.assign(new Event("navigate"), {
+    Object.assign(navigationEvent(), {
       canIntercept: true,
       navigationType: "push",
       destination: { url: url.href },
@@ -349,7 +349,7 @@ it("uses the empty fallback when visiting Library without an account and when se
     "Libras",
   );
   for (const link of target.querySelectorAll('a[aria-label="Libras home"]')) {
-    expect(link.getAttribute("href")).toBe("#/library");
+    expect(link.getAttribute("href")).toBe("?/library");
     expect(link.getAttribute("aria-label")).toBe("Libras home");
   }
   expect(
@@ -358,10 +358,10 @@ it("uses the empty fallback when visiting Library without an account and when se
       link.getAttribute("href"),
     ]),
   ).toEqual([
-    ["Your library", "#/library"],
-    ["Search", "#/search"],
-    ["Downloads", "#/downloads"],
-    ["Settings", "#/settings"],
+    ["Your library", "?/library"],
+    ["Search", "?/search"],
+    ["Downloads", "?/downloads"],
+    ["Settings", "?/settings"],
   ]);
   const dialog = target.querySelector<HTMLDialogElement>("#player-dialog")!;
   expect(dialog.querySelector(".topbar-brand")).toBeNull();
@@ -378,7 +378,7 @@ it("uses the empty fallback when visiting Library without an account and when se
   flushSync();
   const tile = target.querySelector(".tile-grid > .tile");
   expect(tile?.querySelector("h3")?.textContent).toBe("Selected artist");
-  expect(tile?.querySelector("a")?.getAttribute("href")).toBe("#/library/artist/artist");
+  expect(tile?.querySelector("a")?.getAttribute("href")).toBe("?/library/artist/artist");
   expect(tile?.querySelector("a")?.getAttribute("data-longpress")).toBe("show-modal");
   expect(tile?.querySelectorAll("button")).toHaveLength(2);
   expect(tile?.querySelector("a button")).toBeNull();
@@ -391,7 +391,7 @@ it("uses the empty fallback when visiting Library without an account and when se
   const empty = target.querySelector("[aria-labelledby=library-heading] h2")!.parentElement!;
   expect(empty.classList.contains("stack-md")).toBe(true);
   expect(empty.querySelector("p")?.classList.contains("body")).toBe(true);
-  expect(empty.querySelector('a[href="#/settings"]')).not.toBeNull();
+  expect(empty.querySelector('a[href="?/settings"]')).not.toBeNull();
 });
 
 it("automatically loads another batch each time the new sentinel is nearby", async () => {
@@ -459,10 +459,10 @@ it("automatically loads another batch each time the new sentinel is nearby", asy
   async function visit(path: string, key: string, index: number, navigationType = "push") {
     Object.assign(window.navigation, { currentEntry });
     let finished: Promise<void> | undefined;
-    const event = Object.assign(new Event("navigate"), {
+    const event = Object.assign(navigationEvent(), {
       canIntercept: true,
       navigationType,
-      destination: { url: new URL(`#${path}`, window.location.href).href, key, index },
+      destination: { url: new URL(`?${path}`, window.location.href).href, key, index },
       intercept({ handler }: { handler: () => Promise<void> }) {
         finished = handler();
       },
@@ -680,7 +680,7 @@ it.each([
 ])("keeps shell navigation and the player on %s", (route) => {
   installDisk();
   mocks.cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
-  window.history.replaceState(null, "", `#${route}`);
+  window.history.replaceState(null, "", `?${route}`);
   const target = document.createElement("main");
   document.body.append(target);
   const component = mount(App, { target });
@@ -693,10 +693,10 @@ it.each([
   expect(target.querySelectorAll("#player-dialog .atmosphere-frame")).toHaveLength(1);
   expect(target.querySelectorAll("#player-dialog .atmosphere-lines")).toHaveLength(1);
   const links = topbar.querySelectorAll("a");
-  expect([...links].map((link) => link.getAttribute("href"))).toEqual(["#/library", "#/search"]);
+  expect([...links].map((link) => link.getAttribute("href"))).toEqual(["?/library", "?/search"]);
   for (const nav of target.querySelectorAll('nav[aria-label="Main navigation"]')) {
     expect(nav.querySelector('[aria-current="page"]')?.getAttribute("href")).toBe(
-      route.startsWith("/library") ? "#/library" : `#${route}`,
+      route.startsWith("/library") ? "?/library" : `?${route}`,
     );
   }
   expect(target.querySelector("#player-dialog .topbar-brand")).toBeNull();
@@ -790,7 +790,7 @@ it.each([true, false])(
     expect(target.querySelectorAll(".tile")).toHaveLength(saved ? 1 : 0);
     expect(target.textContent).not.toContain("No artists found.");
     expect(
-      target.querySelector('[aria-labelledby=library-heading] a[href="#/settings"]'),
+      target.querySelector('[aria-labelledby=library-heading] a[href="?/settings"]'),
     ).not.toBeNull();
   },
 );
@@ -930,11 +930,11 @@ it.each([
   expect(description).toBe(`Track ${expected}`);
   const artistLink = target.querySelector("#player-dialog .viewport-panel a");
   expect(artistLink?.textContent?.trim()).toBe(expected);
-  expect(artistLink?.getAttribute("href")).toBe("#/library/artist/artist");
+  expect(artistLink?.getAttribute("href")).toBe("?/library/artist/artist");
   expect(artistLink?.querySelector("span.label")?.textContent).toBe(expected);
   const albumLink = target.querySelectorAll("#player-dialog .viewport-panel a")[1];
   expect(albumLink?.querySelector("span.label")?.textContent).toBe("Album");
-  expect(albumLink?.getAttribute("href")).toBe("#/library/artist/artist/album/album");
+  expect(albumLink?.getAttribute("href")).toBe("?/library/artist/artist/album/album");
 });
 
 it("shows current track genres in the player without album fallbacks", async () => {
@@ -1013,7 +1013,7 @@ it("shows the album display credit without changing its artist link", async () =
   flushSync();
   const credit = target.querySelector(".viewport-panel a");
   expect(credit?.textContent?.trim()).toBe("Lead & Guest");
-  expect(credit?.getAttribute("href")).toBe("#/library/artist/artist");
+  expect(credit?.getAttribute("href")).toBe("?/library/artist/artist");
   expect(credit?.className).toBe("button-quiet");
   const label = credit?.querySelector("span.label");
   expect(label?.textContent).toBe("Lead & Guest");
@@ -1064,7 +1064,7 @@ it.each([{ genres: ["Jazz", "Soul"] }, { genres: [] }])(
     }
     expect(target.querySelector(".viewport-panel")?.textContent).not.toContain("Track-only genre");
     expect(target.querySelector(".viewport-panel a")?.getAttribute("href")).toBe(
-      "#/library/artist/artist",
+      "?/library/artist/artist",
     );
   },
 );
@@ -1103,7 +1103,7 @@ it("renders the selected cache, reacts to replacements, and stops observing a pr
 
 it("renders download records and jobs without duplicates and switches account projections", async () => {
   installDisk();
-  window.history.replaceState(null, "", "#/downloads");
+  window.history.replaceState(null, "", "?/downloads");
   const first = new Cache(getAccountKey({ host: "https://music.example", username: "first" }));
   const track = { id: "track", title: "First download", artist: "Artist", album: "Album" };
   await first.saveDownload(
@@ -1203,7 +1203,7 @@ it.each([
   window.history.replaceState(
     null,
     "",
-    `#${route.replace(":artistId", "artist").replace(":albumId", "album")}`,
+    `?${route.replace(":artistId", "artist").replace(":albumId", "album")}`,
   );
   const target = document.createElement("main");
   document.body.append(target);
@@ -1266,7 +1266,7 @@ it.each([
     tracks: [{ id: "track", albumId: "album", artistIds: ["artist"], title: "Track", genres: [] }],
   });
   mocks.cache = cache;
-  window.history.replaceState(null, "", `#${route}`);
+  window.history.replaceState(null, "", `?${route}`);
   const target = document.createElement("main");
   document.body.append(target);
   const component = mount(App, { target });
@@ -1395,7 +1395,7 @@ it("follows normalized album artwork IDs without publishing a late old image", a
     .spyOn(cache, "readImage")
     .mockImplementation((id, signal) => (id === "old-cover" ? pending : readImage(id, signal)));
   mocks.cache = cache;
-  window.history.replaceState(null, "", "#/library/artist/artist/album/album");
+  window.history.replaceState(null, "", "?/library/artist/artist/album/album");
   const target = document.createElement("main");
   document.body.append(target);
   const component = mount(App, { target });

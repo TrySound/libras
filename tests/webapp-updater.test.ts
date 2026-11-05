@@ -227,9 +227,9 @@ describe("webapp updater", () => {
   });
 
   it.each([
-    ["/#/settings", false],
-    ["/libras/#/settings", false],
-    ["/libras/#/settings", true],
+    ["/?/settings#downloads", false],
+    ["/webapp/?/settings#downloads", false],
+    ["/webapp/?/settings#downloads", true],
   ])("reloads the current page at %s (already activated: %s)", async (path, activated) => {
     const { ready, activate, update, reload } = setup();
     const previousUrl = window.location.href;
@@ -237,13 +237,14 @@ describe("webapp updater", () => {
     try {
       window.history.replaceState({ test: true }, "", path);
       reload.mockImplementation(() => {
-        expect(window.location.hash).toBe("#/settings");
-        expect(window.location.pathname).toBe(path.split("#")[0]);
+        expect(window.location.search).toBe("?/settings");
+        expect(window.location.hash).toBe("#downloads");
+        expect(window.location.pathname).toBe(path.split("?")[0]);
         expect(window.history.state).toEqual({ test: true });
       });
       if (activated) activate();
       else ready();
-      expect(window.location.hash).toBe("#/settings");
+      expect(window.location.search).toBe("?/settings");
       await update();
       if (!activated) activate();
       expect(reload).toHaveBeenCalledOnce();

@@ -45,7 +45,7 @@ export default defineConfig({
           "icons/*.png",
         ],
         navigateFallback: `${base}index.html`,
-        navigateFallbackAllowlist: [new RegExp(`^${escapedBase}(?:index\\.html)?$`)],
+        navigateFallbackAllowlist: [new RegExp(`^${escapedBase}(?:index\\.html)?(?:\\?.*)?$`)],
         runtimeCaching: [],
         cleanupOutdatedCaches: true,
         skipWaiting: false,

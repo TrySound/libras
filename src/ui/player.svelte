@@ -159,7 +159,7 @@
                 {#if artist}
                   <a
                     class="button-quiet"
-                    href={`#/library/artist/${encodeURIComponent(artist.id)}`}
+                    href={`?/library/artist/${encodeURIComponent(artist.id)}`}
                     onclick={(event) => event.currentTarget.closest("dialog")?.close()}
                   >
                     <span class="label">{artistName}</span>
@@ -172,7 +172,7 @@
                   {#if albumArtist}
                     <a
                       class="button-quiet"
-                      href={`#/library/artist/${encodeURIComponent(albumArtist.id)}/album/${encodeURIComponent(album.id)}`}
+                      href={`?/library/artist/${encodeURIComponent(albumArtist.id)}/album/${encodeURIComponent(album.id)}`}
                       onclick={(event) => event.currentTarget.closest("dialog")?.close()}
                     >
                       <span class="label">{album.title}</span>

@@ -30,16 +30,18 @@ The workspace contains the root app (`src/`, `tests/`) and `@libras/website` (`w
 
 `src/app.svelte` wires the engines together. Route components (`src/_*.svelte`) read reactive state and invoke domain commands.
 
-| Module                       | Owns                                                                              |
-| ---------------------------- | --------------------------------------------------------------------------------- |
-| `Session`                    | Account selection, credentials, startup, connections, and refresh coordination    |
-| `Network` / `SubsonicClient` | Connection cancellation, normalized domain access / Subsonic protocol requests    |
-| `Cache`                      | Account-scoped library, queue, images, downloads, playlists, and OPFS persistence |
-| `Playback`                   | Queue commands, server synchronization, and playback orchestration                |
-| `AudioPlayer`                | Audio transport, seeking, keyboard shortcuts, and Media Session                   |
-| `Covers` / `TrackEngine`     | Resource acquisition, download scheduling, and browser URL lifetimes              |
-| `Playlists`                  | Server-confirmed playlist operations and conflict detection; no offline outbox    |
-| `Router`                     | Hash routes, active navigation metadata, and optional view transitions            |
+| Module                       | Owns                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| `Session`                    | Account selection, credentials, startup, connections, and refresh coordination                   |
+| `Network` / `SubsonicClient` | Connection cancellation, normalized domain access / Subsonic protocol requests                   |
+| `Cache`                      | Account-scoped library, queue, images, downloads, playlists, and OPFS persistence                |
+| `Playback`                   | Queue commands, server synchronization, and playback orchestration                               |
+| `AudioPlayer`                | Audio transport, seeking, keyboard shortcuts, and Media Session                                  |
+| `Covers` / `TrackEngine`     | Resource acquisition, download scheduling, and browser URL lifetimes                             |
+| `Playlists`                  | Server-confirmed playlist operations and conflict detection; no offline outbox                   |
+| `Router`                     | Query routes, native fragment anchors, active navigation metadata, and optional view transitions |
+
+Routes use the bare query, for example `/webapp/?/library/artist/123#section`. Encode each dynamic path segment with `encodeURIComponent`; fragments remain native in-page anchors. The service worker serves one cached app shell for root/index navigation requests, including their route queries; assets and API requests are excluded.
 
 ### Persistence and account safety
 
@@ -90,15 +92,15 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
 
 Select suites for the behavior being changed:
 
-| Suite in `tests/browser/`                 | Coverage                                                                        |
-| ----------------------------------------- | ------------------------------------------------------------------------------- |
-| `edgerunner.test.cjs`                     | Shared styles, fonts, native controls, overlays, and reduced motion             |
-| `navigation.test.cjs`                     | Document scrolling, responsive shell, drawer focus, and uninterrupted playback  |
-| `startup.test.cjs`                        | Initial Settings route, reloads, and subsequent animated navigation             |
-| `library.test.cjs`, `search.test.cjs`     | Browsing, actions, responsive layouts, and native dismissal                     |
-| `downloads.test.cjs`, `settings.test.cjs` | Actual app/OPFS behavior with intercepted Subsonic requests                     |
-| `atmosphere.test.cjs`                     | Document/dialog scroll timelines; self-contained, no server required            |
-| `website-cascade.test.cjs`                | Script-free landing layout, keyboard/FAQ behavior, and standalone demo journeys |
+| Suite in `tests/browser/`                 | Coverage                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `edgerunner.test.cjs`                     | Shared styles, fonts, native controls, overlays, and reduced motion                         |
+| `navigation.test.cjs`                     | Document scrolling, shell, playback, query routes, anchors, and optional offline navigation |
+| `startup.test.cjs`                        | Initial Settings route, reloads, and subsequent animated navigation                         |
+| `library.test.cjs`, `search.test.cjs`     | Browsing, actions, responsive layouts, and native dismissal                                 |
+| `downloads.test.cjs`, `settings.test.cjs` | Actual app/OPFS behavior with intercepted Subsonic requests                                 |
+| `atmosphere.test.cjs`                     | Document/dialog scroll timelines; self-contained, no server required                        |
+| `website-cascade.test.cjs`                | Script-free landing layout, keyboard/FAQ behavior, and standalone demo journeys             |
 
 Run the website suite against the website server, not the app:
 
@@ -109,6 +111,8 @@ pnpm --filter @libras/website preview --host 127.0.0.1 --port 5180 --strictPort
 NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5180 \
   node --test tests/browser/website-cascade.test.cjs
 ```
+
+Set `TEST_OFFLINE=1` when running `navigation.test.cjs` against a production preview to also check service-worker app-shell navigation with query routes.
 
 For subpath deployments, include the base path in `PREVIEW_URL`. Browser suites are not part of `pnpm test`: DOM emulation cannot validate CSS layout or native overlays. Review both the running app/demo and the styleguide, including long labels, enlarged text, and reduced motion.
 

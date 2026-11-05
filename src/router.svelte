@@ -4,21 +4,18 @@
   export type RouteParams = Record<string, string | undefined>;
 
   /** Current route metadata, published reactively by the page's Router. */
-  export const route = $state<{ url: URL | undefined; pattern: string | undefined }>({
-    url: undefined,
-    pattern: undefined,
-  });
+  export const route = $state<{ pattern: string | undefined }>({ pattern: undefined });
 
   /** Match a navigation destination to the resolved page or a parent section. */
   export function isCurrentPage(path: string): boolean {
     return route.pattern === path || (route.pattern?.startsWith(`${path}/`) ?? false);
   }
 
-  /** Paths are slash-prefixed, without a hash. */
+  /** Paths are slash-prefixed; the query selects a page and the hash selects an anchor. */
   export function navigate(path: string, history: "push" | "replace" = "push") {
-    const destination = new URL(`#${path}`, window.location.href);
+    const destination = new URL(`?${path}`, window.location.href);
     if (destination.href === window.location.href) return;
-    void window.navigation.navigate(`#${path}`, { history }).finished?.catch(() => {});
+    void window.navigation.navigate(`?${path}`, { history }).finished?.catch(() => {});
   }
 
   export interface RenderRoute {
@@ -37,73 +34,74 @@
 
   let { routes, fallback = routes[0] }: Props = $props();
 
-  const initial = untrack(() => {
-    if (!fallback) throw new Error("Router requires at least one route.");
-    return {
-      fallback,
-      compiled: routes.map((route) => ({
-        route,
-        pattern: new URLPattern({ hash: route.pattern }),
-      })),
-    };
-  });
-  let match = $state.raw<{ route: RenderRoute; params: RouteParams }>(
-    untrack(() => {
-      const url = new URL(window.location.href);
-      if (!url.hash.startsWith("#/")) {
-        url.hash = initial.fallback.pattern;
-        window.history.replaceState(window.history.state, "", url);
-      }
-      const resolved = resolve(url);
-      route.url = url;
-      route.pattern = resolved.route.pattern;
-      return resolved;
-    }),
+  // Route definitions are fixed for this Router instance.
+  const defaultRoute = untrack(() => fallback);
+  if (!defaultRoute) throw new Error("Router requires at least one route.");
+  const compiled = untrack(() =>
+    routes.map((route) => ({ route, pattern: new URLPattern({ pathname: route.pattern }) })),
   );
 
-  function resolve(url: URL) {
-    for (const { route, pattern } of initial.compiled) {
-      const result = pattern.exec(url);
+  const initialMatch = resolve(new URL(window.location.href));
+  let match = $state.raw(initialMatch);
+  route.pattern = initialMatch.route.pattern;
+
+  function resolve(url: URL): { route: RenderRoute; params: RouteParams } {
+    for (const { route, pattern } of compiled) {
+      const result = pattern.exec({ pathname: url.search.slice(1) });
       if (!result) continue;
       return {
         route,
         params: Object.fromEntries(
-          Object.entries(result.hash.groups).map(([name, value]) => [
+          Object.entries(result.pathname.groups).map(([name, value]) => [
             name,
             value === undefined ? undefined : decodeURIComponent(value),
           ]),
         ),
       };
     }
-    return { route: initial.fallback, params: {} };
+    return { route: defaultRoute, params: {} };
   }
 
   function updateRoute(url: URL) {
     match = resolve(url);
-    route.url = url;
     route.pattern = match.route.pattern;
   }
 
   onMount(() => {
+    // The browser may have tried the initial fragment before Svelte rendered its target.
+    void tick().then(() => {
+      if (!window.location.hash) return;
+      let id = window.location.hash.slice(1);
+      try {
+        id = decodeURIComponent(id);
+      } catch {
+        // Malformed percent escapes can still be literal element IDs.
+      }
+      document.getElementById(id)?.scrollIntoView();
+    });
+
     const handleNavigation = (event: NavigateEvent) => {
+      const current = new URL(window.location.href);
       const destination = new URL(event.destination.url);
       if (
         !event.canIntercept ||
         event.navigationType === "reload" ||
-        destination.origin !== window.location.origin ||
-        !destination.hash.startsWith("#/")
+        event.hashChange ||
+        destination.origin !== current.origin ||
+        destination.pathname !== current.pathname ||
+        (destination.search !== "" && !destination.search.startsWith("?/"))
       )
         return;
 
       event.intercept({
         handler: async () => {
           const update = async () => {
-            if (event.signal?.aborted) return;
+            if (event.signal.aborted) return;
             updateRoute(destination);
             await tick();
           };
           if (
-            destination.href === route.url?.href ||
+            destination.href === current.href ||
             !document.startViewTransition ||
             window.matchMedia("(prefers-reduced-motion: reduce)").matches
           ) {
@@ -113,11 +111,11 @@
 
           // Commit click-triggered transition names before capturing the outgoing view.
           await tick();
-          if (event.signal?.aborted) return;
+          if (event.signal.aborted) return;
 
           const transition = document.startViewTransition(async () => {
             await update();
-            if (event.signal?.aborted) return;
+            if (event.signal.aborted) return;
             // Capture destination artwork at its final scroll position, including Back.
             event.scroll();
           });

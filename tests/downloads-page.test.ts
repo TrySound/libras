@@ -99,7 +99,7 @@ it("restores silently with a native heading and shows the empty state only once 
   );
   expect(target.querySelector("h1")?.textContent).toBe("Downloads");
   expect(target.textContent).toContain("No downloads yet");
-  expect(target.querySelector('a[href="#/library"]')?.textContent).toBe("Open library");
+  expect(target.querySelector('a[href="?/library"]')?.textContent).toBe("Open library");
   set({ loading: true });
   expect(target.textContent).not.toContain("No downloads yet");
   expect(target.textContent).not.toContain("Restoring local library");

@@ -5,7 +5,7 @@
 </script>
 
 {#snippet page(name: string, params: RouteParams)}
-  <p {@attach () => onRender?.(name)}>{name}:{JSON.stringify(params)}</p>
+  <p id="page heading" {@attach () => onRender?.(name)}>{name}:{JSON.stringify(params)}</p>
 {/snippet}
 {#snippet library(params: RouteParams)}
   {@render page("library", params)}
@@ -20,7 +20,7 @@
   {@render page("player", params)}
 {/snippet}
 
-<output data-route-pattern={route.pattern} data-route-url={route.url?.href}></output>
+<output data-route-pattern={route.pattern}></output>
 <Router
   routes={[
     { pattern: "/library/artist/:artistId/album/:albumId", render: album },
