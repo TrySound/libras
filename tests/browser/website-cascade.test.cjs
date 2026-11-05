@@ -43,12 +43,29 @@ async function mockDeezer(page, unavailable = false) {
   return requests;
 }
 
-test("landing layout, keyboard focus, and FAQ work without JavaScript", async () => {
+test("landing layout, images, and keyboard focus work without JavaScript", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ javaScriptEnabled: false, reducedMotion: "reduce" });
   try {
     await page.goto(base);
-    for (const width of [320, 375, 768, 1440]) {
+    async function assertContained() {
+      const clipped = await page
+        .locator("main :is(h1, h2, p, a, img), header a")
+        .evaluateAll((elements) =>
+          elements
+            .filter((element) => {
+              const box = element.getBoundingClientRect();
+              return (
+                box.left < -1 ||
+                box.right > innerWidth + 1 ||
+                element.scrollWidth > element.clientWidth + 1
+              );
+            })
+            .map((element) => element.textContent?.trim() || element.getAttribute("src")),
+        );
+      assert.deepEqual(clipped, [], "content bounds fit without relying on overflow clipping");
+    }
+    for (const width of [320, 390, 768, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
@@ -56,7 +73,7 @@ test("landing layout, keyboard focus, and FAQ work without JavaScript", async ()
         `landing page must fit at ${width}px`,
       );
       const heading = page.getByRole("heading", { level: 1 });
-      const cta = page.getByRole("link", { name: "Try live demo", exact: true });
+      const cta = page.getByRole("link", { name: "Try live demo", exact: true }).first();
       assert.equal(await heading.isVisible(), true);
       assert.equal(await cta.isVisible(), true);
       const type = await heading.evaluate((element) => {
@@ -68,23 +85,39 @@ test("landing layout, keyboard focus, and FAQ work without JavaScript", async ()
       });
       assert.ok(type.size > type.body, "heading typography is applied");
       const button = await cta.boundingBox();
-      assert.ok(button.height >= 40, "CTA retains a usable target size");
-      const cards = page.getByRole("region", { name: "Everything you need." }).getByRole("article");
-      assert.ok((await cards.count()) > 0);
-      for (const card of await cards.all()) {
-        const surface = await card.evaluate((element) => {
-          const style = getComputedStyle(element);
-          const box = element.getBoundingClientRect();
-          return {
-            bordered: style.borderTopStyle !== "none" && parseFloat(style.borderTopWidth) > 0,
-            padded: parseFloat(style.paddingTop) > 0,
-            painted:
-              style.backgroundImage !== "none" || style.backgroundColor !== "rgba(0, 0, 0, 0)",
-            fits: box.left >= 0 && box.right <= innerWidth,
-          };
-        });
-        assert.deepEqual(surface, { bordered: true, padded: true, painted: true, fits: true });
+      assert.ok(button.height >= 44, "CTA retains a usable target size");
+      if (width < 480) {
+        const connect = await page
+          .getByRole("link", { name: "Connect your server", exact: true })
+          .first()
+          .boundingBox();
+        assert.ok(Math.abs(connect.width - button.width) < 1, "mobile actions have equal widths");
+        assert.ok(
+          button.y >= connect.y + connect.height + 12,
+          "mobile actions stack with deliberate spacing",
+        );
       }
+      assert.equal(await page.locator(".site-feature").count(), 3);
+      assert.equal(await page.locator("details, .site-faq").count(), 0, "no obsolete FAQ");
+      for (const image of await page.locator("main img").all()) {
+        await image.scrollIntoViewIfNeeded();
+        await image.evaluate(async (element) => {
+          if (!element.complete)
+            await new Promise((resolve, reject) => {
+              element.addEventListener("load", resolve, { once: true });
+              element.addEventListener("error", reject, { once: true });
+            });
+          await element.decode();
+        });
+        assert.ok(await image.evaluate((element) => element.complete && element.naturalWidth > 0));
+      }
+      assert.equal(
+        await page
+          .locator(".site-preview img")
+          .evaluate((element) => element.currentSrc.includes("library-mobile")),
+        width < 640,
+      );
+      await assertContained();
     }
     await page.setViewportSize({ width: 375, height: 900 });
     await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
@@ -92,8 +125,12 @@ test("landing layout, keyboard focus, and FAQ work without JavaScript", async ()
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
     );
+    await assertContained();
     await page.evaluate(() => document.documentElement.style.removeProperty("font-size"));
-
+    // A 1280px browser at 400% zoom has a 320 CSS-pixel layout viewport.
+    await page.setViewportSize({ width: 320, height: 900 });
+    await assertContained();
+    await page.goto(base);
     await page.keyboard.press("Tab");
     const skip = page.getByRole("link", { name: "Skip to content" });
     assert.equal(await skip.evaluate((element) => element === document.activeElement), true);
@@ -106,17 +143,39 @@ test("landing layout, keyboard focus, and FAQ work without JavaScript", async ()
     await page.keyboard.press("Enter");
     assert.equal(await page.evaluate(() => location.hash), "#main-content");
 
-    const question = page.getByText("Which servers are supported?", { exact: true });
-    await question.focus();
-    await page.keyboard.press("Enter");
-    const answer = question.locator("..");
-    assert.equal(await answer.evaluate((element) => element.open), true);
     assert.equal(
-      await answer.getByRole("link", { name: "Read the setup requirements." }).isVisible(),
+      await page.locator("main").evaluate((element) => element === document.activeElement),
       true,
     );
-    await page.keyboard.press("Enter");
-    assert.equal(await answer.evaluate((element) => element.open), false);
+    await page.goto(base);
+    const links = await page.locator("a").all();
+    for (const link of links) {
+      await page.keyboard.press("Tab");
+      assert.equal(await link.evaluate((element) => element === document.activeElement), true);
+      assert.ok(
+        await link.evaluate((element) => {
+          const style = getComputedStyle(element);
+          const box = element.getBoundingClientRect();
+          return (
+            style.outlineStyle !== "none" &&
+            parseFloat(style.outlineWidth) >= 3 &&
+            box.top >= 0 &&
+            box.bottom <= innerHeight
+          );
+        }),
+        "keyboard focus is visible and scrolled into view",
+      );
+    }
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(
+      await links.at(-2).evaluate((element) => element === document.activeElement),
+      true,
+    );
+    const primary = page.locator('.site-actions [data-variant="primary"]').first();
+    assert.equal(
+      await primary.evaluate((element) => getComputedStyle(element).transitionDuration),
+      "0s",
+    );
   } finally {
     await browser.close();
   }
@@ -124,18 +183,23 @@ test("landing layout, keyboard focus, and FAQ work without JavaScript", async ()
 
 test("static website links to the full-width standalone demo", async () => {
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({
+  let page = await browser.newPage({
     viewport: { width: 1440, height: 900 },
     reducedMotion: "reduce",
   });
-  await mockDeezer(page);
+  await mockDeezer(page.context());
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   try {
     await page.goto(base);
     assert.equal(await page.locator("script").count(), 0);
-    await page.getByRole("link", { name: "Try live demo", exact: true }).click();
+    const landing = page;
+    const popup = page.waitForEvent("popup");
+    await page.getByRole("link", { name: "Try live demo", exact: true }).first().click();
+    page = await popup;
+    page.on("pageerror", (error) => errors.push(error.message));
     await page.waitForURL("**/demo/**");
+    assert.equal(landing.url(), base, "landing remains available in its original tab");
     await page.locator(".app-root .tile a").first().waitFor();
     assert.equal(await page.locator(".tile a").count(), 16);
     assert.equal(await page.locator(".app-sidebar").isVisible(), true);
@@ -169,18 +233,37 @@ test("static website links to the full-width standalone demo", async () => {
   }
 });
 
-test("website music credits open the demo Settings card", async () => {
+test("landing keeps home in-tab and opens apps and external destinations in new tabs", async () => {
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ reducedMotion: "reduce" });
-  const requests = await mockDeezer(page, true);
+  const page = await browser.newPage();
   try {
     await page.goto(base);
-    await page.getByRole("link", { name: "Music credits", exact: true }).click();
-    await page.waitForURL("**/demo/?/settings");
-    const credits = page.locator('article[aria-labelledby="demo-credits-title"]');
-    await credits.waitFor();
-    assert.equal(await credits.locator("li").count(), 53);
-    assert.deepEqual(requests, []);
+    const destinations = await page
+      .locator('a:not([href^="#"])')
+      .evaluateAll((links) => links.map((link) => ({ href: link.href, target: link.target })));
+    assert.ok(destinations.length >= 10);
+    assert.equal(destinations[0].target, "", "home stays in the current tab");
+    assert.ok(destinations.slice(1).every((link) => link.target === "_blank"));
+    await page.locator("header .brand").click();
+    await page.waitForURL(base);
+    assert.equal(page.context().pages().length, 1);
+    await page
+      .context()
+      .route("**/*", (route) =>
+        route.request().isNavigationRequest()
+          ? route.fulfill({ contentType: "text/html", body: "<title>Destination</title>" })
+          : route.continue(),
+      );
+    for (const [index, destination] of destinations.entries()) {
+      if (index === 0) continue;
+      const popup = page.waitForEvent("popup");
+      await page.locator('a:not([href^="#"])').nth(index).click();
+      const opened = await popup;
+      await opened.waitForURL(destination.href);
+      assert.equal(page.url(), base);
+      assert.equal(page.context().pages().length, 2);
+      await opened.close();
+    }
   } finally {
     await browser.close();
   }

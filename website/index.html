@@ -63,13 +63,7 @@
   <body class="website">
     <a class="site-skip-link" href="#main-content">Skip to content</a>
     <header class="site-topbar site-container">
-      <a
-        class="row-sm brand uppercase"
-        href="%BASE_URL%"
-        aria-label="Libras home"
-        target="_blank"
-        rel="noopener"
-      >
+      <a class="row-sm brand uppercase" href="%BASE_URL%" aria-label="Libras home">
         <svg aria-hidden="true" width="32" height="32"><use href="#icon-brand"></use></svg>
         <span>Libras</span>
       </a>
@@ -104,7 +98,7 @@
           A music player for your Navidrome server that lets you stream your library or download
           music for offline listening.
         </p>
-        <div class="row-md row-wrap row-center">
+        <div class="site-actions">
           <a
             class="button"
             data-size="large-text"
@@ -126,16 +120,22 @@
         </div>
       </section>
 
-      <div class="site-preview site-container">
+      <picture class="site-preview site-container">
+        <source
+          media="(width < 40rem)"
+          srcset="%BASE_URL%screenshots/library-mobile.webp"
+          width="390"
+          height="620"
+        />
         <img
           class="site-screenshot"
           src="%BASE_URL%screenshots/hero.webp"
           width="1440"
           height="900"
           fetchpriority="high"
-          alt="Libras’s desktop library with 3 Libras by A Perfect Circle playing in the compact bottom player."
+          alt="Libras’s artist library with album artwork and artist menus, including A Perfect Circle and Archive."
         />
-      </div>
+      </picture>
 
       <div class="site-section site-container site-features" id="features">
         <div class="site-feature-list">
@@ -192,7 +192,7 @@
                 class="site-screenshot"
                 src="%BASE_URL%screenshots/mobile.webp"
                 width="390"
-                height="620"
+                height="400"
                 loading="lazy"
                 decoding="async"
                 alt="Libras’s mobile settings with the Offline Library switch enabled to show downloaded music only."
@@ -232,11 +232,16 @@
         >
       </section>
 
-      <section class="site-final-cta site-container stack-lg" aria-labelledby="cta-title">
+      <section
+        class="site-section site-open-source site-container stack-lg"
+        aria-labelledby="open-source-title"
+      >
         <div class="site-cta-emblem" aria-hidden="true">
           <svg aria-hidden="true" width="64" height="64"><use href="#icon-brand"></use></svg>
         </div>
-        <h2 class="heading-lg container-md text-subtle" id="cta-title">Free and open source.</h2>
+        <h2 class="heading-lg container-md text-subtle" id="open-source-title">
+          Free and open source.
+        </h2>
         <p class="site-body body site-open-source-description">
           Libras is released under the MIT license, so you can read the code, change it, or run your
           own copy. If you find a bug or have a suggestion, let us know on GitHub.
@@ -244,12 +249,36 @@
         <a
           class="button"
           data-size="large-text"
-          data-variant="primary"
+          data-variant="secondary"
           href="https://github.com/TrySound/libras"
           target="_blank"
           rel="noopener"
           >View on GitHub</a
         >
+      </section>
+
+      <section class="site-final-cta site-container stack-lg" aria-labelledby="cta-title">
+        <h2 class="heading-lg container-md text-subtle" id="cta-title">Start listening now.</h2>
+        <div class="site-actions">
+          <a
+            class="button"
+            data-size="large-text"
+            data-variant="primary"
+            href="/webapp/"
+            target="_blank"
+            rel="noopener"
+            >Connect your server</a
+          >
+          <a
+            class="button"
+            data-size="large-text"
+            data-variant="secondary"
+            href="%BASE_URL%demo/"
+            target="_blank"
+            rel="noopener"
+            >Try live demo</a
+          >
+        </div>
       </section>
     </main>
   </body>

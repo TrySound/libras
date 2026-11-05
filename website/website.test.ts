@@ -22,9 +22,11 @@ it("serves landing content and destinations without executing JavaScript", () =>
   expect(link("Try live demo")?.getAttribute("href")).toBe("/demo/");
   expect(link("Connect your server")?.getAttribute("href")).toBe("/webapp/");
   expect(link("View on GitHub")?.getAttribute("href")).toBe("https://github.com/TrySound/libras");
-  for (const button of page.querySelectorAll("a.button")) {
-    expect(button.getAttribute("target")).toBe("_blank");
-    expect(button.getAttribute("rel")).toBe("noopener");
+  for (const anchor of links) {
+    const opensAppOrWebsite =
+      anchor.getAttribute("href") !== "/" && !anchor.getAttribute("href")?.startsWith("#");
+    expect(anchor.getAttribute("target")).toBe(opensAppOrWebsite ? "_blank" : null);
+    if (opensAppOrWebsite) expect(anchor.getAttribute("rel")).toBe("noopener");
   }
   expect(page.querySelector("footer")).toBeNull();
   expect(page.querySelector(".site-feature-step")).toBeNull();
@@ -45,16 +47,21 @@ it("removes the FAQ and keeps server descriptions in regular text color", () => 
   expect(page.querySelector("details")).toBeNull();
   expect(page.querySelectorAll(".site-servers .site-body")).toHaveLength(2);
   expect(page.querySelector(".site-servers p.text-subtle")).toBeNull();
-  expect(page.querySelectorAll("h2.text-subtle")).toHaveLength(5);
+  expect(page.querySelectorAll("h2.text-subtle")).toHaveLength(6);
   expect(page.querySelector(".site-body.text-subtle")).toBeNull();
   expect(page.body.textContent).not.toContain("Clearing site data");
 });
 
-it("shows a desktop preview, progressively narrower feature screenshots, and a final open-source CTA", () => {
+it("art-directs the early preview and closes with product actions and open-source trust", () => {
   const page = landingPage();
   const preview = page.querySelector<HTMLImageElement>(".site-preview img")!;
   expect(preview.getAttribute("src")).toBe("/screenshots/hero.webp");
   expect(preview.getAttribute("loading")).not.toBe("lazy");
+  const mobile = page.querySelector(".site-preview source")!;
+  expect(mobile.getAttribute("srcset")).toBe("/screenshots/library-mobile.webp");
+  expect(mobile.getAttribute("width")).toBe("390");
+  expect(mobile.getAttribute("height")).toBe("620");
+  expect(readFileSync(`website/public${mobile.getAttribute("srcset")}`)).not.toHaveLength(0);
   const images = [...page.querySelectorAll<HTMLImageElement>(".site-feature img")];
   expect(images.every((image) => image.getAttribute("src") !== preview.getAttribute("src"))).toBe(
     true,
@@ -66,10 +73,20 @@ it("shows a desktop preview, progressively narrower feature screenshots, and a f
     expect(readFileSync(`website/public${image.getAttribute("src")}`)).not.toHaveLength(0);
   }
   const sections = [...page.querySelectorAll("main section")];
-  expect(sections.at(-1)?.querySelector("h2")?.textContent).toContain("Free and open source");
-  expect(sections.at(-1)?.querySelector("a")?.getAttribute("href")).toBe(
-    "https://github.com/TrySound/libras",
-  );
+  expect(sections.at(-2)?.querySelector("h2")?.textContent).toContain("Free and open source");
+  const github = sections.at(-2)?.querySelector("a.button");
+  expect(github?.textContent?.trim()).toBe("View on GitHub");
+  expect(github?.getAttribute("href")).toBe("https://github.com/TrySound/libras");
+  expect(sections.at(-2)?.querySelectorAll("a")).toHaveLength(1);
+  expect(sections.at(-1)?.querySelector("h2")?.textContent).toBe("Start listening now.");
+  const closing = sections.at(-1)!;
+  expect([...closing.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toEqual([
+    "/webapp/",
+    "/demo/",
+  ]);
+  expect(closing.querySelector('[aria-describedby="demo-description"]')).toBeNull();
+  expect(closing.textContent).not.toContain("Explore a sample library");
+  expect(images.at(-1)?.getAttribute("height")).toBe("400");
 });
 
 it("focuses features on the interface, browser access, and downloaded-only offline content", () => {
@@ -83,16 +100,16 @@ it("focuses features on the interface, browser access, and downloaded-only offli
   expect(descriptions[2].textContent?.replace(/\s+/g, " ")).toContain(
     "browse and play your downloads without a connection",
   );
-  expect(page.querySelector(".site-preview img")?.getAttribute("alt")).toContain("3 Libras");
+  expect(page.querySelector(".site-preview img")?.getAttribute("alt")).toContain("artist library");
   expect(page.querySelector(".site-feature img")?.getAttribute("alt")).toContain("Bullets");
 });
 
-it("places branding and new-tab navigation in the top bar instead of the hero", () => {
+it("keeps home in the same tab and opens apps and external links separately", () => {
   const page = landingPage();
   expect(page.querySelector("header .brand")?.textContent).toContain("Libras");
   expect(page.querySelector(".site-hero .brand")).toBeNull();
   expect(page.querySelectorAll('header nav a.button[data-size="text"]')).toHaveLength(2);
-  expect(page.querySelectorAll('main .button[data-size="large-text"]')).toHaveLength(4);
+  expect(page.querySelectorAll('main .button[data-size="large-text"]')).toHaveLength(6);
   expect(page.querySelector("header nav a[data-variant='primary']")?.textContent?.trim()).toBe(
     "Open player",
   );
@@ -107,7 +124,8 @@ it("places branding and new-tab navigation in the top bar instead of the hero", 
     "https://github.com/TrySound/libras",
     "/webapp/",
   ]);
-  for (const link of links) {
+  expect(links[0].hasAttribute("target")).toBe(false);
+  for (const link of links.slice(1)) {
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener");
   }

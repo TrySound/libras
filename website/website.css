@@ -93,7 +93,7 @@
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    min-block-size: calc(78dvh - 5.5rem);
+    min-block-size: min(42rem, calc(68dvh - 5.5rem));
     padding-block: clamp(3rem, 6vw, 5rem);
     text-align: center;
   }
@@ -149,6 +149,31 @@
     --button-padding-inline: var(--space-md);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-semibold);
+  }
+  .site-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+    max-inline-size: 100%;
+  }
+  .site-preview {
+    display: block;
+  }
+  @media (width < 40rem) {
+    .site-hero {
+      min-block-size: auto;
+    }
+    .site-preview {
+      max-inline-size: 24.375rem;
+    }
+  }
+  @media (width < 30rem) {
+    .site-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      inline-size: min(100%, 20rem);
+    }
   }
   .site-screenshot {
     display: block;
@@ -213,6 +238,10 @@
   .site-servers > :is(h2, p) {
     max-inline-size: 48rem;
   }
+  .site-open-source {
+    justify-items: center;
+    text-align: center;
+  }
   .site-final-cta {
     justify-items: center;
     padding-block: var(--site-section-space) 5rem;
@@ -239,20 +268,6 @@
   .site-cta-emblem svg {
     width: 3rem;
     height: 3rem;
-  }
-  @media (forced-colors: active) {
-    :scope {
-      --accent: LinkText;
-      --text-primary: CanvasText;
-      --text-subtle: CanvasText;
-      --shell-border: CanvasText;
-      --surface-border: ButtonText;
-      --focus-ring: 4px solid Highlight;
-      background: Canvas;
-    }
-    .site-skip-link {
-      color: Canvas;
-    }
   }
   @media (hover: hover) {
     .text-link:hover {
