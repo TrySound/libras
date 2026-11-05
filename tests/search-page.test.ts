@@ -124,8 +124,8 @@ it("focuses the input, expands results, retains route state, and uses album play
           `section[aria-label="${name === "Artist" ? "Artists" : "Albums"}"] .track-row-number`,
         ),
       ).toHaveLength(0);
-      expect(target.querySelector(`a[aria-label="${name}"]`)?.getAttribute("href")).toContain(
-        "?/library/artist/artist",
+      expect(target.querySelector(`a[aria-label="${name}"]`)?.getAttribute("href")).toBe(
+        name === "Artist" ? "?/library/artist/artist" : "?/library/album/album",
       );
       button("Play").click();
       expect(playback.replaceQueueAndPlay).toHaveBeenLastCalledWith(tracks.map((t) => t.id));

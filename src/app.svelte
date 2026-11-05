@@ -319,7 +319,7 @@
             routes={[
               { pattern: "/library", render: libraryRoute },
               { pattern: "/search", render: searchRoute },
-              { pattern: "/library/artist/:artistId/album/:albumId", render: albumRoute },
+              { pattern: "/library/album/:albumId", render: albumRoute },
               { pattern: "/library/artist/:artistId", render: artistRoute },
               { pattern: "/settings", render: settingsRoute },
               { pattern: "/downloads", render: downloadsRoute },

@@ -29,8 +29,8 @@
   const loading = $derived(!session.localReady);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
   const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
-  const artist = $derived(params.artistId ? cache.artists.get(params.artistId) : undefined);
   const album = $derived(params.albumId ? cache.albums.get(params.albumId) : undefined);
+  const artist = $derived(album ? cache.artists.get(album.artistIds[0]) : undefined);
   const atmosphere = $derived(album?.artworkId ? covers.ensureCover(album.artworkId) : undefined);
   const visibleTracks = $derived(
     album

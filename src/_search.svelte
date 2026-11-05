@@ -71,7 +71,7 @@
           album.displayArtist ??
           album.artistIds.map((id) => artists.get(id)?.name ?? "").join(", "),
         album: "",
-        href: `${artistPath(album.artistIds[0])}/album/${encodeURIComponent(album.id)}`,
+        href: `?/library/album/${encodeURIComponent(album.id)}`,
       })),
       Tracks: eligibleTracks.map((track) => ({
         id: track.id,

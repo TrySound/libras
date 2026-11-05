@@ -33,7 +33,7 @@ describe("local library search", () => {
     expect(result.records[0]).toMatchObject({
       id: "b",
       artist: "Beyoncé & Guests",
-      href: "?/library/artist/a/album/b",
+      href: "?/library/album/b",
     });
   });
 

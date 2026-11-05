@@ -23,7 +23,7 @@
 <output data-route-pattern={route.pattern}></output>
 <Router
   routes={[
-    { pattern: "/library/artist/:artistId/album/:albumId", render: album },
+    { pattern: "/library/album/:albumId", render: album },
     { pattern: "/library/artist/:artistId", render: artist },
     { pattern: "/library", render: library },
     { pattern: "/player", render: player },

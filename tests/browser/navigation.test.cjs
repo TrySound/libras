@@ -217,9 +217,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     );
     assert.equal(await menu.isVisible(), false);
     // Deep routes select their parent section without a second navigation destination.
-    await page.evaluate(
-      () => window.navigation.navigate("?/library/artist/missing/album/missing").finished,
-    );
+    await page.evaluate(() => window.navigation.navigate("?/library/album/missing").finished);
     await sidebar.waitFor();
     assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute("href"), "?/library");
     await page.evaluate(() => window.navigation.navigate("?/settings").finished);

@@ -66,7 +66,8 @@ describe("router", () => {
     ["/library", "library:{}"],
     ["/library/artist/artist%201", 'artist:{"artistId":"artist 1"}'],
     ["/library/artist/a%2Fb%3Fc%23d%26e%25", 'artist:{"artistId":"a/b?c#d&e%"}'],
-    ["/library/artist/artist-1/album/album-1", 'album:{"artistId":"artist-1","albumId":"album-1"}'],
+    ["/library/album/album-1", 'album:{"albumId":"album-1"}'],
+    ["/library/album/a%2Fb%3Fc%23d%26e%25", 'album:{"albumId":"a/b?c#d&e%"}'],
     ["/unknown", "library:{}"],
   ])("renders the initial route %s with decoded parameters", (path, expected) => {
     const { target, rendered } = setup(path);
@@ -181,6 +182,11 @@ describe("router", () => {
       path: "/library/artist/artist-1",
       current: ["/library", "/library/artist", "/library/artist/:artistId"],
       other: ["/lib", "/library/art", "/library/artists", "/settings"],
+    },
+    {
+      path: "/library/album/album-1",
+      current: ["/library", "/library/album", "/library/album/:albumId"],
+      other: ["/library/artist", "/settings"],
     },
     { path: "/unknown", current: ["/library"], other: ["/unknown", "/settings"] },
   ])(

@@ -134,7 +134,7 @@
             </div>
             <a
               class="link-target"
-              href={`?/library/artist/${encodeURIComponent(artist.id)}/album/${encodeURIComponent(album.id)}`}
+              href={`?/library/album/${encodeURIComponent(album.id)}`}
               aria-label={`Open ${album.title}`}
               data-longpressfor="artist-detail-menu"
               data-longpress="show-modal"

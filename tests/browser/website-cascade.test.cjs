@@ -192,7 +192,7 @@ test("every planned album is browsable without live Deezer API access", async ()
   const requests = await mockDeezer(page, true);
   try {
     for (const album of catalog) {
-      await page.goto(`${base}demo/?/library/artist/${album.artistId}/album/${album.id}`);
+      await page.goto(`${base}demo/?/library/album/${album.id}`);
       const details = page.locator('section[aria-label="Album details"]');
       await details.getByRole("heading", { name: album.title, exact: true, level: 1 }).waitFor();
       assert.equal(await details.locator(".track-row").count(), album.tracks.length);

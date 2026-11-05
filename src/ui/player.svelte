@@ -25,7 +25,6 @@
   const artist = $derived(track && cache.artists.get(track.artistIds[0]));
   const artistName = $derived(track && (track.displayArtist ?? artist?.name));
   const album = $derived(track && cache.albums.get(track.albumId));
-  const albumArtist = $derived(album && cache.artists.get(album.artistIds[0]));
   const atmosphere = $derived(track?.artworkId ? covers.ensureCover(track.artworkId) : undefined);
   const queue = $derived(
     cache.queue.tracks.flatMap((id, index) => {
@@ -169,17 +168,13 @@
                 {/if}
                 {#if album}
                   ·
-                  {#if albumArtist}
-                    <a
-                      class="button-quiet"
-                      href={`?/library/artist/${encodeURIComponent(albumArtist.id)}/album/${encodeURIComponent(album.id)}`}
-                      onclick={(event) => event.currentTarget.closest("dialog")?.close()}
-                    >
-                      <span class="label">{album.title}</span>
-                    </a>
-                  {:else}
+                  <a
+                    class="button-quiet"
+                    href={`?/library/album/${encodeURIComponent(album.id)}`}
+                    onclick={(event) => event.currentTarget.closest("dialog")?.close()}
+                  >
                     <span class="label">{album.title}</span>
-                  {/if}
+                  </a>
                 {/if}
               </p>
               {#if track.genres.length}

@@ -157,7 +157,7 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   });
   cache.setQueue({ tracks: ["one", "two", "three"], index: 0, position: 0 });
   mocks.cache = cache;
-  installNavigation("/library/artist/artist/album/album", mocks.navigate);
+  installNavigation("/library/album/album", mocks.navigate);
   const target = document.createElement("main");
   document.body.append(target);
   const component = mount(App, { target });
@@ -676,7 +676,7 @@ it.each([
   "/settings",
   "/downloads",
   "/library/artist/:artistId",
-  "/library/artist/:artistId/album/:albumId",
+  "/library/album/:albumId",
 ])("keeps shell navigation and the player on %s", (route) => {
   installDisk();
   mocks.cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
@@ -726,7 +726,7 @@ it.each([
   { route: "/library", selector: ".tile > a.link-target", menu: "artist-menu" },
   { route: "/library/artist/artist", selector: "a.link-target", menu: "artist-detail-menu" },
   {
-    route: "/library/artist/artist/album/album",
+    route: "/library/album/album",
     selector: "button.link-target",
     menu: "album-detail-menu",
   },
@@ -934,7 +934,7 @@ it.each([
   expect(artistLink?.querySelector("span.label")?.textContent).toBe(expected);
   const albumLink = target.querySelectorAll("#player-dialog .viewport-panel a")[1];
   expect(albumLink?.querySelector("span.label")?.textContent).toBe("Album");
-  expect(albumLink?.getAttribute("href")).toBe("?/library/artist/artist/album/album");
+  expect(albumLink?.getAttribute("href")).toBe("?/library/album/album");
 });
 
 it("shows current track genres in the player without album fallbacks", async () => {
@@ -1005,7 +1005,7 @@ it("shows the album display credit without changing its artist link", async () =
     ],
   });
   mocks.cache = cache;
-  installNavigation("/library/artist/artist/album/album", mocks.navigate);
+  installNavigation("/library/album/album", mocks.navigate);
   const target = document.createElement("main");
   document.body.append(target);
   const component = mount(App, { target });
@@ -1039,7 +1039,7 @@ it.each([{ genres: ["Jazz", "Soul"] }, { genres: [] }])(
       ],
     });
     mocks.cache = cache;
-    installNavigation("/library/artist/artist/album/album", mocks.navigate);
+    installNavigation("/library/album/album", mocks.navigate);
     const target = document.createElement("main");
     document.body.append(target);
     const component = mount(App, { target });
@@ -1176,7 +1176,7 @@ it("renders download records and jobs without duplicates and switches account pr
 it.each([
   { route: "/library", ids: ["one", "two", "three"] },
   { route: "/library/artist/:artistId", ids: ["one", "two", "three"] },
-  { route: "/library/artist/:artistId/album/:albumId", ids: ["one", "two"] },
+  { route: "/library/album/:albumId", ids: ["one", "two"] },
 ])("downloads the selected collection on $route", async ({ route, ids }) => {
   installDisk();
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
@@ -1224,7 +1224,7 @@ it.each([
 it.each([
   { route: "/library/artist/artist", selector: "a.link-target", observesArtwork: true },
   {
-    route: "/library/artist/artist/album/album",
+    route: "/library/album/album",
     selector: "button.link-target",
     observesArtwork: false,
   },
@@ -1395,7 +1395,7 @@ it("follows normalized album artwork IDs without publishing a late old image", a
     .spyOn(cache, "readImage")
     .mockImplementation((id, signal) => (id === "old-cover" ? pending : readImage(id, signal)));
   mocks.cache = cache;
-  window.history.replaceState(null, "", "?/library/artist/artist/album/album");
+  window.history.replaceState(null, "", "?/library/album/album");
   const target = document.createElement("main");
   document.body.append(target);
   const component = mount(App, { target });
