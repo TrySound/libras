@@ -38,7 +38,7 @@ Libras checks server capabilities without credentials and defaults to API key wh
 
 An explicitly unsupported discovery endpoint permits legacy login; network/CORS failures do not imply missing capabilities. Only an explicit MD5 rejection (Subsonic code `41` or `42`) offers a confirmed direct-password retry. Bad credentials, invalid API keys, timeouts, and other errors never silently downgrade authentication; switching methods requires the appropriate credentials.
 
-API keys and replayable token/salt pairs are saved in `localStorage` until disconnect; the pair is **not a short-lived session token**. Direct passwords default to session-only `sessionStorage`; **Remember password on this device** explicitly opts into persistent storage. All browser storage is JavaScript-readable: malicious scripts or compromised browser access can steal these secrets. Use a trusted device and server. Existing saved token/salt credentials migrate without forcing logout.
+All credentials, including API keys, replayable token/salt pairs, and direct passwords, are saved in `localStorage` on this device until disconnect; they are **not short-lived session tokens**. All browser storage is JavaScript-readable: malicious scripts or compromised browser access can steal these secrets. Use a trusted device and server. Existing saved token/salt credentials migrate without forcing logout.
 
 API requests prefer form POST when the server advertises `formPost`, but artwork and streaming URLs still contain credentials. HTTPS protects transport, not server/proxy logs; avoid sharing media URLs and configure logs not to record credentials.
 
@@ -58,7 +58,7 @@ Download music while online, then switch to **Offline Library** to listen withou
 
 - **Manage downloads:** Settings → Downloads.
 - **Refresh library:** Automatic when opening online, or via Settings → Refresh library.
-- **Disconnect:** Clears credentials for every authentication method from both local and session storage, but keeps the account identity, saved music, and queue for offline use. Reconnect to leave offline mode; disconnect first to switch servers.
+- **Disconnect:** Clears saved credentials for every authentication method from `localStorage`, but keeps the account identity, saved music, and queue for offline use. Reconnect to leave offline mode; disconnect first to switch servers.
 - **Storage:** Each server/account has its own offline library, saved only in this browser on this device. **Clearing site data deletes it.**
 
 ## App updates

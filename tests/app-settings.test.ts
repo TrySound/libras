@@ -159,8 +159,8 @@ describe("app settings", () => {
     expect(target.querySelector<HTMLInputElement>("#server-api-key")!.value).toBe("");
   });
 
-  it("shows a fallback warning and unchecked storage consent without submitting the password until confirmation", async () => {
-    const { target, fill, validate, session, network, temporaryStorage, storage } = await setup();
+  it("warns about sending and persisting a password without submitting until confirmation", async () => {
+    const { target, fill, validate, session, network, storage } = await setup();
     const { SubsonicError } = await import("../src/subsonic-client");
     const prepare = vi.spyOn(network, "prepare");
     validate.mockRejectedValueOnce(new SubsonicError(41, "Token method unsupported"));
@@ -172,8 +172,9 @@ describe("app settings", () => {
     expect(target.querySelector("#settings-password-warning")?.textContent).toContain(
       "Hex encoding is not encryption",
     );
-    const consent = target.querySelector<HTMLInputElement>('input[name="rememberPassword"]')!;
-    expect(consent.checked).toBe(false);
+    expect(target.querySelector("#settings-password-warning")?.textContent).toContain(
+      "saved in localStorage on this device until you disconnect",
+    );
     expect(target.querySelector("#server-password")).toBeNull();
     target.querySelector<HTMLButtonElement>("#settings-confirm-password")!.click();
     await vi.waitFor(() => expect(session.auth?.credentials.method).toBe("password"));
@@ -181,11 +182,10 @@ describe("app settings", () => {
       "token",
       "password",
     ]);
-    expect(storage.getItem("navidrome-auth")).toBeNull();
-    expect(temporaryStorage.getItem("navidrome-auth") !== null).toBe(true);
+    expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
     target.querySelector<HTMLButtonElement>("#settings-disconnect")!.click();
     flushSync();
-    expect(temporaryStorage.getItem("navidrome-auth")).toBeNull();
+    expect(storage.getItem("navidrome-auth")).toBeNull();
     expect(target.querySelectorAll("form input.input")).toHaveLength(1);
   });
 

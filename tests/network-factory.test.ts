@@ -77,7 +77,7 @@ describe("Network client composition", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     try {
-      const network = new Network((auth) => client(auth));
+      const network = new Network((auth) => client(auth), { protocol: "alternate" });
       expect(await network.discover(auth.host)).toEqual([]);
       await expect(network.resolveApiKey(auth.host, "test-key", [])).rejects.toThrow(
         "does not support API-key login",

@@ -555,27 +555,7 @@ function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: R
           });
           signal.throwIfAborted();
           if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-          // A response URL or stream failure may contain query credentials. Expose
-          // only a fresh response and sanitize asynchronous body-read failures too.
-          const reader = response.body?.getReader();
-          const body =
-            reader &&
-            new ReadableStream<Uint8Array>(
-              {
-                async pull(controller) {
-                  try {
-                    const chunk = await reader.read();
-                    if (chunk.done) controller.close();
-                    else controller.enqueue(chunk.value);
-                  } catch {
-                    controller.error(signal.aborted ? signal.reason : new NetworkTransportError());
-                  }
-                },
-                cancel: (reason) => reader.cancel(reason),
-              },
-              { highWaterMark: 0 },
-            );
-          return new Response(body ?? null, { status: response.status, headers: response.headers });
+          return response;
         });
       } catch (error) {
         await response?.body?.cancel().catch(() => {});
@@ -593,11 +573,14 @@ export class Network {
   #active?: SubsonicApi;
   #candidate?: CandidateConnection;
   #createClient: SubsonicClientFactory;
-  #subsonicProtocol: boolean;
+  #protocol: "subsonic" | "alternate";
   #loginController?: AbortController;
 
-  constructor(createClient?: SubsonicClientFactory) {
-    this.#subsonicProtocol = createClient === undefined;
+  constructor(
+    createClient?: SubsonicClientFactory,
+    { protocol = "subsonic" }: { protocol?: "subsonic" | "alternate" } = {},
+  ) {
+    this.#protocol = protocol;
     this.#createClient = createClient ?? ((auth, options) => new SubsonicClient(auth, options));
   }
 
@@ -615,7 +598,7 @@ export class Network {
     const controller = new AbortController();
     this.#loginController = controller;
     try {
-      if (!this.#subsonicProtocol) return [];
+      if (this.#protocol === "alternate") return [];
       normalizeServerHost(host);
       try {
         return await getOpenSubsonicExtensions(host, { fetch: networkFetch }, controller.signal);
@@ -637,7 +620,8 @@ export class Network {
     extensions: readonly OpenSubsonicExtension[],
   ): Promise<Auth> {
     this.cancelPending();
-    if (!this.#subsonicProtocol) throw new Error("This connection does not support API-key login.");
+    if (this.#protocol === "alternate")
+      throw new Error("This connection does not support API-key login.");
     normalizeServerHost(host);
     const controller = new AbortController();
     this.#loginController = controller;
@@ -679,7 +663,7 @@ export class Network {
   prepare(auth: Auth, extensions?: readonly OpenSubsonicExtension[]): NetworkConnection {
     if (!v.safeParse(authSchema, auth).success)
       throw new Error("The Subsonic authentication is invalid.");
-    if (this.#subsonicProtocol)
+    if (this.#protocol === "subsonic")
       normalizeServerHost(auth.host, auth.credentials.method === "password");
     const client = this.#createClient(
       { host: auth.host, credentials: auth.credentials },

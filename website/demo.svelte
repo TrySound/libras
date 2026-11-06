@@ -29,7 +29,7 @@
   }
 
   const base = new URL(import.meta.env.BASE_URL, location.origin);
-  const auth = new AuthStore(new MemoryStorage(), undefined, new MemoryStorage());
+  const auth = new AuthStore(new MemoryStorage());
   // Public synthetic identity; its URL isolates the demo's OPFS account.
   auth.save({
     host: base.href.replace(/\/$/, ""),
@@ -41,16 +41,19 @@
       salt: "local-demo",
     },
   });
-  const network = new Network((identity) => {
-    if (
-      identity.host !== base.href.replace(/\/$/, "") ||
-      identity.credentials.method !== "token" ||
-      identity.credentials.username !== "deezer-preview-demo"
-    ) {
-      throw new Error("This demo is fixed to its local library. Reload the demo to reconnect.");
-    }
-    return new DeezerSubsonicClient(identity);
-  });
+  const network = new Network(
+    (identity) => {
+      if (
+        identity.host !== base.href.replace(/\/$/, "") ||
+        identity.credentials.method !== "token" ||
+        identity.credentials.username !== "deezer-preview-demo"
+      ) {
+        throw new Error("This demo is fixed to its local library. Reload the demo to reconnect.");
+      }
+      return new DeezerSubsonicClient(identity);
+    },
+    { protocol: "alternate" },
+  );
 </script>
 
 <App {network} {auth} updaterComponent={undefined} demo>

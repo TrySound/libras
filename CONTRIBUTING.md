@@ -56,7 +56,7 @@ Consult the owning module and tests for implementation details rather than addin
 
 ### Entry points and metadata
 
-The app and `/demo/` are separate document-scrolling pages using the same App component; there is no embedded rendering mode. Entry points supply fixed `network`, `auth`, and `updaterComponent` dependencies. The normal entry supplies `WebappUpdater`; the demo passes `undefined` and does not register PWA support. `Network` accepts a `SubsonicClientFactory` so alternate clients can implement `SubsonicApi` without changing connection ownership.
+The app and `/demo/` are separate document-scrolling pages using the same App component; there is no embedded rendering mode. Entry points supply fixed `network`, `auth`, and `updaterComponent` dependencies. The normal entry supplies `WebappUpdater`; the demo passes `undefined` and does not register PWA support. `Network` accepts a `SubsonicClientFactory` without changing Subsonic discovery, API-key login, or HTTPS enforcement. Alternate clients implementing `SubsonicApi`, such as the demo, explicitly select `{ protocol: "alternate" }` at the entry point; they own their protocol and skip Subsonic discovery/key resolution.
 
 ### Authentication and login validation
 
@@ -68,7 +68,7 @@ API-key login first validates the key with `tokenInfo` and resolves its username
 
 `authenticationParameters` in `src/subsonic-client.ts` centralizes mutually exclusive wire parameters for metadata, artwork, and streaming: `apiKey` alone, `u`/`t`/`s`, or `u`/`p`. Hex passwords are encoding, not encryption or another method. API requests prefer form POST when `formPost` version 1 is advertised; artwork and streaming still use credential-bearing query URLs. Keep credentials out of errors and logs, including server/proxy access logs; HTTPS does not hide URLs from those servers.
 
-`AuthStore` persists API keys and replayable token/salt pairs in `localStorage` for compatibility, not as short-lived session tokens. Direct passwords use `sessionStorage` unless the user explicitly selects **Remember password on this device**. All browser storage is JavaScript-readable and vulnerable to malicious scripts or compromised browser access. Disconnect clears credentials for every method from both stores and cancels pending secrets, while retaining the credential-free account identity, offline music, and queue.
+`AuthStore` uses one injected `Storage`, defaulting to `localStorage`. All credentials, including API keys, replayable token/salt pairs, and direct passwords, persist until disconnect; they are not short-lived session tokens. This storage is JavaScript-readable and vulnerable to malicious scripts or compromised browser access. The demo explicitly injects its own memory storage. Disconnect clears credentials for every method and cancels pending secrets, while retaining the credential-free account identity, offline music, and queue.
 
 ### Library normalization
 

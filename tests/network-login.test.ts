@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Network, NetworkTransportError, normalizeServerHost } from "../src/network.svelte";
-import { SubsonicError, SubsonicHttpError } from "../src/subsonic-client";
+import { SubsonicClient, SubsonicError, SubsonicHttpError } from "../src/subsonic-client";
 import { deferred, credentials } from "./session-test-helpers";
 import type { Credentials } from "../src/auth";
 
@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe("Network login protocol", () => {
-  it("discovers without credentials and passes live formPost capabilities into key resolution and metadata", async () => {
+  it("preserves Subsonic discovery, API keys and formPost with an injected factory", async () => {
     const calls: { path: string; parameters: URLSearchParams; post: boolean }[] = [];
     vi.stubGlobal(
       "fetch",
@@ -37,11 +37,13 @@ describe("Network login protocol", () => {
         return response({ indexes: { lastModified: 10 } });
       }),
     );
-    const network = new Network();
+    const factory = vi.fn((auth, options) => new SubsonicClient(auth, options));
+    const network = new Network(factory);
     const extensions = await network.discover(host);
     const auth = await network.resolveApiKey(host, "test-key", extensions);
     expect(auth.username).toBe("listener");
     const candidate = network.prepare(auth, extensions);
+    expect(factory).toHaveBeenCalledOnce();
     await candidate.metadata.getModifiedAt();
     expect(calls.map(({ path }) => path)).toEqual([
       "/rest/getOpenSubsonicExtensions.view",
@@ -172,8 +174,10 @@ describe("server address security", () => {
       "http://music.example",
     ]) {
       expect(() => normalizeServerHost(address)).toThrow("require HTTPS");
-      const network = new Network();
+      const factory = vi.fn();
+      const network = new Network(factory);
       expect(() => network.prepare({ ...credentials, host: address })).toThrow("require HTTPS");
+      expect(factory).not.toHaveBeenCalled();
     }
   });
 
@@ -215,7 +219,6 @@ describe("Network authenticated media", () => {
         signal: new AbortController().signal,
       });
       expect(await audio.text()).toBe("media");
-      expect(audio.url).toBe("");
       const expected =
         method.method === "apiKey"
           ? ["apiKey"]
@@ -230,65 +233,60 @@ describe("Network authenticated media", () => {
     },
   );
 
-  it("preserves cancellation when an audio body read fails after disconnect", async () => {
+  it("returns the original audio response without locking or reconstructing its body", async () => {
     const network = new Network();
-    network.setMode("online");
-    const active = network.open(credentials);
-    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const active = network.accept(network.prepare(credentials));
+    const response = new Response("audio", { headers: { "Content-Type": "audio/mpeg" } });
+    Object.defineProperty(response, "url", { value: `${host}/rest/stream.view?apiKey=test-key` });
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            new ReadableStream<Uint8Array>({
-              start(controller) {
-                source = controller;
-              },
-            }),
-          ),
-      ),
+      vi.fn(async () => response),
     );
     const download = await active.audio.read("track", {
       format: "raw",
       signal: new AbortController().signal,
     });
+    expect(download).toBe(response);
+    expect(download.body?.locked).toBe(false);
+    expect(await download.text()).toBe("audio");
     network.setMode("offline");
-    source.error(new TypeError("Read failed"));
-    await expect(download.text()).rejects.toMatchObject({ name: "AbortError" });
   });
 
-  it.each(["artwork", "audio"])("redacts %s transport and body-read failures", async (kind) => {
-    const network = new Network();
-    network.setMode("online");
-    const active = network.open(credentials);
-    const read = async () =>
-      kind === "artwork"
-        ? active.artwork.read("cover", { size: 100 })
-        : (
-            await active.audio.read("track", {
-              format: "raw",
-              signal: new AbortController().signal,
-            })
-          ).text();
-    const unsafe = new TypeError("A credential-bearing URL must not escape");
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockRejectedValueOnce(unsafe)
-        .mockResolvedValueOnce(
-          new Response(
-            new ReadableStream({
-              start(controller) {
-                controller.error(unsafe);
-              },
-            }),
+  it.each(["artwork", "audio"])(
+    "redacts %s fetch failures and artwork body failures",
+    async (kind) => {
+      const network = new Network();
+      network.setMode("online");
+      const active = network.open(credentials);
+      const read = async () =>
+        kind === "artwork"
+          ? active.artwork.read("cover", { size: 100 })
+          : (
+              await active.audio.read("track", {
+                format: "raw",
+                signal: new AbortController().signal,
+              })
+            ).text();
+      const unsafe = new TypeError("A credential-bearing URL must not escape");
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockRejectedValueOnce(unsafe)
+          .mockResolvedValueOnce(
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.error(unsafe);
+                },
+              }),
+            ),
           ),
-        ),
-    );
-    for (let attempt = 0; attempt < 2; attempt++) {
-      await expect(read()).rejects.toBeInstanceOf(NetworkTransportError);
-    }
-    network.setMode("offline");
-  });
+      );
+      for (let attempt = 0; attempt < (kind === "artwork" ? 2 : 1); attempt++) {
+        await expect(read()).rejects.toBeInstanceOf(NetworkTransportError);
+      }
+      network.setMode("offline");
+    },
+  );
 });

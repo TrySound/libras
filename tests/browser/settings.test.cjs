@@ -125,9 +125,9 @@ test("Settings native controls, layout, and persistence", async (t) => {
         await page.getByLabel("Password", { exact: true }).fill("password");
         await page.getByRole("button", { name: "Review password warning", exact: true }).click();
         await page.locator("#settings-password-warning").waitFor();
-        assert.equal(
-          await page.getByLabel("Remember password on this device", { exact: true }).isChecked(),
-          false,
+        assert.match(
+          await page.locator("#settings-password-warning").textContent(),
+          /saved in localStorage on this device until you disconnect/,
         );
         assert.equal(calls.filter((method) => method === "ping").length, 0);
         assert.equal(

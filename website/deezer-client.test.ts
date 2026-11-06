@@ -221,7 +221,9 @@ it("reports malformed or removed playback data as unavailable", async () => {
 
 it("supports async playback URLs through Network", async () => {
   const read = vi.fn().mockResolvedValue({ ...album.tracks.data[0], album: { id: 302117 } });
-  const network = new Network((identity) => new DeezerSubsonicClient(identity, read));
+  const network = new Network((identity) => new DeezerSubsonicClient(identity, read), {
+    protocol: "alternate",
+  });
   const connection = network.accept(network.prepare(auth));
   expect(await connection.audio.url("3135439", { format: "raw" })).toContain(
     "https://cdnt-preview.dzcdn.net/",

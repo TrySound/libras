@@ -134,6 +134,56 @@ describe("TrackEngine using Cache", () => {
     expect(engine.error).toBeInstanceOf(Error);
   });
 
+  it.each(["Error", "TypeError", "NetworkError"])(
+    "redacts asynchronous %s body failures in the download promise, Track error and Cache error",
+    async (kind) => {
+      const disk = install();
+      const { engine, cache } = setup({ online: true });
+      const secret = "apiKey=private-key&p=private-password&t=private-token";
+      const message = `Read failed for ${account.host}/rest/stream.view?${secret}`;
+      const unsafe =
+        kind === "NetworkError"
+          ? new DOMException(message, kind)
+          : kind === "TypeError"
+            ? new TypeError(message)
+            : new Error(message);
+      let source!: ReadableStreamDefaultController<Uint8Array>;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  source = controller;
+                },
+              }),
+            ),
+        ),
+      );
+      const wrote = deferred();
+      disk.state.beforeWrite = (name) => {
+        if (name.endsWith(".audio")) wrote.resolve();
+      };
+      const pending = engine.download(track.id);
+      await vi.waitFor(() => expect(source).toBeDefined());
+      source.enqueue(new TextEncoder().encode("partial"));
+      await wrote.promise;
+      source.error(unsafe);
+      const error = await pending.catch((error) => error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBe(unsafe);
+      expect(error.message).toBe("The downloaded data could not be transferred to storage.");
+      expect(error).not.toHaveProperty("cause");
+      expect(engine.error).toBe(error);
+      expect((cache.error as AggregateError).errors).toEqual([error]);
+      expect(engine.downloadJobs).toEqual([]);
+      expect(cache.downloads.size).toBe(0);
+      expect(disk.blobs.size).toBe(0);
+      expect(disk.files.size).toBe(0);
+    },
+  );
+
   it("continues a batch after an individual transfer fails", async () => {
     install();
     const { engine } = setup({ online: true, concurrency: 1 });

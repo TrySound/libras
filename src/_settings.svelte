@@ -17,7 +17,6 @@
   let username = $state("");
   let password = $state("");
   let apiKey = $state("");
-  let rememberPassword = $state(false);
   let view = $state.raw<HTMLElement>();
 
   const connectionLabels = {
@@ -49,7 +48,6 @@
 
   function clearSecrets() {
     username = password = apiKey = "";
-    rememberPassword = false;
   }
 
   $effect(() => {
@@ -230,16 +228,9 @@
                     This sends your password directly to the server over HTTPS, rather than an MD5 token.
                     Hex encoding is not encryption. Continue only if you trust this server.
                   </p>
-                  <label class="row-sm">
-                    <input
-                      type="checkbox"
-                      name="rememberPassword"
-                      bind:checked={rememberPassword}
-                    />
-                    Remember password on this device
-                  </label>
                   <p class="caption text-secondary">
-                    Unchecked: keep the password only for this browser session.
+                    Your password is saved in localStorage on this device until you disconnect.
+                    Browser scripts can read it; use a trusted device.
                   </p>
                   <button
                     type="button"
@@ -248,7 +239,7 @@
                     data-variant="primary"
                     id="settings-confirm-password"
                     onclick={() => {
-                      const pending = session.confirmPassword(rememberPassword);
+                      const pending = session.confirmPassword();
                       clearSecrets();
                       void finishConnection(pending);
                     }}

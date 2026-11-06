@@ -55,8 +55,7 @@ export function createStorage() {
 
 export function createSession(saved = false, storage = createStorage()) {
   const selection = new TestSelection();
-  const temporaryStorage = createStorage();
-  const auth = new AuthStore(storage, undefined, temporaryStorage);
+  const auth = new AuthStore(storage);
   if (saved) auth.save(credentials);
   const loaded = new WeakSet<Cache>();
   const loadCache = vi
@@ -166,7 +165,6 @@ export function createSession(saved = false, storage = createStorage()) {
     tracks,
     playback,
     storage,
-    temporaryStorage,
     discover,
     validate,
     loadCache,

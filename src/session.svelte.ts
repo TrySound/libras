@@ -261,15 +261,10 @@ export class Session {
 
   /** No awaits: credentials, selection and engine connections commit in one turn.
    * Storage is not transactional; connect's failure path clears partial credentials. */
-  #commitWorkspace(
-    cache: Cache,
-    credentials: Auth,
-    connection: NetworkConnection,
-    rememberPassword = false,
-  ) {
+  #commitWorkspace(cache: Cache, credentials: Auth, connection: NetworkConnection) {
     connection.signal.throwIfAborted();
     const { auth, preferences, network, playback } = this.#options;
-    auth.save(credentials, { rememberPassword });
+    auth.save(credentials);
     auth.saveAccount(connection.account);
     preferences.setItem(offlineModeStorageKey, "false");
     const active = network.accept(connection);
@@ -393,7 +388,7 @@ export class Session {
   }
 
   /** This separate action is the only path that submits a direct password. */
-  async confirmPassword(rememberPassword = false): Promise<boolean> {
+  async confirmPassword(): Promise<boolean> {
     const input = this.#pendingPassword;
     if (!input || !this.passwordConfirmation || this.busy || this.#destroyed) return false;
     this.#pendingPassword = undefined;
@@ -409,7 +404,6 @@ export class Session {
           credentials: { method: "password", username: input.username, password: input.password },
         },
         operationId,
-        rememberPassword,
       );
     } catch (error) {
       this.#loginFailed(error, operationId);
@@ -429,7 +423,7 @@ export class Session {
     this.#extensions = extensions;
   }
 
-  async #connectAuth(credentials: Auth, operationId: number, rememberPassword = false) {
+  async #connectAuth(credentials: Auth, operationId: number) {
     const connection = this.#options.network.prepare(credentials, this.#extensions);
     await this.#restoration;
     if (!this.#isCurrentOperation(operationId)) return false;
@@ -440,7 +434,7 @@ export class Session {
     if (!this.#isCurrentOperation(operationId)) return false;
     await this.#retireWorkspace(cache, connection.signal);
     if (!this.#isCurrentOperation(operationId)) return false;
-    this.#commitWorkspace(cache, credentials, connection, rememberPassword);
+    this.#commitWorkspace(cache, credentials, connection);
     this.status = "connected";
     this.loadingAfterConnect = true;
     this.loginHost = "";

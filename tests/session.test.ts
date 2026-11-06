@@ -91,6 +91,42 @@ describe("session", () => {
     expect(session.status).toBe("connected");
   });
 
+  it("does not expose private stream errors through cache synchronization reporting", async () => {
+    const disk = installDisk();
+    const { session, selection } = setup();
+    const cache = new Cache(getAccountKey(credentials));
+    selection.cache = cache;
+    const unsafe = new TypeError(
+      "Read failed: https://music.example/rest/stream.view?apiKey=secret&p=password",
+    );
+    const response = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.error(unsafe);
+        },
+      }),
+    );
+    const pending = cache.saveDownload(
+      { id: "track", title: "Track", artist: "Artist", album: "Album" },
+      "mp3",
+      "audio/mpeg",
+      response,
+      new AbortController().signal,
+    );
+    await expect(pending).rejects.toThrow(
+      "The downloaded data could not be transferred to storage.",
+    );
+    expect(session.refreshError).toBe(
+      "Synchronization failed: The downloaded data could not be transferred to storage.",
+    );
+    const errors = (cache.error as AggregateError).errors;
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).not.toBe(unsafe);
+    expect(errors[0]).not.toHaveProperty("cause");
+    expect(disk.files.size).toBe(0);
+    expect(disk.blobs.size).toBe(0);
+  });
+
   it("formats nested cache errors centrally without failing the connection", async () => {
     const { session, selection } = await connected();
     vi.spyOn(selection.cache!, "error", "get").mockReturnValue(

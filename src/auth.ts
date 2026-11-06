@@ -38,39 +38,12 @@ export function getAccountKey(account: Account): string {
   return JSON.stringify([account.host, account.username]);
 }
 
-/** Custom entry points must not inherit the real app's browser-session secrets. */
-class TemporaryStorage implements Storage {
-  #values = new Map<string, string>();
-  get length() {
-    return this.#values.size;
-  }
-  key(index: number) {
-    return [...this.#values.keys()][index] ?? null;
-  }
-  getItem(key: string) {
-    return this.#values.get(key) ?? null;
-  }
-  setItem(key: string, value: string) {
-    this.#values.set(key, value);
-  }
-  removeItem(key: string) {
-    this.#values.delete(key);
-  }
-  clear() {
-    this.#values.clear();
-  }
-}
-
 export class AuthStore {
   #key: string;
   #storage: Storage;
-  #sessionStorage: Storage;
 
-  constructor(storage: Storage = localStorage, key = "navidrome-auth", temporaryStorage?: Storage) {
+  constructor(storage: Storage = localStorage, key = "navidrome-auth") {
     this.#storage = storage;
-    this.#sessionStorage =
-      temporaryStorage ??
-      (storage === globalThis.localStorage ? sessionStorage : new TemporaryStorage());
     this.#key = key;
   }
 
@@ -80,7 +53,7 @@ export class AuthStore {
   }
 
   load(): Auth | null {
-    const value = this.#sessionStorage.getItem(this.#key) ?? this.#storage.getItem(this.#key);
+    const value = this.#storage.getItem(this.#key);
     if (!value) return null;
     let migrated: Auth;
     try {
@@ -109,24 +82,15 @@ export class AuthStore {
     return migrated;
   }
 
-  /** Token/salt pairs are replayable secrets, retained persistently for compatibility. */
-  save(auth: Auth, options: { rememberPassword?: boolean } = {}) {
+  /** All credential methods persist on this device until disconnect. */
+  save(auth: Auth) {
     const parsed = v.safeParse(authSchema, auth);
     if (!parsed.success) throw new Error("The Subsonic authentication is invalid.");
-    const temporary =
-      parsed.output.credentials.method === "password" && options.rememberPassword !== true;
-    const target = temporary ? this.#sessionStorage : this.#storage;
-    const other = temporary ? this.#storage : this.#sessionStorage;
-    target.setItem(this.#key, JSON.stringify(parsed.output));
-    if (other !== target) other.removeItem(this.#key);
+    this.#storage.setItem(this.#key, JSON.stringify(parsed.output));
   }
 
   clear() {
-    try {
-      this.#storage.removeItem(this.#key);
-    } finally {
-      this.#sessionStorage.removeItem(this.#key);
-    }
+    this.#storage.removeItem(this.#key);
   }
 
   loadAccount(): Account | null {

@@ -108,7 +108,7 @@ describe("Session login policy", () => {
   it.each([41, 42])(
     "offers a separate confirmation only for token rejection code %i",
     async (code) => {
-      const { session, validate, network, auth, temporaryStorage, storage } = setup();
+      const { session, validate, network, auth, storage } = setup();
       const prepare = vi.spyOn(network, "prepare");
       validate.mockRejectedValueOnce(new SubsonicError(code, "Token method unsupported"));
       expect(await session.connect(input)).toBe(false);
@@ -121,15 +121,9 @@ describe("Session login policy", () => {
         "token",
         "password",
       ]);
-      expect(storage.getItem("navidrome-auth")).toBeNull();
-      expect(temporaryStorage.getItem("navidrome-auth") !== null).toBe(true);
-      expect(new AuthStore(storage, undefined, temporaryStorage).load()?.credentials.method).toBe(
-        "password",
-      );
-      expect(storage.getItem("navidrome-auth")).toBeNull();
+      expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
       session.disconnect();
       expect(storage.getItem("navidrome-auth")).toBeNull();
-      expect(temporaryStorage.getItem("navidrome-auth")).toBeNull();
       expect(auth.loadAccount()).toEqual({ host: input.host, username: input.username });
     },
   );
@@ -156,16 +150,15 @@ describe("Session login policy", () => {
     expect(session.error.length > 0).toBe(true);
   });
 
-  it("permits explicit password selection only after a warning/confirmation and explicit storage consent", async () => {
-    const { session, validate, network, storage, temporaryStorage } = setup();
+  it("permits explicit password selection only after a warning/confirmation, then persists it", async () => {
+    const { session, validate, network, storage } = setup();
     const prepare = vi.spyOn(network, "prepare");
     expect(await session.connect({ ...input, method: "password" })).toBe(false);
     expect(session.passwordConfirmation).toBe("explicit");
     expect(validate).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
-    expect(await session.confirmPassword(true)).toBe(true);
-    expect(storage.getItem("navidrome-auth") !== null).toBe(true);
-    expect(temporaryStorage.getItem("navidrome-auth")).toBeNull();
+    expect(await session.confirmPassword()).toBe(true);
+    expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
   });
 
   it.each(["explicit", "fallback"])(
@@ -198,7 +191,7 @@ describe("Session login policy", () => {
       if (action === "method") session.setLoginMethod("apiKey");
       if (action === "host") await session.discover("https://other.example");
       if (action === "disconnect") session.disconnect();
-      expect(await session.confirmPassword(true)).toBe(false);
+      expect(await session.confirmPassword()).toBe(false);
       expect(prepare).not.toHaveBeenCalled();
       expect(session.auth).toBeNull();
     },
@@ -243,7 +236,7 @@ describe("Session login policy", () => {
   );
 
   it("starts with valid legacy credentials even when auth migration storage is full", async () => {
-    const { session, auth, storage, temporaryStorage, selection, network } = setup();
+    const { session, auth, storage, selection, network } = setup();
     const open = vi.spyOn(network, "open");
     const original = JSON.stringify({
       host: credentials.host,
@@ -264,10 +257,8 @@ describe("Session login policy", () => {
     expect(selection.cache?.key).toBe(getAccountKey(credentials));
     expect(open).toHaveBeenCalledWith(credentials, []);
     expect(storage.getItem("navidrome-auth")).toBe(original);
-    expect(temporaryStorage.getItem("navidrome-auth")).toBeNull();
     expect(auth.loadAccount()).toEqual({ host: credentials.host, username: credentials.username });
     expect(storage.removeItem).not.toHaveBeenCalledWith("navidrome-auth");
-    expect(temporaryStorage.removeItem).not.toHaveBeenCalledWith("navidrome-auth");
   });
 
   it("revalidates restored key identity and ping before enabling synchronization", async () => {
@@ -372,8 +363,8 @@ describe("Session login policy", () => {
     expect(validate).not.toHaveBeenCalled();
   });
 
-  it("does not turn a restored session-only password into persistent storage", async () => {
-    const { session, auth, storage, temporaryStorage } = setup();
+  it("restores a persisted password without rewriting credentials", async () => {
+    const { session, auth, storage } = setup();
     auth.save({
       ...credentials,
       credentials: {
@@ -386,8 +377,7 @@ describe("Session login policy", () => {
     session.start();
     await vi.waitFor(() => expect(session.status).toBe("connected"));
     expect(save).not.toHaveBeenCalled();
-    expect(storage.getItem("navidrome-auth")).toBeNull();
-    expect(temporaryStorage.getItem("navidrome-auth") !== null).toBe(true);
+    expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
   });
 
   it("retries failed restored token discovery explicitly without treating transport failure as legacy support", async () => {
