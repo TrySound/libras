@@ -72,8 +72,14 @@ async function setup(
   });
   flushSync();
   mocks.navigate.mockClear();
-  cleanups.push(async () => {
+  let mounted = true;
+  async function destroyApp() {
+    if (!mounted) return;
+    mounted = false;
     await unmount(component);
+  }
+  cleanups.push(async () => {
+    await destroyApp();
     await fixture.destroy();
   });
   const button = (label: string) =>
@@ -103,12 +109,13 @@ async function setup(
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     flushSync();
   };
-  return { ...fixture, target, button, offline, fill, navigate };
+  return { ...fixture, target, button, offline, fill, navigate, destroyApp };
 }
 
 describe("app settings", () => {
   it("checks the server before showing credentials, defaults to key login and supports explicit method switches", async () => {
     const { target, discover, session, validate } = await setup();
+    const cancel = vi.spyOn(session, "cancelConnect");
     discover.mockResolvedValueOnce([{ name: "apiKeyAuthentication", versions: [1] }]);
     const host = target.querySelector<HTMLInputElement>("#server-host")!;
     host.value = credentials.host;
@@ -130,6 +137,7 @@ describe("app settings", () => {
     form.querySelector<HTMLInputElement>('input[name="method"][value="token"]')!.click();
     flushSync();
     expect(session.login.method).toBe("token");
+    expect(cancel).toHaveBeenLastCalledWith({ method: "token" });
     expect(form.querySelector("#server-api-key")).toBeNull();
     expect(form.querySelector<HTMLInputElement>("#server-username")!.required).toBe(true);
     expect(form.querySelector<HTMLInputElement>("#server-password")!.autocomplete).toBe(
@@ -138,10 +146,12 @@ describe("app settings", () => {
     form.querySelector<HTMLInputElement>('input[name="method"][value="apiKey"]')!.click();
     flushSync();
     expect(form.querySelector<HTMLInputElement>("#server-api-key")!.value).toBe("");
+    expect(cancel).toHaveBeenLastCalledWith({ method: "apiKey" });
     host.value = "https://other.example";
     host.dispatchEvent(new Event("input", { bubbles: true }));
     flushSync();
     expect(form.querySelector("#server-api-key, #server-password")).toBeNull();
+    expect(cancel).toHaveBeenLastCalledWith();
   });
 
   it("clears an unsubmitted UI secret when Session disconnects outside the view", async () => {
@@ -191,6 +201,7 @@ describe("app settings", () => {
 
   it("allows cancelling a password warning without submitting or persisting a password", async () => {
     const { target, session, validate, button, auth } = await setup();
+    const cancel = vi.spyOn(session, "cancelConnect");
     await connect(session, {
       host: credentials.host,
       username: credentials.username,
@@ -205,6 +216,7 @@ describe("app settings", () => {
     button("Cancel").click();
     flushSync();
     expect(session.login.passwordConfirmation).toBeUndefined();
+    expect(cancel).toHaveBeenCalledExactlyOnceWith({ resetDiscovery: false });
     expect(target.querySelector("#settings-password-warning")).toBeNull();
     expect(target.querySelector<HTMLInputElement>("#server-password")!.value).toBe("");
     expect(auth.load()).toBeNull();
@@ -291,6 +303,25 @@ describe("app settings", () => {
       expect(navigate).not.toHaveBeenCalled();
     },
   );
+
+  it("cancels authentication on App destruction without late workspace activation or navigation", async () => {
+    const { fill, validate, session, auth, selection, loadCache, navigate, destroyApp } =
+      await setup(false, false);
+    const pending = deferred();
+    validate.mockReturnValueOnce(pending.promise);
+    await fill();
+    await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
+    const { signal } = validate.mock.calls[0][0];
+    await destroyApp();
+    expect(signal.aborted).toBe(true);
+    pending.resolve();
+    await new Promise((done) => setTimeout(done, 0));
+    expect(session.auth).toBeNull();
+    expect(auth.load()).toBeNull();
+    expect(selection.cache).toBeUndefined();
+    expect(loadCache).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
 
   it("displays only the server host and port, without URL userinfo or auth secrets", async () => {
     const { target, session } = await setup(true);

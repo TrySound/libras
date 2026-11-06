@@ -21,8 +21,7 @@ describe("playlist network projection", () => {
       ),
     );
     const network = new Network((auth) => new SubsonicClient(auth, { fetch: fetcher }));
-    network.setMode("online");
-    const connection = network.open(auth).playlists;
+    const connection = network.accept(network.prepare(auth)).playlists;
     const expected = ["a", "a"];
     expect(await connection.mutate({ kind: "create", name: "New" })).toMatchObject({ id: "new" });
     await connection.mutate({ kind: "rename", id: "p", expected, name: "Renamed" });
@@ -70,8 +69,7 @@ describe("playlist network projection", () => {
           },
         }),
     );
-    network.setMode("online");
-    const connection = network.open(auth).playlists;
+    const connection = network.accept(network.prepare(auth)).playlists;
     expect(await connection.list()).toEqual([
       {
         id: "p",

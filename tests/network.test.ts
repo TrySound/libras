@@ -227,12 +227,11 @@ describe("Network connection lifecycle", () => {
     expect(network.mode).toBe("offline");
   });
 
-  it("starts offline and refuses normal access until explicitly enabled", () => {
+  it("starts offline and revokes accepted access when taken offline", () => {
     const network = new Network();
     expect(network.mode).toBe("offline");
-    expect(() => network.open(auth)).toThrow("Network access is offline");
-    network.setMode("online");
-    const client = network.open(auth);
+    const client = network.accept(network.prepare(auth));
+    expect(network.mode).toBe("online");
     expect(client.signal.aborted).toBe(false);
     network.setMode("offline");
     expect(client.signal.aborted).toBe(true);
@@ -244,7 +243,8 @@ describe("Network connection lifecycle", () => {
     const candidate = network.prepare(auth);
     expect(network.mode).toBe("offline");
     expect(candidate.signal.aborted).toBe(false);
-    expect(() => network.open(auth)).toThrow("Network access is offline");
+    expect(candidate).not.toHaveProperty("audio");
+    expect(candidate).not.toHaveProperty("queue");
     network.accept(candidate);
     expect(network.mode).toBe("online");
     network.setMode("offline");
@@ -253,8 +253,7 @@ describe("Network connection lifecycle", () => {
 
   it("replaces candidates without disturbing the active connection until acceptance", () => {
     const network = new Network();
-    network.setMode("online");
-    const active = network.open(auth);
+    const active = network.accept(network.prepare(auth));
     const stale = network.prepare({
       ...auth,
       username: "second",
@@ -314,8 +313,7 @@ describe("Network connection lifecycle", () => {
 
   it("rejects foreign and copied handles without disturbing its active connection or candidate", () => {
     const network = new Network();
-    network.setMode("online");
-    const active = network.open(auth);
+    const active = network.accept(network.prepare(auth));
     const candidate = network.prepare(auth);
     const other = new Network();
     const foreign = other.prepare(auth);
@@ -334,8 +332,7 @@ describe("Network connection lifecycle", () => {
 
   it("aborts active and candidate work offline and never revives old connections", () => {
     const network = new Network();
-    network.setMode("online");
-    const active = network.open(auth);
+    const active = network.accept(network.prepare(auth));
     const candidate = network.prepare(auth);
     network.setMode("offline");
     network.setMode("offline");
@@ -343,7 +340,7 @@ describe("Network connection lifecycle", () => {
     expect(candidate.signal.aborted).toBe(true);
     expect(() => network.accept(candidate)).toThrowError(/abort/i);
     network.setMode("online");
-    const resumed = network.open(auth);
+    const resumed = network.accept(network.prepare(auth));
     expect(resumed).not.toBe(active);
     expect(resumed).not.toBe(candidate);
     expect(resumed.signal.aborted).toBe(false);
@@ -806,8 +803,7 @@ describe("Network connection lifecycle", () => {
     );
     vi.stubGlobal("fetch", fetch);
     try {
-      network.setMode("online");
-      const client = network.open(auth);
+      const client = network.accept(network.prepare(auth));
       const request = client.metadata.getModifiedAt();
       const rejection = expect(request).rejects.toMatchObject({ name: "AbortError" });
       expect(fetch.mock.calls[0]).toEqual([expect.any(String), { signal: client.signal }]);

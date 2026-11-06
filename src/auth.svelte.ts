@@ -1,10 +1,10 @@
 import { normalizeServerHost, type Auth, type Credentials } from "./auth";
+import { connectionError } from "./errors";
 import type { Network, NetworkConnection } from "./network.svelte";
 import {
   SubsonicClient,
   SubsonicError,
   SubsonicHttpError,
-  SubsonicTransportError,
   createSubsonicAuth,
   getOpenSubsonicExtensions,
   type OpenSubsonicExtension,
@@ -22,18 +22,7 @@ export type LoginInput =
 
 export interface AuthenticatedConnection {
   auth: Auth;
-  extensions: readonly OpenSubsonicExtension[];
   connection: NetworkConnection;
-}
-
-export function connectionError(error: unknown): string {
-  if (error instanceof AggregateError)
-    return error.errors.length ? error.errors.map(connectionError).join("; ") : error.message;
-  if (error instanceof SubsonicTransportError)
-    return "Could not reach the server. Check your connection, server address, and CORS settings.";
-  if (error instanceof SubsonicError && error.code !== undefined)
-    return `${error.message} (Subsonic code ${error.code})`;
-  return error instanceof Error ? error.message : "Could not connect to the server.";
 }
 
 export function createAuth(input: PasswordAuth): Auth {
@@ -159,7 +148,7 @@ export class AuthWorkflow {
     if (validate) await this.#network.validate(connection);
     signal.throwIfAborted();
     connection.signal.throwIfAborted();
-    return { auth, extensions, connection };
+    return { auth, connection };
   }
 
   async connect(input: LoginInput): Promise<AuthenticatedConnection | undefined> {
@@ -263,13 +252,6 @@ export class AuthWorkflow {
     } catch (error) {
       signal.throwIfAborted();
       this.#network.cancelPending();
-      if (auth.credentials.method === "apiKey") {
-        // An unverified key must not enable access to another account's cached IDs.
-        this.#network.setMode("offline");
-        throw new Error(
-          `${connectionError(error)} Your saved library is available offline. Turn off Offline library to retry, or disconnect and sign in again.`,
-        );
-      }
       throw error;
     }
   }

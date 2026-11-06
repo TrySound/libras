@@ -11,7 +11,8 @@ import type { Playlists } from "./playlists.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Cache } from "./cache.svelte";
-import { AuthWorkflow, connectionError, type AuthenticatedConnection } from "./auth.svelte";
+import { AuthWorkflow, type AuthenticatedConnection, type LoginMethod } from "./auth.svelte";
+import { connectionError } from "./errors";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -257,12 +258,14 @@ export class Session {
     this.localReady = true;
   }
 
-  /** Cancel workspace preparation, never the selected offline workspace. */
-  cancelConnect() {
+  /** Cancel login and workspace preparation, never the selected offline workspace.
+   * Method changes delegate to Auth's discovery-preserving cancellation. */
+  cancelConnect(options: { method: LoginMethod } | { resetDiscovery?: boolean } = {}) {
     if (this.auth || this.#destroyed) return;
     this.#beginOperation();
-    this.#options.network.cancelPending();
     this.status = "disconnected";
+    if ("method" in options) this.login.setMethod(options.method);
+    else this.login.cancel(options.resetDiscovery);
   }
 
   /** Accept auth's verified result, then activate local resources. Sync is background work. */
@@ -323,8 +326,22 @@ export class Session {
   async #resumeOnline(operationId: number) {
     const auth = this.auth;
     if (!auth) return;
-    const { connection } = await this.login.resume(auth);
+    let verified: AuthenticatedConnection;
+    try {
+      verified = await this.login.resume(auth);
+    } catch (error) {
+      if (!this.#isCurrentOperation(operationId) || this.auth !== auth) return;
+      if (auth.credentials.method === "apiKey") {
+        // An unverified key must not enable access to another account's cached IDs.
+        this.#options.network.setMode("offline");
+        throw new Error(
+          `${connectionError(error)} Your saved library is available offline. Turn off Offline library to retry, or disconnect and sign in again.`,
+        );
+      }
+      throw error;
+    }
     if (!this.#isCurrentOperation(operationId) || this.auth !== auth) return;
+    const { connection } = verified;
     connection.signal.throwIfAborted();
     this.#setConnection(this.#options.network.accept(connection));
     this.status = "connected";

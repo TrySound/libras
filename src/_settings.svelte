@@ -60,13 +60,11 @@
 
   function changeHost() {
     session.cancelConnect();
-    login.cancel();
     clearSecrets();
   }
 
   function changeMethod(method: LoginMethod) {
-    session.cancelConnect();
-    login.setMethod(method);
+    session.cancelConnect({ method });
     clearSecrets();
   }
 
@@ -339,8 +337,7 @@
                   data-size="text"
                   data-variant="secondary"
                   onclick={() => {
-                    session.cancelConnect();
-                    login.cancel(false);
+                    session.cancelConnect({ resetDiscovery: false });
                     clearSecrets();
                   }}>Cancel</button
                 >

@@ -187,8 +187,8 @@ describe("AuthWorkflow", () => {
     },
   );
 
-  it("returns verified identity, credentials and capabilities without enabling access", async () => {
-    const { workflow, discovery, network, validate } = setup();
+  it("returns verified identity and a capability-configured candidate without enabling access", async () => {
+    const { workflow, discovery, network, validate, prepare } = setup();
     discovery.mockResolvedValueOnce(keys);
     const result = await workflow.connect({
       host: input.host,
@@ -199,12 +199,36 @@ describe("AuthWorkflow", () => {
       ...credentials,
       credentials: { method: "apiKey", apiKey: "test-key" },
     });
-    expect(result?.extensions).toEqual(keys);
+    expect(prepare).toHaveBeenCalledWith(result?.auth, keys);
+    expect(Object.keys(result!).sort()).toEqual(["auth", "connection"]);
     expect(validate).toHaveBeenCalledWith(result?.connection);
     expect(network.mode).toBe("offline");
     workflow.cancel();
     expect(result?.connection.signal.aborted).toBe(true);
   });
+
+  it.each(["discovery", "key", "ping"])(
+    "reports the original saved-key %s failure without changing workspace access",
+    async (stage) => {
+      const { workflow, network, discovery, tokenInfo, validate, prepare } = setup();
+      const failure = new SubsonicError(44, "Invalid API key");
+      if (stage === "discovery") discovery.mockRejectedValueOnce(failure);
+      if (stage === "key") tokenInfo.mockRejectedValueOnce(failure);
+      if (stage === "ping") validate.mockRejectedValueOnce(failure);
+      network.setMode("online");
+      await expect(
+        workflow.resume({
+          ...credentials,
+          credentials: { method: "apiKey", apiKey: "test-key" },
+        }),
+      ).rejects.toBe(failure);
+      expect(network.mode).toBe("online");
+      expect(workflow.error).toBe("");
+      expect(workflow.passwordConfirmation).toBeUndefined();
+      expect(prepare).toHaveBeenCalledTimes(stage === "ping" ? 1 : 0);
+      if (stage === "ping") expect(prepare.mock.results[0].value.signal.aborted).toBe(true);
+    },
+  );
 });
 
 describe("auth host and credential preparation", () => {

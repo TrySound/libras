@@ -85,8 +85,12 @@ describe("Network client composition", () => {
         await workflow.connect({ host: auth.host, method: "apiKey", apiKey: "test-key" }),
       ).toBeUndefined();
       expect(workflow.error).toContain("does not support API-key login");
-      network.setMode("online");
-      network.open(auth);
+      const verified = await workflow.resume(auth);
+      expect(network.mode).toBe("offline");
+      expect(network.accept(verified.connection).account).toEqual({
+        host: auth.host,
+        username: auth.username,
+      });
       expect(fetcher).not.toHaveBeenCalled();
       network.setMode("offline");
     } finally {

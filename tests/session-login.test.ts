@@ -62,7 +62,6 @@ describe("Session authenticated workspace integration", () => {
       const first = connect(session, login);
       await vi.waitFor(() => expect(blocked).toBe(true));
       session.cancelConnect();
-      session.login.cancel();
       expect(session.busy).toBe(false);
       expect(await connect(session, login)).toBe(true);
       const cache = selection.cache;
@@ -86,18 +85,12 @@ describe("Session authenticated workspace integration", () => {
       const { session, selection, loadCache, auth } = setup();
       const verified = await session.login.connect(input);
       expect(verified).toBeDefined();
-      if (action === "cancel") {
-        session.cancelConnect();
-        session.login.cancel();
-      }
+      if (action === "cancel") session.cancelConnect({ resetDiscovery: false });
       if (action === "host") {
         session.cancelConnect();
         await session.login.discover("https://other.example");
       }
-      if (action === "method") {
-        session.cancelConnect();
-        session.login.setMethod("apiKey");
-      }
+      if (action === "method") session.cancelConnect({ method: "apiKey" });
       if (action === "disconnect") session.disconnect();
       if (action === "destroy") session.destroy();
       expect(await session.connect(verified)).toBe(false);
@@ -107,9 +100,13 @@ describe("Session authenticated workspace integration", () => {
     },
   );
 
-  it.each(["load", "retirement"])(
-    "cancels %s activation without selecting or disabling the current offline workspace",
-    async (stage) => {
+  it.each(
+    ["load", "retirement"].flatMap((stage) =>
+      ["cancel", "host", "method"].map((action) => ({ stage, action })),
+    ),
+  )(
+    "cancels $stage activation on $action without selecting or disabling the current offline workspace",
+    async ({ stage, action }) => {
       const { session, selection, loadCache, auth, storage } = setup();
       expect(await connect(session, input)).toBe(true);
       session.disconnect();
@@ -123,8 +120,12 @@ describe("Session authenticated workspace integration", () => {
         if (stage === "load") expect(loadCache).toHaveBeenCalledTimes(2);
         else expect(previous.flush).toHaveBeenCalled();
       });
-      session.cancelConnect();
-      session.login.cancel(false);
+      const cancel = vi.spyOn(session.login, "cancel");
+      if (action === "method") session.cancelConnect({ method: "apiKey" });
+      else session.cancelConnect({ resetDiscovery: action === "host" });
+      expect(cancel).toHaveBeenCalledExactlyOnceWith(action === "host");
+      expect(session.login.host).toBe(action === "host" ? "" : input.host);
+      expect(session.login.method).toBe(action === "method" ? "apiKey" : "token");
       expect(session.busy).toBe(false);
       expect(session.status).toBe("disconnected");
       expect(selection.cache).toBe(previous);
@@ -133,12 +134,38 @@ describe("Session authenticated workspace integration", () => {
       expect(storage.getItem("navidrome-offline-mode")).toBe("true");
       previous.setQueue({ tracks: ["offline-edit"], index: 0, position: 1 });
       expect(previous.queueDirty).toBe(true);
-      expect(await connect(session, input)).toBe(true);
+      expect(await connect(session, { ...input, method: "token" })).toBe(true);
       pending.resolve();
       expect(await first).toBe(false);
       expect(selection.cache).toBe(previous);
       expect(session.auth?.username).toBe(input.username);
       expect(previous.queueDirty).toBe(true);
+    },
+  );
+
+  it.each([true, false, "method"] as const)(
+    "cancels confirmation secrets once with discovery reset %s",
+    async (reset) => {
+      const { session, discover, network, validate } = setup();
+      discover.mockResolvedValue(keyExtension);
+      await session.login.discover(input.host);
+      await connect(session, { ...input, method: "password" });
+      expect(session.login.passwordConfirmation).toBe("explicit");
+      const cancel = vi.spyOn(session.login, "cancel");
+      const cancelPending = vi.spyOn(network, "cancelPending");
+      if (reset === "method") session.cancelConnect({ method: "token" });
+      else session.cancelConnect({ resetDiscovery: reset });
+      expect(cancel).toHaveBeenCalledExactlyOnceWith(reset === true);
+      expect(cancelPending).toHaveBeenCalledOnce();
+      expect(await session.login.confirmPassword()).toBeUndefined();
+      expect(validate).not.toHaveBeenCalled();
+      expect(session.login.host).toBe(reset === true ? "" : input.host);
+      expect(session.login.method).toBe(
+        reset === "method" || reset === true ? "token" : "password",
+      );
+      expect(await connect(session, { ...input, method: "token" })).toBe(true);
+      expect(discover).toHaveBeenCalledTimes(reset === true ? 2 : 1);
+      expect(vi.mocked(network.prepare).mock.calls.at(-1)?.[1]).toEqual(keyExtension);
     },
   );
 
@@ -278,17 +305,19 @@ describe("Session authenticated workspace integration", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it.each(["mismatch", "malformed", "transport", "invalid-key", "ping"])(
+  it.each(["discovery", "mismatch", "malformed", "transport", "invalid-key", "ping"])(
     "keeps the saved key's cache offline on %s failure without identity rewrite or fallback",
     async (failure) => {
-      const { session, auth, validate, metadata, selection, storage } = setup();
+      const { session, auth, discover, validate, metadata, selection, storage } = setup();
       const saved = {
         ...credentials,
         credentials: { method: "apiKey" as const, apiKey: "test-key" },
       };
       auth.save(saved);
       const resolve = vi.spyOn(SubsonicClient.prototype, "tokenInfo");
-      if (failure === "mismatch") resolve.mockResolvedValueOnce({ username: "different-account" });
+      if (failure === "discovery") discover.mockRejectedValueOnce(new NetworkTransportError());
+      else if (failure === "mismatch")
+        resolve.mockResolvedValueOnce({ username: "different-account" });
       else if (failure === "malformed")
         resolve.mockRejectedValueOnce(
           new Error("The server returned an invalid tokenInfo response."),
@@ -314,15 +343,80 @@ describe("Session authenticated workspace integration", () => {
       expect(metadata.readLibrary).not.toHaveBeenCalled();
       expect(session.login.passwordConfirmation).toBeUndefined();
       expect(session.error).toContain("saved library is available offline");
+      expect(session.error).toContain("Turn off Offline library to retry");
       expect(session.error).toContain("disconnect and sign in again");
+      if (failure === "invalid-key")
+        expect(session.error).toContain("Invalid API key (Subsonic code 44)");
+      if (failure === "discovery") expect(resolve).not.toHaveBeenCalled();
       expect(JSON.parse(storage.getItem("navidrome-account")!).username).toBe(credentials.username);
       if (failure === "mismatch") expect(session.error).toContain("different account");
       expect(validate).toHaveBeenCalledTimes(failure === "ping" ? 1 : 0);
     },
   );
 
-  it("ignores restored key identity completion after disconnect while retaining its offline cache", async () => {
-    const { session, auth, validate, metadata, selection } = setup();
+  it.each(["disconnect", "destroy", "offline"])(
+    "ignores restored key identity completion after %s while retaining its offline cache",
+    async (action) => {
+      const { session, auth, validate, metadata, selection } = setup();
+      auth.save({ ...credentials, credentials: { method: "apiKey", apiKey: "test-key" } });
+      const pending = deferred<{ username: string }>();
+      const resolve = vi
+        .spyOn(SubsonicClient.prototype, "tokenInfo")
+        .mockReturnValueOnce(pending.promise);
+      session.start();
+      await vi.waitFor(() => expect(resolve).toHaveBeenCalledOnce());
+      const cache = selection.cache;
+      expect(session.localReady).toBe(true);
+      if (action === "offline") await session.setOfflineMode(true);
+      else if (action === "destroy") session.destroy();
+      else session.disconnect();
+      pending.resolve({ username: credentials.username });
+      await new Promise((done) => setTimeout(done, 0));
+      if (action !== "destroy") expect(session.status).toBe("disconnected");
+      expect(session.error).toBe("");
+      expect(session.offlineMode).toBe(true);
+      expect(selection.cache).toBe(cache);
+      if (action === "disconnect") expect(auth.load()).toBeNull();
+      else expect(auth.load()?.credentials.method).toBe("apiKey");
+      expect(validate).not.toHaveBeenCalled();
+      expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps failed key resume offline on toggle and allows an explicit successful retry", async () => {
+    const { session, auth, metadata, selection, storage } = setup();
+    const saved = {
+      ...credentials,
+      credentials: { method: "apiKey" as const, apiKey: "test-key" },
+    };
+    auth.save(saved);
+    storage.setItem("navidrome-offline-mode", "true");
+    session.start();
+    await vi.waitFor(() => expect(session.localReady).toBe(true));
+    const cache = selection.cache;
+    const resolve = vi
+      .spyOn(SubsonicClient.prototype, "tokenInfo")
+      .mockRejectedValueOnce(new SubsonicError(44, "Invalid API key"))
+      .mockResolvedValueOnce({ username: credentials.username });
+    await session.setOfflineMode(false);
+    expect(session.status).toBe("error");
+    expect(session.offlineMode).toBe(true);
+    expect(session.error).toContain("Invalid API key (Subsonic code 44)");
+    expect(session.error).toContain("Turn off Offline library to retry");
+    expect(selection.cache).toBe(cache);
+    expect(auth.load()).toEqual(saved);
+    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+    await session.setOfflineMode(false);
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(session.status).toBe("connected");
+    expect(session.offlineMode).toBe(false);
+    expect(session.error).toBe("");
+    expect(selection.cache).toBe(cache);
+    expect(auth.load()).toEqual(saved);
+  });
+
+  it("does not take a new workspace offline when a superseded saved-key resume fails", async () => {
+    const { session, auth, selection, network } = setup();
     auth.save({ ...credentials, credentials: { method: "apiKey", apiKey: "test-key" } });
     const pending = deferred<{ username: string }>();
     const resolve = vi
@@ -330,16 +424,16 @@ describe("Session authenticated workspace integration", () => {
       .mockReturnValueOnce(pending.promise);
     session.start();
     await vi.waitFor(() => expect(resolve).toHaveBeenCalledOnce());
-    const cache = selection.cache;
-    expect(session.localReady).toBe(true);
     session.disconnect();
-    pending.resolve({ username: credentials.username });
+    expect(await connect(session, { ...input, username: "other" })).toBe(true);
+    const cache = selection.cache;
+    pending.reject(new SubsonicError(44, "Old key failed"));
     await new Promise((done) => setTimeout(done, 0));
-    expect(session.status).toBe("disconnected");
+    expect(session.status).toBe("connected");
+    expect(network.mode).toBe("online");
+    expect(session.error).toBe("");
     expect(selection.cache).toBe(cache);
-    expect(auth.load()).toBeNull();
-    expect(validate).not.toHaveBeenCalled();
-    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+    expect(session.auth?.username).toBe("other");
   });
 
   it("restores an explicitly offline key account without discovery, tokenInfo or ping", async () => {

@@ -615,11 +615,4 @@ export class Network {
     client.signal.throwIfAborted();
     return result;
   }
-
-  /** Resume an authenticated session after access has explicitly been enabled. */
-  open(auth: Auth, extensions?: readonly OpenSubsonicExtension[]) {
-    if (this.#mode === "offline") throw new Error("Network access is offline.");
-    const connection = this.prepare(auth, extensions);
-    return this.accept(connection);
-  }
 }
