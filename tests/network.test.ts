@@ -737,14 +737,14 @@ describe("Network connection lifecycle", () => {
     vi.stubGlobal("fetch", fetcher);
     try {
       const controller = new AbortController();
-      const download = await audio.read("track", { format: "raw", signal: controller.signal });
-      expect(download.url).toBe("");
-      expect(download.bodyUsed).toBe(false);
-      expect(download.body?.locked).toBe(false);
+      expect(await audio.read("track", { format: "raw", signal: controller.signal })).toBe(
+        response,
+      );
+      expect(response.bodyUsed).toBe(false);
       const downloadUrl = new URL(String(fetcher.mock.calls[0][0]));
       expect(downloadUrl.searchParams.get("format")).toBe("raw");
       expect(downloadUrl.searchParams.has("timeOffset")).toBe(false);
-      expect(await download.text()).toBe("audio");
+      expect(await response.text()).toBe("audio");
       const next = network.prepare({
         ...auth,
         username: "other",

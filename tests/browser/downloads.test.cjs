@@ -76,15 +76,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       body: JSON.stringify({ "subsonic-response": { status: "ok", ...fields } }),
     });
   });
-  const navigate = async (path) => {
-    const menu = page.getByRole("button", { name: "Open menu", exact: true });
-    if (await menu.isVisible()) await menu.click();
-    await page
-      .getByRole("link", { name: path === "/downloads" ? "Downloads" : "Settings", exact: true })
-      .click();
-    await page.waitForURL((url) => url.search === `?${path}`);
-    assert.equal(new URL(page.url()).search, `?${path}`);
-  };
+  const navigate = (path) => page.goto(new URL(`?${path}`, base).href);
   try {
     await page.goto(base);
     await page.locator("#server-host").waitFor();

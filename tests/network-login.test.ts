@@ -52,95 +52,7 @@ describe("Network authenticated media", () => {
     },
   );
 
-  it("keeps native download response consumers, headers and status without exposing the remote URL", async () => {
-    const network = new Network();
-    const active = network.accept(network.prepare(credentials));
-    let reads = 0;
-    const cancel = vi.fn();
-    const original = new Response(
-      new ReadableStream(
-        {
-          pull(controller) {
-            reads++;
-            controller.enqueue(new TextEncoder().encode("audio"));
-            controller.close();
-          },
-          cancel,
-        },
-        { highWaterMark: 0 },
-      ),
-      {
-        status: 206,
-        statusText: "Partial Content",
-        headers: { "Content-Type": "audio/mpeg", "Content-Length": "5" },
-      },
-    );
-    Object.defineProperty(original, "url", {
-      value: `${credentials.host}/rest/stream.view?apiKey=test-key`,
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => original),
-    );
-    const download = await active.audio.read("track", {
-      format: "raw",
-      signal: new AbortController().signal,
-    });
-    expect(download).toBeInstanceOf(Response);
-    expect(download.url).toBe("");
-    expect(download.status).toBe(206);
-    expect(download.statusText).toBe("Partial Content");
-    expect(download.headers.get("Content-Type")).toBe("audio/mpeg");
-    expect(download.headers.get("Content-Length")).toBe("5");
-    expect(download.bodyUsed).toBe(false);
-    expect(download.body?.locked).toBe(false);
-    expect(reads).toBe(0);
-    expect(await download.text()).toBe("audio");
-    expect(download.bodyUsed).toBe(true);
-    network.setMode("offline");
-  });
-
-  it("forwards cancellation of an unused download to the remote source", async () => {
-    const cancel = vi.fn();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(new ReadableStream({ cancel }))),
-    );
-    const network = new Network();
-    const active = network.accept(network.prepare(credentials));
-    const download = await active.audio.read("track", {
-      format: "raw",
-      signal: new AbortController().signal,
-    });
-    await download.body!.cancel();
-    expect(cancel).toHaveBeenCalledOnce();
-    network.setMode("offline");
-  });
-
-  it("cancels the adapted remote source if disconnect races with response publication", async () => {
-    const cancel = vi.fn();
-    const original = new Response(new ReadableStream({ cancel }));
-    const network = new Network();
-    const active = network.accept(network.prepare(credentials));
-    const getReader = original.body!.getReader.bind(original.body!);
-    vi.spyOn(original.body!, "getReader").mockImplementation(() => {
-      network.setMode("offline");
-      return getReader();
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => original),
-    );
-    await expect(
-      active.audio.read("track", {
-        format: "raw",
-        signal: new AbortController().signal,
-      }),
-    ).rejects.toMatchObject({ name: "AbortError" });
-    expect(cancel).toHaveBeenCalledOnce();
-  });
-
-  it.each(["artwork", "audio"])("redacts %s fetch and asynchronous body failures", async (kind) => {
+  it.each(["artwork", "audio"])("redacts %s fetch failures", async (kind) => {
     const network = new Network();
     const active = network.accept(network.prepare(credentials));
     const read = async () =>
@@ -153,23 +65,8 @@ describe("Network authenticated media", () => {
             })
           ).text();
     const unsafe = new TypeError("A credential-bearing URL must not escape");
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockRejectedValueOnce(unsafe)
-        .mockResolvedValueOnce(
-          new Response(
-            new ReadableStream({
-              start(controller) {
-                controller.error(unsafe);
-              },
-            }),
-          ),
-        ),
-    );
-    for (let attempt = 0; attempt < 2; attempt++)
-      await expect(read()).rejects.toBeInstanceOf(NetworkTransportError);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(unsafe));
+    await expect(read()).rejects.toBeInstanceOf(NetworkTransportError);
     network.setMode("offline");
   });
 });

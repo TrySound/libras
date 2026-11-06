@@ -470,13 +470,7 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicApi, request:
         };
         if (notModified) return { ...policy, ...validators, notModified: true as const };
         if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-        let blob: Blob;
-        try {
-          blob = await response.blob();
-        } catch {
-          requestSignal.throwIfAborted();
-          throw new NetworkTransportError();
-        }
+        const blob = await response.blob();
         return {
           ...policy,
           ...validators,
@@ -485,38 +479,6 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicApi, request:
           type: response.headers.get("Content-Type")?.split(";")[0] ?? "image/jpeg",
         } satisfies RemoteArtwork;
       }),
-  });
-}
-
-/** Only remote source reads are redacted: pipeTo must retain local sink failures.
- * This download-only Response retains status/headers and native body consumers,
- * but deliberately does not copy its credential-bearing URL. No eager buffering. */
-function audioDownloadResponse(response: Response, signal: AbortSignal): Response {
-  if (!response.body) return response;
-  const reader = response.body.getReader();
-  const body = new ReadableStream<Uint8Array>(
-    {
-      async pull(controller) {
-        try {
-          const { done, value } = await reader.read();
-          if (done) controller.close();
-          else controller.enqueue(value);
-        } catch {
-          controller.error(
-            signal.aborted
-              ? new DOMException("The server request was cancelled.", "AbortError")
-              : new NetworkTransportError(),
-          );
-        }
-      },
-      cancel: (reason) => reader.cancel(reason).catch(() => {}),
-    },
-    { highWaterMark: 0 },
-  );
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
   });
 }
 
@@ -552,7 +514,6 @@ function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: R
           });
           signal.throwIfAborted();
           if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-          response = audioDownloadResponse(response, signal);
           return response;
         });
       } catch (error) {
