@@ -208,7 +208,7 @@
             {#if login.host}
               <fieldset class="stack-sm">
                 <legend class="label">Authentication method</legend>
-                {#each [{ method: "apiKey", label: "API key" }, { method: "token", label: "Username and password (MD5 token)" }, { method: "password", label: "Direct password (legacy)" }] as choice}
+                {#each [{ method: "apiKey", label: "API key" }, { method: "token", label: "Username and password" }] as choice}
                   <label class="row-sm">
                     <input
                       type="radio"
@@ -225,11 +225,9 @@
                 <div class="card stack-sm" role="alert" id="settings-password-warning">
                   <h3 class="heading-sm">Confirm direct password authentication</h3>
                   <p class="body">
-                    {login.passwordConfirmation === "unsupported"
-                      ? "The server explicitly rejected MD5 token authentication (code 41 or 42)."
-                      : "You selected legacy password authentication."}
-                    This sends your password directly to the server over HTTPS, rather than an MD5 token.
-                    Hex encoding is not encryption. Continue only if you trust this server.
+                    The server explicitly rejected token authentication (code 41 or 42). This sends
+                    your actual password directly to the server over HTTPS, rather than a derived
+                    token. Hex encoding is not encryption. Continue only if you trust this server.
                   </p>
                   <p class="caption text-secondary">
                     Your password is saved in localStorage on this device until you disconnect.
@@ -321,13 +319,7 @@
                   {#if session.busy}
                     <Loader />
                   {/if}
-                  {session.busy
-                    ? "Connecting…"
-                    : !login.host
-                      ? "Check server"
-                      : login.method === "password"
-                        ? "Review password warning"
-                        : "Connect"}
+                  {session.busy ? "Connecting…" : !login.host ? "Check server" : "Connect"}
                 </button>
               {/if}
               {#if session.busy || login.passwordConfirmation}

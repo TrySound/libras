@@ -26,6 +26,7 @@ afterEach(async () => {
   for (const fixture of fixtures.splice(0)) await fixture.destroy();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("Session authenticated workspace integration", () => {
@@ -149,8 +150,9 @@ describe("Session authenticated workspace integration", () => {
       const { session, discover, network, validate } = setup();
       discover.mockResolvedValue(keyExtension);
       await session.login.discover(input.host);
-      await connect(session, { ...input, method: "password" });
-      expect(session.login.passwordConfirmation).toBe("explicit");
+      validate.mockRejectedValueOnce(new SubsonicError(41, "Unsupported"));
+      await connect(session, { ...input, method: "token" });
+      expect(session.login.passwordConfirmation).toBe(true);
       const cancel = vi.spyOn(session.login, "cancel");
       const cancelPending = vi.spyOn(network, "cancelPending");
       if (reset === "method") session.cancelConnect({ method: "token" });
@@ -158,11 +160,10 @@ describe("Session authenticated workspace integration", () => {
       expect(cancel).toHaveBeenCalledExactlyOnceWith(reset === true);
       expect(cancelPending).toHaveBeenCalledOnce();
       expect(await session.login.confirmPassword()).toBeUndefined();
-      expect(validate).not.toHaveBeenCalled();
+      expect(validate).toHaveBeenCalledOnce();
+      expect(session.login.passwordConfirmation).toBe(false);
       expect(session.login.host).toBe(reset === true ? "" : input.host);
-      expect(session.login.method).toBe(
-        reset === "method" || reset === true ? "token" : "password",
-      );
+      expect(session.login.method).toBe("token");
       expect(await connect(session, { ...input, method: "token" })).toBe(true);
       expect(discover).toHaveBeenCalledTimes(reset === true ? 2 : 1);
       expect(vi.mocked(network.prepare).mock.calls.at(-1)?.[1]).toEqual(keyExtension);
@@ -210,14 +211,16 @@ describe("Session authenticated workspace integration", () => {
       ).toBe(false);
       expect(loadCache).not.toHaveBeenCalled();
       expect(selection.cache).toBeUndefined();
-      expect(session.login.passwordConfirmation).toBeUndefined();
+      expect(session.login.passwordConfirmation).toBe(false);
       expect(auth.load()).toBeNull();
     },
   );
 
   it("persists a separately confirmed password and clears it on disconnect", async () => {
-    const { session, storage, auth } = setup();
-    expect(await connect(session, { ...input, method: "password" })).toBe(false);
+    const { session, storage, auth, validate } = setup();
+    validate.mockRejectedValueOnce(new SubsonicError(42, "Unsupported"));
+    expect(await connect(session, input)).toBe(false);
+    expect(session.login.passwordConfirmation).toBe(true);
     expect(await session.connect(await session.login.confirmPassword())).toBe(true);
     expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
     session.disconnect();
@@ -227,10 +230,13 @@ describe("Session authenticated workspace integration", () => {
 
   it("disconnect discards pending confirmation secrets", async () => {
     const { session, validate } = setup();
-    await connect(session, { ...input, method: "password" });
+    validate.mockRejectedValueOnce(new SubsonicError(41, "Unsupported"));
+    await connect(session, input);
+    expect(session.login.passwordConfirmation).toBe(true);
     session.disconnect();
     expect(await session.login.confirmPassword()).toBeUndefined();
-    expect(validate).not.toHaveBeenCalled();
+    expect(session.login.passwordConfirmation).toBe(false);
+    expect(validate).toHaveBeenCalledOnce();
   });
 
   it.each(["discovery", "key"])("disconnect ignores late %s completion", async (stage) => {
@@ -341,7 +347,7 @@ describe("Session authenticated workspace integration", () => {
       expect(save).not.toHaveBeenCalled();
       expect(metadata.getModifiedAt).not.toHaveBeenCalled();
       expect(metadata.readLibrary).not.toHaveBeenCalled();
-      expect(session.login.passwordConfirmation).toBeUndefined();
+      expect(session.login.passwordConfirmation).toBe(false);
       expect(session.error).toContain("saved library is available offline");
       expect(session.error).toContain("Turn off Offline library to retry");
       expect(session.error).toContain("disconnect and sign in again");
@@ -466,6 +472,32 @@ describe("Session authenticated workspace integration", () => {
     expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
   });
 
+  it("rejects restored passwords over development HTTP without sending credentials or losing the cache", async () => {
+    vi.stubEnv("DEV", true);
+    const { session, auth, metadata, network, selection } = setup();
+    const saved = {
+      ...credentials,
+      host: "http://localhost:4533",
+      credentials: {
+        method: "password" as const,
+        username: credentials.username,
+        password: "test-password",
+      },
+    };
+    auth.save(saved);
+    const prepare = vi.spyOn(network, "prepare");
+    session.start();
+    await vi.waitFor(() => expect(session.status).toBe("error"));
+    expect(session.error).toContain("Direct password authentication requires HTTPS");
+    expect(network.accept).not.toHaveBeenCalled();
+    expect(session.localReady).toBe(true);
+    expect(selection.cache?.key).toBe(getAccountKey(saved));
+    expect(auth.load()).toEqual(saved);
+    expect(prepare.mock.results[0]).toMatchObject({ type: "throw", value: expect.any(Error) });
+    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+    expect(metadata.readLibrary).not.toHaveBeenCalled();
+  });
+
   it("explicitly retries failed restored token discovery without treating transport failure as legacy support", async () => {
     const { session, auth, discover, metadata } = setup();
     auth.save(credentials);
@@ -508,7 +540,7 @@ describe("Session authenticated workspace integration", () => {
       }),
     );
     expect(await connect(session, input)).toBe(false);
-    expect(session.login.passwordConfirmation).toBe("unsupported");
+    expect(session.login.passwordConfirmation).toBe(true);
     expect(requests.map(({ auth }) => auth)).toEqual([[], ["u", "t", "s"]]);
     expect(auth.load()).toBeNull();
     expect(await session.connect(await session.login.confirmPassword())).toBe(true);

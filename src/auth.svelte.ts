@@ -1,4 +1,4 @@
-import { normalizeServerHost, type Auth, type Credentials } from "./auth";
+import { normalizeServerHost, type Auth } from "./auth";
 import { connectionError } from "./errors";
 import type { Network, NetworkConnection } from "./network.svelte";
 import {
@@ -15,9 +15,9 @@ export interface PasswordAuth {
   username: string;
   password: string;
 }
-export type LoginMethod = Credentials["method"];
+export type LoginMethod = "apiKey" | "token";
 export type LoginInput =
-  | (PasswordAuth & { method?: "token" | "password" })
+  | (PasswordAuth & { method?: "token" })
   | { host: string; method: "apiKey"; apiKey: string };
 
 export interface AuthenticatedConnection {
@@ -35,7 +35,7 @@ export function createAuth(input: PasswordAuth): Auth {
 export class AuthWorkflow {
   host = $state("");
   method = $state<LoginMethod>("token");
-  passwordConfirmation = $state<"explicit" | "unsupported">();
+  passwordConfirmation = $state(false);
   busy = $state(false);
   error = $state("");
 
@@ -55,7 +55,7 @@ export class AuthWorkflow {
     this.#controller = new AbortController();
     this.#network.cancelPending();
     this.#pendingPassword = undefined;
-    this.passwordConfirmation = undefined;
+    this.passwordConfirmation = false;
     this.busy = false;
     this.error = "";
     if (resetDiscovery) {
@@ -130,11 +130,11 @@ export class AuthWorkflow {
     }
   }
 
-  #offerPassword(input: PasswordAuth, reason: "explicit" | "unsupported") {
+  #offerPassword(input: PasswordAuth) {
     normalizeServerHost(input.host, true);
     this.#network.cancelPending();
     this.#pendingPassword = { ...input };
-    this.passwordConfirmation = reason;
+    this.passwordConfirmation = true;
   }
 
   async #verify(
@@ -175,17 +175,13 @@ export class AuthWorkflow {
       if (!("username" in input) || !input.username || !input.password)
         throw new Error("Enter a username and password.");
       const password = { host, username: input.username, password: input.password };
-      if (method === "password") {
-        this.#offerPassword(password, "explicit");
-        return;
-      }
       try {
         return await this.#verify(createAuth(password), this.#extensions, signal);
       } catch (error) {
         signal.throwIfAborted();
         if (error instanceof SubsonicError && [41, 42].includes(error.code ?? -1)) {
           this.error = connectionError(error);
-          this.#offerPassword(password, "unsupported");
+          this.#offerPassword(password);
           return;
         }
         throw error;
@@ -205,7 +201,7 @@ export class AuthWorkflow {
     const input = this.#pendingPassword;
     if (!this.#enabled() || !input || !this.passwordConfirmation || this.busy) return;
     this.#pendingPassword = undefined;
-    this.passwordConfirmation = undefined;
+    this.passwordConfirmation = false;
     const { signal } = this.#controller;
     this.error = "";
     this.busy = true;

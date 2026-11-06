@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AuthWorkflow, createAuth } from "../src/auth.svelte";
+import { AuthWorkflow, createAuth, type LoginInput } from "../src/auth.svelte";
 import { normalizeServerHost } from "../src/auth";
 import { Network } from "../src/network.svelte";
 import {
@@ -42,7 +42,7 @@ describe("AuthWorkflow", () => {
       discovery.mockResolvedValueOnce([{ name: "apiKeyAuthentication", versions: [version] }]);
       expect(await workflow.discover(input.host)).toBe(true);
       expect(workflow.method).toBe(version === 1 ? "apiKey" : "token");
-      for (const method of ["token", "apiKey", "password"] as const) {
+      for (const method of ["token", "apiKey"] as const) {
         workflow.setMethod(method);
         expect(workflow.method).toBe(method);
         expect(workflow.host).toBe(input.host);
@@ -67,7 +67,7 @@ describe("AuthWorkflow", () => {
       validate.mockRejectedValueOnce(new SubsonicError(code, "Token method unsupported"));
       expect(await workflow.connect(input)).toBeUndefined();
       expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual(["token"]);
-      expect(workflow.passwordConfirmation).toBe("unsupported");
+      expect(workflow.passwordConfirmation).toBe(true);
       expect(workflow.error).toBe(`Token method unsupported (Subsonic code ${code})`);
       const result = await workflow.confirmPassword();
       expect(result?.auth.credentials.method).toBe("password");
@@ -80,7 +80,9 @@ describe("AuthWorkflow", () => {
 
   it.each([
     new SubsonicError(40, "Wrong credentials"),
+    new SubsonicError(43, "Authentication rejected"),
     new SubsonicError(44, "Wrong key"),
+    new SubsonicError(undefined, "Token method unsupported"),
     new SubsonicError(0, "Generic failure"),
     new SubsonicError(70, "Not found"),
     new Error("Token authentication unsupported"),
@@ -93,48 +95,50 @@ describe("AuthWorkflow", () => {
     const { workflow, validate, prepare } = setup();
     validate.mockRejectedValueOnce(error);
     expect(await workflow.connect(input)).toBeUndefined();
-    expect(workflow.passwordConfirmation).toBeUndefined();
+    expect(workflow.passwordConfirmation).toBe(false);
     expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual(["token"]);
     expect(await workflow.confirmPassword()).toBeUndefined();
     expect(workflow.error).not.toBe("");
   });
 
-  it("requires confirmation for explicit password selection", async () => {
-    const { workflow, prepare } = setup();
-    expect(await workflow.connect({ ...input, method: "password" })).toBeUndefined();
-    expect(workflow.passwordConfirmation).toBe("explicit");
-    expect(prepare).not.toHaveBeenCalled();
-    expect((await workflow.confirmPassword())?.auth.credentials.method).toBe("password");
+  it("cannot bypass token-first login with a programmatic password selection", async () => {
+    const { workflow, validate, prepare } = setup();
+    validate.mockRejectedValueOnce(new SubsonicError(40, "Wrong credentials"));
+    // Simulate a caller that bypasses the public LoginInput type.
+    expect(
+      await workflow.connect({ ...input, method: "password" } as unknown as LoginInput),
+    ).toBeUndefined();
+    expect(workflow.passwordConfirmation).toBe(false);
+    expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual(["token"]);
+    expect(await workflow.confirmPassword()).toBeUndefined();
   });
 
-  it.each(["explicit", "fallback"])(
-    "never offers or sends a password over development HTTP (%s)",
-    async (kind) => {
+  it.each([41, 42])(
+    "never offers or sends a password over development HTTP (code %i)",
+    async (code) => {
       const { workflow, validate, prepare } = setup();
-      if (kind === "fallback") validate.mockRejectedValueOnce(new SubsonicError(41, "Unsupported"));
-      expect(
-        await workflow.connect({
-          ...input,
-          host: "http://localhost:4533",
-          method: kind === "explicit" ? "password" : "token",
-        }),
-      ).toBeUndefined();
-      expect(workflow.passwordConfirmation).toBeUndefined();
+      validate.mockRejectedValueOnce(new SubsonicError(code, "Unsupported"));
+      expect(await workflow.connect({ ...input, host: "http://localhost:4533" })).toBeUndefined();
+      expect(workflow.passwordConfirmation).toBe(false);
       expect(workflow.error).toContain("requires HTTPS");
-      expect(prepare.mock.calls.every(([auth]) => auth.credentials.method === "token")).toBe(true);
+      expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual(["token"]);
+      expect(await workflow.confirmPassword()).toBeUndefined();
     },
   );
 
   it.each(["cancel", "method", "host"])(
     "discards pending password secrets on %s",
     async (action) => {
-      const { workflow, prepare } = setup();
-      await workflow.connect({ ...input, method: "password" });
+      const { workflow, validate, prepare } = setup();
+      validate.mockRejectedValueOnce(new SubsonicError(41, "Unsupported"));
+      await workflow.connect(input);
+      expect(workflow.passwordConfirmation).toBe(true);
       if (action === "cancel") workflow.cancel(false);
       if (action === "method") workflow.setMethod("apiKey");
       if (action === "host") await workflow.discover("https://other.example");
       expect(await workflow.confirmPassword()).toBeUndefined();
-      expect(prepare).not.toHaveBeenCalled();
+      expect(workflow.passwordConfirmation).toBe(false);
+      expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual(["token"]);
     },
   );
 
@@ -182,7 +186,7 @@ describe("AuthWorkflow", () => {
       expect(
         await workflow.connect({ host: input.host, method: "apiKey", apiKey: "test-key" }),
       ).toBeUndefined();
-      expect(workflow.passwordConfirmation).toBeUndefined();
+      expect(workflow.passwordConfirmation).toBe(false);
       expect(prepare.mock.calls.every(([auth]) => auth.credentials.method === "apiKey")).toBe(true);
     },
   );
@@ -224,7 +228,7 @@ describe("AuthWorkflow", () => {
       ).rejects.toBe(failure);
       expect(network.mode).toBe("online");
       expect(workflow.error).toBe("");
-      expect(workflow.passwordConfirmation).toBeUndefined();
+      expect(workflow.passwordConfirmation).toBe(false);
       expect(prepare).toHaveBeenCalledTimes(stage === "ping" ? 1 : 0);
       if (stage === "ping") expect(prepare.mock.results[0].value.signal.aborted).toBe(true);
     },

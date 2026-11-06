@@ -30,13 +30,12 @@ You'll need a reachable **HTTPS OpenSubsonic server**, such as [Navidrome](https
 
 ### Authentication and security
 
-Libras checks server capabilities without credentials and defaults to API key when advertised, otherwise username/password. You can explicitly switch between three methods:
+Libras checks server capabilities without credentials and defaults to API key when advertised, otherwise username/password. You can switch between two login choices:
 
 - **API key (preferred):** Generate a key in your server's settings. Enter only the key; Libras validates it with `tokenInfo` and resolves your username for the account's existing offline library.
-- **Username and password (MD5 token):** Derives a token/salt pair without saving the password.
-- **Direct password (legacy):** Sends the password itself, always over HTTPS, only after a warning and your confirmation. Hex encoding is not encryption.
+- **Username and password:** Libras automatically tries token authentication first, deriving a token/salt pair without saving the password. Only if the server explicitly rejects that mechanism (Subsonic code `41` or `42`) does Libras offer a direct-password retry. A warning and your separate confirmation are required before sending your actual password over HTTPS instead of a derived token. Hex encoding is not encryption.
 
-An explicitly unsupported discovery endpoint permits legacy login; network/CORS failures do not imply missing capabilities. Only an explicit MD5 rejection (Subsonic code `41` or `42`) offers a confirmed direct-password retry. Bad credentials, invalid API keys, timeouts, and other errors never silently downgrade authentication; switching methods requires the appropriate credentials.
+These two choices use three internal credential modes: API key, token/salt, or confirmed direct password. An explicitly unsupported discovery endpoint permits legacy login; network/CORS failures do not imply missing capabilities. Libras detects the username/password mechanism from the token attempt, not server names or versions, and never silently falls back. Bad credentials, invalid API keys, timeouts, and other errors do not offer a password retry; switching login choices requires the appropriate credentials.
 
 All credentials, including API keys, replayable token/salt pairs, and direct passwords, are saved in `localStorage` on this device until disconnect; they are **not short-lived session tokens**. All browser storage is JavaScript-readable: malicious scripts or compromised browser access can steal these secrets. Use a trusted device and server. Existing saved token/salt credentials migrate without forcing logout.
 

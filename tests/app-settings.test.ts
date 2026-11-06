@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
 import WebappUpdater from "../src/webapp-updater.svelte";
 import { Network } from "../src/network.svelte";
+import { SubsonicError } from "../src/subsonic-client";
 import { AuthStore } from "../src/auth";
 import { registerSW } from "virtual:pwa-register";
 import { installNavigation, navigationEvent } from "./router-test-helpers";
@@ -128,6 +129,11 @@ describe("app settings", () => {
     expect(discover).toHaveBeenCalledWith(expect.any(AbortSignal));
     expect(validate).not.toHaveBeenCalled();
     expect(form.querySelector("#server-username, #server-password")).toBeNull();
+    expect(
+      [...form.querySelectorAll('input[name="method"]')].map((radio) =>
+        radio.parentElement?.textContent?.trim(),
+      ),
+    ).toEqual(["API key", "Username and password"]);
     const key = form.querySelector<HTMLInputElement>("#server-api-key")!;
     expect(key.required).toBe(true);
     expect(key.type).toBe("password");
@@ -171,16 +177,21 @@ describe("app settings", () => {
 
   it("warns about sending and persisting a password without submitting until confirmation", async () => {
     const { target, fill, validate, session, network, storage } = await setup();
-    const { SubsonicError } = await import("../src/subsonic-client");
     const prepare = vi.spyOn(network, "prepare");
     validate.mockRejectedValueOnce(new SubsonicError(41, "Token method unsupported"));
     await fill();
-    await vi.waitFor(() => expect(session.login.passwordConfirmation).toBe("unsupported"));
+    await vi.waitFor(() => expect(session.login.passwordConfirmation).toBe(true));
     flushSync();
     expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual(["token"]);
     expect(target.querySelector("#settings-password-warning")?.textContent).toContain("over HTTPS");
     expect(target.querySelector("#settings-password-warning")?.textContent).toContain(
-      "Hex encoding is not encryption",
+      "actual password",
+    );
+    expect(target.querySelector("#settings-password-warning")?.textContent).toMatch(
+      /derived\s+token/,
+    );
+    expect(target.querySelector("#settings-password-warning")?.textContent).toContain(
+      "code 41 or 42",
     );
     expect(target.querySelector("#settings-password-warning")?.textContent).toContain(
       "saved in localStorage on this device until you disconnect",
@@ -200,22 +211,20 @@ describe("app settings", () => {
   });
 
   it("allows cancelling a password warning without submitting or persisting a password", async () => {
-    const { target, session, validate, button, auth } = await setup();
+    const { target, session, validate, button, auth, fill } = await setup();
     const cancel = vi.spyOn(session, "cancelConnect");
-    await connect(session, {
-      host: credentials.host,
-      username: credentials.username,
-      password: "test-password",
-      method: "password",
-    });
+    validate.mockRejectedValueOnce(new SubsonicError(42, "Unsupported"));
+    await fill();
+    await vi.waitFor(() => expect(session.login.passwordConfirmation).toBe(true));
     flushSync();
     expect(target.querySelector("#settings-password-warning")?.textContent).toContain(
-      "You selected legacy",
+      "code 41 or 42",
     );
-    expect(validate).not.toHaveBeenCalled();
+    expect(validate).toHaveBeenCalledOnce();
+    cancel.mockClear();
     button("Cancel").click();
     flushSync();
-    expect(session.login.passwordConfirmation).toBeUndefined();
+    expect(session.login.passwordConfirmation).toBe(false);
     expect(cancel).toHaveBeenCalledExactlyOnceWith({ resetDiscovery: false });
     expect(target.querySelector("#settings-password-warning")).toBeNull();
     expect(target.querySelector<HTMLInputElement>("#server-password")!.value).toBe("");
