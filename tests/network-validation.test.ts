@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Network, NetworkTransportError } from "../src/network.svelte";
 import { deferred } from "./session-test-helpers";
 
-const auth = { host: "https://music.example", username: "listener", token: "token", salt: "salt" };
+const auth = {
+  host: "https://music.example",
+  username: "listener",
+  credentials: { method: "token" as const, username: "listener", token: "token", salt: "salt" },
+};
 const identity = {
   version: "1.16.1",
   type: "navidrome",
@@ -28,8 +32,8 @@ describe("explicit credential validation", () => {
     const url = new URL(fetcher.mock.calls[0][0]);
     expect(url.pathname).toBe("/rest/ping.view");
     expect(url.searchParams.get("u")).toBe(auth.username);
-    expect(url.searchParams.get("t")).toBe(auth.token);
-    expect(url.searchParams.get("s")).toBe(auth.salt);
+    expect(url.searchParams.get("t")).toBe(auth.credentials.token);
+    expect(url.searchParams.get("s")).toBe(auth.credentials.salt);
     expect(fetcher.mock.calls[0][1]?.signal).toBe(connection.signal);
     expect(network.mode).toBe("offline");
     expect(connection.signal.aborted).toBe(false);
@@ -102,7 +106,12 @@ describe("explicit credential validation", () => {
       vi.stubGlobal("fetch", fetcher);
       const pending = network.validate(connection);
       if (action === "disconnect") network.setMode("offline");
-      else network.prepare({ ...auth, username: "other" });
+      else
+        network.prepare({
+          ...auth,
+          username: "other",
+          credentials: { ...auth.credentials, username: "other" },
+        });
       response.resolve(success());
       await expect(pending).rejects.toMatchObject({ name: "AbortError" });
       await expect(network.validate(connection)).rejects.toMatchObject({ name: "AbortError" });

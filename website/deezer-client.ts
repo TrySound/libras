@@ -65,7 +65,6 @@ function catalogMetadata() {
 /** Browsing uses the committed snapshot; only playback resolves live Deezer data. */
 export class DeezerSubsonicClient implements SubsonicApi {
   readonly host: string;
-  readonly username: string;
   private controller = new AbortController();
   private catalog = catalogMetadata();
 
@@ -74,7 +73,6 @@ export class DeezerSubsonicClient implements SubsonicApi {
     private read = readDeezer,
   ) {
     this.host = auth.host;
-    this.username = auth.username;
   }
   get signal() {
     return this.controller.signal;

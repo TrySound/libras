@@ -13,7 +13,7 @@ pnpm dev
 pnpm --filter @libras/website dev
 ```
 
-Your music server must allow the app's origin through CORS. Use HTTPS outside local development.
+Your music server must allow the app's origin through CORS and support OpenSubsonic's empty-query `search3` for library synchronization. Production connections require HTTPS; HTTP loopback is development-only, and direct password authentication always requires HTTPS.
 
 Before submitting changes:
 
@@ -58,7 +58,19 @@ Consult the owning module and tests for implementation details rather than addin
 
 The app and `/demo/` are separate document-scrolling pages using the same App component; there is no embedded rendering mode. Entry points supply fixed `network`, `auth`, and `updaterComponent` dependencies. The normal entry supplies `WebappUpdater`; the demo passes `undefined` and does not register PWA support. `Network` accepts a `SubsonicClientFactory` so alternate clients can implement `SubsonicApi` without changing connection ownership.
 
-Login validation uses authenticated `ping()` to require OpenSubsonic support; unknown server names are accepted. Protocol identity is not persisted, and failed requests retain their server errors.
+### Authentication and login validation
+
+`src/auth.ts` defines discriminated API-key, MD5 token/salt, and direct-password credentials, separate from the host and resolved username. Account/cache identity remains `(host, username)` across methods. Existing saved token/salt credentials migrate to `method: "token"` without forcing logout. Migration writeback is best-effort: if storage is full, use the validated credentials in memory and retain the saved legacy record for a later retry.
+
+`Session` coordinates credential-free `getOpenSubsonicExtensions` discovery through `Network`. Advertised `apiKeyAuthentication` version 1 selects API key by default; otherwise username/password uses MD5 token/salt. Users can explicitly switch methods. Only discovery HTTP `404`, `405`, or `501` establishes an unsupported endpoint and permits legacy login; network/CORS failures, malformed responses, and generic protocol errors remain errors. Capabilities are rediscovered on resume, not persisted or inferred from server names/versions.
+
+API-key login first validates the key with `tokenInfo` and resolves its username before loading account-scoped storage. Explicit login then uses authenticated `ping()` to require a valid OpenSubsonic identity for every method; unknown server names are accepted. Saved API keys are revalidated on resume, including matching their saved username. Protocol identity is not persisted. Structured `SubsonicError.code` drives fallback: only MD5 rejection codes `41`/`42` offer direct password authentication, and a separate confirmation action is required before sending it. Explicit direct-password selection also requires confirmation. Invalid keys/credentials, timeouts, transport failures, and generic errors never trigger a silent downgrade.
+
+`authenticationParameters` in `src/subsonic-client.ts` centralizes mutually exclusive wire parameters for metadata, artwork, and streaming: `apiKey` alone, `u`/`t`/`s`, or `u`/`p`. Hex passwords are encoding, not encryption or another method. API requests prefer form POST when `formPost` version 1 is advertised; artwork and streaming still use credential-bearing query URLs. Keep credentials out of errors and logs, including server/proxy access logs; HTTPS does not hide URLs from those servers.
+
+`AuthStore` persists API keys and replayable token/salt pairs in `localStorage` for compatibility, not as short-lived session tokens. Direct passwords use `sessionStorage` unless the user explicitly selects **Remember password on this device**. All browser storage is JavaScript-readable and vulnerable to malicious scripts or compromised browser access. Disconnect clears credentials for every method from both stores and cancels pending secrets, while retaining the credential-free account identity, offline music, and queue.
+
+### Library normalization
 
 Library normalization uses structured `artists`, `displayArtist`, and `genres`, not legacy artist/genre fields. Preserve supplied order, punctuation, and duplicate genre names. Missing track credits inherit album credits; display-only artists receive stable local IDs. Keep every referenced artist, including track-only contributors, and index albums under all credited contributors without duplicating records. Stored relationships use IDs; display credits and artwork inheritance are resolved during normalization. Old incompatible libraries need a network refresh rather than a new compatibility layer.
 

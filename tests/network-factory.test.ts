@@ -2,12 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { Network } from "../src/network.svelte";
 import type { SubsonicApi, SubsonicAuth } from "../src/subsonic-client";
 
-const auth = { host: "https://example.test/demo", username: "demo", token: "local", salt: "local" };
+const auth = {
+  host: "https://example.test/demo",
+  username: "demo",
+  credentials: { method: "token" as const, username: "demo", token: "local", salt: "local" },
+};
 function client(identity: SubsonicAuth): SubsonicApi {
   const controller = new AbortController();
   return {
     host: identity.host,
-    username: identity.username,
     signal: controller.signal,
     abort: () => controller.abort(),
     ping: vi.fn(async () => ({
@@ -37,7 +40,10 @@ describe("Network client composition", () => {
     const factory = vi.fn(() => instance);
     const network = new Network(factory);
     const candidate = network.prepare(auth);
-    expect(factory).toHaveBeenCalledWith(auth, { fetch: expect.any(Function) });
+    expect(factory).toHaveBeenCalledWith(
+      { host: auth.host, credentials: auth.credentials },
+      { fetch: expect.any(Function) },
+    );
     expect(network.mode).toBe("offline");
     await network.validate(candidate);
     expect(instance.ping).toHaveBeenCalledOnce();
@@ -52,6 +58,37 @@ describe("Network client composition", () => {
     network.setMode("offline");
     expect(instance.signal.aborted).toBe(true);
     expect(() => active.audio.url("track", { format: "raw" })).toThrow();
+  });
+
+  it.each([
+    { method: "apiKey" as const, apiKey: "key" },
+    { method: "token" as const, username: "demo", token: "token", salt: "salt" },
+    { method: "password" as const, username: "demo", password: "secret" },
+  ])("keeps the resolved account independent of $method credentials", async (credentials) => {
+    const network = new Network((auth) => client(auth));
+    const candidate = network.prepare({ ...auth, credentials });
+    expect(candidate.account).toEqual({ host: auth.host, username: auth.username });
+    await network.validate(candidate);
+    expect(network.accept(candidate).account).toEqual(candidate.account);
+    network.setMode("offline");
+  });
+
+  it("does not force production discovery or tokenInfo onto alternate/demo adapters", async () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      const network = new Network((auth) => client(auth));
+      expect(await network.discover(auth.host)).toEqual([]);
+      await expect(network.resolveApiKey(auth.host, "test-key", [])).rejects.toThrow(
+        "does not support API-key login",
+      );
+      network.setMode("online");
+      network.open(auth);
+      expect(fetcher).not.toHaveBeenCalled();
+      network.setMode("offline");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("aborts superseded clients without aborting their replacements", async () => {

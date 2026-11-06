@@ -12,8 +12,7 @@ import { Session } from "../src/session.svelte";
 export const credentials = {
   host: "https://music.example",
   username: "listener",
-  token: "token",
-  salt: "salt",
+  credentials: { method: "token" as const, username: "listener", token: "token", salt: "salt" },
 };
 
 export function deferred<T = void>() {
@@ -56,7 +55,8 @@ export function createStorage() {
 
 export function createSession(saved = false, storage = createStorage()) {
   const selection = new TestSelection();
-  const auth = new AuthStore(storage);
+  const temporaryStorage = createStorage();
+  const auth = new AuthStore(storage, undefined, temporaryStorage);
   if (saved) auth.save(credentials);
   const loaded = new WeakSet<Cache>();
   const loadCache = vi
@@ -124,6 +124,7 @@ export function createSession(saved = false, storage = createStorage()) {
     suspendNetwork: vi.spyOn(player, "suspendNetwork").mockImplementation(() => {}),
   };
   const network = new Network();
+  const discover = vi.spyOn(network, "discover").mockResolvedValue([]);
   const prepare = vi.spyOn(network, "prepare");
   const validate = vi.spyOn(network, "validate").mockResolvedValue(undefined);
   const accept = network.accept.bind(network);
@@ -165,6 +166,8 @@ export function createSession(saved = false, storage = createStorage()) {
     tracks,
     playback,
     storage,
+    temporaryStorage,
+    discover,
     validate,
     loadCache,
     saveLibrary,

@@ -2,7 +2,7 @@
   import type { Snippet } from "svelte";
   import Icon from "./icon.svelte";
   import Loader from "./ui/loader.svelte";
-  import type { Session } from "./session.svelte";
+  import type { Session, LoginMethod } from "./session.svelte";
   import { navigate } from "./router.svelte";
 
   interface Props {
@@ -16,6 +16,8 @@
   let host = $state("");
   let username = $state("");
   let password = $state("");
+  let apiKey = $state("");
+  let rememberPassword = $state(false);
   let view = $state.raw<HTMLElement>();
 
   const connectionLabels = {
@@ -45,19 +47,56 @@
   const connectionFailed = $derived(connectionState === "error");
   const serverAddress = $derived(session.auth ? new URL(session.auth.host).host : "");
 
-  async function submitConnection(event: SubmitEvent) {
-    event.preventDefault();
+  function clearSecrets() {
+    username = password = apiKey = "";
+    rememberPassword = false;
+  }
+
+  $effect(() => {
+    // Disconnect can also be issued outside this view while a secret is being edited.
+    if (!session.loginHost && session.status === "disconnected") clearSecrets();
+  });
+
+  function changeHost() {
+    session.cancelLogin();
+    clearSecrets();
+  }
+
+  function changeMethod(method: LoginMethod) {
+    session.setLoginMethod(method);
+    clearSecrets();
+  }
+
+  async function finishConnection(pending: Promise<boolean>) {
     const sourceURL = window.location.href;
-    if (await session.connect({ host, username, password })) {
-      host = username = password = "";
+    if (await pending) {
+      host = "";
+      clearSecrets();
       // Session may finish after navigation starts or Settings is hidden.
       if (window.location.href === sourceURL && view?.checkVisibility()) navigate("/library");
     }
   }
 
+  async function submitConnection(event: SubmitEvent) {
+    event.preventDefault();
+    if (session.busy || session.passwordConfirmation) return;
+    if (!session.loginHost) {
+      await session.discover(host);
+      return;
+    }
+    const pending = session.connect(
+      session.loginMethod === "apiKey"
+        ? { host, method: "apiKey", apiKey }
+        : { host, method: session.loginMethod, username, password },
+    );
+    clearSecrets();
+    await finishConnection(pending);
+  }
+
   function disconnectServer() {
     session.disconnect();
-    host = username = password = "";
+    host = "";
+    clearSecrets();
   }
 </script>
 
@@ -136,6 +175,7 @@
         {:else if !session.auth}
           <form
             class="stack-md"
+            method="post"
             onsubmit={submitConnection}
             aria-busy={session.busy}
             aria-describedby={session.error
@@ -143,7 +183,8 @@
               : "settings-auth-help"}
           >
             <p class="caption text-secondary" id="settings-auth-help">
-              Connect to your Navidrome server to browse your library and stream music.
+              Connect to your OpenSubsonic server to browse your library and stream music. First,
+              check its authentication capabilities without sending credentials.
             </p>
             <div class="stack-xs">
               <label class="label" for="server-host">Host</label>
@@ -154,59 +195,159 @@
                 type="text"
                 inputmode="url"
                 bind:value={host}
+                oninput={changeHost}
                 placeholder="music.example.com"
                 autocomplete="url"
+                autocorrect="off"
                 autocapitalize="off"
                 spellcheck="false"
                 required
-                disabled={session.busy}
               />
             </div>
-            <div class="stack-xs">
-              <label class="label" for="server-username">Username</label>
-              <input
-                class="input"
-                id="server-username"
-                name="username"
-                type="text"
-                bind:value={username}
-                placeholder="Your username"
-                autocomplete="username"
-                autocapitalize="off"
-                spellcheck="false"
-                required
-                disabled={session.busy}
-              />
-            </div>
-            <div class="stack-xs">
-              <label class="label" for="server-password">Password</label>
-              <input
-                class="input"
-                id="server-password"
-                name="password"
-                type="password"
-                bind:value={password}
-                placeholder="Your password"
-                autocomplete="current-password"
-                required
-                disabled={session.busy}
-              />
-            </div>
+            {#if session.loginHost}
+              <fieldset class="stack-sm">
+                <legend class="label">Authentication method</legend>
+                {#each [{ method: "apiKey", label: "API key" }, { method: "token", label: "Username and password (MD5 token)" }, { method: "password", label: "Direct password (legacy)" }] as choice}
+                  <label class="row-sm">
+                    <input
+                      type="radio"
+                      name="method"
+                      value={choice.method}
+                      checked={session.loginMethod === choice.method}
+                      onchange={() => changeMethod(choice.method as LoginMethod)}
+                    />
+                    {choice.label}
+                  </label>
+                {/each}
+              </fieldset>
+              {#if session.passwordConfirmation}
+                <div class="card stack-sm" role="alert" id="settings-password-warning">
+                  <h3 class="heading-sm">Confirm direct password authentication</h3>
+                  <p class="body">
+                    {session.passwordConfirmation === "unsupported"
+                      ? "The server explicitly rejected MD5 token authentication (code 41 or 42)."
+                      : "You selected legacy password authentication."}
+                    This sends your password directly to the server over HTTPS, rather than an MD5 token.
+                    Hex encoding is not encryption. Continue only if you trust this server.
+                  </p>
+                  <label class="row-sm">
+                    <input
+                      type="checkbox"
+                      name="rememberPassword"
+                      bind:checked={rememberPassword}
+                    />
+                    Remember password on this device
+                  </label>
+                  <p class="caption text-secondary">
+                    Unchecked: keep the password only for this browser session.
+                  </p>
+                  <button
+                    type="button"
+                    class="button"
+                    data-size="text"
+                    data-variant="primary"
+                    id="settings-confirm-password"
+                    onclick={() => {
+                      const pending = session.confirmPassword(rememberPassword);
+                      clearSecrets();
+                      void finishConnection(pending);
+                    }}
+                  >
+                    Confirm and send password
+                  </button>
+                </div>
+              {:else if session.loginMethod === "apiKey"}
+                <p class="caption text-secondary" id="settings-key-help">
+                  Generate an API key in your server's settings. No username is needed. API keys are
+                  remembered on this device until you disconnect; treat them like passwords.
+                </p>
+                <div class="stack-xs">
+                  <label class="label" for="server-api-key">API key</label>
+                  <input
+                    class="input"
+                    id="server-api-key"
+                    name="apiKey"
+                    type="password"
+                    bind:value={apiKey}
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    aria-describedby="settings-key-help"
+                    required
+                    disabled={session.busy}
+                  />
+                </div>
+              {:else}
+                <div class="stack-xs">
+                  <label class="label" for="server-username">Username</label>
+                  <input
+                    class="input"
+                    id="server-username"
+                    name="username"
+                    type="text"
+                    bind:value={username}
+                    placeholder="Your username"
+                    autocomplete="username"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    required
+                    disabled={session.busy}
+                  />
+                </div>
+                <div class="stack-xs">
+                  <label class="label" for="server-password">Password</label>
+                  <input
+                    class="input"
+                    id="server-password"
+                    name="password"
+                    type="password"
+                    bind:value={password}
+                    placeholder="Your password"
+                    autocomplete="current-password"
+                    required
+                    disabled={session.busy}
+                  />
+                </div>
+              {/if}
+            {/if}
             <div class="row-sm">
-              <button
-                id="settings-connect"
-                class="button"
-                type="submit"
-                data-size="text"
-                data-variant="primary"
-                aria-disabled={session.busy}
-                aria-busy={session.busy}
-              >
-                {#if session.busy}
-                  <Loader />
-                {/if}
-                {session.busy ? "Connecting…" : "Connect"}
-              </button>
+              {#if !session.passwordConfirmation}
+                <button
+                  id="settings-connect"
+                  class="button"
+                  type="submit"
+                  data-size="text"
+                  data-variant="primary"
+                  disabled={session.busy}
+                  aria-disabled={session.busy}
+                  aria-busy={session.busy}
+                >
+                  {#if session.busy}
+                    <Loader />
+                  {/if}
+                  {session.busy
+                    ? "Connecting…"
+                    : !session.loginHost
+                      ? "Check server"
+                      : session.loginMethod === "password"
+                        ? "Review password warning"
+                        : "Connect"}
+                </button>
+              {/if}
+              {#if session.busy || session.passwordConfirmation}
+                <button
+                  type="button"
+                  class="button"
+                  data-size="text"
+                  data-variant="secondary"
+                  onclick={() => {
+                    session.cancelLogin(false);
+                    clearSecrets();
+                  }}>Cancel</button
+                >
+              {/if}
             </div>
           </form>
         {:else}

@@ -9,8 +9,7 @@ import {
 const auth = {
   host: "https://music.example",
   username: "listener",
-  token: "token",
-  salt: "salt",
+  credentials: { method: "token" as const, username: "listener", token: "token", salt: "salt" },
 };
 
 describe("artwork HTTP freshness", () => {
@@ -108,7 +107,7 @@ describe("Network connection lifecycle", () => {
       try {
         const result = operations[operation]();
         await expect(result).rejects.toBeInstanceOf(NetworkTransportError);
-        await expect(result).rejects.toMatchObject({ cause });
+        await expect(result).rejects.not.toHaveProperty("cause");
         expect(network.mode).toBe("online");
         expect(connection.signal.aborted).toBe(false);
       } finally {
@@ -143,8 +142,8 @@ describe("Network connection lifecycle", () => {
         await expect(result).rejects.not.toBeInstanceOf(NetworkTransportError);
         if (kind === "http") await expect(result).rejects.toThrow("HTTP 503");
         if (kind === "protocol") await expect(result).rejects.toThrow("Denied");
-        if (kind === "json") await expect(result).rejects.toBeInstanceOf(SyntaxError);
-        if (kind === "body") await expect(result).rejects.toBe(bodyError);
+        if (kind === "json" || kind === "body")
+          await expect(result).rejects.toThrow("invalid Subsonic response");
       } finally {
         network.setMode("offline");
         vi.unstubAllGlobals();
@@ -171,9 +170,12 @@ describe("Network connection lifecycle", () => {
       );
       try {
         const result = connection.metadata.getModifiedAt();
-        await expect(result).rejects.toBe(
-          kind === "exception" ? cancelled : connection.signal.reason,
-        );
+        if (kind === "signal") await expect(result).rejects.toBe(connection.signal.reason);
+        else
+          await expect(result).rejects.toMatchObject({
+            name: "AbortError",
+            message: "The server request was cancelled.",
+          });
       } finally {
         network.setMode("offline");
         vi.unstubAllGlobals();
@@ -183,7 +185,7 @@ describe("Network connection lifecycle", () => {
 
   it.each([
     [" music.example/ ", "https://music.example"],
-    ["http://music.example:4533/music/", "http://music.example:4533/music"],
+    ["https://music.example:4533/music/", "https://music.example:4533/music"],
     ["https://music.example/music/", "https://music.example/music"],
   ])("prepares credentials for %s without enabling access or fetching", (host, normalized) => {
     const network = new Network();
@@ -195,8 +197,12 @@ describe("Network connection lifecycle", () => {
       expect(credentials).toEqual({
         host: normalized,
         username: "listener",
-        salt: expect.stringMatching(/^[a-f0-9]{24}$/),
-        token: expect.stringMatching(/^[a-f0-9]{32}$/),
+        credentials: {
+          method: "token",
+          username: "listener",
+          salt: expect.stringMatching(/^[a-f0-9]{24}$/),
+          token: expect.stringMatching(/^[a-f0-9]{32}$/),
+        },
       });
       expect(network.mode).toBe("offline");
       expect(candidate.signal.aborted).toBe(false);
@@ -250,8 +256,16 @@ describe("Network connection lifecycle", () => {
     const network = new Network();
     network.setMode("online");
     const active = network.open(auth);
-    const stale = network.prepare({ ...auth, username: "second" });
-    const candidate = network.prepare({ ...auth, username: "third" });
+    const stale = network.prepare({
+      ...auth,
+      username: "second",
+      credentials: { ...auth.credentials, username: "second" },
+    });
+    const candidate = network.prepare({
+      ...auth,
+      username: "third",
+      credentials: { ...auth.credentials, username: "third" },
+    });
     expect(stale.signal.aborted).toBe(true);
     expect(active.signal.aborted).toBe(false);
     expect(() => network.accept(stale)).toThrowError(/abort/i);
@@ -365,7 +379,11 @@ describe("Network connection lifecycle", () => {
         albums: [],
         tracks: [],
       });
-      const replacement = network.prepare({ ...auth, username: "other" });
+      const replacement = network.prepare({
+        ...auth,
+        username: "other",
+        credentials: { ...auth.credentials, username: "other" },
+      });
       await expect(metadata.readLibrary(new AbortController().signal)).resolves.toEqual({
         artists: [],
         albums: [],
@@ -408,7 +426,14 @@ describe("Network connection lifecycle", () => {
         const rejected = expect(result).rejects.toMatchObject({ name: "AbortError" });
         await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
         if (action === "offline") network.setMode("offline");
-        else network.accept(network.prepare({ ...auth, username: "other" }));
+        else
+          network.accept(
+            network.prepare({
+              ...auth,
+              username: "other",
+              credentials: { ...auth.credentials, username: "other" },
+            }),
+          );
         await rejected;
         expect(signals.every((signal) => signal.aborted)).toBe(true);
         expect(workflow.signal.aborted).toBe(false);
@@ -584,7 +609,11 @@ describe("Network connection lifecycle", () => {
       expect(body.getAll("id")).toEqual(["a", "b", "a"]);
       expect(body.get("current")).toBe("a");
       expect(body.get("position")).toBe("3500");
-      const replacement = network.prepare({ ...auth, username: "other" });
+      const replacement = network.prepare({
+        ...auth,
+        username: "other",
+        credentials: { ...auth.credentials, username: "other" },
+      });
       network.accept(replacement);
       await expect(queue.read()).rejects.toMatchObject({ name: "AbortError" });
       await expect(queue.write(state)).rejects.toMatchObject({ name: "AbortError" });
@@ -607,8 +636,8 @@ describe("Network connection lifecycle", () => {
       id: "cover",
       size: "500",
       u: auth.username,
-      t: auth.token,
-      s: auth.salt,
+      t: auth.credentials.token,
+      s: auth.credentials.salt,
     });
     const replacement = network.prepare({ ...auth, host: "https://other.example" });
     expect(artwork.url("cover", 500)).toBe(url.href);
@@ -709,15 +738,19 @@ describe("Network connection lifecycle", () => {
     vi.stubGlobal("fetch", fetcher);
     try {
       const controller = new AbortController();
-      expect(await audio.read("track", { format: "raw", signal: controller.signal })).toBe(
-        response,
-      );
+      const download = await audio.read("track", { format: "raw", signal: controller.signal });
+      expect(download.url).toBe("");
+      expect(download.bodyUsed).toBe(false);
       expect(response.bodyUsed).toBe(false);
       const downloadUrl = new URL(String(fetcher.mock.calls[0][0]));
       expect(downloadUrl.searchParams.get("format")).toBe("raw");
       expect(downloadUrl.searchParams.has("timeOffset")).toBe(false);
-      expect(await response.text()).toBe("audio");
-      const next = network.prepare({ ...auth, username: "other" });
+      expect(await download.text()).toBe("audio");
+      const next = network.prepare({
+        ...auth,
+        username: "other",
+        credentials: { ...auth.credentials, username: "other" },
+      });
       network.accept(next);
       expect(() => audio.url("track", { format: "raw" })).toThrowError(/abort/i);
       await expect(

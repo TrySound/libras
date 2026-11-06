@@ -54,6 +54,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     let fields = {};
     if (method === "ping")
       fields = { version: "1.16.1", type: "test-server", serverVersion: "1", openSubsonic: true };
+    else if (method === "getOpenSubsonicExtensions") fields = { openSubsonicExtensions: [] };
     else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
     else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
@@ -75,7 +76,15 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       body: JSON.stringify({ "subsonic-response": { status: "ok", ...fields } }),
     });
   });
-  const navigate = (path) => page.goto(new URL(`?${path}`, base).href);
+  const navigate = async (path) => {
+    const menu = page.getByRole("button", { name: "Open menu", exact: true });
+    if (await menu.isVisible()) await menu.click();
+    await page
+      .getByRole("link", { name: path === "/downloads" ? "Downloads" : "Settings", exact: true })
+      .click();
+    await page.waitForURL((url) => url.search === `?${path}`);
+    assert.equal(new URL(page.url()).search, `?${path}`);
+  };
   try {
     await page.goto(base);
     await page.locator("#server-host").waitFor();
@@ -95,6 +104,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
 
     await navigate("/settings");
     await page.getByLabel("Host", { exact: true }).fill("https://music.example.test");
+    await page.getByRole("button", { name: "Check server", exact: true }).click();
     await page.getByLabel("Username", { exact: true }).fill("listener");
     await page.getByLabel("Password", { exact: true }).fill("fictional-password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();

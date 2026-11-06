@@ -44,7 +44,8 @@ test("Settings native controls, layout, and persistence", async (t) => {
       fields = fail
         ? { status: "failed", error: { message: "Unauthorized" } }
         : { version: "1.16.1", type: "test-server", serverVersion: "1", openSubsonic: true };
-    } else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
+    } else if (method === "getOpenSubsonicExtensions") fields = { openSubsonicExtensions: [] };
+    else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
     else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
     else if (method === "search3") {
@@ -83,7 +84,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
       assert.equal(await connect.getAttribute("data-variant"), "primary");
       assert.ok((await connect.boundingBox()).height >= 44);
       const box = await page.locator("#settings-server").boundingBox();
-      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await page.getByRole("button", { name: "Check server", exact: true }).click();
       assert.equal(
         await page
           .locator("#server-host")
@@ -100,17 +101,60 @@ test("Settings native controls, layout, and persistence", async (t) => {
     });
 
     await t.test(
+      "authentication choices and the password warning fit narrow screens and enlarged text",
+      async () => {
+        await page.getByLabel("Host", { exact: true }).fill(host);
+        await page.getByRole("button", { name: "Check server", exact: true }).click();
+        await page.getByLabel("Username", { exact: true }).waitFor();
+        for (const fontSize of ["100%", "200%"]) {
+          await page.evaluate(
+            (value) => (document.documentElement.style.fontSize = value),
+            fontSize,
+          );
+          await page.setViewportSize({ width: 320, height: 900 });
+          assert.equal(
+            await page
+              .locator("#settings-server")
+              .evaluate((element) => element.scrollWidth <= element.clientWidth),
+            true,
+          );
+        }
+        await page.evaluate(() => document.documentElement.style.removeProperty("font-size"));
+        await page.getByLabel("Direct password (legacy)", { exact: true }).check();
+        await page.getByLabel("Username", { exact: true }).fill(username);
+        await page.getByLabel("Password", { exact: true }).fill("password");
+        await page.getByRole("button", { name: "Review password warning", exact: true }).click();
+        await page.locator("#settings-password-warning").waitFor();
+        assert.equal(
+          await page.getByLabel("Remember password on this device", { exact: true }).isChecked(),
+          false,
+        );
+        assert.equal(calls.filter((method) => method === "ping").length, 0);
+        assert.equal(
+          await page
+            .locator("#settings-server")
+            .evaluate((element) => element.scrollWidth <= element.clientWidth),
+          true,
+        );
+        await page.getByRole("button", { name: "Cancel", exact: true }).click();
+        await page.setViewportSize({ width: 1280, height: 900 });
+      },
+    );
+
+    await t.test(
       "keyboard submission and repeated Enter do not duplicate authentication",
       async () => {
         await page.getByLabel("Host", { exact: true }).fill(host);
+        await page.getByRole("button", { name: "Check server", exact: true }).click();
         await page.getByLabel("Username", { exact: true }).fill(username);
         await page.getByLabel("Password", { exact: true }).fill("password");
         pingFailure = true;
         pingGate = gate();
         await page.keyboard.press("Enter");
-        const connect = page.locator("#settings-connect");
         await page.waitForFunction(() => document.querySelector("#server-password")?.disabled);
-        await connect.focus();
+        // The submit control is disabled while busy; Enter on the editable host
+        // still cannot submit another authentication operation.
+        await page.getByLabel("Host", { exact: true }).focus();
         await page.keyboard.press("Enter");
         pingGate.resolve();
         await page.locator("#settings-server-error").waitFor();
@@ -131,6 +175,8 @@ test("Settings native controls, layout, and persistence", async (t) => {
     // Connect once to exercise the populated card and persist a real library snapshot.
     pingFailure = false;
     pingGate = undefined;
+    await page.getByLabel("Username", { exact: true }).fill(username);
+    await page.getByLabel("Password", { exact: true }).fill("password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
     await page.getByRole("link", { name: "Settings", exact: true }).click();

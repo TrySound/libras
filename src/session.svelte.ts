@@ -2,6 +2,7 @@ import { getAccountKey, type Auth, type AuthStore } from "./auth";
 import type { Covers } from "./covers.svelte";
 import {
   NetworkTransportError,
+  normalizeServerHost,
   type ActiveNetworkConnection,
   type LibraryProgress,
   type Network,
@@ -13,6 +14,13 @@ import type { Playlists } from "./playlists.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Cache } from "./cache.svelte";
+import { SubsonicError, type OpenSubsonicExtension } from "./subsonic-client";
+import type { Credentials } from "./auth";
+
+export type LoginMethod = Credentials["method"];
+export type LoginInput =
+  | (PasswordAuth & { method?: "token" | "password" })
+  | { host: string; method: "apiKey"; apiKey: string };
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -32,6 +40,8 @@ function connectionError(error: unknown): string {
     return error.errors.length ? error.errors.map(connectionError).join("; ") : error.message;
   if (error instanceof NetworkTransportError)
     return "Could not reach the server. Check your connection, server address, and CORS settings.";
+  if (error instanceof SubsonicError && error.code !== undefined)
+    return `${error.message} (Subsonic code ${error.code})`;
   return error instanceof Error ? error.message : "Could not connect to the server.";
 }
 
@@ -41,6 +51,12 @@ export class Session {
   error = $state("");
   localReady = $state(false);
   loadingAfterConnect = $state(false);
+  loginHost = $state("");
+  loginMethod = $state<LoginMethod>("token");
+  passwordConfirmation = $state<"explicit" | "unsupported">();
+
+  #extensions: readonly OpenSubsonicExtension[] = [];
+  #pendingPassword?: PasswordAuth;
 
   #options: SessionOptions;
   #account?: Readonly<Account>;
@@ -181,8 +197,8 @@ export class Session {
       this.status = "disconnected";
       return;
     }
-    this.#resumeOnline();
-    await this.#refresh(false);
+    await this.#resumeOnline(operationId);
+    if (this.#isCurrentOperation(operationId)) await this.#refresh(false);
   }
 
   async #restore(account: Account) {
@@ -245,10 +261,15 @@ export class Session {
 
   /** No awaits: credentials, selection and engine connections commit in one turn.
    * Storage is not transactional; connect's failure path clears partial credentials. */
-  #commitWorkspace(cache: Cache, credentials: Auth, connection: NetworkConnection) {
+  #commitWorkspace(
+    cache: Cache,
+    credentials: Auth,
+    connection: NetworkConnection,
+    rememberPassword = false,
+  ) {
     connection.signal.throwIfAborted();
     const { auth, preferences, network, playback } = this.#options;
-    auth.save(credentials);
+    auth.save(credentials, { rememberPassword });
     auth.saveAccount(connection.account);
     preferences.setItem(offlineModeStorageKey, "false");
     const active = network.accept(connection);
@@ -260,40 +281,184 @@ export class Session {
     this.localReady = true;
   }
 
-  /** Login succeeds once local data and credentials are accepted, not when sync finishes. */
-  async connect(input: PasswordAuth): Promise<boolean> {
-    if (this.auth || this.busy || this.#destroyed) return false;
+  /** Presentation may invalidate a host, method or pending confirmation, never its cache. */
+  cancelLogin(resetDiscovery = true) {
+    if (this.auth || this.#destroyed) return;
+    this.#beginOperation();
+    this.#options.network.cancelPending();
+    this.#pendingPassword = undefined;
+    this.passwordConfirmation = undefined;
+    if (resetDiscovery) {
+      this.loginHost = "";
+      this.#extensions = [];
+      this.loginMethod = "token";
+    }
+    this.status = "disconnected";
+  }
+
+  setLoginMethod(method: LoginMethod) {
+    if (this.auth || this.#destroyed) return;
+    this.cancelLogin(false);
+    this.loginMethod = method;
+  }
+
+  /** Credential-free discovery must succeed (or explicitly be unsupported) first. */
+  async discover(host: string): Promise<boolean> {
+    if (this.auth || this.#destroyed) return false;
+    this.cancelLogin();
     const operationId = this.#beginOperation();
     this.status = "connecting";
     try {
-      const credentials = this.#options.network.createAuth(input);
-      const connection = this.#options.network.prepare(credentials);
-      await this.#restoration;
+      const normalized = normalizeServerHost(host);
+      const extensions = await this.#options.network.discover(normalized);
       if (!this.#isCurrentOperation(operationId)) return false;
-      const cache = await this.#prepareWorkspace(connection);
-      await this.#options.network.validate(connection);
-      connection.signal.throwIfAborted();
-      if (!this.#isCurrentOperation(operationId)) return false;
-      await this.#retireWorkspace(cache, connection.signal);
-      if (!this.#isCurrentOperation(operationId)) return false;
-      this.#commitWorkspace(cache, credentials, connection);
-      this.status = "connected";
-      this.loadingAfterConnect = true;
-      void this.#refresh(false);
+      this.loginHost = normalized;
+      this.#extensions = extensions;
+      this.loginMethod = extensions.some(
+        (item) => item.name === "apiKeyAuthentication" && item.versions.includes(1),
+      )
+        ? "apiKey"
+        : "token";
+      this.status = "disconnected";
       return true;
     } catch (error) {
-      if (this.#isCurrentOperation(operationId)) {
-        // Also remove partially saved credentials if browser persistence failed.
-        if (this.disconnect()) this.#fail(error, this.#operationId);
-      }
+      this.#fail(error, operationId);
       return false;
     }
+  }
+
+  #offerPassword(input: PasswordAuth, reason: "explicit" | "unsupported") {
+    normalizeServerHost(input.host, true);
+    this.#options.network.cancelPending();
+    this.#pendingPassword = { ...input };
+    this.passwordConfirmation = reason;
+    this.status = "disconnected";
+  }
+
+  /** Login succeeds once local data and credentials are accepted, not when sync finishes. */
+  async connect(input: LoginInput): Promise<boolean> {
+    if (this.auth || this.busy || this.#destroyed || this.passwordConfirmation) return false;
+    try {
+      const host = normalizeServerHost(input.host);
+      if (host !== this.loginHost) {
+        const discovery = this.discover(host);
+        const discoveryId = this.#operationId;
+        if (!(await discovery) || !this.#isCurrentOperation(discoveryId)) return false;
+      }
+      const method = input.method ?? this.loginMethod;
+      this.setLoginMethod(method);
+      const operationId = this.#beginOperation();
+      this.status = "connecting";
+      try {
+        if (method === "apiKey") {
+          if (!("apiKey" in input) || !input.apiKey) throw new Error("Enter an API key.");
+          const auth = await this.#options.network.resolveApiKey(
+            host,
+            input.apiKey,
+            this.#extensions,
+          );
+          if (!this.#isCurrentOperation(operationId)) return false;
+          return await this.#connectAuth(auth, operationId);
+        }
+        if (!("username" in input) || !input.username || !input.password)
+          throw new Error("Enter a username and password.");
+        const passwordInput = { host, username: input.username, password: input.password };
+        if (method === "password") {
+          this.#offerPassword(passwordInput, "explicit");
+          return false;
+        }
+        const auth = this.#options.network.createAuth(passwordInput);
+        try {
+          return await this.#connectAuth(auth, operationId);
+        } catch (error) {
+          if (
+            this.#isCurrentOperation(operationId) &&
+            error instanceof SubsonicError &&
+            [41, 42].includes(error.code ?? -1)
+          ) {
+            this.error = connectionError(error);
+            this.#offerPassword(passwordInput, "unsupported");
+            return false;
+          }
+          throw error;
+        }
+      } catch (error) {
+        this.#loginFailed(error, operationId);
+        return false;
+      }
+    } catch (error) {
+      this.#fail(error, this.#operationId);
+      return false;
+    }
+  }
+
+  /** This separate action is the only path that submits a direct password. */
+  async confirmPassword(rememberPassword = false): Promise<boolean> {
+    const input = this.#pendingPassword;
+    if (!input || !this.passwordConfirmation || this.busy || this.#destroyed) return false;
+    this.#pendingPassword = undefined;
+    this.passwordConfirmation = undefined;
+    const operationId = this.#beginOperation();
+    this.status = "connecting";
+    try {
+      normalizeServerHost(input.host, true);
+      return await this.#connectAuth(
+        {
+          host: input.host,
+          username: input.username,
+          credentials: { method: "password", username: input.username, password: input.password },
+        },
+        operationId,
+        rememberPassword,
+      );
+    } catch (error) {
+      this.#loginFailed(error, operationId);
+      return false;
+    }
+  }
+
+  #loginFailed(error: unknown, operationId: number) {
+    if (!this.#isCurrentOperation(operationId)) return;
+    // Also remove partially saved credentials if browser persistence failed.
+    const host = this.loginHost;
+    const method = this.loginMethod;
+    const extensions = this.#extensions;
+    if (this.disconnect()) this.#fail(error, this.#operationId);
+    this.loginHost = host;
+    this.loginMethod = method;
+    this.#extensions = extensions;
+  }
+
+  async #connectAuth(credentials: Auth, operationId: number, rememberPassword = false) {
+    const connection = this.#options.network.prepare(credentials, this.#extensions);
+    await this.#restoration;
+    if (!this.#isCurrentOperation(operationId)) return false;
+    // Key identity is resolved before even loading its account-scoped storage.
+    const cache = await this.#prepareWorkspace(connection);
+    await this.#options.network.validate(connection);
+    connection.signal.throwIfAborted();
+    if (!this.#isCurrentOperation(operationId)) return false;
+    await this.#retireWorkspace(cache, connection.signal);
+    if (!this.#isCurrentOperation(operationId)) return false;
+    this.#commitWorkspace(cache, credentials, connection, rememberPassword);
+    this.status = "connected";
+    this.loadingAfterConnect = true;
+    this.loginHost = "";
+    this.#pendingPassword = undefined;
+    this.passwordConfirmation = undefined;
+    void this.#refresh(false);
+    return true;
   }
 
   disconnect() {
     if (this.#destroyed) return false;
     const operationId = this.#beginOperation();
     this.auth = null;
+    this.#pendingPassword = undefined;
+    this.passwordConfirmation = undefined;
+    this.loginHost = "";
+    this.loginMethod = "token";
+    this.#extensions = [];
     this.#detach();
     this.status = "disconnected";
     try {
@@ -307,15 +472,58 @@ export class Session {
     }
   }
 
-  #resumeOnline() {
-    if (!this.auth) return;
-    this.#setConnection(this.#options.network.open(this.auth));
-    this.status = "connected";
+  async #resumeOnline(operationId: number) {
+    const auth = this.auth;
+    if (!auth) return;
+    // Rediscover rather than persisting capability claims. Local/offline restoration
+    // has already completed and never depends on this network request.
+    try {
+      const { network } = this.#options;
+      const extensions = await network.discover(auth.host);
+      if (!this.#isCurrentOperation(operationId) || this.auth !== auth) return;
+      if (auth.credentials.method === "apiKey") {
+        const resolved = await network.resolveApiKey(
+          auth.host,
+          auth.credentials.apiKey,
+          extensions,
+        );
+        if (!this.#isCurrentOperation(operationId) || this.auth !== auth) return;
+        if (resolved.username !== auth.username)
+          throw new Error("The saved API key belongs to a different account.");
+        const connection = network.prepare(auth, extensions);
+        await network.validate(connection);
+        connection.signal.throwIfAborted();
+        if (!this.#isCurrentOperation(operationId) || this.auth !== auth) return;
+        this.#setConnection(network.accept(connection));
+      } else {
+        this.#setConnection(network.open(auth, extensions));
+      }
+      this.status = "connected";
+    } catch (error) {
+      if (auth.credentials.method === "apiKey" && this.#isCurrentOperation(operationId)) {
+        this.#detach();
+        throw new Error(
+          `${connectionError(error)} Your saved library is available offline. Turn off Offline library to retry, or disconnect and sign in again.`,
+        );
+      }
+      throw error;
+    }
   }
 
   async refresh() {
     if (!this.auth || this.offlineMode || this.busy || this.#destroyed) return;
     this.error = "";
+    if (!this.#connection) {
+      const operationId = this.#beginOperation();
+      this.status = "connecting";
+      try {
+        await this.#resumeOnline(operationId);
+        if (!this.#isCurrentOperation(operationId)) return;
+      } catch (error) {
+        this.#fail(error, operationId);
+        return;
+      }
+    }
     await this.#refresh(true);
   }
 
@@ -407,7 +615,7 @@ export class Session {
       if (enabled) return;
       await this.#restoration;
       if (!this.#isCurrentOperation(operationId)) return;
-      this.#resumeOnline();
+      await this.#resumeOnline(operationId);
     } catch (error) {
       this.#fail(error, operationId);
     }
@@ -415,6 +623,8 @@ export class Session {
 
   destroy() {
     this.#destroyed = true;
+    this.#pendingPassword = undefined;
+    this.passwordConfirmation = undefined;
     this.#operationId++;
     this.#loadController?.abort();
     this.#loadController = undefined;

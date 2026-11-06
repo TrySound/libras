@@ -5,8 +5,7 @@ import { md5 } from "js-md5";
 const auth = {
   host: "https://music.example.com",
   username: "listener",
-  token: "token",
-  salt: "salt",
+  credentials: { method: "token" as const, username: "listener", token: "token", salt: "salt" },
 };
 
 const page = {
@@ -92,11 +91,15 @@ describe("subsonic client", () => {
     expect(first).toEqual({
       host: input.host,
       username: input.username,
-      salt: expect.stringMatching(/^[a-f0-9]{24}$/),
-      token: md5(input.password + first.salt),
+      credentials: {
+        method: "token",
+        username: input.username,
+        salt: expect.stringMatching(/^[a-f0-9]{24}$/),
+        token: md5(input.password + first.credentials.salt),
+      },
     });
-    expect(second.salt).not.toBe(first.salt);
-    expect(second.token).toBe(md5(input.password + second.salt));
+    expect(second.credentials.salt).not.toBe(first.credentials.salt);
+    expect(second.credentials.token).toBe(md5(input.password + second.credentials.salt));
     expect(input.password).toBe(" secret 音 ");
   });
 

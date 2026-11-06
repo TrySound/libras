@@ -8,7 +8,15 @@ import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
-const auth = { ...account, token: "token", salt: "salt" };
+const auth = {
+  ...account,
+  credentials: {
+    method: "token" as const,
+    username: account.username,
+    token: "token",
+    salt: "salt",
+  },
+};
 const track = {
   id: "track",
   title: "Track",
@@ -608,7 +616,9 @@ describe("TrackEngine using Cache", () => {
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
       selection.cache = new Cache(getAccountKey({ ...account, username }));
       engine.activate();
-      engine.setConnection(connection({ ...auth, username }));
+      engine.setConnection(
+        connection({ ...auth, username, credentials: { ...auth.credentials, username } }),
+      );
       await rejected;
       const retry = engine.download(track.id);
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
