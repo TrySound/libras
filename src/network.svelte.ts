@@ -1,15 +1,12 @@
 import {
   SubsonicClient,
   SubsonicTransportError as NetworkTransportError,
-  createSubsonicAuth,
-  getOpenSubsonicExtensions,
-  SubsonicHttpError,
   type OpenSubsonicExtension,
   type SubsonicApi,
   type SubsonicClientFactory,
   type SubsonicPlaylist,
 } from "./subsonic-client";
-import { authSchema, type Auth } from "./auth";
+import { authSchema, normalizeServerHost, type Auth } from "./auth";
 import * as v from "valibot";
 import type {
   Album,
@@ -23,38 +20,6 @@ import type {
 
 /** Browsers do not expose a reliable CORS diagnosis. */
 export { NetworkTransportError };
-
-export interface PasswordAuth {
-  host: string;
-  username: string;
-  password: string;
-}
-
-/** Preserve the historical host spelling used by createAuth for account cache keys. */
-export function normalizeServerHost(input: string, password = false): string {
-  const host = input.trim();
-  let url: URL;
-  try {
-    url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(host) ? host : `https://${host}`);
-  } catch {
-    throw new Error("Enter a valid server address.");
-  }
-  if (url.username || url.password || url.search || url.hash)
-    throw new Error(
-      "Use a server address without user information, query parameters, or fragments.",
-    );
-  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  if (
-    url.protocol !== "https:" &&
-    !(url.protocol === "http:" && import.meta.env.DEV && loopback && !password)
-  )
-    throw new Error(
-      password
-        ? "Direct password authentication requires HTTPS."
-        : "Server connections require HTTPS (HTTP loopback is development-only).",
-    );
-  return url.toString().replace(/\/$/, "");
-}
 
 /** Credential-free identity for one connection lifetime, owned by its Network. */
 interface NetworkIdentity {
@@ -523,6 +488,38 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicApi, request:
   });
 }
 
+/** Only remote source reads are redacted: pipeTo must retain local sink failures.
+ * This download-only Response retains status/headers and native body consumers,
+ * but deliberately does not copy its credential-bearing URL. No eager buffering. */
+function audioDownloadResponse(response: Response, signal: AbortSignal): Response {
+  if (!response.body) return response;
+  const reader = response.body.getReader();
+  const body = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) controller.close();
+          else controller.enqueue(value);
+        } catch {
+          controller.error(
+            signal.aborted
+              ? new DOMException("The server request was cancelled.", "AbortError")
+              : new NetworkTransportError(),
+          );
+        }
+      },
+      cancel: (reason) => reader.cancel(reason).catch(() => {}),
+    },
+    { highWaterMark: 0 },
+  );
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
   const url = (
     id: string,
@@ -555,6 +552,7 @@ function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: R
           });
           signal.throwIfAborted();
           if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
+          response = audioDownloadResponse(response, signal);
           return response;
         });
       } catch (error) {
@@ -573,70 +571,20 @@ export class Network {
   #active?: SubsonicApi;
   #candidate?: CandidateConnection;
   #createClient: SubsonicClientFactory;
-  #protocol: "subsonic" | "alternate";
-  #loginController?: AbortController;
+  readonly protocol: "subsonic" | "alternate";
 
   constructor(
     createClient?: SubsonicClientFactory,
     { protocol = "subsonic" }: { protocol?: "subsonic" | "alternate" } = {},
   ) {
-    this.#protocol = protocol;
+    this.protocol = protocol;
     this.#createClient = createClient ?? ((auth, options) => new SubsonicClient(auth, options));
   }
 
-  /** Cancel public discovery, key resolution and an unaccepted connection. */
+  /** Cancel an unaccepted connection, without touching live access. */
   cancelPending() {
-    this.#loginController?.abort();
-    this.#loginController = undefined;
     this.#candidate?.client.abort();
     this.#candidate = undefined;
-  }
-
-  /** Alternate adapters own their protocol; never send Subsonic discovery to a demo. */
-  async discover(host: string): Promise<OpenSubsonicExtension[]> {
-    this.cancelPending();
-    const controller = new AbortController();
-    this.#loginController = controller;
-    try {
-      if (this.#protocol === "alternate") return [];
-      normalizeServerHost(host);
-      try {
-        return await getOpenSubsonicExtensions(host, { fetch: networkFetch }, controller.signal);
-      } catch (error) {
-        controller.signal.throwIfAborted();
-        // Only explicit HTTP endpoint absence proves discovery is unsupported.
-        // Protocol code 0/70 and error text are not capability evidence.
-        if (error instanceof SubsonicHttpError && [404, 405, 501].includes(error.status)) return [];
-        throw error;
-      }
-    } finally {
-      if (this.#loginController === controller) this.#loginController = undefined;
-    }
-  }
-
-  async resolveApiKey(
-    host: string,
-    apiKey: string,
-    extensions: readonly OpenSubsonicExtension[],
-  ): Promise<Auth> {
-    this.cancelPending();
-    if (this.#protocol === "alternate")
-      throw new Error("This connection does not support API-key login.");
-    normalizeServerHost(host);
-    const controller = new AbortController();
-    this.#loginController = controller;
-    const client = new SubsonicClient(
-      { host, credentials: { method: "apiKey", apiKey } },
-      { fetch: networkFetch, extensions },
-    );
-    try {
-      const { username } = await client.tokenInfo(controller.signal);
-      controller.signal.throwIfAborted();
-      return { host, username, credentials: { method: "apiKey", apiKey } };
-    } finally {
-      client.abort();
-      if (this.#loginController === controller) this.#loginController = undefined;
-    }
   }
 
   get mode() {
@@ -651,19 +599,11 @@ export class Network {
     this.#active = undefined;
   }
 
-  /** Prepare credentials without enabling access, persisting data, or making requests. */
-  createAuth(input: PasswordAuth): Auth {
-    const auth = createSubsonicAuth({ ...input, host: normalizeServerHost(input.host) });
-    if (!input.password || !v.safeParse(authSchema, auth).success)
-      throw new Error("Enter a username and password.");
-    return auth;
-  }
-
   /** Explicit login validation is allowed while normal access remains offline. */
   prepare(auth: Auth, extensions?: readonly OpenSubsonicExtension[]): NetworkConnection {
     if (!v.safeParse(authSchema, auth).success)
       throw new Error("The Subsonic authentication is invalid.");
-    if (this.#protocol === "subsonic")
+    if (this.protocol === "subsonic")
       normalizeServerHost(auth.host, auth.credentials.method === "password");
     const client = this.#createClient(
       { host: auth.host, credentials: auth.credentials },

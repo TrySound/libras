@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Cache } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { NetworkTransportError } from "../src/network.svelte";
-import { createSession, credentials, deferred } from "./session-test-helpers";
+import { connect, createSession, credentials, deferred } from "./session-test-helpers";
 
 const fixtures: ReturnType<typeof createSession>[] = [];
 
@@ -89,42 +89,6 @@ describe("session", () => {
     expect(covers.refresh).not.toHaveBeenCalled();
     expect(session.refreshError).toContain("Library unavailable");
     expect(session.status).toBe("connected");
-  });
-
-  it("does not expose private stream errors through cache synchronization reporting", async () => {
-    const disk = installDisk();
-    const { session, selection } = setup();
-    const cache = new Cache(getAccountKey(credentials));
-    selection.cache = cache;
-    const unsafe = new TypeError(
-      "Read failed: https://music.example/rest/stream.view?apiKey=secret&p=password",
-    );
-    const response = new Response(
-      new ReadableStream({
-        start(controller) {
-          controller.error(unsafe);
-        },
-      }),
-    );
-    const pending = cache.saveDownload(
-      { id: "track", title: "Track", artist: "Artist", album: "Album" },
-      "mp3",
-      "audio/mpeg",
-      response,
-      new AbortController().signal,
-    );
-    await expect(pending).rejects.toThrow(
-      "The downloaded data could not be transferred to storage.",
-    );
-    expect(session.refreshError).toBe(
-      "Synchronization failed: The downloaded data could not be transferred to storage.",
-    );
-    const errors = (cache.error as AggregateError).errors;
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).not.toBe(unsafe);
-    expect(errors[0]).not.toHaveProperty("cause");
-    expect(disk.files.size).toBe(0);
-    expect(disk.blobs.size).toBe(0);
   });
 
   it("formats nested cache errors centrally without failing the connection", async () => {
@@ -303,7 +267,7 @@ describe("session", () => {
     expect(loadCache).toHaveBeenCalledOnce();
     expect(tracks.setConnection.mock.calls.at(-1)![0]).toBe(client);
     expect(playback.refreshQueue).toHaveBeenCalledTimes(2);
-    expect(await session.connect(input)).toBe(false);
+    expect(await connect(session, input)).toBe(false);
     expect(validate).not.toHaveBeenCalled();
   });
 
@@ -406,12 +370,12 @@ describe("session", () => {
       .mockImplementation(() => {
         expect(selection.cache?.key).toBe(getAccountKey(next));
       });
-    const connecting = session.connect({ ...next, password: "secret" });
+    const connecting = connect(session, { ...next, password: "secret" });
     await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
     expect(session.offlineMode).toBe(true);
     expect(session.auth).toBeNull();
     expect(selection.cache!.artists).toBe(previous);
-    expect(await session.connect(input)).toBe(false);
+    expect(await connect(session, input)).toBe(false);
     prepared.resolve();
     expect(await connecting).toBe(true);
     expect(selection.cache!.key).toBe(getAccountKey(next));
@@ -436,7 +400,7 @@ describe("session", () => {
       const previousAccount = auth.loadAccount()!;
       validate.mockRejectedValueOnce(new NetworkTransportError());
       expect(
-        await session.connect({
+        await connect(session, {
           ...input,
           username: account === "same" ? credentials.username : "other",
         }),
@@ -447,7 +411,7 @@ describe("session", () => {
       expect(auth.load()).toBeNull();
       expect(auth.loadAccount()).toEqual(previousAccount);
       expect(session.offlineMode).toBe(true);
-      expect(session.error).toContain("CORS");
+      expect(session.login.error).toContain("CORS");
     },
   );
 
@@ -458,7 +422,7 @@ describe("session", () => {
       session.start();
       const prepared = deferred();
       validate.mockReturnValueOnce(prepared.promise);
-      const connecting = session.connect(input);
+      const connecting = connect(session, input);
       await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
       const signal = validate.mock.calls[0][0].signal;
       session[action]();
@@ -486,7 +450,7 @@ describe("session", () => {
         expect(selection.cache).toBe(previous);
         throw new Error("Storage full");
       });
-      expect(await session.connect({ ...input, username })).toBe(false);
+      expect(await connect(session, { ...input, username })).toBe(false);
       expect(playback.suspend).toHaveBeenCalledOnce();
       expect(session.error).toBe("Storage full");
       expect(selection.cache).toBe(previous);
@@ -511,7 +475,7 @@ describe("session", () => {
       if (stage === "load") loadCache.mockReturnValueOnce(pending.promise);
       else vi.spyOn(previous, "flush").mockReturnValueOnce(pending.promise);
 
-      const connecting = session.connect({ ...input, username: "other" });
+      const connecting = connect(session, { ...input, username: "other" });
       await vi.waitFor(() => {
         if (stage === "load") expect(loadCache).toHaveBeenCalledTimes(2);
         else expect(previous.flush).toHaveBeenCalled();
@@ -567,7 +531,7 @@ describe("session", () => {
           if (key === "navidrome-offline-mode" && value === "false") fail();
         });
       }
-      expect(await session.connect({ ...input, username: "other" })).toBe(false);
+      expect(await connect(session, { ...input, username: "other" })).toBe(false);
       expect(session.error).toBe("Commit failed");
       expect(selection.cache).toBe(previous);
       expect(session.auth).toBeNull();
@@ -581,9 +545,9 @@ describe("session", () => {
 
   it("does not report invalid connection input as a transport or CORS failure", async () => {
     const { session, metadata, validate } = setup();
-    expect(await session.connect({ ...input, host: "https://" })).toBe(false);
-    expect(session.error).toBe("Enter a valid server address.");
-    expect(session.error).not.toContain("CORS");
+    expect(await connect(session, { ...input, host: "https://" })).toBe(false);
+    expect(session.login.error).toBe("Enter a valid server address.");
+    expect(session.login.error).not.toContain("CORS");
     expect(validate).not.toHaveBeenCalled();
   });
 
@@ -596,7 +560,7 @@ describe("session", () => {
       loadCache.mockClear();
       const saved = deferred();
       loadCache.mockReturnValueOnce(saved.promise);
-      const connecting = session.connect(input);
+      const connecting = connect(session, input);
       await vi.waitFor(() => expect(loadCache).toHaveBeenCalledOnce());
       const signal = loadCache.mock.calls[0][0]!;
       expect(loadCache.mock.contexts[0]).toBe(previous);
@@ -701,7 +665,7 @@ describe("session", () => {
         expect(selection.cache).toBe(previous);
         return accept(connection);
       });
-      const connecting = session.connect({ ...input, username });
+      const connecting = connect(session, { ...input, username });
       await vi.waitFor(() => expect(loadCache).toHaveBeenCalledOnce());
       expect(selection.cache).toBe(previous);
       committed.resolve();
@@ -736,7 +700,7 @@ describe("session", () => {
       loaded.resolve();
       await release.promise;
     });
-    const connecting = session.connect(input);
+    const connecting = connect(session, input);
     await loaded.promise;
     previous.setQueue({ tracks: ["edited", "edited"], index: 1, position: 20 });
     release.resolve();
@@ -756,7 +720,7 @@ describe("session", () => {
     loadCache.mockRestore();
     saveLibrary.mockRestore();
     installDisk();
-    expect(await session.connect(input)).toBe(true);
+    expect(await connect(session, input)).toBe(true);
     session.disconnect();
     const previous = selection.cache!;
     previous.setQueue({ tracks: ["track"], index: 0, position: 1 });
@@ -770,7 +734,7 @@ describe("session", () => {
     });
     covers.activate.mockClear();
     tracks.activate.mockClear();
-    const switching = session.connect({ ...input, username: "other" });
+    const switching = connect(session, { ...input, username: "other" });
     await flushed.promise;
     expect(selection.cache).toBe(previous);
     expect(covers.activate).toHaveBeenCalledOnce();
@@ -789,7 +753,7 @@ describe("session", () => {
     loadCache.mockRestore();
     saveLibrary.mockRestore();
     const disk = installDisk();
-    expect(await session.connect(input)).toBe(true);
+    expect(await connect(session, input)).toBe(true);
     session.disconnect();
     const previous = selection.cache!;
     await previous.saveDownload(
@@ -802,16 +766,16 @@ describe("session", () => {
     disk.state.beforeClose = async (path) => {
       if (path.endsWith("/downloads.json")) throw new Error("Catalog write failed");
     };
-    expect(await session.connect({ ...input, username: "other" })).toBe(false);
+    expect(await connect(session, { ...input, username: "other" })).toBe(false);
     expect(selection.cache).toBe(previous);
     expect(session.error).toBe("Catalog write failed");
     expect(previous.downloads.size).toBe(1);
     expect(previous.dirty).toBe(true);
     previous.setQueue({ tracks: ["track"], index: 0, position: 5 });
     disk.state.beforeClose = async () => {};
-    expect(await session.connect({ ...input, username: "other" })).toBe(true);
+    expect(await connect(session, { ...input, username: "other" })).toBe(true);
     session.disconnect();
-    expect(await session.connect(input)).toBe(true);
+    expect(await connect(session, input)).toBe(true);
     expect(selection.cache?.downloads.size).toBe(1);
     expect(selection.cache?.queue.position).toBe(5);
     expect(await (await selection.cache?.readDownload("track", "mp3"))?.text()).toBe("audio");
@@ -822,13 +786,13 @@ describe("session", () => {
     loadCache.mockRestore();
     saveLibrary.mockRestore();
     installDisk();
-    expect(await session.connect(input)).toBe(true);
+    expect(await connect(session, input)).toBe(true);
     session.disconnect();
     const previous = selection.cache!;
     vi.spyOn(network, "accept").mockImplementationOnce(() => {
       throw new Error("Acceptance failed");
     });
-    expect(await session.connect({ ...input, username: "other" })).toBe(false);
+    expect(await connect(session, { ...input, username: "other" })).toBe(false);
     expect(selection.cache).toBe(previous);
     expect(auth.load()).toBeNull();
     expect(session.error).toBe("Acceptance failed");

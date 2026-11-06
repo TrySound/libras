@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthStore, getAccountKey } from "../src/auth";
 import { NetworkTransportError } from "../src/network.svelte";
-import { SubsonicError, SubsonicHttpError } from "../src/subsonic-client";
-import { createSession, credentials, deferred } from "./session-test-helpers";
+import { SubsonicClient, SubsonicError } from "../src/subsonic-client";
+import { connect, createSession, credentials, deferred } from "./session-test-helpers";
 
 const fixtures: ReturnType<typeof createSession>[] = [];
 function setup() {
@@ -28,216 +28,213 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe("Session login policy", () => {
-  it.each([1, 2])(
-    "defaults to API key only when version 1 is advertised (version %i)",
-    async (version) => {
-      const { session, discover } = setup();
-      discover.mockResolvedValueOnce([{ name: "apiKeyAuthentication", versions: [version] }]);
-      expect(await session.discover(input.host)).toBe(true);
-      expect(session.loginMethod).toBe(version === 1 ? "apiKey" : "token");
-      for (const method of ["token", "apiKey", "password"] as const) {
-        session.setLoginMethod(method);
-        expect(session.loginMethod).toBe(method);
-        expect(session.loginHost).toBe(input.host);
-      }
-    },
-  );
-
-  it("requires discovery and never submits credentials after a transport discovery failure", async () => {
-    const { session, discover, validate, network, loadCache, selection } = setup();
-    discover.mockRejectedValueOnce(new NetworkTransportError());
-    const prepare = vi.spyOn(network, "prepare");
-    expect(await session.connect(input)).toBe(false);
-    expect(session.error).toContain("CORS");
-    expect(session.loginHost).toBe("");
-    expect(prepare).not.toHaveBeenCalled();
-    expect(validate).not.toHaveBeenCalled();
-    expect(loadCache).not.toHaveBeenCalled();
-    expect(selection.cache).toBeUndefined();
-    expect(await session.discover(input.host)).toBe(true);
-    expect(session.loginMethod).toBe("token");
-  });
-
-  it("resolves a key's username before preparing or selecting any account cache, then validates ping", async () => {
-    const { session, discover, network, loadCache, validate, selection, auth } = setup();
-    discover.mockResolvedValueOnce(keyExtension);
-    const key = deferred<import("../src/auth").Auth>();
-    const resolve = vi.spyOn(network, "resolveApiKey").mockReturnValueOnce(key.promise);
-    const pending = session.connect({ host: input.host, method: "apiKey", apiKey: "test-key" });
-    await vi.waitFor(() => expect(resolve).toHaveBeenCalledOnce());
-    expect(loadCache).not.toHaveBeenCalled();
-    expect(selection.cache).toBeUndefined();
-    expect(auth.load()).toBeNull();
-    key.resolve({ ...credentials, credentials: { method: "apiKey", apiKey: "test-key" } });
-    expect(await pending).toBe(true);
-    expect(validate).toHaveBeenCalledOnce();
-    expect(selection.cache?.key).toBe(getAccountKey(credentials));
-    expect(session.auth?.username).toBe(credentials.username);
-    expect(auth.load()?.credentials.method).toBe("apiKey");
-    expect(resolve.mock.invocationCallOrder[0]).toBeLessThan(loadCache.mock.invocationCallOrder[0]);
-  });
-
-  it.each(["invalid-key", "malformed-identity", "invalid-ping"])(
-    "never falls back or selects a workspace for %s",
-    async (failure) => {
-      const { session, discover, network, validate, loadCache, selection, auth } = setup();
-      discover.mockResolvedValueOnce(keyExtension);
-      const resolve = vi.spyOn(network, "resolveApiKey");
-      if (failure === "invalid-key")
-        resolve.mockRejectedValueOnce(new SubsonicError(44, "Invalid API key"));
-      else if (failure === "malformed-identity")
-        resolve.mockRejectedValueOnce(new Error("Invalid tokenInfo response"));
-      else {
-        resolve.mockResolvedValueOnce({
-          ...credentials,
-          credentials: { method: "apiKey", apiKey: "test-key" },
-        });
-        validate.mockRejectedValueOnce(new SubsonicError(41, "Unsupported authentication"));
-      }
-      expect(
-        await session.connect({ host: input.host, method: "apiKey", apiKey: "test-key" }),
-      ).toBe(false);
-      expect(loadCache).toHaveBeenCalledTimes(failure === "invalid-ping" ? 1 : 0);
-      expect(selection.cache).toBeUndefined();
-      expect(session.passwordConfirmation).toBeUndefined();
-      expect(auth.load()).toBeNull();
-    },
-  );
-
-  it.each([41, 42])(
-    "offers a separate confirmation only for token rejection code %i",
-    async (code) => {
-      const { session, validate, network, auth, storage } = setup();
-      const prepare = vi.spyOn(network, "prepare");
-      validate.mockRejectedValueOnce(new SubsonicError(code, "Token method unsupported"));
-      expect(await session.connect(input)).toBe(false);
-      expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual(["token"]);
-      expect(session.passwordConfirmation).toBe("unsupported");
-      expect(auth.load()).toBeNull();
-      expect(session.error).toBe(`Token method unsupported (Subsonic code ${code})`);
-      expect(await session.confirmPassword()).toBe(true);
-      expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual([
-        "token",
-        "password",
-      ]);
-      expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
-      session.disconnect();
-      expect(storage.getItem("navidrome-auth")).toBeNull();
-      expect(auth.loadAccount()).toEqual({ host: input.host, username: input.username });
-    },
-  );
-
-  it.each([
-    new SubsonicError(40, "Wrong credentials"),
-    new SubsonicError(44, "Wrong key"),
-    new SubsonicError(0, "Generic failure"),
-    new SubsonicError(70, "Not found"),
-    new Error("Token authentication unsupported"),
-    new DOMException("Timed out", "TimeoutError"),
-    new NetworkTransportError(),
-    new Error("Invalid Subsonic response"),
-    new SubsonicHttpError(401),
-    new SubsonicHttpError(403),
-  ])("does not downgrade on $name / $message", async (error) => {
-    const { session, validate, network } = setup();
-    const prepare = vi.spyOn(network, "prepare");
-    validate.mockRejectedValueOnce(error);
-    expect(await session.connect(input)).toBe(false);
-    expect(session.passwordConfirmation).toBeUndefined();
-    expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual(["token"]);
-    expect(await session.confirmPassword()).toBe(false);
-    expect(session.error.length > 0).toBe(true);
-  });
-
-  it("permits explicit password selection only after a warning/confirmation, then persists it", async () => {
-    const { session, validate, network, storage } = setup();
-    const prepare = vi.spyOn(network, "prepare");
-    expect(await session.connect({ ...input, method: "password" })).toBe(false);
-    expect(session.passwordConfirmation).toBe("explicit");
-    expect(validate).not.toHaveBeenCalled();
-    expect(prepare).not.toHaveBeenCalled();
-    expect(await session.confirmPassword()).toBe(true);
-    expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
-  });
-
-  it.each(["explicit", "fallback"])(
-    "never offers or sends a direct password over development HTTP (%s)",
-    async (kind) => {
-      const { session, validate, network } = setup();
-      const prepare = vi.spyOn(network, "prepare");
-      if (kind === "fallback")
-        validate.mockRejectedValueOnce(new SubsonicError(41, "Unsupported method"));
-      expect(
-        await session.connect({
-          ...input,
-          host: "http://localhost:4533",
-          method: kind === "explicit" ? "password" : "token",
+describe("Session authenticated workspace integration", () => {
+  it.each(["discovery", "key", "ping"])(
+    "allows immediate retry after cancelling ignored-abort %s transport",
+    async (stage) => {
+      const { session, discover, validate, selection, auth } = setup();
+      discover.mockRestore();
+      validate.mockRestore();
+      const pending = deferred<Response>();
+      let blocked = false;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string) => {
+          const path = new URL(input).pathname;
+          const endpoint =
+            stage === "discovery"
+              ? "getOpenSubsonicExtensions"
+              : stage === "key"
+                ? "tokenInfo"
+                : "ping";
+          if (!blocked && path.endsWith(`${endpoint}.view`)) {
+            blocked = true;
+            return pending.promise; // Deliberately ignores the abort signal.
+          }
+          if (path.endsWith("getOpenSubsonicExtensions.view"))
+            return response({ openSubsonicExtensions: keyExtension });
+          if (path.endsWith("tokenInfo.view"))
+            return response({ tokenInfo: { username: credentials.username } });
+          return response(identity);
         }),
-      ).toBe(false);
-      expect(session.passwordConfirmation).toBeUndefined();
-      expect(session.error).toContain("requires HTTPS");
-      expect(prepare.mock.calls.every(([auth]) => auth.credentials.method === "token")).toBe(true);
-    },
-  );
-
-  it.each(["cancel", "method", "host", "disconnect"])(
-    "discards pending password secrets after %s",
-    async (action) => {
-      const { session, network } = setup();
-      const prepare = vi.spyOn(network, "prepare");
-      await session.connect({ ...input, method: "password" });
-      if (action === "cancel") session.cancelLogin(false);
-      if (action === "method") session.setLoginMethod("apiKey");
-      if (action === "host") await session.discover("https://other.example");
-      if (action === "disconnect") session.disconnect();
-      expect(await session.confirmPassword()).toBe(false);
-      expect(prepare).not.toHaveBeenCalled();
-      expect(session.auth).toBeNull();
-    },
-  );
-
-  it.each(["host", "cancel", "disconnect"])(
-    "ignores stale discovery results after %s",
-    async (action) => {
-      const { session, discover, auth } = setup();
-      const pending = deferred<typeof keyExtension>();
-      discover.mockReturnValueOnce(pending.promise);
-      const first = session.discover(input.host);
-      if (action === "host") await session.discover("https://other.example");
-      else if (action === "cancel") session.cancelLogin();
-      else session.disconnect();
-      pending.resolve(keyExtension);
+      );
+      const login = { host: input.host, method: "apiKey" as const, apiKey: "test-key" };
+      const first = connect(session, login);
+      await vi.waitFor(() => expect(blocked).toBe(true));
+      session.cancelConnect();
+      session.login.cancel();
+      expect(session.busy).toBe(false);
+      expect(await connect(session, login)).toBe(true);
+      const cache = selection.cache;
+      pending.resolve(
+        response({
+          ...identity,
+          openSubsonicExtensions: keyExtension,
+          tokenInfo: { username: credentials.username },
+        }),
+      );
       expect(await first).toBe(false);
-      expect(session.loginHost).toBe(action === "host" ? "https://other.example" : "");
-      expect(session.loginMethod).toBe("token");
-      expect(auth.load()).toBeNull();
+      expect(selection.cache).toBe(cache);
+      expect(session.status).toBe("connected");
+      expect(auth.load()?.credentials.method).toBe("apiKey");
     },
   );
 
-  it.each(["host", "method", "cancel", "disconnect"])(
-    "ignores stale key identity completion after %s",
+  it.each(["cancel", "host", "method", "disconnect", "destroy"])(
+    "does not activate a previously verified result after %s",
     async (action) => {
-      const { session, network, loadCache, auth, selection } = setup();
-      const pending = deferred<import("../src/auth").Auth>();
-      const resolve = vi.spyOn(network, "resolveApiKey").mockReturnValueOnce(pending.promise);
-      const first = session.connect({ host: input.host, method: "apiKey", apiKey: "test-key" });
-      await vi.waitFor(() => expect(resolve).toHaveBeenCalledOnce());
-      if (action === "host") await session.discover("https://other.example");
-      if (action === "method") session.setLoginMethod("token");
-      if (action === "cancel") session.cancelLogin(false);
+      const { session, selection, loadCache, auth } = setup();
+      const verified = await session.login.connect(input);
+      expect(verified).toBeDefined();
+      if (action === "cancel") {
+        session.cancelConnect();
+        session.login.cancel();
+      }
+      if (action === "host") {
+        session.cancelConnect();
+        await session.login.discover("https://other.example");
+      }
+      if (action === "method") {
+        session.cancelConnect();
+        session.login.setMethod("apiKey");
+      }
       if (action === "disconnect") session.disconnect();
-      pending.resolve({ ...credentials, credentials: { method: "apiKey", apiKey: "test-key" } });
-      expect(await first).toBe(false);
+      if (action === "destroy") session.destroy();
+      expect(await session.connect(verified)).toBe(false);
       expect(loadCache).not.toHaveBeenCalled();
       expect(selection.cache).toBeUndefined();
       expect(auth.load()).toBeNull();
     },
   );
 
-  it("starts with valid legacy credentials even when auth migration storage is full", async () => {
+  it.each(["load", "retirement"])(
+    "cancels %s activation without selecting or disabling the current offline workspace",
+    async (stage) => {
+      const { session, selection, loadCache, auth, storage } = setup();
+      expect(await connect(session, input)).toBe(true);
+      session.disconnect();
+      const previous = selection.cache!;
+      const pending = deferred();
+      if (stage === "load") loadCache.mockReturnValueOnce(pending.promise);
+      else vi.spyOn(previous, "flush").mockReturnValueOnce(pending.promise);
+      const first = connect(session, { ...input, username: "other" });
+      await vi.waitFor(() => expect(session.status).toBe("connecting"));
+      await vi.waitFor(() => {
+        if (stage === "load") expect(loadCache).toHaveBeenCalledTimes(2);
+        else expect(previous.flush).toHaveBeenCalled();
+      });
+      session.cancelConnect();
+      session.login.cancel(false);
+      expect(session.busy).toBe(false);
+      expect(session.status).toBe("disconnected");
+      expect(selection.cache).toBe(previous);
+      expect(auth.load()).toBeNull();
+      expect(auth.loadAccount()).toEqual({ host: input.host, username: input.username });
+      expect(storage.getItem("navidrome-offline-mode")).toBe("true");
+      previous.setQueue({ tracks: ["offline-edit"], index: 0, position: 1 });
+      expect(previous.queueDirty).toBe(true);
+      expect(await connect(session, input)).toBe(true);
+      pending.resolve();
+      expect(await first).toBe(false);
+      expect(selection.cache).toBe(previous);
+      expect(session.auth?.username).toBe(input.username);
+      expect(previous.queueDirty).toBe(true);
+    },
+  );
+
+  it("waits for verified key identity and ping before loading any account cache", async () => {
+    const { session, discover, loadCache, validate, selection, auth } = setup();
+    discover.mockResolvedValueOnce(keyExtension);
+    const key = deferred<{ username: string }>();
+    const resolve = vi
+      .spyOn(SubsonicClient.prototype, "tokenInfo")
+      .mockReturnValueOnce(key.promise);
+    const pending = connect(session, { host: input.host, method: "apiKey", apiKey: "test-key" });
+    await vi.waitFor(() => expect(resolve).toHaveBeenCalledOnce());
+    expect(loadCache).not.toHaveBeenCalled();
+    expect(selection.cache).toBeUndefined();
+    expect(auth.load()).toBeNull();
+    key.resolve({ username: credentials.username });
+    expect(await pending).toBe(true);
+    expect(validate).toHaveBeenCalledOnce();
+    expect(validate.mock.invocationCallOrder[0]).toBeLessThan(
+      loadCache.mock.invocationCallOrder[0],
+    );
+    expect(selection.cache?.key).toBe(getAccountKey(credentials));
+    expect(session.auth?.username).toBe(credentials.username);
+    expect(auth.load()?.credentials.method).toBe("apiKey");
+  });
+
+  it.each(["invalid-key", "malformed-identity", "invalid-ping"])(
+    "never selects a workspace for %s",
+    async (failure) => {
+      const { session, validate, loadCache, selection, auth } = setup();
+      const resolve = vi.spyOn(SubsonicClient.prototype, "tokenInfo");
+      if (failure === "invalid-key")
+        resolve.mockRejectedValueOnce(new SubsonicError(44, "Invalid API key"));
+      else if (failure === "malformed-identity")
+        resolve.mockRejectedValueOnce(new Error("Invalid tokenInfo response"));
+      else {
+        resolve.mockResolvedValueOnce({ username: credentials.username });
+        validate.mockRejectedValueOnce(new SubsonicError(41, "Unsupported authentication"));
+      }
+      expect(
+        await connect(session, { host: input.host, method: "apiKey", apiKey: "test-key" }),
+      ).toBe(false);
+      expect(loadCache).not.toHaveBeenCalled();
+      expect(selection.cache).toBeUndefined();
+      expect(session.login.passwordConfirmation).toBeUndefined();
+      expect(auth.load()).toBeNull();
+    },
+  );
+
+  it("persists a separately confirmed password and clears it on disconnect", async () => {
+    const { session, storage, auth } = setup();
+    expect(await connect(session, { ...input, method: "password" })).toBe(false);
+    expect(await session.connect(await session.login.confirmPassword())).toBe(true);
+    expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
+    session.disconnect();
+    expect(storage.getItem("navidrome-auth")).toBeNull();
+    expect(auth.loadAccount()).toEqual({ host: input.host, username: input.username });
+  });
+
+  it("disconnect discards pending confirmation secrets", async () => {
+    const { session, validate } = setup();
+    await connect(session, { ...input, method: "password" });
+    session.disconnect();
+    expect(await session.login.confirmPassword()).toBeUndefined();
+    expect(validate).not.toHaveBeenCalled();
+  });
+
+  it.each(["discovery", "key"])("disconnect ignores late %s completion", async (stage) => {
+    const { session, discover, loadCache, auth, selection, validate } = setup();
+    const pending = deferred<void>();
+    const resolve = vi.spyOn(SubsonicClient.prototype, "tokenInfo").mockImplementation(async () => {
+      await pending.promise;
+      return { username: input.username };
+    });
+    if (stage === "discovery")
+      discover.mockImplementationOnce(async () => {
+        await pending.promise;
+        return keyExtension;
+      });
+    const first = connect(session, { host: input.host, method: "apiKey", apiKey: "test-key" });
+    await vi.waitFor(() =>
+      expect(stage === "discovery" ? discover : resolve).toHaveBeenCalledOnce(),
+    );
+    session.disconnect();
+    pending.resolve();
+    expect(await first).toBe(false);
+    expect(session.status).toBe("disconnected");
+    expect(loadCache).not.toHaveBeenCalled();
+    expect(selection.cache).toBeUndefined();
+    expect(auth.load()).toBeNull();
+    expect(validate).not.toHaveBeenCalled();
+  });
+
+  it("starts with valid legacy credentials even when migration storage is full", async () => {
     const { session, auth, storage, selection, network } = setup();
-    const open = vi.spyOn(network, "open");
+    const prepare = vi.spyOn(network, "prepare");
     const original = JSON.stringify({
       host: credentials.host,
       username: credentials.username,
@@ -255,24 +252,22 @@ describe("Session login policy", () => {
     expect(session.auth).toEqual(credentials);
     expect(auth.load()).toEqual(credentials);
     expect(selection.cache?.key).toBe(getAccountKey(credentials));
-    expect(open).toHaveBeenCalledWith(credentials, []);
+    expect(prepare).toHaveBeenCalledWith(credentials, []);
     expect(storage.getItem("navidrome-auth")).toBe(original);
     expect(auth.loadAccount()).toEqual({ host: credentials.host, username: credentials.username });
     expect(storage.removeItem).not.toHaveBeenCalledWith("navidrome-auth");
   });
 
   it("revalidates restored key identity and ping before enabling synchronization", async () => {
-    const { session, auth, network, discover, validate, metadata, selection } = setup();
-    const saved = {
-      ...credentials,
-      credentials: { method: "apiKey" as const, apiKey: "test-key" },
-    };
-    auth.save(saved);
-    const resolve = vi.spyOn(network, "resolveApiKey").mockResolvedValueOnce(saved);
+    const { session, auth, discover, validate, metadata, selection } = setup();
+    auth.save({ ...credentials, credentials: { method: "apiKey", apiKey: "test-key" } });
+    const resolve = vi
+      .spyOn(SubsonicClient.prototype, "tokenInfo")
+      .mockResolvedValueOnce({ username: credentials.username });
     const save = vi.spyOn(auth, "save");
     session.start();
     await vi.waitFor(() => expect(session.status).toBe("connected"));
-    expect(discover).toHaveBeenCalledWith(credentials.host);
+    expect(discover).toHaveBeenCalledOnce();
     expect(resolve).toHaveBeenCalledOnce();
     expect(validate).toHaveBeenCalledOnce();
     expect(resolve.mock.invocationCallOrder[0]).toBeLessThan(validate.mock.invocationCallOrder[0]);
@@ -284,17 +279,16 @@ describe("Session login policy", () => {
   });
 
   it.each(["mismatch", "malformed", "transport", "invalid-key", "ping"])(
-    "keeps a restored key's saved cache offline on %s failure without identity rewrite or fallback",
+    "keeps the saved key's cache offline on %s failure without identity rewrite or fallback",
     async (failure) => {
-      const { session, auth, network, validate, metadata, selection, storage } = setup();
+      const { session, auth, validate, metadata, selection, storage } = setup();
       const saved = {
         ...credentials,
         credentials: { method: "apiKey" as const, apiKey: "test-key" },
       };
       auth.save(saved);
-      const resolve = vi.spyOn(network, "resolveApiKey");
-      if (failure === "mismatch")
-        resolve.mockResolvedValueOnce({ ...saved, username: "different-account" });
+      const resolve = vi.spyOn(SubsonicClient.prototype, "tokenInfo");
+      if (failure === "mismatch") resolve.mockResolvedValueOnce({ username: "different-account" });
       else if (failure === "malformed")
         resolve.mockRejectedValueOnce(
           new Error("The server returned an invalid tokenInfo response."),
@@ -303,7 +297,7 @@ describe("Session login policy", () => {
       else if (failure === "invalid-key")
         resolve.mockRejectedValueOnce(new SubsonicError(44, "Invalid API key"));
       else {
-        resolve.mockResolvedValueOnce(saved);
+        resolve.mockResolvedValueOnce({ username: credentials.username });
         validate.mockRejectedValueOnce(new SubsonicError(41, "Unsupported authentication"));
       }
       const save = vi.spyOn(auth, "save");
@@ -318,7 +312,7 @@ describe("Session login policy", () => {
       expect(save).not.toHaveBeenCalled();
       expect(metadata.getModifiedAt).not.toHaveBeenCalled();
       expect(metadata.readLibrary).not.toHaveBeenCalled();
-      expect(session.passwordConfirmation).toBeUndefined();
+      expect(session.login.passwordConfirmation).toBeUndefined();
       expect(session.error).toContain("saved library is available offline");
       expect(session.error).toContain("disconnect and sign in again");
       expect(JSON.parse(storage.getItem("navidrome-account")!).username).toBe(credentials.username);
@@ -327,21 +321,19 @@ describe("Session login policy", () => {
     },
   );
 
-  it("ignores restored key identity completion after disconnect while retaining the offline cache", async () => {
-    const { session, auth, network, validate, metadata, selection } = setup();
-    const saved = {
-      ...credentials,
-      credentials: { method: "apiKey" as const, apiKey: "test-key" },
-    };
-    auth.save(saved);
-    const pending = deferred<typeof saved>();
-    const resolve = vi.spyOn(network, "resolveApiKey").mockReturnValueOnce(pending.promise);
+  it("ignores restored key identity completion after disconnect while retaining its offline cache", async () => {
+    const { session, auth, validate, metadata, selection } = setup();
+    auth.save({ ...credentials, credentials: { method: "apiKey", apiKey: "test-key" } });
+    const pending = deferred<{ username: string }>();
+    const resolve = vi
+      .spyOn(SubsonicClient.prototype, "tokenInfo")
+      .mockReturnValueOnce(pending.promise);
     session.start();
     await vi.waitFor(() => expect(resolve).toHaveBeenCalledOnce());
     const cache = selection.cache;
     expect(session.localReady).toBe(true);
     session.disconnect();
-    pending.resolve(saved);
+    pending.resolve({ username: credentials.username });
     await new Promise((done) => setTimeout(done, 0));
     expect(session.status).toBe("disconnected");
     expect(selection.cache).toBe(cache);
@@ -350,11 +342,11 @@ describe("Session login policy", () => {
     expect(metadata.getModifiedAt).not.toHaveBeenCalled();
   });
 
-  it("restores a saved API-key account in explicit offline mode without discovery, tokenInfo or ping", async () => {
-    const { session, auth, network, discover, validate, storage, selection } = setup();
+  it("restores an explicitly offline key account without discovery, tokenInfo or ping", async () => {
+    const { session, auth, discover, validate, storage, selection } = setup();
     auth.save({ ...credentials, credentials: { method: "apiKey", apiKey: "test-key" } });
     storage.setItem("navidrome-offline-mode", "true");
-    const resolve = vi.spyOn(network, "resolveApiKey");
+    const resolve = vi.spyOn(SubsonicClient.prototype, "tokenInfo");
     session.start();
     await vi.waitFor(() => expect(session.localReady).toBe(true));
     expect(selection.cache?.key).toBe(getAccountKey(credentials));
@@ -363,7 +355,7 @@ describe("Session login policy", () => {
     expect(validate).not.toHaveBeenCalled();
   });
 
-  it("restores a persisted password without rewriting credentials", async () => {
+  it("restores a persisted password without rewriting it", async () => {
     const { session, auth, storage } = setup();
     auth.save({
       ...credentials,
@@ -380,7 +372,7 @@ describe("Session login policy", () => {
     expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
   });
 
-  it("retries failed restored token discovery explicitly without treating transport failure as legacy support", async () => {
+  it("explicitly retries failed restored token discovery without treating transport failure as legacy support", async () => {
     const { session, auth, discover, metadata } = setup();
     auth.save(credentials);
     discover.mockRejectedValueOnce(new NetworkTransportError());
@@ -395,7 +387,7 @@ describe("Session login policy", () => {
     expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
   });
 
-  it("integrates formPost token rejection and sends a direct password only after the separate confirmation", async () => {
+  it("integrates formPost token rejection and sends a password only after separate confirmation", async () => {
     const { session, discover, validate, auth } = setup();
     discover.mockRestore();
     validate.mockRestore();
@@ -421,11 +413,11 @@ describe("Session login policy", () => {
         return response(identity);
       }),
     );
-    expect(await session.connect(input)).toBe(false);
-    expect(session.passwordConfirmation).toBe("unsupported");
+    expect(await connect(session, input)).toBe(false);
+    expect(session.login.passwordConfirmation).toBe("unsupported");
     expect(requests.map(({ auth }) => auth)).toEqual([[], ["u", "t", "s"]]);
     expect(auth.load()).toBeNull();
-    expect(await session.confirmPassword()).toBe(true);
+    expect(await session.connect(await session.login.confirmPassword())).toBe(true);
     expect(requests.map(({ auth }) => auth)).toEqual([[], ["u", "t", "s"], ["u", "p"]]);
     expect(requests.map(({ post }) => post)).toEqual([false, true, true]);
     expect(requests.map(({ path }) => path)).toEqual([
@@ -435,7 +427,7 @@ describe("Session login policy", () => {
     ]);
   });
 
-  it("integrates public discovery, key resolution and OpenSubsonic identity validation without username credentials", async () => {
+  it("integrates discovery, key resolution and OpenSubsonic validation before selecting a cache", async () => {
     const { session, discover, validate, selection } = setup();
     discover.mockRestore();
     validate.mockRestore();
@@ -449,14 +441,13 @@ describe("Session login policy", () => {
         authNames.push(["apiKey", "u", "p", "t", "s"].filter((name) => url.searchParams.has(name)));
         if (url.pathname.endsWith("getOpenSubsonicExtensions.view"))
           return response({ openSubsonicExtensions: keyExtension });
-        if (url.pathname.endsWith("tokenInfo.view")) {
-          expect(selection.cache).toBeUndefined();
+        expect(selection.cache).toBeUndefined();
+        if (url.pathname.endsWith("tokenInfo.view"))
           return response({ tokenInfo: { username: credentials.username } });
-        }
         return response(identity);
       }),
     );
-    expect(await session.connect({ host: input.host, method: "apiKey", apiKey: "test-key" })).toBe(
+    expect(await connect(session, { host: input.host, method: "apiKey", apiKey: "test-key" })).toBe(
       true,
     );
     expect(paths).toEqual([

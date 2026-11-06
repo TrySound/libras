@@ -1,6 +1,6 @@
 import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Network } from "../src/network.svelte";
+import { Network, NetworkTransportError } from "../src/network.svelte";
 import { TrackEngine } from "../src/track.svelte";
 import { Cache, downloadKey } from "../src/cache.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
@@ -173,11 +173,49 @@ describe("TrackEngine using Cache", () => {
       const error = await pending.catch((error) => error);
       expect(error).toBeInstanceOf(Error);
       expect(error).not.toBe(unsafe);
-      expect(error.message).toBe("The downloaded data could not be transferred to storage.");
+      expect(error).toBeInstanceOf(NetworkTransportError);
+      expect(error.message).toBe("The server request failed.");
       expect(error).not.toHaveProperty("cause");
       expect(engine.error).toBe(error);
       expect((cache.error as AggregateError).errors).toEqual([error]);
       expect(engine.downloadJobs).toEqual([]);
+      expect(cache.downloads.size).toBe(0);
+      expect(disk.blobs.size).toBe(0);
+      expect(disk.files.size).toBe(0);
+    },
+  );
+
+  it.each(["QuotaExceededError", "NotAllowedError", "Error"])(
+    "preserves local %s sink errors while consuming a remote audio stream",
+    async (name) => {
+      const disk = install();
+      const { engine, cache } = setup({ online: true });
+      const failure =
+        name === "Error"
+          ? new Error("The local disk is read-only.")
+          : new DOMException("The local disk could not save this file.", name);
+      const cancel = vi.fn();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode("audio"));
+                },
+                cancel,
+              }),
+            ),
+        ),
+      );
+      disk.state.beforeWrite = () => {
+        throw failure;
+      };
+      await expect(engine.download(track.id)).rejects.toBe(failure);
+      expect(engine.error).toBe(failure);
+      expect((cache.error as AggregateError).errors).toEqual([failure]);
+      expect(cancel).toHaveBeenCalledOnce();
       expect(cache.downloads.size).toBe(0);
       expect(disk.blobs.size).toBe(0);
       expect(disk.files.size).toBe(0);

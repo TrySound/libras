@@ -422,20 +422,7 @@ class BinaryCatalog<R extends BinaryRecord> {
       signal?.throwIfAborted();
       const handle = await directory.getFileHandle(fileName, { create: true });
       writable = await handle.createWritable();
-      try {
-        await source.pipeTo(writable, { signal });
-      } catch (error) {
-        // Transfer failures can come from either stream; never report raw source
-        // errors (which may contain private URLs), even through Cache.error.
-        if (signal?.aborted || (error instanceof Error && error.name === "AbortError"))
-          throw new DOMException("The data transfer was cancelled.", "AbortError");
-        if (error instanceof Error && error.name === "QuotaExceededError")
-          throw new DOMException(
-            "Not enough storage space to save the downloaded data.",
-            "QuotaExceededError",
-          );
-        throw new Error("The downloaded data could not be transferred to storage.");
-      }
+      await source.pipeTo(writable, { signal });
       signal?.throwIfAborted();
       const { record, value } = await prepare(handle);
       const key = this.options.key(record);

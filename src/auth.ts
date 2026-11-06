@@ -38,6 +38,32 @@ export function getAccountKey(account: Account): string {
   return JSON.stringify([account.host, account.username]);
 }
 
+/** Preserve historical host spelling for account/cache identity across methods. */
+export function normalizeServerHost(input: string, password = false): string {
+  const host = input.trim();
+  let url: URL;
+  try {
+    url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(host) ? host : `https://${host}`);
+  } catch {
+    throw new Error("Enter a valid server address.");
+  }
+  if (url.username || url.password || url.search || url.hash)
+    throw new Error(
+      "Use a server address without user information, query parameters, or fragments.",
+    );
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (
+    url.protocol !== "https:" &&
+    !(url.protocol === "http:" && import.meta.env.DEV && loopback && !password)
+  )
+    throw new Error(
+      password
+        ? "Direct password authentication requires HTTPS."
+        : "Server connections require HTTPS (HTTP loopback is development-only).",
+    );
+  return url.toString().replace(/\/$/, "");
+}
+
 export class AuthStore {
   #key: string;
   #storage: Storage;

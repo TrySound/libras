@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createAuth } from "../src/auth.svelte";
 import {
   Network,
   NetworkTransportError,
@@ -193,7 +194,7 @@ describe("Network connection lifecycle", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     try {
-      const credentials = network.createAuth({ host, username: "listener", password: "secret" });
+      const credentials = createAuth({ host, username: "listener", password: "secret" });
       expect(credentials).toEqual({
         host: normalized,
         username: "listener",
@@ -208,7 +209,7 @@ describe("Network connection lifecycle", () => {
       expect(candidate.signal.aborted).toBe(false);
       expect(fetcher).not.toHaveBeenCalled();
       network.accept(candidate);
-      network.createAuth({ host, username: "other", password: "secret" });
+      createAuth({ host, username: "other", password: "secret" });
       expect(candidate.signal.aborted).toBe(false);
       expect(network.mode).toBe("online");
     } finally {
@@ -220,11 +221,9 @@ describe("Network connection lifecycle", () => {
   it("rejects invalid credential input before starting a connection", () => {
     const network = new Network();
     expect(() =>
-      network.createAuth({ host: "https://", username: "listener", password: "secret" }),
+      createAuth({ host: "https://", username: "listener", password: "secret" }),
     ).toThrow();
-    expect(() =>
-      network.createAuth({ host: auth.host, username: "", password: "secret" }),
-    ).toThrow();
+    expect(() => createAuth({ host: auth.host, username: "", password: "secret" })).toThrow();
     expect(network.mode).toBe("offline");
   });
 
@@ -741,7 +740,7 @@ describe("Network connection lifecycle", () => {
       const download = await audio.read("track", { format: "raw", signal: controller.signal });
       expect(download.url).toBe("");
       expect(download.bodyUsed).toBe(false);
-      expect(response.bodyUsed).toBe(false);
+      expect(download.body?.locked).toBe(false);
       const downloadUrl = new URL(String(fetcher.mock.calls[0][0]));
       expect(downloadUrl.searchParams.get("format")).toBe("raw");
       expect(downloadUrl.searchParams.has("timeOffset")).toBe(false);

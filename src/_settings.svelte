@@ -2,7 +2,8 @@
   import type { Snippet } from "svelte";
   import Icon from "./icon.svelte";
   import Loader from "./ui/loader.svelte";
-  import type { Session, LoginMethod } from "./session.svelte";
+  import type { Session } from "./session.svelte";
+  import type { AuthenticatedConnection, LoginMethod } from "./auth.svelte";
   import { navigate } from "./router.svelte";
 
   interface Props {
@@ -13,6 +14,8 @@
   }
 
   let { session, children, demo = false, appName = "Libras" }: Props = $props();
+  const login = $derived(session.login);
+  const error = $derived(login.error || session.error);
   let host = $state("");
   let username = $state("");
   let password = $state("");
@@ -31,7 +34,7 @@
   const connectionState = $derived.by((): keyof typeof connectionLabels => {
     if (session.auth && session.offlineMode) return "offline";
     if (session.busy) return session.localReady ? "connecting" : "initializing";
-    if (!session.auth) return session.status === "error" ? "error" : "disconnected";
+    if (!session.auth) return error || session.status === "error" ? "error" : "disconnected";
     if (session.status === "error") return "error";
     // A manual refresh keeps the existing status until scan counts are available.
     if (session.refreshing && !session.libraryProgress) return "connected";
@@ -52,22 +55,24 @@
 
   $effect(() => {
     // Disconnect can also be issued outside this view while a secret is being edited.
-    if (!session.loginHost && session.status === "disconnected") clearSecrets();
+    if (!login.host && session.status === "disconnected") clearSecrets();
   });
 
   function changeHost() {
-    session.cancelLogin();
+    session.cancelConnect();
+    login.cancel();
     clearSecrets();
   }
 
   function changeMethod(method: LoginMethod) {
-    session.setLoginMethod(method);
+    session.cancelConnect();
+    login.setMethod(method);
     clearSecrets();
   }
 
-  async function finishConnection(pending: Promise<boolean>) {
+  async function finishConnection(pending: Promise<AuthenticatedConnection | undefined>) {
     const sourceURL = window.location.href;
-    if (await pending) {
+    if (await session.connect(await pending)) {
       host = "";
       clearSecrets();
       // Session may finish after navigation starts or Settings is hidden.
@@ -77,15 +82,15 @@
 
   async function submitConnection(event: SubmitEvent) {
     event.preventDefault();
-    if (session.busy || session.passwordConfirmation) return;
-    if (!session.loginHost) {
-      await session.discover(host);
+    if (session.busy || login.passwordConfirmation) return;
+    if (!login.host) {
+      await login.discover(host);
       return;
     }
-    const pending = session.connect(
-      session.loginMethod === "apiKey"
+    const pending = login.connect(
+      login.method === "apiKey"
         ? { host, method: "apiKey", apiKey }
-        : { host, method: session.loginMethod, username, password },
+        : { host, method: login.method, username, password },
     );
     clearSecrets();
     await finishConnection(pending);
@@ -144,8 +149,8 @@
               </span>
             {/if}
           </p>
-          {#if session.error}
-            <p class="body" id="settings-server-error">{session.error}</p>
+          {#if error}
+            <p class="body" id="settings-server-error">{error}</p>
           {/if}
         </div>
 
@@ -176,7 +181,7 @@
             method="post"
             onsubmit={submitConnection}
             aria-busy={session.busy}
-            aria-describedby={session.error
+            aria-describedby={error
               ? "settings-auth-help settings-server-error"
               : "settings-auth-help"}
           >
@@ -202,7 +207,7 @@
                 required
               />
             </div>
-            {#if session.loginHost}
+            {#if login.host}
               <fieldset class="stack-sm">
                 <legend class="label">Authentication method</legend>
                 {#each [{ method: "apiKey", label: "API key" }, { method: "token", label: "Username and password (MD5 token)" }, { method: "password", label: "Direct password (legacy)" }] as choice}
@@ -211,18 +216,18 @@
                       type="radio"
                       name="method"
                       value={choice.method}
-                      checked={session.loginMethod === choice.method}
+                      checked={login.method === choice.method}
                       onchange={() => changeMethod(choice.method as LoginMethod)}
                     />
                     {choice.label}
                   </label>
                 {/each}
               </fieldset>
-              {#if session.passwordConfirmation}
+              {#if login.passwordConfirmation}
                 <div class="card stack-sm" role="alert" id="settings-password-warning">
                   <h3 class="heading-sm">Confirm direct password authentication</h3>
                   <p class="body">
-                    {session.passwordConfirmation === "unsupported"
+                    {login.passwordConfirmation === "unsupported"
                       ? "The server explicitly rejected MD5 token authentication (code 41 or 42)."
                       : "You selected legacy password authentication."}
                     This sends your password directly to the server over HTTPS, rather than an MD5 token.
@@ -239,7 +244,7 @@
                     data-variant="primary"
                     id="settings-confirm-password"
                     onclick={() => {
-                      const pending = session.confirmPassword();
+                      const pending = login.confirmPassword();
                       clearSecrets();
                       void finishConnection(pending);
                     }}
@@ -247,7 +252,7 @@
                     Confirm and send password
                   </button>
                 </div>
-              {:else if session.loginMethod === "apiKey"}
+              {:else if login.method === "apiKey"}
                 <p class="caption text-secondary" id="settings-key-help">
                   Generate an API key in your server's settings. No username is needed. API keys are
                   remembered on this device until you disconnect; treat them like passwords.
@@ -304,7 +309,7 @@
               {/if}
             {/if}
             <div class="row-sm">
-              {#if !session.passwordConfirmation}
+              {#if !login.passwordConfirmation}
                 <button
                   id="settings-connect"
                   class="button"
@@ -320,21 +325,22 @@
                   {/if}
                   {session.busy
                     ? "Connecting…"
-                    : !session.loginHost
+                    : !login.host
                       ? "Check server"
-                      : session.loginMethod === "password"
+                      : login.method === "password"
                         ? "Review password warning"
                         : "Connect"}
                 </button>
               {/if}
-              {#if session.busy || session.passwordConfirmation}
+              {#if session.busy || login.passwordConfirmation}
                 <button
                   type="button"
                   class="button"
                   data-size="text"
                   data-variant="secondary"
                   onclick={() => {
-                    session.cancelLogin(false);
+                    session.cancelConnect();
+                    login.cancel(false);
                     clearSecrets();
                   }}>Cancel</button
                 >

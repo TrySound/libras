@@ -7,7 +7,7 @@ import { Network } from "../src/network.svelte";
 import { AuthStore } from "../src/auth";
 import { registerSW } from "virtual:pwa-register";
 import { installNavigation, navigationEvent } from "./router-test-helpers";
-import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
+import { connect, createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
 const mocks = vi.hoisted(() => ({
   session: undefined as import("../src/session.svelte").Session | undefined,
@@ -88,7 +88,7 @@ async function setup(
     target
       .querySelector("form")!
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(fixture.session.loginHost).not.toBe(""));
+    await vi.waitFor(() => expect(fixture.session.login.host).not.toBe(""));
     flushSync();
     for (const [id, value] of [
       ["username", credentials.username],
@@ -116,9 +116,9 @@ describe("app settings", () => {
     const form = target.querySelector("form")!;
     expect(form.querySelector("#server-api-key, #server-username, #server-password")).toBeNull();
     form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(session.loginMethod).toBe("apiKey"));
+    await vi.waitFor(() => expect(session.login.method).toBe("apiKey"));
     flushSync();
-    expect(discover).toHaveBeenCalledWith(credentials.host);
+    expect(discover).toHaveBeenCalledWith(expect.any(AbortSignal));
     expect(validate).not.toHaveBeenCalled();
     expect(form.querySelector("#server-username, #server-password")).toBeNull();
     const key = form.querySelector<HTMLInputElement>("#server-api-key")!;
@@ -129,7 +129,7 @@ describe("app settings", () => {
     key.dispatchEvent(new Event("input", { bubbles: true }));
     form.querySelector<HTMLInputElement>('input[name="method"][value="token"]')!.click();
     flushSync();
-    expect(session.loginMethod).toBe("token");
+    expect(session.login.method).toBe("token");
     expect(form.querySelector("#server-api-key")).toBeNull();
     expect(form.querySelector<HTMLInputElement>("#server-username")!.required).toBe(true);
     expect(form.querySelector<HTMLInputElement>("#server-password")!.autocomplete).toBe(
@@ -147,14 +147,14 @@ describe("app settings", () => {
   it("clears an unsubmitted UI secret when Session disconnects outside the view", async () => {
     const { target, session, discover } = await setup();
     discover.mockResolvedValue([{ name: "apiKeyAuthentication", versions: [1] }]);
-    await session.discover(credentials.host);
+    await session.login.discover(credentials.host);
     flushSync();
     const key = target.querySelector<HTMLInputElement>("#server-api-key")!;
     key.value = "test-key";
     key.dispatchEvent(new Event("input", { bubbles: true }));
     session.disconnect();
     flushSync();
-    await session.discover(credentials.host);
+    await session.login.discover(credentials.host);
     flushSync();
     expect(target.querySelector<HTMLInputElement>("#server-api-key")!.value).toBe("");
   });
@@ -165,7 +165,7 @@ describe("app settings", () => {
     const prepare = vi.spyOn(network, "prepare");
     validate.mockRejectedValueOnce(new SubsonicError(41, "Token method unsupported"));
     await fill();
-    await vi.waitFor(() => expect(session.passwordConfirmation).toBe("unsupported"));
+    await vi.waitFor(() => expect(session.login.passwordConfirmation).toBe("unsupported"));
     flushSync();
     expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual(["token"]);
     expect(target.querySelector("#settings-password-warning")?.textContent).toContain("over HTTPS");
@@ -191,7 +191,7 @@ describe("app settings", () => {
 
   it("allows cancelling a password warning without submitting or persisting a password", async () => {
     const { target, session, validate, button, auth } = await setup();
-    await session.connect({
+    await connect(session, {
       host: credentials.host,
       username: credentials.username,
       password: "test-password",
@@ -204,11 +204,11 @@ describe("app settings", () => {
     expect(validate).not.toHaveBeenCalled();
     button("Cancel").click();
     flushSync();
-    expect(session.passwordConfirmation).toBeUndefined();
+    expect(session.login.passwordConfirmation).toBeUndefined();
     expect(target.querySelector("#settings-password-warning")).toBeNull();
     expect(target.querySelector<HTMLInputElement>("#server-password")!.value).toBe("");
     expect(auth.load()).toBeNull();
-    expect(await session.confirmPassword()).toBe(false);
+    expect(await session.login.confirmPassword()).toBeUndefined();
   });
 
   it("shows startup synchronization immediately and distinguishes server sync from refresh", async () => {
@@ -342,7 +342,7 @@ describe("app settings", () => {
   it("uses shared cards, labeled native fields, and a native switch", async () => {
     const { target, session } = await setup();
     expect(target.querySelectorAll("form input.input")).toHaveLength(1);
-    await session.discover(credentials.host);
+    await session.login.discover(credentials.host);
     flushSync();
     expect(target.querySelector("[aria-labelledby=settings-heading] h1")?.textContent).toBe(
       "Settings",
@@ -599,7 +599,7 @@ describe("app settings", () => {
       });
       const loading = saved
         ? session.refresh()
-        : session.connect({ ...credentials, password: "password" });
+        : connect(session, { ...credentials, password: "password" });
       if (saved) {
         flushSync();
         const status = target.querySelector("#settings-connection-status")!;
@@ -731,7 +731,7 @@ describe("app settings", () => {
     ).toContain("settings-server-error");
     expect(target.querySelectorAll('[role="alert"]')).toHaveLength(1);
     expect(button("Show errors").getAttribute("commandfor")).toBe("error-popover");
-    expect(session.error).toBe("Unauthorized");
+    expect(session.login.error).toBe("Unauthorized");
     expect(offline().checked).toBe(true);
     expect(session.auth).toBeNull();
     await fill("music.example");

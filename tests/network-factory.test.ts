@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Network } from "../src/network.svelte";
+import { AuthWorkflow } from "../src/auth.svelte";
 import type { SubsonicApi, SubsonicAuth } from "../src/subsonic-client";
 
 const auth = {
@@ -78,10 +79,12 @@ describe("Network client composition", () => {
     vi.stubGlobal("fetch", fetcher);
     try {
       const network = new Network((auth) => client(auth), { protocol: "alternate" });
-      expect(await network.discover(auth.host)).toEqual([]);
-      await expect(network.resolveApiKey(auth.host, "test-key", [])).rejects.toThrow(
-        "does not support API-key login",
-      );
+      const workflow = new AuthWorkflow(network);
+      expect(await workflow.discover(auth.host)).toBe(true);
+      expect(
+        await workflow.connect({ host: auth.host, method: "apiKey", apiKey: "test-key" }),
+      ).toBeUndefined();
+      expect(workflow.error).toContain("does not support API-key login");
       network.setMode("online");
       network.open(auth);
       expect(fetcher).not.toHaveBeenCalled();

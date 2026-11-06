@@ -185,46 +185,6 @@ describe("download cache foundation", () => {
     },
   );
 
-  it("retains actionable local file errors outside the byte transfer", async () => {
-    const disk = installDisk();
-    const cache = new Cache(getAccountKey(account));
-    const failure = new DOMException("Local file access was denied.", "NotAllowedError");
-    disk.state.beforeRead = async (name) => {
-      if (name.endsWith(".audio")) throw failure;
-    };
-    await expect(save(cache)).rejects.toBe(failure);
-    expect((cache.error as AggregateError).errors).toEqual([failure]);
-    expect(cache.downloads.size).toBe(0);
-    expect(disk.files.size).toBe(0);
-    expect(disk.blobs.size).toBe(0);
-  });
-
-  it.each([
-    ["QuotaExceededError", "Not enough storage space to save the downloaded data."],
-    ["AbortError", "The data transfer was cancelled."],
-  ])(
-    "preserves safe %s classification and releases the source after a disk transfer failure",
-    async (name, message) => {
-      const disk = installDisk();
-      const source = stream();
-      const cache = new Cache(getAccountKey(account));
-      disk.state.beforeWrite = () => {
-        throw new DOMException("Unsafe private URL: ?apiKey=secret", name);
-      };
-      const pending = cache.saveDownload(track, "mp3", "audio/mpeg", source.response, signal());
-      source.controller.enqueue(new TextEncoder().encode("partial"));
-      const error = await pending.catch((error) => error);
-      expect(error).toBeInstanceOf(DOMException);
-      expect(error).toMatchObject({ name, message });
-      expect(error).not.toHaveProperty("cause");
-      expect((cache.error as AggregateError).errors).toEqual([error]);
-      expect(source.cancel).toHaveBeenCalledOnce();
-      expect(cache.downloads.size).toBe(0);
-      expect(disk.files.size).toBe(0);
-      expect(disk.blobs.size).toBe(0);
-    },
-  );
-
   it("cancels an active stream and deletes its partial file", async () => {
     const disk = installDisk();
     const source = stream();

@@ -30,16 +30,17 @@ The workspace contains the root app (`src/`, `tests/`) and `@libras/website` (`w
 
 `src/app.svelte` wires the engines together. Route components (`src/_*.svelte`) read reactive state and invoke domain commands.
 
-| Module                       | Owns                                                                                             |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `Session`                    | Account selection, credentials, startup, connections, and refresh coordination                   |
-| `Network` / `SubsonicClient` | Connection cancellation, normalized domain access / Subsonic protocol requests                   |
-| `Cache`                      | Account-scoped library, queue, images, downloads, playlists, and OPFS persistence                |
-| `Playback`                   | Queue commands, server synchronization, and playback orchestration                               |
-| `AudioPlayer`                | Audio transport, seeking, keyboard shortcuts, and Media Session                                  |
-| `Covers` / `TrackEngine`     | Resource acquisition, download scheduling, and browser URL lifetimes                             |
-| `Playlists`                  | Server-confirmed playlist operations and conflict detection; no offline outbox                   |
-| `Router`                     | Query routes, native fragment anchors, active navigation metadata, and optional view transitions |
+| Module                       | Owns                                                                                                      |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `AuthWorkflow`               | Discovery-driven login, credential preparation, verified identity, confirmation, and attempt cancellation |
+| `Session`                    | Authenticated account/cache activation, startup, disconnect, and refresh coordination                     |
+| `Network` / `SubsonicClient` | Candidate/live connection cancellation and domain access / wire encoding, discovery, and protocol errors  |
+| `Cache`                      | Account-scoped library, queue, images, downloads, playlists, and OPFS persistence                         |
+| `Playback`                   | Queue commands, server synchronization, and playback orchestration                                        |
+| `AudioPlayer`                | Audio transport, seeking, keyboard shortcuts, and Media Session                                           |
+| `Covers` / `TrackEngine`     | Resource acquisition, download scheduling, and browser URL lifetimes                                      |
+| `Playlists`                  | Server-confirmed playlist operations and conflict detection; no offline outbox                            |
+| `Router`                     | Query routes, native fragment anchors, active navigation metadata, and optional view transitions          |
 
 Routes use the bare query, for example `/webapp/?/library/artist/123#section`. Encode each dynamic path segment with `encodeURIComponent`; fragments remain native in-page anchors. The service worker serves one cached app shell for root/index navigation requests, including their route queries; assets and API requests are excluded.
 
@@ -62,13 +63,19 @@ The app and `/demo/` are separate document-scrolling pages using the same App co
 
 `src/auth.ts` defines discriminated API-key, MD5 token/salt, and direct-password credentials, separate from the host and resolved username. Account/cache identity remains `(host, username)` across methods. Existing saved token/salt credentials migrate to `method: "token"` without forcing logout. Migration writeback is best-effort: if storage is full, use the validated credentials in memory and retain the saved legacy record for a later retry.
 
-`Session` coordinates credential-free `getOpenSubsonicExtensions` discovery through `Network`. Advertised `apiKeyAuthentication` version 1 selects API key by default; otherwise username/password uses MD5 token/salt. Users can explicitly switch methods. Only discovery HTTP `404`, `405`, or `501` establishes an unsupported endpoint and permits legacy login; network/CORS failures, malformed responses, and generic protocol errors remain errors. Capabilities are rediscovered on resume, not persisted or inferred from server names/versions.
+`AuthWorkflow` in `src/auth.svelte.ts` owns credential-free `getOpenSubsonicExtensions` discovery, credential preparation, API-key identity verification, fallback eligibility, and pending direct-password confirmation. Settings reads this workflow and invokes its commands directly; after authentication resolves, `Session.connect()` accepts its verified identity/credentials, capabilities, and cancellable candidate, then loads and activates the account workspace. `Session.cancelConnect()` invalidates only workspace preparation and its candidate; host/method/cancel actions also cancel the auth attempt. A cancelled or superseded result is rejected before any account cache loads. Session contains no auth-method policy or pending login secrets. `Network` owns candidate/live clients and metadata/media access, not discovery or login selection. `AuthStore` remains the persistence/migration owner, while `SubsonicClient` owns wire encoding, response validation, and protocol error shapes.
+
+Advertised `apiKeyAuthentication` version 1 selects API key by default; otherwise username/password uses MD5 token/salt. Users can explicitly switch methods. Only discovery HTTP `404`, `405`, or `501` establishes an unsupported endpoint and permits legacy login; network/CORS failures, malformed responses, and generic protocol errors remain errors. Capabilities are rediscovered on resume, not persisted or inferred from server names/versions.
 
 API-key login first validates the key with `tokenInfo` and resolves its username before loading account-scoped storage. Explicit login then uses authenticated `ping()` to require a valid OpenSubsonic identity for every method; unknown server names are accepted. Saved API keys are revalidated on resume, including matching their saved username. Protocol identity is not persisted. Structured `SubsonicError.code` drives fallback: only MD5 rejection codes `41`/`42` offer direct password authentication, and a separate confirmation action is required before sending it. Explicit direct-password selection also requires confirmation. Invalid keys/credentials, timeouts, transport failures, and generic errors never trigger a silent downgrade.
 
 `authenticationParameters` in `src/subsonic-client.ts` centralizes mutually exclusive wire parameters for metadata, artwork, and streaming: `apiKey` alone, `u`/`t`/`s`, or `u`/`p`. Hex passwords are encoding, not encryption or another method. API requests prefer form POST when `formPost` version 1 is advertised; artwork and streaming still use credential-bearing query URLs. Keep credentials out of errors and logs, including server/proxy access logs; HTTPS does not hide URLs from those servers.
 
 `AuthStore` uses one injected `Storage`, defaulting to `localStorage`. All credentials, including API keys, replayable token/salt pairs, and direct passwords, persist until disconnect; they are not short-lived session tokens. This storage is JavaScript-readable and vulnerable to malicious scripts or compromised browser access. The demo explicitly injects its own memory storage. Disconnect clears credentials for every method and cancels pending secrets, while retaining the credential-free account identity, offline music, and queue.
+
+Auth discovery/key requests share an attempt abort signal. Network owns candidate and active connection signals; Session guards workspace and sync publication against stale operations. Disconnect cancels both owners and never permits a late result to reenable access. Offline cache restoration has its own lifetime and survives disconnect.
+
+Remote audio body failures must be redacted before bytes enter Cache: `pipeTo` can fail from either its source or its local sink, and Cache records that rejection immediately. Network's small download-only source adapter replaces only remote reader errors, retains native Response consumers/status/headers and backpressure, and forwards cancellation. It intentionally omits the credential-bearing response URL. Local file/permission/quota errors keep their original identity and message; Cache has no authentication or error-mapping policy.
 
 ### Library normalization
 
