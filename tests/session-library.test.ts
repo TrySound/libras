@@ -113,7 +113,7 @@ describe("session library workflow", () => {
     expect(session.refreshing).toBe(false);
   });
 
-  it("loads the candidate cache before validation, then connects before the library refresh finishes", async () => {
+  it("validates before loading the candidate cache, then connects before the library refresh finishes", async () => {
     const { session, selection, metadata, validate, auth, playback, disk } = setup(false);
     await disk.seed(credentials, snapshot());
     const validated = deferred();
@@ -125,7 +125,7 @@ describe("session library workflow", () => {
       prepared = this;
     });
     validate.mockImplementationOnce(async () => {
-      expect(prepared?.tracks.get("song")).toEqual(snapshot().tracks[0]);
+      expect(prepared).toBeUndefined();
       expect(selection.cache).toBeUndefined();
       expect(metadata.getModifiedAt).not.toHaveBeenCalled();
       expect(auth.load()).toBeNull();

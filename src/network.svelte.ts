@@ -1,6 +1,6 @@
 import {
   SubsonicClient,
-  createSubsonicAuth,
+  SubsonicTransportError as NetworkTransportError,
   type SubsonicApi,
   type SubsonicClientFactory,
   type SubsonicPlaylist,
@@ -17,19 +17,8 @@ import type {
   PlaylistEntry,
 } from "./schema";
 
-/** Fetch failed before returning a response; browsers do not expose a reliable CORS diagnosis. */
-export class NetworkTransportError extends Error {
-  constructor(cause: unknown) {
-    super("The server request failed.", { cause });
-    this.name = "NetworkTransportError";
-  }
-}
-
-export interface PasswordAuth {
-  host: string;
-  username: string;
-  password: string;
-}
+/** Browsers do not expose a reliable CORS diagnosis. */
+export { NetworkTransportError };
 
 /** Credential-free identity for one connection lifetime, owned by its Network. */
 interface NetworkIdentity {
@@ -296,8 +285,9 @@ async function networkFetch(input: RequestInfo | URL, init?: RequestInit) {
     return await fetch(input, init);
   } catch (error) {
     init?.signal?.throwIfAborted();
-    if (error instanceof Error && error.name === "AbortError") throw error;
-    throw new NetworkTransportError(error);
+    if (error instanceof Error && error.name === "AbortError")
+      throw new DOMException("The server request was cancelled.", "AbortError");
+    throw new NetworkTransportError();
   }
 }
 
@@ -548,6 +538,12 @@ export class Network {
     this.#createClient = createClient;
   }
 
+  /** Cancel an unaccepted connection without touching live access. */
+  cancelPending() {
+    this.#candidate?.client.abort();
+    this.#candidate = undefined;
+  }
+
   get mode() {
     return this.#mode;
   }
@@ -556,30 +552,20 @@ export class Network {
     this.#mode = mode;
     if (mode === "online") return;
     this.#active?.abort();
-    this.#candidate?.client.abort();
+    this.cancelPending();
     this.#active = undefined;
-    this.#candidate = undefined;
-  }
-
-  /** Prepare credentials without enabling access, persisting data, or making requests. */
-  createAuth(input: PasswordAuth): Auth {
-    const host = input.host.trim();
-    const withProtocol = /^https?:\/\//i.test(host) ? host : `https://${host}`;
-    return v.parse(
-      authSchema,
-      createSubsonicAuth({
-        host: new URL(withProtocol).toString().replace(/\/$/, ""),
-        username: input.username,
-        password: input.password,
-      }),
-    );
   }
 
   /** Explicit login validation is allowed while normal access remains offline. */
   prepare(auth: Auth): NetworkConnection {
-    const client = this.#createClient(auth, { fetch: networkFetch });
-    this.#candidate?.client.abort();
-    const account = Object.freeze({ host: client.host, username: client.username });
+    if (!v.safeParse(authSchema, auth).success)
+      throw new Error("The Subsonic authentication is invalid.");
+    const client = this.#createClient(
+      { host: auth.host, credentials: auth.credentials },
+      { fetch: networkFetch },
+    );
+    this.cancelPending();
+    const account = Object.freeze({ host: auth.host, username: auth.username });
     const request: Request = (run) => this.#request(client, run);
     const metadata = metadataAccess(account, client, request);
     const connection = Object.freeze({ account, signal: client.signal, metadata });

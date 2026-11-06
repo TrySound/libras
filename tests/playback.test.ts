@@ -430,8 +430,7 @@ describe("playback", () => {
     const client = network.prepare({
       host: "https://music.example.com",
       username: "listener",
-      token: "token",
-      salt: "salt",
+      credentials: { method: "token", username: "listener", token: "token", salt: "salt" },
     });
     const active = network.accept(client);
     await selection.cache!.flush();
@@ -668,8 +667,7 @@ describe("playback", () => {
         network.prepare({
           host: "https://music.example.com",
           username: "listener",
-          token: "token",
-          salt: "salt",
+          credentials: { method: "token", username: "listener", token: "token", salt: "salt" },
         }),
       ).audio,
     });

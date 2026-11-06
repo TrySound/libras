@@ -30,6 +30,8 @@ test("Settings native controls, layout, and persistence", async (t) => {
   let pingGate;
   let tailGate;
   let pingFailure = false;
+  let pingCode;
+  let passwordRequests = 0;
   const calls = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -37,12 +39,14 @@ test("Settings native controls, layout, and persistence", async (t) => {
     const url = new URL(route.request().url());
     const method = url.pathname.split("/").pop().replace(".view", "");
     calls.push(method);
+    const body = new URLSearchParams(route.request().postData() ?? "");
+    if (url.searchParams.has("p") || body.has("p")) passwordRequests++;
     let fields;
     if (method === "ping") {
       const fail = pingFailure;
       if (pingGate) await pingGate.promise;
       fields = fail
-        ? { status: "failed", error: { message: "Unauthorized" } }
+        ? { status: "failed", error: { code: pingCode, message: "Unauthorized" } }
         : { version: "1.16.1", type: "test-server", serverVersion: "1", openSubsonic: true };
     } else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
@@ -131,6 +135,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
     // Connect once to exercise the populated card and persist a real library snapshot.
     pingFailure = false;
     pingGate = undefined;
+    await page.getByLabel("Password", { exact: true }).fill("password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
     await page.getByRole("link", { name: "Settings", exact: true }).click();
@@ -247,6 +252,34 @@ test("Settings native controls, layout, and persistence", async (t) => {
         await page.locator("#server-host").evaluate((input) => input === document.activeElement),
         false,
       );
+    });
+    await t.test("direct password requires confirmation and survives reload until disconnect", async () => {
+      pingFailure = true;
+      pingCode = 41;
+      await page.getByLabel("Host", { exact: true }).fill(host);
+      await page.getByLabel("Username", { exact: true }).fill(username);
+      await page.getByLabel("Password", { exact: true }).fill("enc:literal-password");
+      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await page.locator("#settings-password-warning").waitFor();
+      assert.match(await page.locator("#settings-password-warning").textContent(), /HTTPS[\s\S]*localStorage/);
+      assert.equal(passwordRequests, 0);
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      assert.equal(await page.getByLabel("Password", { exact: true }).inputValue(), "");
+      await page.getByLabel("Password", { exact: true }).fill("enc:literal-password");
+      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await page.locator("#settings-password-warning").waitFor();
+      pingFailure = false;
+      await page.getByRole("button", { name: "Send password and connect", exact: true }).click();
+      await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
+      assert.ok(passwordRequests > 0);
+      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("navidrome-auth")).credentials.method), "password");
+      await page.getByRole("link", { name: "Settings", exact: true }).click();
+      await waitConnected();
+      await page.reload();
+      await waitConnected();
+      await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+      assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-auth")), null);
+      assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-account")));
     });
     assert.deepEqual(errors, []);
   } finally {

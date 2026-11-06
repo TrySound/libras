@@ -12,8 +12,7 @@ import { Session } from "../src/session.svelte";
 export const credentials = {
   host: "https://music.example",
   username: "listener",
-  token: "token",
-  salt: "salt",
+  credentials: { method: "token" as const, username: "listener", token: "token", salt: "salt" },
 };
 
 export function deferred<T = void>() {

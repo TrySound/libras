@@ -2,7 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Network } from "../src/network.svelte";
 
 const account = { host: "https://music.example.com", username: "listener" };
-const auth = { ...account, token: "token", salt: "salt" };
+const auth = {
+  ...account,
+  credentials: {
+    method: "token" as const,
+    username: account.username,
+    token: "token",
+    salt: "salt",
+  },
+};
 function createConnection(credentials = auth) {
   const network = new Network();
   const client = network.prepare(credentials);

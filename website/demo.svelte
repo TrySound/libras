@@ -34,13 +34,17 @@
   auth.save({
     host: base.href.replace(/\/$/, ""),
     username: "deezer-preview-demo",
-    token: "local-demo",
-    salt: "local-demo",
+    credentials: {
+      method: "token",
+      username: "deezer-preview-demo",
+      token: "local-demo",
+      salt: "local-demo",
+    },
   });
   const network = new Network((identity) => {
     if (
       identity.host !== base.href.replace(/\/$/, "") ||
-      identity.username !== "deezer-preview-demo"
+      identity.credentials.username !== "deezer-preview-demo"
     ) {
       throw new Error("This demo is fixed to its local library. Reload the demo to reconnect.");
     }

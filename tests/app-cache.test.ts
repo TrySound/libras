@@ -35,6 +35,7 @@ vi.mock("../src/session.svelte", () => ({
     get offlineMode() {
       return mocks.isOffline();
     }
+    login = { passwordConfirmation: false };
     localReady = mocks.localReady;
     loadingAfterConnect = mocks.loadingAfterConnect;
     constructor(options: NonNullable<typeof mocks.options>) {
@@ -1128,8 +1129,7 @@ it("renders download records and jobs without duplicates and switches account pr
     options.network.prepare({
       host: "https://music.example",
       username: "first",
-      token: "token",
-      salt: "salt",
+      credentials: { method: "token", username: "first", token: "token", salt: "salt" },
     }),
   );
   tracks.setConnection(connection.audio);

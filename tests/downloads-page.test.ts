@@ -219,7 +219,12 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockReturnValue("");
   const network = new Network();
   trackEngine.setConnection(
-    network.accept(network.prepare({ ...account, token: "token", salt: "salt" })).audio,
+    network.accept(
+      network.prepare({
+        ...account,
+        credentials: { method: "token", username: account.username, token: "token", salt: "salt" },
+      }),
+    ).audio,
   );
   const activeResponse = deferred<Response>();
   const fetcher = vi

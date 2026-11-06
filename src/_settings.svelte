@@ -45,14 +45,25 @@
   const connectionFailed = $derived(connectionState === "error");
   const serverAddress = $derived(session.auth ? new URL(session.auth.host).host : "");
 
-  async function submitConnection(event: SubmitEvent) {
-    event.preventDefault();
+  async function finishConnection(result: Promise<boolean>) {
     const sourceURL = window.location.href;
-    if (await session.connect({ host, username, password })) {
+    if (await result) {
       host = username = password = "";
       // Session may finish after navigation starts or Settings is hidden.
       if (window.location.href === sourceURL && view?.checkVisibility()) navigate("/library");
     }
+  }
+
+  function submitConnection(event: SubmitEvent) {
+    event.preventDefault();
+    const result = session.connect({ host, username, password });
+    password = "";
+    void finishConnection(result);
+  }
+
+  function cancelConnection() {
+    session.cancelConnect();
+    password = "";
   }
 
   function disconnectServer() {
@@ -133,8 +144,32 @@
               onclick={() => window.location.reload()}>Reload demo</button
             >
           </div>
+        {:else if !session.auth && session.login.passwordConfirmation}
+          <div class="stack-md" role="alert" aria-labelledby="settings-password-title">
+            <h3 class="heading-sm" id="settings-password-title">
+              Use direct password authentication?
+            </h3>
+            <p class="body" id="settings-password-warning">
+              The server rejected token authentication. Continuing sends your password to the server
+              over HTTPS and saves it in localStorage on this device until you disconnect. Scripts
+              running on this app's origin can read it. Only continue on a trusted device and
+              server.
+            </p>
+            <div class="row-sm row-wrap">
+              <button
+                class="button"
+                data-size="text"
+                data-variant="primary"
+                aria-describedby="settings-password-warning"
+                onclick={() => void finishConnection(session.confirmPassword())}
+                >Send password and connect</button
+              >
+              <button class="button" data-size="text" onclick={cancelConnection}>Cancel</button>
+            </div>
+          </div>
         {:else if !session.auth}
           <form
+            method="post"
             class="stack-md"
             onsubmit={submitConnection}
             aria-busy={session.busy}
@@ -143,7 +178,8 @@
               : "settings-auth-help"}
           >
             <p class="caption text-secondary" id="settings-auth-help">
-              Connect to your Navidrome server to browse your library and stream music.
+              Connect to your OpenSubsonic server using token authentication. Credentials are saved
+              in localStorage on this device until you disconnect; use a trusted device.
             </p>
             <div class="stack-xs">
               <label class="label" for="server-host">Host</label>
@@ -156,6 +192,7 @@
                 bind:value={host}
                 placeholder="music.example.com"
                 autocomplete="url"
+                autocorrect="off"
                 autocapitalize="off"
                 spellcheck="false"
                 required
@@ -172,6 +209,7 @@
                 bind:value={username}
                 placeholder="Your username"
                 autocomplete="username"
+                autocorrect="off"
                 autocapitalize="off"
                 spellcheck="false"
                 required
@@ -207,6 +245,11 @@
                 {/if}
                 {session.busy ? "Connecting…" : "Connect"}
               </button>
+              {#if session.busy}
+                <button class="button" type="button" data-size="text" onclick={cancelConnection}
+                  >Cancel</button
+                >
+              {/if}
             </div>
           </form>
         {:else}

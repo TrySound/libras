@@ -1,4 +1,5 @@
-import { getAccountKey, type Auth, type AuthStore } from "./auth";
+import { getAccountKey, type Auth, type AuthStore, type PasswordAuth } from "./auth";
+import { AuthWorkflow, type AuthenticatedConnection } from "./auth.svelte";
 import type { Covers } from "./covers.svelte";
 import {
   NetworkTransportError,
@@ -6,7 +7,6 @@ import {
   type LibraryProgress,
   type Network,
   type NetworkConnection,
-  type PasswordAuth,
 } from "./network.svelte";
 import type { Playback } from "./playback.svelte";
 import type { Playlists } from "./playlists.svelte";
@@ -41,6 +41,7 @@ export class Session {
   error = $state("");
   localReady = $state(false);
   loadingAfterConnect = $state(false);
+  readonly login: AuthWorkflow;
 
   #options: SessionOptions;
   #account?: Readonly<Account>;
@@ -57,6 +58,7 @@ export class Session {
 
   constructor(options: SessionOptions) {
     this.#options = options;
+    this.login = new AuthWorkflow(options.network);
   }
 
   get libraryProgress() {
@@ -106,6 +108,7 @@ export class Session {
   }
 
   #detach() {
+    this.login.cancel();
     this.loadingAfterConnect = false;
     this.#libraryProgress = undefined;
     this.#refreshPending = undefined;
@@ -212,7 +215,7 @@ export class Session {
     }
   }
 
-  /** Load local data before validating credentials, without selecting the account.
+  /** Load local data for verified credentials, without selecting the account.
    * Same-account reconnects reuse the live writer to retain queue edits. */
   async #prepareWorkspace(connection: NetworkConnection) {
     const previous = this.#options.selection.cache;
@@ -260,23 +263,43 @@ export class Session {
     this.localReady = true;
   }
 
-  /** Login succeeds once local data and credentials are accepted, not when sync finishes. */
-  async connect(input: PasswordAuth): Promise<boolean> {
+  /** Cancel authentication and candidate workspace work, retaining the offline account. */
+  cancelConnect() {
+    if (this.auth || this.#destroyed) return;
+    this.#beginOperation();
+    this.login.cancel();
+    this.status = "disconnected";
+  }
+
+  connect(input: PasswordAuth): Promise<boolean> {
+    if (this.login.passwordConfirmation) return Promise.resolve(false);
+    return this.#connect(() => this.login.connect(input));
+  }
+
+  confirmPassword(): Promise<boolean> {
+    if (!this.login.passwordConfirmation) return Promise.resolve(false);
+    return this.#connect(() => this.login.confirmPassword());
+  }
+
+  /** Authentication verifies; Session commits the workspace, then syncs in the background. */
+  async #connect(verify: () => Promise<AuthenticatedConnection | undefined>): Promise<boolean> {
     if (this.auth || this.busy || this.#destroyed) return false;
     const operationId = this.#beginOperation();
     this.status = "connecting";
     try {
-      const credentials = this.#options.network.createAuth(input);
-      const connection = this.#options.network.prepare(credentials);
+      const verified = await verify();
+      if (!this.#isCurrentOperation(operationId) || !verified) return false;
+      const { auth, connection } = verified;
       await this.#restoration;
       if (!this.#isCurrentOperation(operationId)) return false;
+      connection.signal.throwIfAborted();
       const cache = await this.#prepareWorkspace(connection);
-      await this.#options.network.validate(connection);
       connection.signal.throwIfAborted();
       if (!this.#isCurrentOperation(operationId)) return false;
       await this.#retireWorkspace(cache, connection.signal);
       if (!this.#isCurrentOperation(operationId)) return false;
-      this.#commitWorkspace(cache, credentials, connection);
+      this.#commitWorkspace(cache, auth, connection);
+      this.login.cancel();
       this.status = "connected";
       this.loadingAfterConnect = true;
       void this.#refresh(false);
@@ -287,6 +310,9 @@ export class Session {
         if (this.disconnect()) this.#fail(error, this.#operationId);
       }
       return false;
+    } finally {
+      if (this.#isCurrentOperation(operationId) && this.status === "connecting")
+        this.status = "disconnected";
     }
   }
 

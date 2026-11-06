@@ -13,7 +13,7 @@ pnpm dev
 pnpm --filter @libras/website dev
 ```
 
-Your music server must allow the app's origin through CORS. Use HTTPS outside local development.
+Your music server must allow the app's origin through CORS. Server connections require HTTPS; token authentication permits HTTP loopback (`localhost`, `127.0.0.1`, `[::1]`) only in development builds. Direct-password authentication always requires HTTPS, including restored sessions.
 
 Before submitting changes:
 
@@ -32,7 +32,8 @@ The workspace contains the root app (`src/`, `tests/`) and `@libras/website` (`w
 
 | Module                       | Owns                                                                                             |
 | ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `Session`                    | Account selection, credentials, startup, connections, and refresh coordination                   |
+| `Session`                    | Account/cache activation, startup, cancellation, disconnect, and refresh coordination              |
+| `AuthStore` / `AuthWorkflow`  | Credential persistence / token derivation, fallback eligibility, pending confirmation and attempts |
 | `Network` / `SubsonicClient` | Connection cancellation, normalized domain access / Subsonic protocol requests                   |
 | `Cache`                      | Account-scoped library, queue, images, downloads, playlists, and OPFS persistence                |
 | `Playback`                   | Queue commands, server synchronization, and playback orchestration                               |
@@ -47,6 +48,7 @@ Routes use the bare query, for example `/webapp/?/library/artist/123#section`. E
 
 - Read Cache collections directly; change them through explicit methods. Session owns account details; Cache accepts an opaque account key and hashes it for storage. An undefined key creates an empty, non-persisting fallback. A defined key does not mean hydration succeeded.
 - Memory updates immediately; disk checkpoints happen asynchronously. Failed writes retain local state and report errors. Do not treat visible state as proof of persistence.
+- Credentials use localStorage only, until disconnect. Token login stores username/token/salt; confirmed direct-password fallback stores the actual password. localStorage is not encrypted and is readable by same-origin scripts. Never log credentials or credential-bearing URLs. Legacy token records migrate without changing account keys; migration writeback is best-effort.
 - Disconnect retains local data for offline use. Same-account reconnects reuse the live cache to preserve edits. Account changes drain old writes and retire resources before committing the new workspace. Late results must not leak into a different account.
 - Startup and manual refresh pull server state. Reconnecting must not upload an offline queue automatically, and refresh must not replace a playing or paused queue.
 - Preserve queue IDs and occurrence indexes, including duplicates and unavailable tracks. Filtering the UI must not rewrite the saved queue.
@@ -58,7 +60,7 @@ Consult the owning module and tests for implementation details rather than addin
 
 The app and `/demo/` are separate document-scrolling pages using the same App component; there is no embedded rendering mode. Entry points supply fixed `network`, `auth`, and `updaterComponent` dependencies. The normal entry supplies `WebappUpdater`; the demo passes `undefined` and does not register PWA support. `Network` accepts a `SubsonicClientFactory` so alternate clients can implement `SubsonicApi` without changing connection ownership.
 
-Login validation uses authenticated `ping()` to require OpenSubsonic support; unknown server names are accepted. Protocol identity is not persisted, and failed requests retain their server errors.
+Login uses the existing username/password form and tries a locally derived salted token first. Authenticated `ping()` requires OpenSubsonic support; unknown server names are accepted. Only structured Subsonic errors 41/42 offer a separate confirmation to send and persist the direct password over HTTPS. Never downgrade for code 40, network/timeouts, HTTP, generic, or malformed responses. Protocol identity is not persisted. The client preserves protocol codes while sanitizing request/protocol errors so URLs, secrets, and secret-bearing causes are not exposed. One credential serializer keeps token `u/t/s` exclusive from password `u/p` for requests and media URLs; Subsonic hex encoding for a literal `enc:` password prefix is not encryption.
 
 Library normalization uses structured `artists`, `displayArtist`, and `genres`, not legacy artist/genre fields. Preserve supplied order, punctuation, and duplicate genre names. Missing track credits inherit album credits; display-only artists receive stable local IDs. Keep every referenced artist, including track-only contributors, and index albums under all credited contributors without duplicating records. Stored relationships use IDs; display credits and artwork inheritance are resolved during normalization. Old incompatible libraries need a network refresh rather than a new compatibility layer.
 

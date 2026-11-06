@@ -74,7 +74,7 @@ export class DeezerSubsonicClient implements SubsonicApi {
     private read = readDeezer,
   ) {
     this.host = auth.host;
-    this.username = auth.username;
+    this.username = auth.credentials.username;
   }
   get signal() {
     return this.controller.signal;
