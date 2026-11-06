@@ -35,7 +35,6 @@ vi.mock("../src/session.svelte", () => ({
     get offlineMode() {
       return mocks.isOffline();
     }
-    login = { passwordConfirmation: false };
     localReady = mocks.localReady;
     loadingAfterConnect = mocks.loadingAfterConnect;
     constructor(options: NonNullable<typeof mocks.options>) {

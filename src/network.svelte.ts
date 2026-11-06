@@ -1,5 +1,6 @@
 import {
   SubsonicClient,
+  subsonicFetch,
   SubsonicTransportError as NetworkTransportError,
   type SubsonicApi,
   type SubsonicClientFactory,
@@ -280,17 +281,6 @@ function normalizeLibrary(
 
 type Request = <T>(run: () => Promise<T>) => Promise<T>;
 
-async function networkFetch(input: RequestInfo | URL, init?: RequestInit) {
-  try {
-    return await fetch(input, init);
-  } catch (error) {
-    init?.signal?.throwIfAborted();
-    if (error instanceof Error && error.name === "AbortError")
-      throw new DOMException("The server request was cancelled.", "AbortError");
-    throw new NetworkTransportError();
-  }
-}
-
 function metadataAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
   return Object.freeze({
     account,
@@ -447,7 +437,7 @@ function artworkAccess(account: Readonly<Account>, client: SubsonicApi, request:
         if (options.etag) headers.set("If-None-Match", options.etag);
         if (options.lastModified) headers.set("If-Modified-Since", options.lastModified);
         const requestedAt = Date.now();
-        const response = await networkFetch(client.getCoverArtUrl(id, options.size), {
+        const response = await subsonicFetch(client.getCoverArtUrl(id, options.size), {
           headers,
           signal: requestSignal,
           // Covers owns freshness; consult the server whenever it requests bytes.
@@ -508,7 +498,7 @@ function audioAccess(account: Readonly<Account>, client: SubsonicApi, request: R
       try {
         return await request(async () => {
           const source = url(id, { format: options.format, signal });
-          response = await networkFetch(typeof source === "string" ? source : await source, {
+          response = await subsonicFetch(typeof source === "string" ? source : await source, {
             signal,
           });
           signal.throwIfAborted();
@@ -560,10 +550,7 @@ export class Network {
   prepare(auth: Auth): NetworkConnection {
     if (!v.safeParse(authSchema, auth).success)
       throw new Error("The Subsonic authentication is invalid.");
-    const client = this.#createClient(
-      { host: auth.host, credentials: auth.credentials },
-      { fetch: networkFetch },
-    );
+    const client = this.#createClient({ host: auth.host, credentials: auth.credentials }, {});
     this.cancelPending();
     const account = Object.freeze({ host: auth.host, username: auth.username });
     const request: Request = (run) => this.#request(client, run);

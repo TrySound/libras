@@ -41,6 +41,22 @@ export class SubsonicTransportError extends Error {
   }
 }
 
+/** Sanitize only fetch exceptions; response status, parsing and media bodies stay with callers. */
+export async function subsonicFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  fetcher: typeof fetch = fetch,
+): Promise<Response> {
+  try {
+    return await fetcher(input, init);
+  } catch (error) {
+    init?.signal?.throwIfAborted();
+    if (error instanceof Error && error.name === "AbortError")
+      throw new DOMException("The server request was cancelled.", "AbortError");
+    throw new SubsonicTransportError();
+  }
+}
+
 const genreSchema = v.object({ name: v.string() });
 const artistSchema = v.object({
   id: v.string(),
@@ -227,15 +243,8 @@ export class SubsonicClient {
     return message.replace(new RegExp(pattern, "g"), () => "[redacted]");
   }
 
-  async #request(url: string, init: RequestInit) {
-    try {
-      return await this.#fetch(url, init);
-    } catch (error) {
-      init.signal?.throwIfAborted();
-      if (error instanceof Error && error.name === "AbortError")
-        throw new DOMException("The server request was cancelled.", "AbortError");
-      throw new SubsonicTransportError();
-    }
+  #request(url: string, init: RequestInit) {
+    return subsonicFetch(url, init, this.#fetch);
   }
 
   #url(path: string, query: URLSearchParams) {

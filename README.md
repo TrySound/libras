@@ -30,9 +30,9 @@ You'll need a reachable **HTTPS server with a Subsonic-compatible API**, such as
 
 ### Authentication and device storage
 
-Libras tries salted token authentication first; your password stays in the browser for that attempt. Only an explicit server rejection of token authentication (Subsonic code 41 or 42) offers direct-password login, with a separate confirmation before sending it over HTTPS. Invalid credentials, connection failures, and other errors never trigger a password retry.
+Libras tries salted token authentication first; your password stays in the browser for that attempt. Only a structured server rejection of token authentication (Subsonic code 41 or 42) automatically retries the same username and password over HTTPS, including on localhost. Invalid credentials, connection failures, and other errors never trigger a password retry.
 
-Credentials persist in **localStorage** until you disconnect. Token login saves the username, token, and salt, not your password. Confirmed direct-password login saves the actual password and sends it with subsequent requests, including artwork and streaming URLs. HTTPS encrypts transport, not localStorage; scripts running on the app's origin and anyone with access to your browser profile can read saved credentials. Use a trusted device and server, and disconnect on shared devices. Disconnect removes credentials but retains your offline account, music, and queue.
+Credentials persist in **localStorage** until you disconnect. Token login saves the username, token, and salt, not your password. Successfully verified direct-password login saves the actual password and sends it with subsequent requests, including artwork and streaming URLs. HTTPS encrypts transport, not localStorage; scripts running on the app's origin and anyone with access to your browser profile can read saved credentials. Use a trusted device and server, and disconnect on shared devices. Disconnect removes credentials but retains your offline account, music, and queue.
 
 ## Install
 

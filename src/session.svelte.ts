@@ -1,5 +1,5 @@
 import { getAccountKey, type Auth, type AuthStore, type PasswordAuth } from "./auth";
-import { AuthWorkflow, type AuthenticatedConnection } from "./auth.svelte";
+import { AuthWorkflow } from "./auth.svelte";
 import type { Covers } from "./covers.svelte";
 import {
   NetworkTransportError,
@@ -271,23 +271,13 @@ export class Session {
     this.status = "disconnected";
   }
 
-  connect(input: PasswordAuth): Promise<boolean> {
-    if (this.login.passwordConfirmation) return Promise.resolve(false);
-    return this.#connect(() => this.login.connect(input));
-  }
-
-  confirmPassword(): Promise<boolean> {
-    if (!this.login.passwordConfirmation) return Promise.resolve(false);
-    return this.#connect(() => this.login.confirmPassword());
-  }
-
   /** Authentication verifies; Session commits the workspace, then syncs in the background. */
-  async #connect(verify: () => Promise<AuthenticatedConnection | undefined>): Promise<boolean> {
+  async connect(input: PasswordAuth): Promise<boolean> {
     if (this.auth || this.busy || this.#destroyed) return false;
     const operationId = this.#beginOperation();
     this.status = "connecting";
     try {
-      const verified = await verify();
+      const verified = await this.login.connect(input);
       if (!this.#isCurrentOperation(operationId) || !verified) return false;
       const { auth, connection } = verified;
       await this.#restoration;

@@ -104,6 +104,45 @@ describe("SubsonicClient authentication", () => {
     },
   );
 
+  it.each([
+    { status: "malformed", error: { code: 41, message: "Invalid status" } },
+    { status: "failed", error: { code: "41", message: "Not numeric" } },
+    { status: "failed", error: { code: 41, message: null } },
+    { status: "failed", error: { code: 42, message: null } },
+  ])(
+    "rejects malformed authentication responses without protocol fallback codes: %j",
+    async (response) => {
+      const client = new SubsonicClient(
+        { host, credentials: methods[0] },
+        {
+          fetch: async () => new Response(JSON.stringify({ "subsonic-response": response })),
+        },
+      );
+      const request = client.ping();
+      await expect(request).rejects.not.toBeInstanceOf(SubsonicError);
+      await expect(request).rejects.toThrow("invalid Subsonic response");
+    },
+  );
+
+  it("retains a missing protocol code as undefined, not a token rejection", async () => {
+    const client = new SubsonicClient(
+      { host, credentials: methods[0] },
+      {
+        fetch: async () =>
+          new Response(
+            JSON.stringify({
+              "subsonic-response": { status: "failed", error: { message: "Denied" } },
+            }),
+          ),
+      },
+    );
+    await expect(client.ping()).rejects.toMatchObject({
+      name: "SubsonicError",
+      code: undefined,
+      message: "Denied",
+    });
+  });
+
   it("preserves useful invalid-credentials text and code", async () => {
     const client = new SubsonicClient(
       { host, credentials: methods[0] },

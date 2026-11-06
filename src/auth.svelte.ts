@@ -9,9 +9,7 @@ export interface AuthenticatedConnection {
 
 /** Ephemeral authentication policy; Session alone activates accounts and workspaces. */
 export class AuthWorkflow {
-  passwordConfirmation = $state(false);
-  busy = $state(false);
-  #pendingPassword?: PasswordAuth;
+  #busy = false;
   #controller = new AbortController();
   #network: Network;
 
@@ -23,9 +21,7 @@ export class AuthWorkflow {
     this.#controller.abort();
     this.#controller = new AbortController();
     this.#network.cancelPending();
-    this.#pendingPassword = undefined;
-    this.passwordConfirmation = false;
-    this.busy = false;
+    this.#busy = false;
   }
 
   async #verify(auth: Auth, signal: AbortSignal): Promise<AuthenticatedConnection> {
@@ -43,11 +39,12 @@ export class AuthWorkflow {
   }
 
   async connect(input: PasswordAuth): Promise<AuthenticatedConnection | undefined> {
-    if (this.busy || this.passwordConfirmation) return;
+    if (this.#busy) return;
     this.cancel();
     const { signal } = this.#controller;
-    this.busy = true;
+    this.#busy = true;
     try {
+      const { password } = input;
       const auth = createAuth(input);
       try {
         return await this.#verify(auth, signal);
@@ -55,40 +52,23 @@ export class AuthWorkflow {
         signal.throwIfAborted();
         if (error instanceof SubsonicError && (error.code === 41 || error.code === 42)) {
           normalizeServerHost(auth.host, true);
-          this.#pendingPassword = { ...input, host: auth.host };
-          this.passwordConfirmation = true;
-          return;
+          return await this.#verify(
+            {
+              host: auth.host,
+              username: auth.username,
+              credentials: {
+                method: "password",
+                username: auth.username,
+                password,
+              },
+            },
+            signal,
+          );
         }
         throw error;
       }
     } finally {
-      if (!signal.aborted) {
-        this.busy = false;
-        if (this.passwordConfirmation) this.#network.cancelPending();
-      }
-    }
-  }
-
-  /** Only this explicit action can send a newly entered direct password. */
-  async confirmPassword(): Promise<AuthenticatedConnection | undefined> {
-    const input = this.#pendingPassword;
-    if (!input || !this.passwordConfirmation || this.busy) return;
-    this.#pendingPassword = undefined;
-    this.passwordConfirmation = false;
-    const { signal } = this.#controller;
-    this.busy = true;
-    try {
-      normalizeServerHost(input.host, true);
-      return await this.#verify(
-        {
-          host: input.host,
-          username: input.username,
-          credentials: { method: "password", username: input.username, password: input.password },
-        },
-        signal,
-      );
-    } finally {
-      if (!signal.aborted) this.busy = false;
+      if (!signal.aborted) this.#busy = false;
     }
   }
 }

@@ -144,29 +144,6 @@
               onclick={() => window.location.reload()}>Reload demo</button
             >
           </div>
-        {:else if !session.auth && session.login.passwordConfirmation}
-          <div class="stack-md" role="alert" aria-labelledby="settings-password-title">
-            <h3 class="heading-sm" id="settings-password-title">
-              Use direct password authentication?
-            </h3>
-            <p class="body" id="settings-password-warning">
-              The server rejected token authentication. Continuing sends your password to the server
-              over HTTPS and saves it in localStorage on this device until you disconnect. Scripts
-              running on this app's origin can read it. Only continue on a trusted device and
-              server.
-            </p>
-            <div class="row-sm row-wrap">
-              <button
-                class="button"
-                data-size="text"
-                data-variant="primary"
-                aria-describedby="settings-password-warning"
-                onclick={() => void finishConnection(session.confirmPassword())}
-                >Send password and connect</button
-              >
-              <button class="button" data-size="text" onclick={cancelConnection}>Cancel</button>
-            </div>
-          </div>
         {:else if !session.auth}
           <form
             method="post"
@@ -178,8 +155,10 @@
               : "settings-auth-help"}
           >
             <p class="caption text-secondary" id="settings-auth-help">
-              Connect to your OpenSubsonic server using token authentication. Credentials are saved
-              in localStorage on this device until you disconnect; use a trusted device.
+              Connect to your OpenSubsonic server. Token authentication is tried first; if
+              unsupported, your password is sent over HTTPS. Verified credentials, including a
+              password if needed, are saved in localStorage until you disconnect. Scripts on this
+              app's origin can read them; use a trusted device and server.
             </p>
             <div class="stack-xs">
               <label class="label" for="server-host">Host</label>

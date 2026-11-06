@@ -1,5 +1,50 @@
 import { describe, expect, it, vi } from "vitest";
-import { AuthStore, getAccountKey, normalizeServerHost, type Auth } from "../src/auth";
+import { AuthStore, createAuth, getAccountKey, normalizeServerHost, type Auth } from "../src/auth";
+import { md5 } from "js-md5";
+
+describe("createAuth", () => {
+  it("creates salted tokens without retaining or altering the password", () => {
+    const input = { host: "https://music.example", username: "listener", password: " secret 音 " };
+    const first = createAuth(input);
+    const second = createAuth(input);
+    expect(first).toEqual({
+      host: input.host,
+      username: input.username,
+      credentials: {
+        method: "token",
+        username: input.username,
+        salt: expect.stringMatching(/^[a-f0-9]{24}$/),
+        token: md5(input.password + first.credentials.salt),
+      },
+    });
+    expect(second.credentials.salt).not.toBe(first.credentials.salt);
+    expect(second.credentials.token).toBe(md5(input.password + second.credentials.salt));
+    expect(input.password).toBe(" secret 音 ");
+  });
+
+  it.each([
+    [" music.example/ ", "https://music.example"],
+    ["https://music.example:4533/music/", "https://music.example:4533/music"],
+    ["https://music.example/music/", "https://music.example/music"],
+  ])("normalizes %s without fetching", (host, normalized) => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      expect(createAuth({ host, username: "listener", password: "secret" }).host).toBe(normalized);
+      expect(fetcher).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    { host: "https://", username: "listener", password: "secret" },
+    { host: "https://music.example", username: "", password: "secret" },
+    { host: "https://music.example", username: "listener", password: "" },
+  ])("rejects invalid input: %j", (input) => {
+    expect(() => createAuth(input)).toThrow();
+  });
+});
 
 describe("getAccountKey", () => {
   const account = { host: "https://music.example", username: "listener" };

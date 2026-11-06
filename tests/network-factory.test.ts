@@ -41,10 +41,7 @@ describe("Network client composition", () => {
     const factory = vi.fn(() => instance);
     const network = new Network(factory);
     const candidate = network.prepare(auth);
-    expect(factory).toHaveBeenCalledWith(
-      { host: auth.host, credentials: auth.credentials },
-      { fetch: expect.any(Function) },
-    );
+    expect(factory).toHaveBeenCalledWith({ host: auth.host, credentials: auth.credentials }, {});
     expect(network.mode).toBe("offline");
     await network.validate(candidate);
     expect(instance.ping).toHaveBeenCalledOnce();

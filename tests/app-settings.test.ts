@@ -97,41 +97,32 @@ async function setup(
 }
 
 describe("app settings", () => {
-  it("keeps one login form and asks before sending and persisting a direct password", async () => {
-    const { target, fill, session, validate, button, auth } = await setup(false, false);
+  it("keeps one login form with storage disclosure and automatically verifies a direct password", async () => {
+    const { target, fill, session, validate, auth } = await setup(false, false);
     expect(target.querySelectorAll('input[type="radio"]')).toHaveLength(0);
+    const help = target.querySelector("#settings-auth-help")!;
+    expect(help.textContent).toContain("HTTPS");
+    expect(help.textContent).toContain("localStorage");
+    const pending = deferred();
     validate.mockRejectedValueOnce(new SubsonicError(41, "Token unsupported"));
+    validate.mockReturnValueOnce(pending.promise);
     fill();
-    await vi.waitFor(() => expect(session.login.passwordConfirmation).toBe(true));
+    await vi.waitFor(() => expect(validate).toHaveBeenCalledTimes(2));
     flushSync();
-    const warning = target.querySelector("#settings-password-warning")!;
-    expect(warning.textContent).toContain("over HTTPS");
-    expect(warning.textContent).toContain("localStorage");
-    expect(warning.textContent).not.toContain("password-secret");
-    expect(auth.load()).toBeNull();
-    button("Cancel").click();
-    flushSync();
-    expect(session.login.passwordConfirmation).toBe(false);
     expect(target.querySelectorAll("#settings-server form")).toHaveLength(1);
     expect(target.querySelector<HTMLInputElement>("#server-password")?.value).toBe("");
-    validate.mockRejectedValueOnce(new SubsonicError(42, "Token unsupported"));
-    fill();
-    await vi.waitFor(() => expect(session.login.passwordConfirmation).toBe(true));
-    flushSync();
-    button("Send password and connect").click();
+    expect(auth.load()).toBeNull();
+    pending.resolve();
     await vi.waitFor(() => expect(session.auth?.credentials.method).toBe("password"));
     expect(auth.load()?.credentials.method).toBe("password");
   });
 
-  it("does not redirect a confirmed password connection after leaving Settings", async () => {
-    const { target, fill, session, validate, button, navigate } = await setup(false, false);
-    validate.mockRejectedValueOnce(new SubsonicError(41, "Token unsupported"));
-    fill();
-    await vi.waitFor(() => expect(session.login.passwordConfirmation).toBe(true));
+  it("does not redirect an automatic password connection after leaving Settings", async () => {
+    const { target, fill, session, validate, navigate } = await setup(false, false);
     const pending = deferred();
+    validate.mockRejectedValueOnce(new SubsonicError(41, "Token unsupported"));
     validate.mockReturnValueOnce(pending.promise);
-    flushSync();
-    button("Send password and connect").click();
+    fill();
     await vi.waitFor(() => expect(validate).toHaveBeenCalledTimes(2));
     target.style.display = "none";
     window.history.replaceState(null, "", "?/downloads");

@@ -32,6 +32,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
   let pingFailure = false;
   let pingCode;
   let passwordRequests = 0;
+  const pingMethods = [];
   const calls = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -43,7 +44,9 @@ test("Settings native controls, layout, and persistence", async (t) => {
     if (url.searchParams.has("p") || body.has("p")) passwordRequests++;
     let fields;
     if (method === "ping") {
-      const fail = pingFailure;
+      const direct = url.searchParams.has("p");
+      pingMethods.push(direct ? "password" : "token");
+      const fail = pingFailure && !direct;
       if (pingGate) await pingGate.promise;
       fields = fail
         ? { status: "failed", error: { code: pingCode, message: "Unauthorized" } }
@@ -253,26 +256,28 @@ test("Settings native controls, layout, and persistence", async (t) => {
         false,
       );
     });
-    await t.test("direct password requires confirmation and survives reload until disconnect", async () => {
+    await t.test("automatic password fallback survives reload until disconnect", async () => {
       pingFailure = true;
       pingCode = 41;
       await page.getByLabel("Host", { exact: true }).fill(host);
       await page.getByLabel("Username", { exact: true }).fill(username);
       await page.getByLabel("Password", { exact: true }).fill("enc:literal-password");
-      await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await page.locator("#settings-password-warning").waitFor();
-      assert.match(await page.locator("#settings-password-warning").textContent(), /HTTPS[\s\S]*localStorage/);
+      assert.match(
+        await page.locator("#settings-auth-help").textContent(),
+        /HTTPS[\s\S]*localStorage/,
+      );
       assert.equal(passwordRequests, 0);
-      await page.getByRole("button", { name: "Cancel", exact: true }).click();
-      assert.equal(await page.getByLabel("Password", { exact: true }).inputValue(), "");
-      await page.getByLabel("Password", { exact: true }).fill("enc:literal-password");
+      const before = pingMethods.length;
       await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await page.locator("#settings-password-warning").waitFor();
-      pingFailure = false;
-      await page.getByRole("button", { name: "Send password and connect", exact: true }).click();
       await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
+      assert.deepEqual(pingMethods.slice(before), ["token", "password"]);
       assert.ok(passwordRequests > 0);
-      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("navidrome-auth")).credentials.method), "password");
+      assert.equal(
+        await page.evaluate(
+          () => JSON.parse(localStorage.getItem("navidrome-auth")).credentials.method,
+        ),
+        "password",
+      );
       await page.getByRole("link", { name: "Settings", exact: true }).click();
       await waitConnected();
       await page.reload();
