@@ -49,6 +49,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     let fields = {};
     if (method === "ping")
       fields = { version: "1.16.1", type: "test", serverVersion: "1", openSubsonic: true };
+    else if (method === "getOpenSubsonicExtensions") fields = { openSubsonicExtensions: [] };
     else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
     else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
@@ -68,6 +69,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
   try {
     await page.goto(base);
     await page.getByLabel("Host", { exact: true }).fill("https://library.example.test");
+    await page.getByRole("button", { name: "Check server", exact: true }).click();
     await page.getByLabel("Username", { exact: true }).fill("listener");
     await page.getByLabel("Password", { exact: true }).fill("fictional-password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();

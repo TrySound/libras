@@ -13,7 +13,7 @@ pnpm dev
 pnpm --filter @libras/website dev
 ```
 
-Your music server must allow the app's origin through CORS. Use HTTPS outside local development.
+Your music server must allow the app's origin through CORS and support OpenSubsonic's empty-query `search3` for library synchronization. Production connections require HTTPS; HTTP loopback is development-only, and direct password authentication always requires HTTPS.
 
 Before submitting changes:
 
@@ -30,16 +30,17 @@ The workspace contains the root app (`src/`, `tests/`) and `@libras/website` (`w
 
 `src/app.svelte` wires the engines together. Route components (`src/_*.svelte`) read reactive state and invoke domain commands.
 
-| Module                       | Owns                                                                                             |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `Session`                    | Account selection, credentials, startup, connections, and refresh coordination                   |
-| `Network` / `SubsonicClient` | Connection cancellation, normalized domain access / Subsonic protocol requests                   |
-| `Cache`                      | Account-scoped library, queue, images, downloads, playlists, and OPFS persistence                |
-| `Playback`                   | Queue commands, server synchronization, and playback orchestration                               |
-| `AudioPlayer`                | Audio transport, seeking, keyboard shortcuts, and Media Session                                  |
-| `Covers` / `TrackEngine`     | Resource acquisition, download scheduling, and browser URL lifetimes                             |
-| `Playlists`                  | Server-confirmed playlist operations and conflict detection; no offline outbox                   |
-| `Router`                     | Query routes, native fragment anchors, active navigation metadata, and optional view transitions |
+| Module                       | Owns                                                                                                      |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `AuthWorkflow`               | Discovery-driven login, credential preparation, verified identity, confirmation, and attempt cancellation |
+| `Session`                    | Authenticated account/cache activation, offline recovery, startup, disconnect, and refresh coordination   |
+| `Network` / `SubsonicClient` | Candidate/live connection cancellation and domain access / wire encoding, discovery, and protocol errors  |
+| `Cache`                      | Account-scoped library, queue, images, downloads, playlists, and OPFS persistence                         |
+| `Playback`                   | Queue commands, server synchronization, and playback orchestration                                        |
+| `AudioPlayer`                | Audio transport, seeking, keyboard shortcuts, and Media Session                                           |
+| `Covers` / `TrackEngine`     | Resource acquisition, download scheduling, and browser URL lifetimes                                      |
+| `Playlists`                  | Server-confirmed playlist operations and conflict detection; no offline outbox                            |
+| `Router`                     | Query routes, native fragment anchors, active navigation metadata, and optional view transitions          |
 
 Routes use the bare query, for example `/webapp/?/library/artist/123#section`. Encode each dynamic path segment with `encodeURIComponent`; fragments remain native in-page anchors. The service worker serves one cached app shell for root/index navigation requests, including their route queries; assets and API requests are excluded.
 
@@ -56,9 +57,25 @@ Consult the owning module and tests for implementation details rather than addin
 
 ### Entry points and metadata
 
-The app and `/demo/` are separate document-scrolling pages using the same App component; there is no embedded rendering mode. Entry points supply fixed `network`, `auth`, and `updaterComponent` dependencies. The normal entry supplies `WebappUpdater`; the demo passes `undefined` and does not register PWA support. `Network` accepts a `SubsonicClientFactory` so alternate clients can implement `SubsonicApi` without changing connection ownership.
+The app and `/demo/` are separate document-scrolling pages using the same App component; there is no embedded rendering mode. Entry points supply fixed `network`, `auth`, and `updaterComponent` dependencies. The normal entry supplies `WebappUpdater`; the demo passes `undefined` and does not register PWA support. `Network` accepts a `SubsonicClientFactory` without changing Subsonic discovery, API-key login, or HTTPS enforcement. Alternate clients implementing `SubsonicApi`, such as the demo, explicitly select `{ protocol: "alternate" }` at the entry point; they own their protocol and skip Subsonic discovery/key resolution.
 
-Login validation uses authenticated `ping()` to require OpenSubsonic support; unknown server names are accepted. Protocol identity is not persisted, and failed requests retain their server errors.
+### Authentication and login validation
+
+Settings exposes only **API key** and **Username and password**. `LoginMethod`/`LoginInput` in `src/auth.svelte.ts` accept only these two choices (`apiKey`/`token`); direct password is not an upfront selection. `src/auth.ts` retains three internal discriminated credential modes: API key, MD5 token/salt, and direct password, separate from the host and resolved username. Account/cache identity remains `(host, username)` across methods. Existing saved token/salt credentials migrate to `method: "token"` without forcing logout. Migration writeback is best-effort: if storage is full, use the validated credentials in memory and retain the saved legacy record for a later retry.
+
+`AuthWorkflow` in `src/auth.svelte.ts` owns credential-free `getOpenSubsonicExtensions` discovery, credential preparation, API-key identity verification, fallback eligibility, and pending direct-password confirmation. Settings reads this workflow and invokes its login commands directly; after authentication resolves, `Session.connect()` accepts its verified identity/credentials and capability-configured cancellable candidate, then loads and activates the account workspace. Host/method/cancel actions use `Session.cancelConnect()` to cancel both the auth attempt and workspace preparation, never the selected offline workspace. Its `resetDiscovery: false` option retains discovery for retry; its `method` option delegates discovery-preserving method selection and cancellation to Auth. A cancelled or superseded result is rejected before any account cache loads. Session contains no auth-method policy or pending login secrets. `Network` owns candidate/live clients and metadata/media access, not discovery or login selection. `AuthStore` remains the persistence/migration owner, while `SubsonicClient` owns wire encoding, response validation, and protocol error shapes.
+
+Advertised `apiKeyAuthentication` version 1 selects API key by default; otherwise username/password is selected. Users can switch between these two login choices. Username/password always tries MD5 token/salt first; Libras automatically detects explicit token rejection from that attempt, never from vendor/version heuristics. Only discovery HTTP `404`, `405`, or `501` establishes an unsupported endpoint and permits legacy login; network/CORS failures, malformed responses, and generic protocol errors remain errors. Capabilities are rediscovered on resume, not persisted or inferred from server names/versions.
+
+API-key login first validates the key with `tokenInfo` and resolves its username before loading account-scoped storage. Explicit login then uses authenticated `ping()` to require a valid OpenSubsonic identity for every method; unknown server names are accepted. Saved API keys are revalidated on resume, including matching their saved username. Auth reports verification failures; Session keeps an unverified saved key's workspace offline and supplies recovery guidance without enabling metadata access. Protocol identity is not persisted. Structured `SubsonicError.code` drives fallback: only token rejection codes `41`/`42` offer direct password authentication. A warning explains that this sends the actual password over HTTPS rather than a derived token, and a separate confirmation action is required before sending it. Cancelling or switching host/login choice discards the pending password. Restored persisted passwords remain supported and require HTTPS. Invalid keys/credentials, timeouts, transport failures, and generic errors never trigger a silent downgrade.
+
+`authenticationParameters` in `src/subsonic-client.ts` centralizes mutually exclusive wire parameters for metadata, artwork, and streaming: `apiKey` alone, `u`/`t`/`s`, or `u`/`p`. Hex passwords are encoding, not encryption or another method. API requests prefer form POST when `formPost` version 1 is advertised; artwork and streaming still use credential-bearing query URLs. Fetch exceptions and invalid JSON responses use credential-free errors; protocol error messages redact credential values and omit echoed URLs while retaining Subsonic codes. Media bodies use native Response handling. Avoid logging credential-bearing URLs, including in server/proxy access logs; HTTPS does not hide URLs from those servers.
+
+`AuthStore` uses one injected `Storage`, defaulting to `localStorage`. All credentials, including API keys, replayable token/salt pairs, and direct passwords, persist until disconnect; they are not short-lived session tokens. This storage is JavaScript-readable and vulnerable to malicious scripts or compromised browser access. The demo explicitly injects its own memory storage. Disconnect clears credentials for every method and cancels pending secrets, while retaining the credential-free account identity, offline music, and queue.
+
+Auth discovery/key requests share an attempt abort signal. Network owns candidate and active connection signals; Session guards workspace and sync publication against stale operations. Disconnect cancels both owners and never permits a late result to reenable access. Offline cache restoration has its own lifetime and survives disconnect.
+
+### Library normalization
 
 Library normalization uses structured `artists`, `displayArtist`, and `genres`, not legacy artist/genre fields. Preserve supplied order, punctuation, and duplicate genre names. Missing track credits inherit album credits; display-only artists receive stable local IDs. Keep every referenced artist, including track-only contributors, and index albums under all credited contributors without duplicating records. Stored relationships use IDs; display credits and artwork inheritance are resolved during normalization. Old incompatible libraries need a network refresh rather than a new compatibility layer.
 

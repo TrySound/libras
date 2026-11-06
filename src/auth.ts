@@ -1,11 +1,34 @@
 import * as v from "valibot";
 import { accountSchema, type Account } from "./schema";
 
-export const authSchema = v.object({
+const nonEmpty = v.pipe(v.string(), v.nonEmpty());
+
+export const credentialsSchema = v.variant("method", [
+  v.object({ method: v.literal("apiKey"), apiKey: nonEmpty }),
+  v.object({ method: v.literal("token"), username: nonEmpty, token: nonEmpty, salt: nonEmpty }),
+  v.object({ method: v.literal("password"), username: nonEmpty, password: nonEmpty }),
+]);
+
+export type Credentials = v.InferOutput<typeof credentialsSchema>;
+
+/** Host and resolved account identity are independent of the authentication method. */
+export const authSchema = v.pipe(
+  v.object({
+    host: v.pipe(v.string(), v.url()),
+    username: nonEmpty,
+    credentials: credentialsSchema,
+  }),
+  v.check(
+    (auth) => auth.credentials.method === "apiKey" || auth.username === auth.credentials.username,
+    "The account and credential usernames must match.",
+  ),
+);
+
+const legacyAuthSchema = v.object({
   host: v.pipe(v.string(), v.url()),
-  username: v.pipe(v.string(), v.nonEmpty()),
-  token: v.pipe(v.string(), v.nonEmpty()),
-  salt: v.pipe(v.string(), v.nonEmpty()),
+  username: nonEmpty,
+  token: nonEmpty,
+  salt: nonEmpty,
 });
 
 export type Auth = v.InferOutput<typeof authSchema>;
@@ -13,6 +36,32 @@ export type Auth = v.InferOutput<typeof authSchema>;
 /** Stable account identity. Cache hashes this opaque key for its storage directory. */
 export function getAccountKey(account: Account): string {
   return JSON.stringify([account.host, account.username]);
+}
+
+/** Preserve historical host spelling for account/cache identity across methods. */
+export function normalizeServerHost(input: string, password = false): string {
+  const host = input.trim();
+  let url: URL;
+  try {
+    url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(host) ? host : `https://${host}`);
+  } catch {
+    throw new Error("Enter a valid server address.");
+  }
+  if (url.username || url.password || url.search || url.hash)
+    throw new Error(
+      "Use a server address without user information, query parameters, or fragments.",
+    );
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (
+    url.protocol !== "https:" &&
+    !(url.protocol === "http:" && import.meta.env.DEV && loopback && !password)
+  )
+    throw new Error(
+      password
+        ? "Direct password authentication requires HTTPS."
+        : "Server connections require HTTPS (HTTP loopback is development-only).",
+    );
+  return url.toString().replace(/\/$/, "");
 }
 
 export class AuthStore {
@@ -32,15 +81,38 @@ export class AuthStore {
   load(): Auth | null {
     const value = this.#storage.getItem(this.#key);
     if (!value) return null;
+    let migrated: Auth;
     try {
-      return v.parse(authSchema, JSON.parse(value));
+      const input = JSON.parse(value);
+      if (!input || typeof input !== "object" || "credentials" in input)
+        return v.parse(authSchema, input);
+      const legacy = v.parse(legacyAuthSchema, input);
+      migrated = {
+        host: legacy.host,
+        username: legacy.username,
+        credentials: {
+          method: "token",
+          username: legacy.username,
+          token: legacy.token,
+          salt: legacy.salt,
+        },
+      };
     } catch {
       throw new Error("The saved Subsonic authentication is invalid.");
     }
+    try {
+      this.save(migrated);
+    } catch {
+      // Writeback is best-effort: valid legacy credentials remain usable and saved.
+    }
+    return migrated;
   }
 
+  /** All credential methods persist on this device until disconnect. */
   save(auth: Auth) {
-    this.#storage.setItem(this.#key, JSON.stringify(v.parse(authSchema, auth)));
+    const parsed = v.safeParse(authSchema, auth);
+    if (!parsed.success) throw new Error("The Subsonic authentication is invalid.");
+    this.#storage.setItem(this.#key, JSON.stringify(parsed.output));
   }
 
   clear() {

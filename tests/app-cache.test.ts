@@ -1,5 +1,6 @@
 import { AuthStore, getAccountKey } from "../src/auth";
 import { Network } from "../src/network.svelte";
+import { AuthWorkflow } from "../src/auth.svelte";
 // @vitest-environment happy-dom
 import { flushSync, mount as mountComponent, unmount } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
@@ -37,8 +38,10 @@ vi.mock("../src/session.svelte", () => ({
     }
     localReady = mocks.localReady;
     loadingAfterConnect = mocks.loadingAfterConnect;
+    readonly login: AuthWorkflow;
     constructor(options: NonNullable<typeof mocks.options>) {
       mocks.options = options;
+      this.login = new AuthWorkflow(options.network);
     }
     start() {
       mocks.options!.selection.cache = mocks.cache!;
@@ -1128,8 +1131,7 @@ it("renders download records and jobs without duplicates and switches account pr
     options.network.prepare({
       host: "https://music.example",
       username: "first",
-      token: "token",
-      salt: "salt",
+      credentials: { method: "token", username: "first", token: "token", salt: "salt" },
     }),
   );
   tracks.setConnection(connection.audio);

@@ -1,21 +1,23 @@
-import { describe, expect, it } from "vitest";
-import { AuthStore, getAccountKey } from "../src/auth";
+import { describe, expect, it, vi } from "vitest";
+import { AuthStore, getAccountKey, type Auth, type Credentials } from "../src/auth";
+
+const account = { host: "https://music.example", username: "listener" };
+const methods: Credentials[] = [
+  { method: "token", username: account.username, token: "token", salt: "salt" },
+  { method: "apiKey", apiKey: "api-secret" },
+  { method: "password", username: account.username, password: "password-secret" },
+];
 
 describe("getAccountKey", () => {
-  const account = { host: "https://music.example", username: "listener" };
-
-  it("preserves the identity format used by existing cache directories", () => {
+  it("preserves the exact identity format across authentication methods", () => {
     expect(getAccountKey(account)).toBe('["https://music.example","listener"]');
     expect(getAccountKey({ username: account.username, host: account.host })).toBe(
       getAccountKey(account),
     );
-  });
-
-  it("does not include credentials in account identity", () => {
-    const first = { ...account, token: "old", salt: "old" };
-    const second = { ...account, token: "new", salt: "new" };
-    expect(getAccountKey(first)).toBe(getAccountKey(second));
-    expect(getAccountKey(first)).toBe(getAccountKey(account));
+    for (const credentials of methods) {
+      const auth = { ...account, credentials };
+      expect(getAccountKey(auth)).toBe(getAccountKey(account));
+    }
   });
 
   it("distinguishes hosts, usernames, and delimiter-containing values", () => {
@@ -53,69 +55,129 @@ class MemoryStorage implements Storage {
   }
 }
 
+function setup() {
+  const persistent = new MemoryStorage();
+  return { persistent, store: new AuthStore(persistent) };
+}
+
 describe("auth store", () => {
-  it("persists only validated credential fields, never a supplied password", () => {
-    const storage = new MemoryStorage();
-    const store = new AuthStore(storage);
-    const credentials = {
-      host: "https://music.example.com",
-      username: "listener",
-      token: "token",
-      salt: "salt",
-      password: "secret",
-    };
-    store.save(credentials);
-    expect(JSON.parse(storage.getItem("navidrome-auth")!)).toEqual({
-      host: "https://music.example.com",
-      username: "listener",
-      token: "token",
-      salt: "salt",
-    });
+  it("migrates saved token credentials without changing account identity or forcing logout", () => {
+    const { persistent, store } = setup();
+    persistent.setItem(
+      "navidrome-auth",
+      JSON.stringify({ ...account, token: "token", salt: "salt", password: "discard" }),
+    );
+    const auth = store.load()!;
+    expect(auth).toEqual({ ...account, credentials: methods[0] });
+    expect(getAccountKey(auth)).toBe(getAccountKey(account));
+    expect(JSON.parse(persistent.getItem("navidrome-auth")!)).toEqual(auth);
+    expect(store.load()).toEqual(auth);
   });
 
-  it("persists and validates authentication", () => {
-    const storage = new MemoryStorage();
-    const store = new AuthStore(storage);
-    const auth = {
-      host: "https://music.example.com",
-      username: "listener",
-      token: "token",
-      salt: "salt",
-    };
+  it("retains valid legacy credentials when migration writeback fails", () => {
+    const { persistent: storage, store } = setup();
+    const original = JSON.stringify({ ...account, token: "token", salt: "salt" });
+    storage.setItem("navidrome-auth", original);
+    vi.spyOn(storage, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage full", "QuotaExceededError");
+    });
+    expect(store.load()).toEqual({ ...account, credentials: methods[0] });
+    expect(storage.getItem("navidrome-auth")).toBe(original);
+    expect(store.load()).toEqual({ ...account, credentials: methods[0] });
+    expect(storage.getItem("navidrome-auth")).toBe(original);
+  });
 
+  it.each(methods)("persists $method credentials and strips unrelated secrets", (credentials) => {
+    const { persistent, store } = setup();
+    const auth = {
+      ...account,
+      credentials: { unrelatedSecret: "discard", ...credentials },
+      password: "discard",
+    };
     store.save(auth);
-    store.saveAccount(auth);
-    expect(store.load()).toEqual(auth);
-    expect(JSON.parse(storage.getItem("navidrome-account")!)).toEqual({
-      host: auth.host,
-      username: auth.username,
+    expect(JSON.parse(persistent.getItem("navidrome-auth")!)).toEqual({
+      ...account,
+      credentials,
     });
-    store.clear();
-    expect(store.load()).toBeNull();
-    expect(new AuthStore(storage).loadAccount()).toEqual({
-      host: auth.host,
-      username: auth.username,
-    });
+    expect(new AuthStore(persistent).load()).toEqual({ ...account, credentials });
+  });
+
+  it.each(methods)(
+    "clears $method credentials while retaining the credential-free account",
+    (credentials) => {
+      const { persistent, store } = setup();
+      const auth = { ...account, credentials };
+      store.save(auth);
+      store.saveAccount(auth);
+      store.clear();
+      expect(persistent.getItem("navidrome-auth")).toBeNull();
+      expect(new AuthStore(persistent).load()).toBeNull();
+      expect(store.loadAccount()).toEqual(account);
+      expect(JSON.parse(persistent.getItem("navidrome-account")!)).toEqual(account);
+    },
+  );
+
+  it("isolates the demo's injected store from real browser credentials", () => {
+    const browser = new MemoryStorage();
+    browser.setItem("navidrome-auth", JSON.stringify({ ...account, credentials: methods[2] }));
+    vi.stubGlobal("localStorage", browser);
+    try {
+      const persistent = new MemoryStorage();
+      const store = new AuthStore(persistent);
+      expect(store.load()).toBeNull();
+      store.save({ ...account, credentials: methods[0] });
+      expect(store.load()?.credentials.method).toBe("token");
+      store.save({ ...account, credentials: methods[2] });
+      expect(new AuthStore(persistent).load()?.credentials.method).toBe("password");
+      store.clear();
+      expect(new AuthStore().load()?.credentials.method).toBe("password");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("defaults to browser localStorage", () => {
+    const persistent = new MemoryStorage();
+    vi.stubGlobal("localStorage", persistent);
+    try {
+      const auth = { ...account, credentials: methods[2] };
+      new AuthStore().save(auth);
+      expect(JSON.parse(persistent.getItem("navidrome-auth")!)).toEqual(auth);
+      expect(new AuthStore().load()).toEqual(auth);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("discards malformed or credential-bearing last-account records", () => {
-    const storage = new MemoryStorage();
-    const store = new AuthStore(storage);
+    const { persistent, store } = setup();
     for (const record of [
       { host: "server" },
       { host: "server", username: "user", token: "secret" },
     ]) {
-      storage.setItem("navidrome-account", JSON.stringify(record));
+      persistent.setItem("navidrome-account", JSON.stringify(record));
       expect(store.loadAccount()).toBeNull();
-      expect(storage.getItem("navidrome-account")).toBeNull();
+      expect(persistent.getItem("navidrome-account")).toBeNull();
     }
   });
 
-  it("rejects malformed persisted authentication", () => {
-    const storage = new MemoryStorage();
-    storage.setItem("navidrome-auth", JSON.stringify({ host: "invalid" }));
-    const store = new AuthStore(storage);
-
-    expect(() => store.load()).toThrow("authentication is invalid");
+  it.each([
+    { host: "invalid" },
+    { ...account, token: "", salt: "secret" },
+    { ...account, token: "secret" },
+    { ...account, credentials: { method: "unknown", password: "secret" } },
+    { ...account, credentials: { method: "apiKey", apiKey: "" } },
+    { ...account, credentials: { method: "token", username: "listener", salt: "secret" } },
+    { ...account, credentials: { method: "password", username: "listener", password: "" } },
+    {
+      ...account,
+      credentials: { method: "token", username: "other", token: "token", salt: "salt" },
+    },
+    { ...account, credentials: { method: "password", username: "other", password: "secret" } },
+  ])("rejects malformed records without leaking validation input", (record) => {
+    const { persistent, store } = setup();
+    persistent.setItem("navidrome-auth", JSON.stringify(record));
+    expect(() => store.load()).toThrow("The saved Subsonic authentication is invalid.");
+    expect(() => store.save(record as Auth)).toThrow("The Subsonic authentication is invalid.");
   });
 });

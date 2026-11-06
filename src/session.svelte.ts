@@ -1,18 +1,18 @@
 import { getAccountKey, type Auth, type AuthStore } from "./auth";
 import type { Covers } from "./covers.svelte";
 import {
-  NetworkTransportError,
   type ActiveNetworkConnection,
   type LibraryProgress,
   type Network,
   type NetworkConnection,
-  type PasswordAuth,
 } from "./network.svelte";
 import type { Playback } from "./playback.svelte";
 import type { Playlists } from "./playlists.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Cache } from "./cache.svelte";
+import { AuthWorkflow, type AuthenticatedConnection, type LoginMethod } from "./auth.svelte";
+import { connectionError } from "./errors";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -27,20 +27,13 @@ interface SessionOptions {
   preferences: Storage;
 }
 
-function connectionError(error: unknown): string {
-  if (error instanceof AggregateError)
-    return error.errors.length ? error.errors.map(connectionError).join("; ") : error.message;
-  if (error instanceof NetworkTransportError)
-    return "Could not reach the server. Check your connection, server address, and CORS settings.";
-  return error instanceof Error ? error.message : "Could not connect to the server.";
-}
-
 export class Session {
   auth = $state.raw<Auth | null>(null);
   status = $state<ConnectionStatus>("disconnected");
   error = $state("");
   localReady = $state(false);
   loadingAfterConnect = $state(false);
+  readonly login: AuthWorkflow;
 
   #options: SessionOptions;
   #account?: Readonly<Account>;
@@ -57,6 +50,10 @@ export class Session {
 
   constructor(options: SessionOptions) {
     this.#options = options;
+    this.login = new AuthWorkflow(
+      options.network,
+      () => !this.auth && this.status !== "connecting" && !this.#destroyed,
+    );
   }
 
   get libraryProgress() {
@@ -82,7 +79,7 @@ export class Session {
   }
 
   get busy() {
-    return this.status === "connecting";
+    return this.status === "connecting" || this.login.busy;
   }
 
   get offlineMode() {
@@ -106,6 +103,7 @@ export class Session {
   }
 
   #detach() {
+    this.login.cancel();
     this.loadingAfterConnect = false;
     this.#libraryProgress = undefined;
     this.#refreshPending = undefined;
@@ -181,8 +179,8 @@ export class Session {
       this.status = "disconnected";
       return;
     }
-    this.#resumeOnline();
-    await this.#refresh(false);
+    await this.#resumeOnline(operationId);
+    if (this.#isCurrentOperation(operationId)) await this.#refresh(false);
   }
 
   async #restore(account: Account) {
@@ -212,7 +210,7 @@ export class Session {
     }
   }
 
-  /** Load local data before validating credentials, without selecting the account.
+  /** Load local data for a verified identity without selecting the account.
    * Same-account reconnects reuse the live writer to retain queue edits. */
   async #prepareWorkspace(connection: NetworkConnection) {
     const previous = this.#options.selection.cache;
@@ -260,33 +258,51 @@ export class Session {
     this.localReady = true;
   }
 
-  /** Login succeeds once local data and credentials are accepted, not when sync finishes. */
-  async connect(input: PasswordAuth): Promise<boolean> {
-    if (this.auth || this.busy || this.#destroyed) return false;
+  /** Cancel login and workspace preparation, never the selected offline workspace.
+   * Method changes delegate to Auth's discovery-preserving cancellation. */
+  cancelConnect(options: { method: LoginMethod } | { resetDiscovery?: boolean } = {}) {
+    if (this.auth || this.#destroyed) return;
+    this.#beginOperation();
+    this.status = "disconnected";
+    if ("method" in options) this.login.setMethod(options.method);
+    else this.login.cancel(options.resetDiscovery);
+  }
+
+  /** Accept auth's verified result, then activate local resources. Sync is background work. */
+  async connect(verified: AuthenticatedConnection | undefined): Promise<boolean> {
+    if (
+      !verified ||
+      this.auth ||
+      this.status === "connecting" ||
+      this.#destroyed ||
+      verified.connection.signal.aborted
+    )
+      return false;
     const operationId = this.#beginOperation();
     this.status = "connecting";
+    const { auth, connection } = verified;
     try {
-      const credentials = this.#options.network.createAuth(input);
-      const connection = this.#options.network.prepare(credentials);
+      connection.signal.throwIfAborted();
       await this.#restoration;
       if (!this.#isCurrentOperation(operationId)) return false;
       const cache = await this.#prepareWorkspace(connection);
-      await this.#options.network.validate(connection);
-      connection.signal.throwIfAborted();
-      if (!this.#isCurrentOperation(operationId)) return false;
       await this.#retireWorkspace(cache, connection.signal);
       if (!this.#isCurrentOperation(operationId)) return false;
-      this.#commitWorkspace(cache, credentials, connection);
+      this.#commitWorkspace(cache, auth, connection);
       this.status = "connected";
       this.loadingAfterConnect = true;
+      this.login.cancel();
       void this.#refresh(false);
       return true;
     } catch (error) {
-      if (this.#isCurrentOperation(operationId)) {
+      if (this.#isCurrentOperation(operationId) && !connection.signal.aborted) {
         // Also remove partially saved credentials if browser persistence failed.
         if (this.disconnect()) this.#fail(error, this.#operationId);
       }
       return false;
+    } finally {
+      if (this.#isCurrentOperation(operationId) && this.status === "connecting")
+        this.status = "disconnected";
     }
   }
 
@@ -307,15 +323,44 @@ export class Session {
     }
   }
 
-  #resumeOnline() {
-    if (!this.auth) return;
-    this.#setConnection(this.#options.network.open(this.auth));
+  async #resumeOnline(operationId: number) {
+    const auth = this.auth;
+    if (!auth) return;
+    let verified: AuthenticatedConnection;
+    try {
+      verified = await this.login.resume(auth);
+    } catch (error) {
+      if (!this.#isCurrentOperation(operationId) || this.auth !== auth) return;
+      if (auth.credentials.method === "apiKey") {
+        // An unverified key must not enable access to another account's cached IDs.
+        this.#options.network.setMode("offline");
+        throw new Error(
+          `${connectionError(error)} Your saved library is available offline. Turn off Offline library to retry, or disconnect and sign in again.`,
+        );
+      }
+      throw error;
+    }
+    if (!this.#isCurrentOperation(operationId) || this.auth !== auth) return;
+    const { connection } = verified;
+    connection.signal.throwIfAborted();
+    this.#setConnection(this.#options.network.accept(connection));
     this.status = "connected";
   }
 
   async refresh() {
     if (!this.auth || this.offlineMode || this.busy || this.#destroyed) return;
     this.error = "";
+    if (!this.#connection) {
+      const operationId = this.#beginOperation();
+      this.status = "connecting";
+      try {
+        await this.#resumeOnline(operationId);
+        if (!this.#isCurrentOperation(operationId)) return;
+      } catch (error) {
+        this.#fail(error, operationId);
+        return;
+      }
+    }
     await this.#refresh(true);
   }
 
@@ -407,7 +452,7 @@ export class Session {
       if (enabled) return;
       await this.#restoration;
       if (!this.#isCurrentOperation(operationId)) return;
-      this.#resumeOnline();
+      await this.#resumeOnline(operationId);
     } catch (error) {
       this.#fail(error, operationId);
     }

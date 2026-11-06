@@ -4,10 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/app.svelte";
 import WebappUpdater from "../src/webapp-updater.svelte";
 import { Network } from "../src/network.svelte";
+import { SubsonicError } from "../src/subsonic-client";
 import { AuthStore } from "../src/auth";
 import { registerSW } from "virtual:pwa-register";
 import { installNavigation, navigationEvent } from "./router-test-helpers";
-import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
+import { connect, createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
 const mocks = vi.hoisted(() => ({
   session: undefined as import("../src/session.svelte").Session | undefined,
@@ -72,8 +73,14 @@ async function setup(
   });
   flushSync();
   mocks.navigate.mockClear();
-  cleanups.push(async () => {
+  let mounted = true;
+  async function destroyApp() {
+    if (!mounted) return;
+    mounted = false;
     await unmount(component);
+  }
+  cleanups.push(async () => {
+    await destroyApp();
     await fixture.destroy();
   });
   const button = (label: string) =>
@@ -81,21 +88,150 @@ async function setup(
       (button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label,
     )!;
   const offline = () => target.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-  const fill = (host = credentials.host) => {
-    const inputs = [...target.querySelectorAll<HTMLInputElement>("form input")];
-    for (const [index, value] of [host, credentials.username, "password"].entries()) {
-      inputs[index].value = value;
-      inputs[index].dispatchEvent(new Event("input", { bubbles: true }));
+  const fill = async (host = credentials.host) => {
+    const hostInput = target.querySelector<HTMLInputElement>("#server-host")!;
+    hostInput.value = host;
+    hostInput.dispatchEvent(new Event("input", { bubbles: true }));
+    target
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(fixture.session.login.host).not.toBe(""));
+    flushSync();
+    for (const [id, value] of [
+      ["username", credentials.username],
+      ["password", "password"],
+    ]) {
+      const input = target.querySelector<HTMLInputElement>(`#server-${id}`)!;
+      input.value = value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
     }
     target
       .querySelector("form")!
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     flushSync();
   };
-  return { ...fixture, target, button, offline, fill, navigate };
+  return { ...fixture, target, button, offline, fill, navigate, destroyApp };
 }
 
 describe("app settings", () => {
+  it("checks the server before showing credentials, defaults to key login and supports explicit method switches", async () => {
+    const { target, discover, session, validate } = await setup();
+    const cancel = vi.spyOn(session, "cancelConnect");
+    discover.mockResolvedValueOnce([{ name: "apiKeyAuthentication", versions: [1] }]);
+    const host = target.querySelector<HTMLInputElement>("#server-host")!;
+    host.value = credentials.host;
+    host.dispatchEvent(new Event("input", { bubbles: true }));
+    const form = target.querySelector("form")!;
+    expect(form.querySelector("#server-api-key, #server-username, #server-password")).toBeNull();
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(session.login.method).toBe("apiKey"));
+    flushSync();
+    expect(discover).toHaveBeenCalledWith(expect.any(AbortSignal));
+    expect(validate).not.toHaveBeenCalled();
+    expect(form.querySelector("#server-username, #server-password")).toBeNull();
+    expect(
+      [...form.querySelectorAll('input[name="method"]')].map((radio) =>
+        radio.parentElement?.textContent?.trim(),
+      ),
+    ).toEqual(["API key", "Username and password"]);
+    const key = form.querySelector<HTMLInputElement>("#server-api-key")!;
+    expect(key.required).toBe(true);
+    expect(key.type).toBe("password");
+    expect(target.textContent).toContain("Generate an API key in your server's settings");
+    key.value = "test-key";
+    key.dispatchEvent(new Event("input", { bubbles: true }));
+    form.querySelector<HTMLInputElement>('input[name="method"][value="token"]')!.click();
+    flushSync();
+    expect(session.login.method).toBe("token");
+    expect(cancel).toHaveBeenLastCalledWith({ method: "token" });
+    expect(form.querySelector("#server-api-key")).toBeNull();
+    expect(form.querySelector<HTMLInputElement>("#server-username")!.required).toBe(true);
+    expect(form.querySelector<HTMLInputElement>("#server-password")!.autocomplete).toBe(
+      "current-password",
+    );
+    form.querySelector<HTMLInputElement>('input[name="method"][value="apiKey"]')!.click();
+    flushSync();
+    expect(form.querySelector<HTMLInputElement>("#server-api-key")!.value).toBe("");
+    expect(cancel).toHaveBeenLastCalledWith({ method: "apiKey" });
+    host.value = "https://other.example";
+    host.dispatchEvent(new Event("input", { bubbles: true }));
+    flushSync();
+    expect(form.querySelector("#server-api-key, #server-password")).toBeNull();
+    expect(cancel).toHaveBeenLastCalledWith();
+  });
+
+  it("clears an unsubmitted UI secret when Session disconnects outside the view", async () => {
+    const { target, session, discover } = await setup();
+    discover.mockResolvedValue([{ name: "apiKeyAuthentication", versions: [1] }]);
+    await session.login.discover(credentials.host);
+    flushSync();
+    const key = target.querySelector<HTMLInputElement>("#server-api-key")!;
+    key.value = "test-key";
+    key.dispatchEvent(new Event("input", { bubbles: true }));
+    session.disconnect();
+    flushSync();
+    await session.login.discover(credentials.host);
+    flushSync();
+    expect(target.querySelector<HTMLInputElement>("#server-api-key")!.value).toBe("");
+  });
+
+  it("warns about sending and persisting a password without submitting until confirmation", async () => {
+    const { target, fill, validate, session, network, storage } = await setup();
+    const prepare = vi.spyOn(network, "prepare");
+    validate.mockRejectedValueOnce(new SubsonicError(41, "Token method unsupported"));
+    await fill();
+    await vi.waitFor(() => expect(session.login.passwordConfirmation).toBe(true));
+    flushSync();
+    expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual(["token"]);
+    expect(target.querySelector("#settings-password-warning")?.textContent).toContain("over HTTPS");
+    expect(target.querySelector("#settings-password-warning")?.textContent).toContain(
+      "actual password",
+    );
+    expect(target.querySelector("#settings-password-warning")?.textContent).toMatch(
+      /derived\s+token/,
+    );
+    expect(target.querySelector("#settings-password-warning")?.textContent).toContain(
+      "code 41 or 42",
+    );
+    expect(target.querySelector("#settings-password-warning")?.textContent).toContain(
+      "saved in localStorage on this device until you disconnect",
+    );
+    expect(target.querySelector("#server-password")).toBeNull();
+    target.querySelector<HTMLButtonElement>("#settings-confirm-password")!.click();
+    await vi.waitFor(() => expect(session.auth?.credentials.method).toBe("password"));
+    expect(prepare.mock.calls.map(([auth]) => auth.credentials.method)).toEqual([
+      "token",
+      "password",
+    ]);
+    expect(new AuthStore(storage).load()?.credentials.method).toBe("password");
+    target.querySelector<HTMLButtonElement>("#settings-disconnect")!.click();
+    flushSync();
+    expect(storage.getItem("navidrome-auth")).toBeNull();
+    expect(target.querySelectorAll("form input.input")).toHaveLength(1);
+  });
+
+  it("allows cancelling a password warning without submitting or persisting a password", async () => {
+    const { target, session, validate, button, auth, fill } = await setup();
+    const cancel = vi.spyOn(session, "cancelConnect");
+    validate.mockRejectedValueOnce(new SubsonicError(42, "Unsupported"));
+    await fill();
+    await vi.waitFor(() => expect(session.login.passwordConfirmation).toBe(true));
+    flushSync();
+    expect(target.querySelector("#settings-password-warning")?.textContent).toContain(
+      "code 41 or 42",
+    );
+    expect(validate).toHaveBeenCalledOnce();
+    cancel.mockClear();
+    button("Cancel").click();
+    flushSync();
+    expect(session.login.passwordConfirmation).toBe(false);
+    expect(cancel).toHaveBeenCalledExactlyOnceWith({ resetDiscovery: false });
+    expect(target.querySelector("#settings-password-warning")).toBeNull();
+    expect(target.querySelector<HTMLInputElement>("#server-password")!.value).toBe("");
+    expect(auth.load()).toBeNull();
+    expect(await session.login.confirmPassword()).toBeUndefined();
+  });
+
   it("shows startup synchronization immediately and distinguishes server sync from refresh", async () => {
     const local = deferred();
     const modified = deferred<number | null>();
@@ -152,7 +288,7 @@ describe("app settings", () => {
       const { target, fill, session, validate, navigate } = await setup(false, false);
       const pending = deferred();
       validate.mockReturnValueOnce(pending.promise);
-      fill();
+      await fill();
       await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
       if (state === "hidden") target.style.display = "none";
       else if (state === "navigating") window.history.replaceState(null, "", "?/downloads");
@@ -177,13 +313,36 @@ describe("app settings", () => {
     },
   );
 
+  it("cancels authentication on App destruction without late workspace activation or navigation", async () => {
+    const { fill, validate, session, auth, selection, loadCache, navigate, destroyApp } =
+      await setup(false, false);
+    const pending = deferred();
+    validate.mockReturnValueOnce(pending.promise);
+    await fill();
+    await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
+    const { signal } = validate.mock.calls[0][0];
+    await destroyApp();
+    expect(signal.aborted).toBe(true);
+    pending.resolve();
+    await new Promise((done) => setTimeout(done, 0));
+    expect(session.auth).toBeNull();
+    expect(auth.load()).toBeNull();
+    expect(selection.cache).toBeUndefined();
+    expect(loadCache).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it("displays only the server host and port, without URL userinfo or auth secrets", async () => {
     const { target, session } = await setup(true);
     session.auth = {
       ...credentials,
       host: "https://hidden-user:hidden-secret@music.example:8443/base",
-      token: "private-token-value",
-      salt: "private-salt-value",
+      credentials: {
+        method: "token",
+        username: credentials.username,
+        token: "private-token-value",
+        salt: "private-salt-value",
+      },
     };
     flushSync();
     expect(target.querySelector("#settings-server-identity")?.textContent).toBe(
@@ -221,7 +380,10 @@ describe("app settings", () => {
   });
 
   it("uses shared cards, labeled native fields, and a native switch", async () => {
-    const { target } = await setup();
+    const { target, session } = await setup();
+    expect(target.querySelectorAll("form input.input")).toHaveLength(1);
+    await session.login.discover(credentials.host);
+    flushSync();
     expect(target.querySelector("[aria-labelledby=settings-heading] h1")?.textContent).toBe(
       "Settings",
     );
@@ -247,7 +409,7 @@ describe("app settings", () => {
       "music.example.com",
     );
     expect(server.querySelector("#settings-auth-help")?.textContent).toContain(
-      "Connect to your Navidrome server",
+      "Connect to your OpenSubsonic server",
     );
     expect(server.querySelector("#server-password")?.getAttribute("type")).toBe("password");
     expect(offline.classList.contains("card")).toBe(true);
@@ -477,7 +639,7 @@ describe("app settings", () => {
       });
       const loading = saved
         ? session.refresh()
-        : session.connect({ ...credentials, password: "password" });
+        : connect(session, { ...credentials, password: "password" });
       if (saved) {
         flushSync();
         const status = target.querySelector("#settings-connection-status")!;
@@ -569,7 +731,7 @@ describe("app settings", () => {
     expect(target.querySelector("#settings-server form")).not.toBeNull();
     expect(
       [...target.querySelectorAll<HTMLInputElement>("form input")].map((input) => input.value),
-    ).toEqual(["", "", ""]);
+    ).toEqual([""]);
     expect(offline().checked).toBe(true);
     expect(offline().disabled).toBe(true);
     expect(target.textContent).toContain("Connect to a server to browse online.");
@@ -581,16 +743,18 @@ describe("app settings", () => {
     const { target, fill, button, offline, session, navigate, validate } = await setup();
     expect(offline().checked).toBe(true);
     expect(offline().disabled).toBe(true);
-    expect(button("Connect").disabled).toBe(false);
+    expect(button("Check server").disabled).toBe(false);
     const pending = deferred();
     validate.mockReturnValueOnce(pending.promise);
-    target.querySelector<HTMLInputElement>("#server-password")!.focus();
-    fill("music.example");
+    target.querySelector<HTMLInputElement>("#server-host")!.focus();
+    await fill("music.example");
     const connect = button("Connecting…");
-    expect(connect.disabled).toBe(false);
+    expect(connect.disabled).toBe(true);
     expect(connect.getAttribute("aria-disabled")).toBe("true");
     expect(
-      [...target.querySelectorAll<HTMLInputElement>("form input")].every((input) => input.disabled),
+      [...target.querySelectorAll<HTMLInputElement>("#server-username, #server-password")].every(
+        (input) => input.disabled,
+      ),
     ).toBe(true);
     target
       .querySelector("form")!
@@ -607,10 +771,10 @@ describe("app settings", () => {
     ).toContain("settings-server-error");
     expect(target.querySelectorAll('[role="alert"]')).toHaveLength(1);
     expect(button("Show errors").getAttribute("commandfor")).toBe("error-popover");
-    expect(session.error).toBe("Unauthorized");
+    expect(session.login.error).toBe("Unauthorized");
     expect(offline().checked).toBe(true);
     expect(session.auth).toBeNull();
-    fill("music.example");
+    await fill("music.example");
     await vi.waitFor(() => expect(target.querySelector("#settings-server form")).toBeNull());
     expect(offline().checked).toBe(false);
     expect(offline().disabled).toBe(false);

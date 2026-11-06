@@ -1,11 +1,12 @@
 import {
   SubsonicClient,
-  createSubsonicAuth,
+  SubsonicTransportError as NetworkTransportError,
+  type OpenSubsonicExtension,
   type SubsonicApi,
   type SubsonicClientFactory,
   type SubsonicPlaylist,
 } from "./subsonic-client";
-import { authSchema, type Auth } from "./auth";
+import { authSchema, normalizeServerHost, type Auth } from "./auth";
 import * as v from "valibot";
 import type {
   Album,
@@ -17,19 +18,8 @@ import type {
   PlaylistEntry,
 } from "./schema";
 
-/** Fetch failed before returning a response; browsers do not expose a reliable CORS diagnosis. */
-export class NetworkTransportError extends Error {
-  constructor(cause: unknown) {
-    super("The server request failed.", { cause });
-    this.name = "NetworkTransportError";
-  }
-}
-
-export interface PasswordAuth {
-  host: string;
-  username: string;
-  password: string;
-}
+/** Browsers do not expose a reliable CORS diagnosis. */
+export { NetworkTransportError };
 
 /** Credential-free identity for one connection lifetime, owned by its Network. */
 interface NetworkIdentity {
@@ -296,8 +286,9 @@ async function networkFetch(input: RequestInfo | URL, init?: RequestInit) {
     return await fetch(input, init);
   } catch (error) {
     init?.signal?.throwIfAborted();
-    if (error instanceof Error && error.name === "AbortError") throw error;
-    throw new NetworkTransportError(error);
+    if (error instanceof Error && error.name === "AbortError")
+      throw new DOMException("The server request was cancelled.", "AbortError");
+    throw new NetworkTransportError();
   }
 }
 
@@ -541,11 +532,20 @@ export class Network {
   #active?: SubsonicApi;
   #candidate?: CandidateConnection;
   #createClient: SubsonicClientFactory;
+  readonly protocol: "subsonic" | "alternate";
 
   constructor(
-    createClient: SubsonicClientFactory = (auth, options) => new SubsonicClient(auth, options),
+    createClient?: SubsonicClientFactory,
+    { protocol = "subsonic" }: { protocol?: "subsonic" | "alternate" } = {},
   ) {
-    this.#createClient = createClient;
+    this.protocol = protocol;
+    this.#createClient = createClient ?? ((auth, options) => new SubsonicClient(auth, options));
+  }
+
+  /** Cancel an unaccepted connection, without touching live access. */
+  cancelPending() {
+    this.#candidate?.client.abort();
+    this.#candidate = undefined;
   }
 
   get mode() {
@@ -556,30 +556,22 @@ export class Network {
     this.#mode = mode;
     if (mode === "online") return;
     this.#active?.abort();
-    this.#candidate?.client.abort();
+    this.cancelPending();
     this.#active = undefined;
-    this.#candidate = undefined;
-  }
-
-  /** Prepare credentials without enabling access, persisting data, or making requests. */
-  createAuth(input: PasswordAuth): Auth {
-    const host = input.host.trim();
-    const withProtocol = /^https?:\/\//i.test(host) ? host : `https://${host}`;
-    return v.parse(
-      authSchema,
-      createSubsonicAuth({
-        host: new URL(withProtocol).toString().replace(/\/$/, ""),
-        username: input.username,
-        password: input.password,
-      }),
-    );
   }
 
   /** Explicit login validation is allowed while normal access remains offline. */
-  prepare(auth: Auth): NetworkConnection {
-    const client = this.#createClient(auth, { fetch: networkFetch });
+  prepare(auth: Auth, extensions?: readonly OpenSubsonicExtension[]): NetworkConnection {
+    if (!v.safeParse(authSchema, auth).success)
+      throw new Error("The Subsonic authentication is invalid.");
+    if (this.protocol === "subsonic")
+      normalizeServerHost(auth.host, auth.credentials.method === "password");
+    const client = this.#createClient(
+      { host: auth.host, credentials: auth.credentials },
+      { fetch: networkFetch, ...(extensions ? { extensions } : {}) },
+    );
     this.#candidate?.client.abort();
-    const account = Object.freeze({ host: client.host, username: client.username });
+    const account = Object.freeze({ host: auth.host, username: auth.username });
     const request: Request = (run) => this.#request(client, run);
     const metadata = metadataAccess(account, client, request);
     const connection = Object.freeze({ account, signal: client.signal, metadata });
@@ -622,12 +614,5 @@ export class Network {
     const result = await run();
     client.signal.throwIfAborted();
     return result;
-  }
-
-  /** Resume an authenticated session after access has explicitly been enabled. */
-  open(auth: Auth) {
-    if (this.#mode === "offline") throw new Error("Network access is offline.");
-    const connection = this.prepare(auth);
-    return this.accept(connection);
   }
 }

@@ -82,7 +82,7 @@
       }),
   );
   const offlineMode = $derived(session.offlineMode);
-  const error = $derived(session.error);
+  const error = $derived(session.login.error || session.error);
   const refreshError = $derived(session.refreshError);
   let playbackLoading = $derived(
     ["loading", "buffering", "seeking"].includes(player?.status ?? "idle"),

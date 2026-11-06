@@ -34,18 +34,26 @@
   auth.save({
     host: base.href.replace(/\/$/, ""),
     username: "deezer-preview-demo",
-    token: "local-demo",
-    salt: "local-demo",
+    credentials: {
+      method: "token",
+      username: "deezer-preview-demo",
+      token: "local-demo",
+      salt: "local-demo",
+    },
   });
-  const network = new Network((identity) => {
-    if (
-      identity.host !== base.href.replace(/\/$/, "") ||
-      identity.username !== "deezer-preview-demo"
-    ) {
-      throw new Error("This demo is fixed to its local library. Reload the demo to reconnect.");
-    }
-    return new DeezerSubsonicClient(identity);
-  });
+  const network = new Network(
+    (identity) => {
+      if (
+        identity.host !== base.href.replace(/\/$/, "") ||
+        identity.credentials.method !== "token" ||
+        identity.credentials.username !== "deezer-preview-demo"
+      ) {
+        throw new Error("This demo is fixed to its local library. Reload the demo to reconnect.");
+      }
+      return new DeezerSubsonicClient(identity);
+    },
+    { protocol: "alternate" },
+  );
 </script>
 
 <App {network} {auth} updaterComponent={undefined} demo>

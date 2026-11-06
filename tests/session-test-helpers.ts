@@ -8,12 +8,18 @@ import { Playback } from "../src/playback.svelte";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import type { Account } from "../src/schema";
 import { Session } from "../src/session.svelte";
+import { SubsonicClient } from "../src/subsonic-client";
+import type { LoginInput } from "../src/auth.svelte";
+
+export async function connect(session: Session, input: LoginInput) {
+  // Session rejects an aborted/superseded candidate even if this continuation is late.
+  return session.connect(await session.login.connect(input));
+}
 
 export const credentials = {
   host: "https://music.example",
   username: "listener",
-  token: "token",
-  salt: "salt",
+  credentials: { method: "token" as const, username: "listener", token: "token", salt: "salt" },
 };
 
 export function deferred<T = void>() {
@@ -124,6 +130,9 @@ export function createSession(saved = false, storage = createStorage()) {
     suspendNetwork: vi.spyOn(player, "suspendNetwork").mockImplementation(() => {}),
   };
   const network = new Network();
+  const discover = vi
+    .spyOn(SubsonicClient.prototype, "getOpenSubsonicExtensions")
+    .mockResolvedValue([]);
   const prepare = vi.spyOn(network, "prepare");
   const validate = vi.spyOn(network, "validate").mockResolvedValue(undefined);
   const accept = network.accept.bind(network);
@@ -165,6 +174,7 @@ export function createSession(saved = false, storage = createStorage()) {
     tracks,
     playback,
     storage,
+    discover,
     validate,
     loadCache,
     saveLibrary,

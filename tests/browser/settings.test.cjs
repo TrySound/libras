@@ -30,6 +30,8 @@ test("Settings native controls, layout, and persistence", async (t) => {
   let pingGate;
   let tailGate;
   let pingFailure = false;
+  let tokenUnsupported = false;
+  const pingMethods = [];
   const calls = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -39,12 +41,17 @@ test("Settings native controls, layout, and persistence", async (t) => {
     calls.push(method);
     let fields;
     if (method === "ping") {
+      pingMethods.push(url.searchParams.has("p") ? "password" : "token");
+      const unsupported = tokenUnsupported && url.searchParams.has("t");
       const fail = pingFailure;
       if (pingGate) await pingGate.promise;
       fields = fail
         ? { status: "failed", error: { message: "Unauthorized" } }
-        : { version: "1.16.1", type: "test-server", serverVersion: "1", openSubsonic: true };
-    } else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
+        : unsupported
+          ? { status: "failed", error: { code: 41, message: "Token method unsupported" } }
+          : { version: "1.16.1", type: "test-server", serverVersion: "1", openSubsonic: true };
+    } else if (method === "getOpenSubsonicExtensions") fields = { openSubsonicExtensions: [] };
+    else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
     else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
     else if (method === "search3") {
@@ -83,7 +90,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
       assert.equal(await connect.getAttribute("data-variant"), "primary");
       assert.ok((await connect.boundingBox()).height >= 44);
       const box = await page.locator("#settings-server").boundingBox();
-      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await page.getByRole("button", { name: "Check server", exact: true }).click();
       assert.equal(
         await page
           .locator("#server-host")
@@ -100,21 +107,72 @@ test("Settings native controls, layout, and persistence", async (t) => {
     });
 
     await t.test(
+      "authentication choices and the password warning fit narrow screens and enlarged text",
+      async () => {
+        await page.getByLabel("Host", { exact: true }).fill(host);
+        await page.getByRole("button", { name: "Check server", exact: true }).click();
+        await page.getByLabel("Username", { exact: true }).waitFor();
+        for (const fontSize of ["100%", "200%"]) {
+          await page.evaluate(
+            (value) => (document.documentElement.style.fontSize = value),
+            fontSize,
+          );
+          await page.setViewportSize({ width: 320, height: 900 });
+          assert.equal(
+            await page
+              .locator("#settings-server")
+              .evaluate((element) => element.scrollWidth <= element.clientWidth),
+            true,
+          );
+        }
+        await page.evaluate(() => document.documentElement.style.removeProperty("font-size"));
+        assert.deepEqual(
+          await page
+            .getByRole("radio")
+            .evaluateAll((radios) => radios.map((radio) => radio.parentElement.textContent.trim())),
+          ["API key", "Username and password"],
+        );
+        tokenUnsupported = true;
+        await page.getByLabel("Username", { exact: true }).fill(username);
+        await page.getByLabel("Password", { exact: true }).fill("password");
+        await page.getByRole("button", { name: "Connect", exact: true }).click();
+        await page.locator("#settings-password-warning").waitFor();
+        assert.match(
+          await page.locator("#settings-password-warning").textContent(),
+          /saved in localStorage on this device until you disconnect/,
+        );
+        assert.deepEqual(pingMethods, ["token"]);
+        assert.equal(
+          await page
+            .locator("#settings-server")
+            .evaluate((element) => element.scrollWidth <= element.clientWidth),
+          true,
+        );
+        await page.getByRole("button", { name: "Cancel", exact: true }).click();
+        tokenUnsupported = false;
+        await page.setViewportSize({ width: 1280, height: 900 });
+      },
+    );
+
+    await t.test(
       "keyboard submission and repeated Enter do not duplicate authentication",
       async () => {
         await page.getByLabel("Host", { exact: true }).fill(host);
+        await page.getByRole("button", { name: "Check server", exact: true }).click();
         await page.getByLabel("Username", { exact: true }).fill(username);
         await page.getByLabel("Password", { exact: true }).fill("password");
         pingFailure = true;
+        const pings = calls.filter((method) => method === "ping").length;
         pingGate = gate();
         await page.keyboard.press("Enter");
-        const connect = page.locator("#settings-connect");
         await page.waitForFunction(() => document.querySelector("#server-password")?.disabled);
-        await connect.focus();
+        // The submit control is disabled while busy; Enter on the editable host
+        // still cannot submit another authentication operation.
+        await page.getByLabel("Host", { exact: true }).focus();
         await page.keyboard.press("Enter");
         pingGate.resolve();
         await page.locator("#settings-server-error").waitFor();
-        assert.equal(calls.filter((method) => method === "ping").length, 1);
+        assert.equal(calls.filter((method) => method === "ping").length, pings + 1);
       },
     );
 
@@ -131,8 +189,15 @@ test("Settings native controls, layout, and persistence", async (t) => {
     // Connect once to exercise the populated card and persist a real library snapshot.
     pingFailure = false;
     pingGate = undefined;
+    tokenUnsupported = true;
+    await page.getByLabel("Username", { exact: true }).fill(username);
+    await page.getByLabel("Password", { exact: true }).fill("password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page.locator("#settings-password-warning").waitFor();
+    assert.equal(pingMethods.includes("password"), false);
+    await page.getByRole("button", { name: "Confirm and send password", exact: true }).click();
     await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
+    assert.deepEqual(pingMethods.slice(-2), ["token", "password"]);
     await page.getByRole("link", { name: "Settings", exact: true }).click();
     await waitConnected();
 

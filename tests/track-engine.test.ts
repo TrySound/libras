@@ -8,7 +8,15 @@ import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
-const auth = { ...account, token: "token", salt: "salt" };
+const auth = {
+  ...account,
+  credentials: {
+    method: "token" as const,
+    username: account.username,
+    token: "token",
+    salt: "salt",
+  },
+};
 const track = {
   id: "track",
   title: "Track",
@@ -125,6 +133,43 @@ describe("TrackEngine using Cache", () => {
     expect(download).toHaveBeenCalledOnce();
     expect(engine.error).toBeInstanceOf(Error);
   });
+
+  it.each(["QuotaExceededError", "NotAllowedError", "Error"])(
+    "preserves local %s sink errors while consuming a remote audio stream",
+    async (name) => {
+      const disk = install();
+      const { engine, cache } = setup({ online: true });
+      const failure =
+        name === "Error"
+          ? new Error("The local disk is read-only.")
+          : new DOMException("The local disk could not save this file.", name);
+      const cancel = vi.fn();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode("audio"));
+                },
+                cancel,
+              }),
+            ),
+        ),
+      );
+      disk.state.beforeWrite = () => {
+        throw failure;
+      };
+      await expect(engine.download(track.id)).rejects.toBe(failure);
+      expect(engine.error).toBe(failure);
+      expect((cache.error as AggregateError).errors).toEqual([failure]);
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(cache.downloads.size).toBe(0);
+      expect(disk.blobs.size).toBe(0);
+      expect(disk.files.size).toBe(0);
+    },
+  );
 
   it("continues a batch after an individual transfer fails", async () => {
     install();
@@ -608,7 +653,9 @@ describe("TrackEngine using Cache", () => {
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
       selection.cache = new Cache(getAccountKey({ ...account, username }));
       engine.activate();
-      engine.setConnection(connection({ ...auth, username }));
+      engine.setConnection(
+        connection({ ...auth, username, credentials: { ...auth.credentials, username } }),
+      );
       await rejected;
       const retry = engine.download(track.id);
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));

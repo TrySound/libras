@@ -1,11 +1,72 @@
 import * as v from "valibot";
 import { md5 } from "js-md5";
+import { credentialsSchema, type Auth, type Credentials } from "./auth";
 
+/** Protocol requests need a host and secrets, not a resolved cache/account identity. */
 export interface SubsonicAuth {
   host: string;
-  username: string;
-  token: string;
-  salt: string;
+  credentials: Credentials;
+}
+
+const reservedParameters = new Set(["u", "p", "t", "s", "apiKey", "v", "c", "f"]);
+
+/** The only place that translates credentials into wire parameters. */
+export function authenticationParameters(credentials: Credentials): URLSearchParams {
+  switch (credentials.method) {
+    case "apiKey":
+      return new URLSearchParams({ apiKey: credentials.apiKey });
+    case "token":
+      return new URLSearchParams({
+        u: credentials.username,
+        t: credentials.token,
+        s: credentials.salt,
+      });
+    case "password": {
+      // A literal enc: prefix must be escaped using the protocol's hex encoding.
+      // This is only encoding, not encryption or another authentication method.
+      const password = credentials.password.startsWith("enc:")
+        ? `enc:${Array.from(new TextEncoder().encode(credentials.password), (byte) => byte.toString(16).padStart(2, "0")).join("")}`
+        : credentials.password;
+      return new URLSearchParams({ u: credentials.username, p: password });
+    }
+  }
+}
+
+export class SubsonicError extends Error {
+  constructor(
+    readonly code: number | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SubsonicError";
+  }
+}
+
+/** Fetch exceptions can contain credential-bearing URLs; never retain their causes. */
+export class SubsonicTransportError extends Error {
+  constructor() {
+    super("The server request failed.");
+    this.name = "SubsonicTransportError";
+  }
+}
+
+export class SubsonicHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`The server returned HTTP ${status}.`);
+    this.name = "SubsonicHttpError";
+  }
+}
+
+const extensionSchema = v.object({ name: v.string(), versions: v.array(v.number()) });
+export type OpenSubsonicExtension = v.InferOutput<typeof extensionSchema>;
+
+/** Discovery is public. Failures remain errors, not evidence of missing capabilities. */
+export function getOpenSubsonicExtensions(
+  host: string,
+  options: SubsonicClientOptions = {},
+  signal?: AbortSignal,
+): Promise<OpenSubsonicExtension[]> {
+  return new SubsonicClient({ host }, options).getOpenSubsonicExtensions(signal);
 }
 
 /** Prepare token authentication without retaining the password or making a request. */
@@ -13,14 +74,18 @@ export function createSubsonicAuth(input: {
   host: string;
   username: string;
   password: string;
-}): SubsonicAuth {
+}): Auth & { credentials: Extract<Credentials, { method: "token" }> } {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
   const salt = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   return {
     host: input.host,
     username: input.username,
-    token: md5(input.password + salt),
-    salt,
+    credentials: {
+      method: "token",
+      username: input.username,
+      token: md5(input.password + salt),
+      salt,
+    },
   };
 }
 
@@ -85,7 +150,9 @@ export const responseSchema = v.object({
     type: v.optional(v.string()),
     serverVersion: v.optional(v.string()),
     openSubsonic: v.optional(v.boolean()),
-    error: v.optional(v.object({ message: v.optional(v.string()) })),
+    error: v.optional(v.object({ code: v.optional(v.number()), message: v.optional(v.string()) })),
+    openSubsonicExtensions: v.optional(v.array(extensionSchema)),
+    tokenInfo: v.optional(v.object({ username: v.pipe(v.string(), v.nonEmpty()) })),
     indexes: v.optional(v.object({ lastModified: v.optional(v.union([v.number(), v.string()])) })),
     searchResult3: v.optional(
       v.object({
@@ -128,10 +195,15 @@ export interface SubsonicClientOptions {
   apiVersion?: string;
   clientName?: string;
   fetch?: typeof fetch;
+  /** Only capabilities actually advertised by this server. Version 1 is supported. */
+  extensions?: readonly OpenSubsonicExtension[];
 }
 
 /** Public protocol surface; alternate transports need not inherit private client state. */
-export type SubsonicApi = Omit<Pick<SubsonicClient, keyof SubsonicClient>, "getStreamUrl"> & {
+export type SubsonicApi = Omit<
+  Pick<SubsonicClient, keyof SubsonicClient>,
+  "getStreamUrl" | "getOpenSubsonicExtensions" | "tokenInfo"
+> & {
   getStreamUrl(
     id: string,
     options?: SubsonicStreamOptions,
@@ -145,13 +217,24 @@ export type SubsonicClientFactory = (
 
 export class SubsonicClient {
   #apiVersion: string;
-  #auth: SubsonicAuth;
+  #auth: { host: string; credentials?: Credentials };
+  #formPost: boolean;
   #clientName: string;
   #fetch: typeof fetch;
   #controller = new AbortController();
 
-  constructor(auth: SubsonicAuth, options: SubsonicClientOptions = {}) {
-    this.#auth = auth;
+  constructor(
+    auth: { host: string; credentials?: Credentials },
+    options: SubsonicClientOptions = {},
+  ) {
+    const credentials = auth.credentials && v.safeParse(credentialsSchema, auth.credentials);
+    if (credentials && !credentials.success)
+      throw new Error("The Subsonic authentication is invalid.");
+    this.#auth = { host: auth.host, credentials: credentials?.output };
+    this.#formPost =
+      options.extensions?.some(
+        (extension) => extension.name === "formPost" && extension.versions.includes(1),
+      ) ?? false;
     this.#apiVersion = options.apiVersion ?? "1.16.1";
     this.#clientName = options.clientName ?? "libras";
     this.#fetch = options.fetch ?? ((...args) => fetch(...args));
@@ -169,24 +252,48 @@ export class SubsonicClient {
     return this.#auth.host;
   }
 
-  get username() {
-    return this.#auth.username;
-  }
-
-  #query(params?: Record<string, string | number | boolean | undefined>) {
+  #query(
+    params?: Record<string, string | number | boolean | undefined> | URLSearchParams,
+    authenticated = true,
+  ) {
     this.signal.throwIfAborted();
-    const query = new URLSearchParams({
-      u: this.#auth.username,
-      t: this.#auth.token,
-      s: this.#auth.salt,
-      v: this.#apiVersion,
-      c: this.#clientName,
-      f: "json",
-    });
-    for (const [name, value] of Object.entries(params ?? {})) {
-      if (value !== undefined) query.set(name, String(value));
+    const query = new URLSearchParams({ v: this.#apiVersion, c: this.#clientName, f: "json" });
+    if (authenticated && this.#auth.credentials) {
+      for (const [name, value] of authenticationParameters(this.#auth.credentials))
+        query.set(name, value);
+    }
+    const entries = params instanceof URLSearchParams ? params : Object.entries(params ?? {});
+    for (const [name, value] of entries) {
+      if (!reservedParameters.has(name) && value !== undefined) query.append(name, String(value));
     }
     return query;
+  }
+
+  #safeMessage(message: string | undefined) {
+    if (!message) return "The Subsonic server rejected the request.";
+    // Do not display echoed URLs. Redact both stored and wire-encoded secrets;
+    // protocol codes remain available for the caller's policy decisions.
+    if (/(?:https?:\/\/|[?&](?:u|p|t|s|apiKey)=)/i.test(message))
+      return "The Subsonic server rejected the request.";
+    const credentials = this.#auth.credentials;
+    const values = [
+      ...Object.entries(credentials ?? {}),
+      ...(credentials ? authenticationParameters(credentials) : []),
+    ];
+    const secrets = new Set<string>();
+    for (const [key, value] of values) {
+      if (key === "method" || !value) continue;
+      secrets.add(value);
+      secrets.add(encodeURIComponent(value));
+      secrets.add(new URLSearchParams({ x: value }).toString().slice(2));
+    }
+    if (!secrets.size) return message;
+    // Match complete overlapping secrets first, without reprocessing replacement markers.
+    const pattern = [...secrets]
+      .sort((a, b) => b.length - a.length)
+      .map((secret) => secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|");
+    return message.replace(new RegExp(pattern, "g"), () => "[redacted]");
   }
 
   #url(path: string, query: URLSearchParams) {
@@ -195,13 +302,20 @@ export class SubsonicClient {
 
   async #parse(response: Response, signal = this.signal): Promise<SubsonicResponse> {
     signal.throwIfAborted();
-    if (!response.ok) throw new Error(`The server returned HTTP ${response.status}.`);
-    const parsed = v.safeParse(responseSchema, await response.json());
+    if (!response.ok) throw new SubsonicHttpError(response.status);
+    let input: unknown;
+    try {
+      input = await response.json();
+    } catch {
+      signal.throwIfAborted();
+      throw new Error("The server returned an invalid Subsonic response.");
+    }
+    const parsed = v.safeParse(responseSchema, input);
     signal.throwIfAborted();
     if (!parsed.success) throw new Error("The server returned an invalid Subsonic response.");
     const result = parsed.output["subsonic-response"];
     if (result.status !== "ok") {
-      throw new Error(result.error?.message || "The Subsonic server rejected the request.");
+      throw new SubsonicError(result.error?.code, this.#safeMessage(result.error?.message));
     }
     return result;
   }
@@ -214,20 +328,59 @@ export class SubsonicClient {
     const signal = requestSignal ? AbortSignal.any([this.signal, requestSignal]) : this.signal;
     signal.throwIfAborted();
     const query = this.#query(params);
-    return this.#parse(await this.#fetch(this.#url(path, query), { signal }), signal);
+    return this.#send(path, query, { signal, post: this.#formPost });
+  }
+
+  async #send(
+    path: string,
+    query: URLSearchParams,
+    options: { signal: AbortSignal; post?: boolean; keepalive?: boolean },
+  ) {
+    const { signal, post, keepalive } = options;
+    signal.throwIfAborted();
+    let response: Response;
+    try {
+      response = await this.#fetch(this.#url(path, post ? new URLSearchParams() : query), {
+        signal,
+        ...(post
+          ? {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: query,
+              ...(keepalive ? { keepalive } : {}),
+            }
+          : {}),
+      });
+    } catch (error) {
+      signal.throwIfAborted();
+      if (error instanceof Error && error.name === "AbortError")
+        throw new DOMException("The server request was cancelled.", "AbortError");
+      throw new SubsonicTransportError();
+    }
+    return this.#parse(response, signal);
   }
 
   async #post(path: string, params: URLSearchParams) {
-    const query = this.#query();
-    for (const [key, value] of params) query.append(key, value);
-    return this.#parse(
-      await this.#fetch(this.#url(path, new URLSearchParams()), {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: query,
-        signal: this.signal,
-      }),
-    );
+    return this.#send(path, this.#query(params), { signal: this.signal, post: true });
+  }
+
+  async getOpenSubsonicExtensions(requestSignal?: AbortSignal): Promise<OpenSubsonicExtension[]> {
+    const signal = requestSignal ? AbortSignal.any([this.signal, requestSignal]) : this.signal;
+    const result = await this.#send("getOpenSubsonicExtensions", this.#query(undefined, false), {
+      signal,
+    });
+    if (!result.openSubsonicExtensions)
+      throw new Error("The server returned an invalid extensions response.");
+    return result.openSubsonicExtensions;
+  }
+
+  /** Validate an API key and resolve its account username; never tries another method. */
+  async tokenInfo(requestSignal?: AbortSignal): Promise<{ username: string }> {
+    if (this.#auth.credentials?.method !== "apiKey")
+      throw new Error("API-key credentials are required for tokenInfo.");
+    const result = await this.#get("tokenInfo", undefined, requestSignal);
+    if (!result.tokenInfo) throw new Error("The server returned an invalid tokenInfo response.");
+    return result.tokenInfo;
   }
 
   async getPlaylists(): Promise<SubsonicPlaylist[]> {
@@ -337,20 +490,16 @@ export class SubsonicClient {
   }
 
   async savePlayQueue(state: SubsonicPlayQueue) {
-    const query = this.#query();
-    for (const id of state.tracks) query.append("id", id);
+    const params = new URLSearchParams();
+    for (const id of state.tracks) params.append("id", id);
     if (state.current) {
-      query.set("current", state.current);
-      query.set("position", String(Math.round(state.position * 1000)));
+      params.set("current", state.current);
+      params.set("position", String(Math.round(state.position * 1000)));
     }
-    await this.#parse(
-      await this.#fetch(this.#url("savePlayQueue", new URLSearchParams()), {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: query,
-        keepalive: true,
-        signal: this.signal,
-      }),
-    );
+    await this.#send("savePlayQueue", this.#query(params), {
+      signal: this.signal,
+      post: true,
+      keepalive: true,
+    });
   }
 }
