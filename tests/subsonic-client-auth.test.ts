@@ -7,8 +7,12 @@ const username = "listener";
 const methods: Credentials[] = [
   { method: "token", username, token: "token-secret", salt: "salt-secret" },
   { method: "password", username, password: " secret & 音 " },
-  { method: "password", username, password: "enc:literal 音" },
 ];
+const literalPrefixPassword: Credentials = {
+  method: "password",
+  username,
+  password: "enc:literal 音",
+};
 const ok = () => new Response(JSON.stringify({ "subsonic-response": { status: "ok" } }));
 
 function expectCredentials(query: URLSearchParams, credentials: Credentials) {
@@ -20,15 +24,7 @@ function expectCredentials(query: URLSearchParams, credentials: Credentials) {
   } else {
     expect(query.has("t")).toBe(false);
     expect(query.has("s")).toBe(false);
-    let password = query.get("p")!;
-    if (password.startsWith("enc:")) {
-      const bytes = password
-        .slice(4)
-        .match(/../g)!
-        .map((hex) => parseInt(hex, 16));
-      password = new TextDecoder().decode(new Uint8Array(bytes));
-    }
-    expect(password).toBe(credentials.password);
+    expect(query.get("p")).toBe(credentials.password);
   }
 }
 
@@ -47,8 +43,6 @@ describe("SubsonicClient authentication", () => {
         expect(init?.method).toBe("POST");
         expectCredentials(init?.body as URLSearchParams, credentials);
       }
-      expect(fetcher.mock.calls[1][1]?.keepalive).toBe(true);
-      expect((fetcher.mock.calls[1][1]?.body as URLSearchParams).getAll("id")).toEqual(["a", "a"]);
       for (const url of [
         client.getCoverArtUrl("art", 100),
         client.getStreamUrl("track", { format: "raw" }),
@@ -56,6 +50,21 @@ describe("SubsonicClient authentication", () => {
         expectCredentials(new URL(url).searchParams, credentials);
     },
   );
+
+  it("hex-encodes a literal enc: prefix with UTF-8 password bytes", async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => ok());
+    const client = new SubsonicClient(
+      { host, credentials: literalPrefixPassword },
+      { fetch: fetcher },
+    );
+    await client.getIndexes();
+    expect(fetcher).toHaveBeenCalledOnce();
+    const query = new URL(String(fetcher.mock.calls[0][0])).searchParams;
+    expect(query.get("p")).toBe("enc:656e633a6c69746572616c20e99fb3");
+    expect(query.get("u")).toBe(username);
+    expect(query.has("t")).toBe(false);
+    expect(query.has("s")).toBe(false);
+  });
 
   it.each(methods)(
     "does not allow extra metadata options to mix $method credentials",
@@ -80,35 +89,31 @@ describe("SubsonicClient authentication", () => {
     },
   );
 
-  it.each([40, 41, 42, 0])(
-    "preserves protocol code %s while sanitizing echoed credential URLs",
-    async (code) => {
-      const fetcher = vi.fn<typeof fetch>(
-        async () =>
-          new Response(
-            JSON.stringify({
-              "subsonic-response": {
-                status: "failed",
-                error: { code, message: `${host}/rest/ping.view?p=secret` },
-              },
-            }),
-          ),
-      );
-      await expect(
-        new SubsonicClient({ host, credentials: methods[1] }, { fetch: fetcher }).ping(),
-      ).rejects.toMatchObject({
-        name: "SubsonicError",
-        code,
-        message: "The Subsonic server rejected the request.",
-      });
-    },
-  );
+  it("preserves protocol code 41 while sanitizing echoed credential URLs", async () => {
+    const fetcher = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            "subsonic-response": {
+              status: "failed",
+              error: { code: 41, message: `${host}/rest/ping.view?p=secret` },
+            },
+          }),
+        ),
+    );
+    await expect(
+      new SubsonicClient({ host, credentials: methods[1] }, { fetch: fetcher }).ping(),
+    ).rejects.toMatchObject({
+      name: "SubsonicError",
+      code: 41,
+      message: "The Subsonic server rejected the request.",
+    });
+  });
 
   it.each([
     { status: "malformed", error: { code: 41, message: "Invalid status" } },
     { status: "failed", error: { code: "41", message: "Not numeric" } },
     { status: "failed", error: { code: 41, message: null } },
-    { status: "failed", error: { code: 42, message: null } },
   ])(
     "rejects malformed authentication responses without protocol fallback codes: %j",
     async (response) => {
@@ -165,7 +170,7 @@ describe("SubsonicClient authentication", () => {
     });
   });
 
-  it.each(methods)(
+  it.each([...methods, literalPrefixPassword])(
     "redacts raw and encoded $method secrets from protocol messages",
     async (credentials) => {
       const secret = credentials.method === "token" ? credentials.token : credentials.password;

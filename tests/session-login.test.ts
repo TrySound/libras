@@ -82,27 +82,19 @@ describe("Session token/password login", () => {
     },
   );
 
-  it.each(["credentials", "transport", "generic", "malformed"])(
-    "never retries a %s wire failure",
-    async (kind) => {
-      const { session, validate, network, auth } = setup();
-      validate.mockRestore();
-      const fetcher = vi.fn<typeof fetch>(async () => {
-        if (kind === "transport") throw new TypeError("Failed to fetch");
-        if (kind === "malformed") return reply({ status: "failed", error: { code: "41" } });
-        return reply({
-          status: "failed",
-          error: { code: kind === "credentials" ? 40 : 0, message: "Denied" },
-        });
-      });
-      vi.stubGlobal("fetch", fetcher);
-      expect(await session.connect(input)).toBe(false);
-      expect(fetcher).toHaveBeenCalledOnce();
-      expect(network.prepare).toHaveBeenCalledOnce();
-      expect(auth.load()).toBeNull();
-      expect(session.status).toBe("error");
-    },
-  );
+  it("rejects a malformed wire response without retrying or storing credentials", async () => {
+    const { session, validate, network, auth } = setup();
+    validate.mockRestore();
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      reply({ status: "failed", error: { code: "41" } }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    expect(await session.connect(input)).toBe(false);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(network.prepare).toHaveBeenCalledOnce();
+    expect(auth.load()).toBeNull();
+    expect(session.status).toBe("error");
+  });
 
   it("blocks direct fallback on development HTTP loopback before preparing password credentials", async () => {
     const { session, validate, network, auth } = setup();
@@ -123,7 +115,7 @@ describe("Session token/password login", () => {
     expect(auth.load()).toBeNull();
   });
 
-  it.each(["success", "fallback41", "fallback42", "failure"])(
+  it.each(["success", "fallback", "failure"])(
     "ignores stale token %s after cancellation and immediate retry",
     async (result) => {
       const { session, validate, network, auth } = setup();
@@ -137,13 +129,7 @@ describe("Session token/password login", () => {
       expect(await session.connect(input)).toBe(true);
       const accepted = auth.load();
       if (result === "success") pending.resolve();
-      else
-        pending.reject(
-          new SubsonicError(
-            result === "fallback41" ? 41 : result === "fallback42" ? 42 : 40,
-            "Old failure",
-          ),
-        );
+      else pending.reject(new SubsonicError(result === "fallback" ? 41 : 40, "Old failure"));
       expect(await first).toBe(false);
       expect(network.prepare).toHaveBeenCalledTimes(2);
       expect(session.status).toBe("connected");

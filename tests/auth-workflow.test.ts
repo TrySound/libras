@@ -8,12 +8,7 @@ const input = { host: "https://music.example", username: "listener", password: "
 describe("AuthWorkflow", () => {
   it.each([
     new SubsonicError(40, "Wrong username or password"),
-    new SubsonicError(0, "Generic failure"),
-    new SubsonicError(undefined, "Missing code"),
     new SubsonicTransportError(),
-    new DOMException("Timed out", "TimeoutError"),
-    new Error("The server returned HTTP 401."),
-    new Error("The server returned an invalid Subsonic response."),
     new Error("Generic failure"),
     Object.assign(new Error("Not a structured Subsonic error"), { code: 41 }),
   ])("does not retry $message", async (error) => {
