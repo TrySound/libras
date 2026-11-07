@@ -893,109 +893,28 @@ it("does not acknowledge failed durable cancellation and preserves unconfirmed i
 });
 
 describe("reviewed download failure boundaries", () => {
-  it.each(["catalog", "journal"])(
-    "keeps attributable %s setup failures as safe sticky rows",
-    async (domain) => {
-      const disk = install();
-      const { engine, cache } = setup({ online: true });
-      await cache.load();
-      const seeded = new Cache(cache.key);
-      await seeded.enqueueDownload(track, "mp3", "audio/mpeg");
-      const catalogPath = [...disk.files.keys()].find((name) => name.endsWith("downloads.json"))!;
-      const journalPath = catalogPath.replace("downloads.json", "download-intents.json");
-      disk.files.set(catalogPath, domain === "catalog" ? "corrupt secret catalog" : "[]");
-      disk.files.set(
-        journalPath,
-        domain === "journal"
-          ? "corrupt secret journal"
-          : JSON.stringify({ version: 1, records: [] }),
-      );
-      const reopened = new Cache(cache.key);
-      const next = setup({ cache: reopened, online: true });
-      const fetcher = vi.fn();
-      vi.stubGlobal("fetch", fetcher);
-      await expect(next.engine.download("known")).rejects.toThrow();
-      expect(next.engine.getStatus("known")).toBe("failed");
-      expect(reopened.downloads.get(downloadKey("known", "mp3"))).toMatchObject({
-        track: { id: "known" },
-        status: "failed",
-      });
-      next.engine.downloadMany(["known"]);
-      await next.engine.restoreDownloads();
-      expect(next.engine.getStatus("known")).toBe("failed");
-      expect(fetcher).not.toHaveBeenCalled();
-      expect(disk.files.get(domain === "journal" ? journalPath : catalogPath)).toContain(
-        "corrupt secret",
-      );
-      expect(
-        [...reopened.downloads.values()]
-          .map((item) => ("diagnostic" in item ? item.diagnostic : undefined))
-          .join(),
-      ).not.toContain("secret");
-    },
-  );
-
-  it("keeps known failures and owned bytes through denied migration until explicit Retry", async () => {
+  it("keeps attributable corrupt-catalog setup failures as safe sticky rows", async () => {
     const disk = install();
-    const seeded = await seed();
-    const candidate = seeded.completedDownloads.get(downloadKey(track.id, "mp3"))!;
+    const { cache } = setup();
+    await cache.enqueueDownload(track, "mp3", "audio/mpeg");
     const catalogPath = [...disk.files.keys()].find((name) => name.endsWith("downloads.json"))!;
-    disk.files.set(catalogPath, "[]");
-    disk.files.set(
-      catalogPath.replace("downloads.json", "download-intents.json"),
-      JSON.stringify({
-        version: 1,
-        records: [
-          {
-            track: { ...track, id: "pending" },
-            format: "mp3",
-            contentType: "audio/mpeg",
-            status: "pending",
-            attempt: {
-              fileName: candidate.fileName,
-              size: candidate.size,
-              downloadedAt: candidate.downloadedAt,
-            },
-          },
-        ],
-      }),
-    );
-    disk.state.beforeClose = async (name) => {
-      if (name.endsWith("downloads.json")) throw new DOMException("Denied", "NotAllowedError");
-    };
-    const { cache, engine } = setup({ cache: new Cache(seeded.key), online: true });
-    const fetcher = vi.fn(async () => new Response("audio"));
-    vi.stubGlobal("fetch", fetcher);
-    for (const id of ["pending", "unlisted"]) {
-      await expect(engine.download(id)).rejects.toThrow();
-      expect(engine.getStatus(id)).toBe("failed");
-    }
-    disk.state.beforeClose = async () => {};
-    await engine.restoreDownloads();
-    expect([...cache.downloads.values()].map((entry) => entry.status)).toEqual([
-      "failed",
-      "failed",
-    ]);
+    disk.files.set(catalogPath, "corrupt secret catalog");
     const reopened = new Cache(cache.key);
-    await reopened.load();
-    expect([...reopened.downloads.values()].map((entry) => entry.status)).toEqual([
-      "failed",
-      "failed",
-    ]);
-    expect(reopened.downloads.get(downloadKey("pending", "mp3"))).toMatchObject({
-      attempt: { fileName: candidate.fileName },
+    const next = setup({ cache: reopened, online: true });
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    await expect(next.engine.download("known")).rejects.toThrow();
+    expect(next.engine.getStatus("known")).toBe("failed");
+    expect(reopened.downloads.get(downloadKey("known", "mp3"))).toMatchObject({
+      track: { id: "known" },
+      status: "failed",
     });
+    next.engine.downloadMany(["known"]);
+    await next.engine.restoreDownloads();
+    expect(next.engine.getStatus("known")).toBe("failed");
     expect(fetcher).not.toHaveBeenCalled();
-    await engine.download("pending", { format: "mp3" });
-    await vi.waitFor(() => expect(engine.getStatus("pending")).toBe("downloaded"));
-    expect(cache.completedDownloads.get(downloadKey("pending", "mp3"))?.fileName).toBe(
-      candidate.fileName,
-    );
-    expect(engine.getStatus("unlisted")).toBe("failed");
-    expect(fetcher).not.toHaveBeenCalled();
-    await engine.download("unlisted", { format: "mp3" });
-    await vi.waitFor(() => expect(engine.getStatus("unlisted")).toBe("downloaded"));
-    expect(fetcher).toHaveBeenCalledOnce();
+    expect(disk.files.get(catalogPath)).toBe("corrupt secret catalog");
+    expect(JSON.stringify([...reopened.downloads.values()])).not.toContain("secret");
   });
 
   it("streams cache misses and uses saved MP3 when legacy migration and recovery writes are denied", async () => {
@@ -1085,31 +1004,6 @@ describe("reviewed download failure boundaries", () => {
       expect(fetcher).toHaveBeenCalledOnce();
     },
   );
-
-  it("streams independent tracks and uses saved MP3 fallback despite a corrupt journal", async () => {
-    const disk = install("probably");
-    const cache = await seed();
-    const catalogPath = [...disk.files.keys()].find((name) => name.endsWith("downloads.json"))!;
-    const records = JSON.parse(disk.files.get(catalogPath)!).records.map(
-      ({ status, ...record }: { status: string }) => record,
-    );
-    disk.files.set(catalogPath, JSON.stringify(records));
-    const path = catalogPath.replace("downloads.json", "download-intents.json");
-    disk.files.set(path, "corrupt");
-    const restored = new Cache(cache.key);
-    const { engine } = setup({ cache: restored, online: true });
-    expect((await engine.getSource(track)).cached).toBe(true);
-    expect((await engine.getSource({ id: "unsaved", contentType: "audio/flac" })).cached).toBe(
-      false,
-    );
-    await expect(engine.download("new")).rejects.toThrow();
-    expect(restored.downloadStorageBlocked).toBe(true);
-    expect(disk.files.get(path)).toBe("corrupt");
-    engine.setConnection(undefined);
-    await expect(engine.getSource({ id: "unsaved" })).rejects.toThrow(
-      "Connect to its music server",
-    );
-  });
 
   it("does not replace an interrupted close on reconnect before joining it", async () => {
     const disk = install();

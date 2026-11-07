@@ -543,38 +543,12 @@ describe("durable download intent", () => {
     await expect(restored.load()).rejects.toThrow();
     expect(catalog(disk)).toHaveLength(1);
     disk.state.beforeClose = async () => {};
-    // Atomic failure retained the previous readable journal; reopen can recover intent.
+    // Atomic failure retained the previous committed catalog; reopen can recover intent.
     const recovered = new Cache(getAccountKey(account));
     await recovered.load();
     expect(catalog(disk)).toMatchObject([{ status: "queued" }]);
     expect(recovered.downloads.get(key)?.status).toBe("queued");
   });
-
-  it.each(["unreadable secret storage", ""])(
-    "preserves unreadable journal %j, blocks writes, and keeps committed bytes and queue usable",
-    async (corrupt) => {
-      const disk = installDisk();
-      const seed = new Cache(getAccountKey(account));
-      await save(seed);
-      seed.setQueue({ tracks: ["queued"], index: 0, position: 0 });
-      await seed.flush();
-      const legacy = catalog(disk).map(({ status, ...record }: { status: string }) => record);
-      disk.files.set(path(disk), JSON.stringify(legacy));
-      const journal = path(disk).replace("downloads.json", "download-intents.json");
-      disk.files.set(journal, corrupt);
-      const restored = new Cache(getAccountKey(account));
-      await expect(restored.load()).rejects.toThrow();
-      expect(restored.reportingError).toBeUndefined();
-      expect(restored.queue.tracks).toEqual(["queued"]);
-      expect(await (await restored.readDownload(track.id, "mp3"))?.text()).toBe("audio");
-      await expect(
-        restored.enqueueDownload({ ...track, id: "other" }, "mp3", "audio/mpeg"),
-      ).rejects.toThrow();
-      await expect(restored.cancelPendingDownloads()).rejects.toThrow();
-      await restored.flush();
-      expect(disk.files.get(journal)).toBe(corrupt);
-    },
-  );
 });
 
 it("places explicit Retry at the durable FIFO tail", async () => {
@@ -589,19 +563,11 @@ it("places explicit Retry at the durable FIFO tail", async () => {
   expect([...restored.downloads.keys()]).toEqual([downloadKey("waiting", "raw"), key]);
 });
 
-/** Downgrade a saved fixture to either historical on-disk representation. */
-function legacy(disk: ReturnType<typeof installDisk>, journal?: unknown[]) {
+/** Restore the representation used by released completed-only installs. */
+function legacy(disk: ReturnType<typeof installDisk>) {
   const records = catalog(disk).map(({ status, ...record }: { status: string }) => record);
   disk.files.set(path(disk), JSON.stringify(records));
-  if (journal)
-    disk.files.set(
-      path(disk).replace("downloads.json", "download-intents.json"),
-      JSON.stringify({ version: 1, records: journal }),
-    );
   return records;
-}
-function pending(id: string, status = "pending") {
-  return { track: { ...track, id }, format: "mp3", contentType: "audio/mpeg", status };
 }
 
 it("migrates completed-only installs once, preserving saved metadata and both formats", async () => {
@@ -622,84 +588,20 @@ it("migrates completed-only installs once, preserving saved metadata and both fo
   expect(await (await reopened.readDownload(track.id, "raw"))?.text()).toBe("raw");
 });
 
-it("migrates ordered legacy intent, sticky failures and measured owned candidates without adopting unlisted bytes", async () => {
-  const disk = installDisk();
-  const seed = new Cache(getAccountKey(account));
-  await save(seed);
-  const completed = catalog(disk)[0];
-  const candidateName = `${crypto.randomUUID()}.audio`;
-  const binaryPath = [...disk.blobs.keys()][0].replace(completed.fileName, candidateName);
-  disk.blobs.set(binaryPath, new Blob(["candidate"]));
-  const failedFile = `${crypto.randomUUID()}.audio`;
-  disk.blobs.set(binaryPath.replace(candidateName, failedFile), new Blob(["failed candidate"]));
-  const failed = {
-    ...pending("failed", "failed"),
-    attempt: { fileName: failedFile, size: 16, downloadedAt: 43 },
-  };
-  legacy(disk, [
-    pending("first"),
-    failed,
-    pending(track.id, "failed"),
-    {
-      ...pending("owned"),
-      attempt: { fileName: candidateName, size: 9, downloadedAt: 42 },
-    },
-    pending("second"),
-  ]);
-  const cache = new Cache(seed.key);
-  await cache.load();
-  expect(
-    [...cache.downloads.values()]
-      .filter((entry) => entry.status === "queued")
-      .map((entry) => entry.track.id),
-  ).toEqual(["first", "second"]);
-  expect(cache.downloads.get(downloadKey("failed", "mp3"))?.status).toBe("failed");
-  expect(await cache.readDownload("failed", "mp3")).toBeNull();
-  expect(cache.downloads.get(key)?.status).toBe("completed");
-  expect(await (await cache.readDownload("owned", "mp3"))?.text()).toBe("candidate");
-  await cache.cancelPendingDownloads();
-  const reopened = new Cache(seed.key);
-  await reopened.load();
-  expect([...reopened.downloads.values()].map((entry) => entry.status)).toEqual([
-    "completed",
-    "failed",
-    "completed",
-  ]);
-  // Leftover journal cannot resurrect cancellation or re-import failures after canonical commit.
-  expect(disk.files.has(path(disk).replace("downloads.json", "download-intents.json"))).toBe(true);
-  await reopened.enqueueDownload({ ...track, id: "failed" }, "mp3", "audio/mpeg", true);
-  expect(await (await reopened.readDownload("failed", "mp3"))?.text()).toBe("failed candidate");
-});
-
-it("rejects legacy attempts claiming another completed-catalog owner's bytes before replacing invalid records", async () => {
-  const disk = installDisk();
-  const seed = new Cache(getAccountKey(account));
-  await save(seed);
-  const record = catalog(disk)[0];
-  const records = legacy(disk, [
-    pending(track.id),
-    {
-      ...pending("other"),
-      attempt: { fileName: record.fileName, size: record.size, downloadedAt: record.downloadedAt },
-    },
-  ]);
-  records[0].size++;
-  disk.files.set(path(disk), JSON.stringify(records));
-  const before = new Map(disk.files);
-  const cache = new Cache(seed.key);
-  await expect(cache.load()).rejects.toThrow();
-  expect(await cache.readDownload("other", "mp3")).toBeNull();
-  expect(cache.completedDownloads.get(key)?.fileName).toBe(record.fileName);
-  await expect(cache.enqueueDownload(track, "mp3", "audio/mpeg")).rejects.toThrow();
-  expect(disk.files).toEqual(before);
-});
-
 it("does not write partial legacy fallback after a transient migration failure", async () => {
   const disk = installDisk();
   const seed = new Cache(getAccountKey(account));
   await save(seed);
-  legacy(disk, [pending("waiting"), pending("failed", "failed")]);
-  disk.blobs.clear();
+  await seed.saveDownload(
+    { ...track, id: "saved" },
+    "raw",
+    "audio/flac",
+    new Response("saved"),
+    signal(),
+  );
+  legacy(disk);
+  const missing = seed.completedDownloads.get(key)!;
+  disk.blobs.delete([...disk.blobs.keys()].find((name) => name.endsWith(missing.fileName))!);
   const before = new Map(disk.files);
   disk.state.beforeClose = async (name) => {
     if (name.endsWith("downloads.json")) {
@@ -714,8 +616,7 @@ it("does not write partial legacy fallback after a transient migration failure",
   const reopened = new Cache(seed.key);
   await reopened.load();
   expect(reopened.downloads.get(key)?.status).toBe("queued");
-  expect(reopened.downloads.get(downloadKey("waiting", "mp3"))?.status).toBe("queued");
-  expect(reopened.downloads.get(downloadKey("failed", "mp3"))?.status).toBe("failed");
+  expect(await (await reopened.readDownload("saved", "raw"))?.text()).toBe("saved");
 });
 
 it.each(["before", "after"])(
@@ -724,7 +625,7 @@ it.each(["before", "after"])(
     const disk = installDisk();
     const seed = new Cache(getAccountKey(account));
     await save(seed);
-    legacy(disk, [pending("waiting")]);
+    legacy(disk);
     const previous = disk.files.get(path(disk));
     if (boundary === "before")
       disk.state.beforeClose = async (name) => {
@@ -742,7 +643,7 @@ it.each(["before", "after"])(
     disk.state.afterClose = () => {};
     const reopened = new Cache(seed.key);
     await reopened.load();
-    expect(reopened.downloads.get(downloadKey("waiting", "mp3"))?.status).toBe("queued");
+    expect(await (await reopened.readDownload(track.id, "mp3"))?.text()).toBe("audio");
     await reopened.cancelPendingDownloads();
     const again = new Cache(seed.key);
     await again.load();
@@ -750,37 +651,17 @@ it.each(["before", "after"])(
   },
 );
 
-it.each(["null", "", "broken JSON"])(
-  "preserves corrupt legacy catalog %j unless a placeholder has measured ownership",
+it.each(["null", "", "broken JSON", '[{"invalid":true}]'])(
+  "preserves corrupt completed-only catalog %j and blocks writes",
   async (corrupt) => {
     const disk = installDisk();
     const seed = new Cache(getAccountKey(account));
     await save(seed);
-    const record = catalog(disk)[0];
-    legacy(disk, [
-      {
-        ...pending("owned"),
-        attempt: {
-          fileName: record.fileName,
-          size: record.size,
-          downloadedAt: record.downloadedAt,
-        },
-      },
-    ]);
     disk.files.set(path(disk), corrupt);
     const cache = new Cache(seed.key);
-    if (corrupt === "") {
-      await cache.load();
-      expect(await (await cache.readDownload("owned", "mp3"))?.text()).toBe("audio");
-    } else {
-      await expect(cache.load()).rejects.toThrow();
-      await expect(save(cache)).rejects.toThrow();
-      expect(disk.files.get(path(disk))).toBe(corrupt);
-    }
-    // No owned bytes means an empty placeholder is not evidence of an empty store.
-    disk.files.set(path(disk), "");
-    disk.blobs.clear();
-    await expect(new Cache(seed.key).load()).rejects.toThrow();
-    expect(disk.files.get(path(disk))).toBe("");
+    await expect(cache.load()).rejects.toThrow();
+    await expect(save(cache)).rejects.toThrow();
+    expect(disk.files.get(path(disk))).toBe(corrupt);
+    expect(disk.blobs.size).toBe(1);
   },
 );

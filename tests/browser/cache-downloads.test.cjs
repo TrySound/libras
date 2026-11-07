@@ -261,13 +261,13 @@ test("document destruction before byte close never promotes native OPFS partial 
   }
 });
 
-test("native OPFS migration close preserves legacy input and ignores stale journal after commit", async () => {
+test("native OPFS completed-only migration close preserves input and reopens canonical state", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   try {
     await page.goto(base);
     const result = await page.evaluate(async () => {
-      const { Cache, downloadKey } = await import("/src/cache.svelte.ts");
+      const { Cache } = await import("/src/cache.svelte.ts");
       const cache = new Cache(`native-migration-${crypto.randomUUID()}`);
       const track = { id: "saved", title: "Saved", artist: "Artist", album: "Album" };
       await cache.saveDownload(
@@ -296,26 +296,6 @@ test("native OPFS migration close preserves legacy input and ignores stale journ
         await writable.close();
       };
       await write("downloads.json", legacy);
-      await write(
-        "download-intents.json",
-        JSON.stringify({
-          version: 1,
-          records: [
-            {
-              track: { ...track, id: "waiting" },
-              format: "mp3",
-              contentType: "audio/mpeg",
-              status: "pending",
-            },
-            {
-              track: { ...track, id: "failed" },
-              format: "raw",
-              contentType: "audio/flac",
-              status: "failed",
-            },
-          ],
-        }),
-      );
       const original = FileSystemFileHandle.prototype.createWritable;
       FileSystemFileHandle.prototype.createWritable = async function (...args) {
         const writable = await original.apply(this, args);
@@ -339,9 +319,7 @@ test("native OPFS migration close preserves legacy input and ignores stale journ
       const preserved = (await (await handle.getFile()).text()) === legacy;
       const migrated = new Cache(cache.key);
       await migrated.load();
-      await migrated.cancelPendingDownloads();
-      // Simulate stale/corrupt backup after the canonical close; it is never read again.
-      await write("download-intents.json", "corrupt stale journal");
+
       const reopened = new Cache(cache.key);
       await reopened.load();
       return {
@@ -349,8 +327,7 @@ test("native OPFS migration close preserves legacy input and ignores stale journ
         playable,
         preserved,
         version: JSON.parse(await (await handle.getFile()).text()).version,
-        waiting: reopened.downloads.has(downloadKey("waiting", "mp3")),
-        failed: reopened.downloads.get(downloadKey("failed", "raw"))?.status,
+        count: reopened.downloads.size,
         saved: await (await reopened.readDownload("saved", "mp3"))?.text(),
       };
     });
@@ -359,8 +336,7 @@ test("native OPFS migration close preserves legacy input and ignores stale journ
       playable: "saved bytes",
       preserved: true,
       version: 2,
-      waiting: false,
-      failed: "failed",
+      count: 1,
       saved: "saved bytes",
     });
   } finally {

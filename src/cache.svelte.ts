@@ -72,11 +72,11 @@ const cachedDownloadSchema = v.strictObject({
 });
 type CachedDownload = v.InferOutput<typeof cachedDownloadSchema>;
 const downloadsSchema = v.array(cachedDownloadSchema);
-const downloadIntentSchema = v.strictObject({
+const queuedDownloadSchema = v.strictObject({
   track: cachedDownloadSchema.entries.track,
   format: downloadFormat,
   contentType: cachedDownloadSchema.entries.contentType,
-  status: v.picklist(["pending", "failed"]),
+  status: v.picklist(["queued", "failed"]),
   diagnostic: v.optional(v.literal(downloadFailureDiagnostic)),
   attempt: v.optional(
     v.strictObject({
@@ -85,14 +85,6 @@ const downloadIntentSchema = v.strictObject({
       downloadedAt: timestamp,
     }),
   ),
-});
-const downloadJournalSchema = v.strictObject({
-  version: v.literal(1),
-  records: v.array(downloadIntentSchema),
-});
-const queuedDownloadSchema = v.strictObject({
-  ...downloadIntentSchema.entries,
-  status: v.picklist(["queued", "failed"]),
 });
 const completedDownloadSchema = v.strictObject({
   ...cachedDownloadSchema.entries,
@@ -125,9 +117,7 @@ async function hash(key: string) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-const emptyDownloadCatalog = Symbol("empty download catalog placeholder");
-
-type DocumentName = "library" | "queue" | "images" | "downloads" | "download-intents" | "playlists";
+type DocumentName = "library" | "queue" | "images" | "downloads" | "playlists";
 
 /** Private namespace and atomic JSON I/O. Knows no account settings or runtime indexes. */
 class Disk {
@@ -191,8 +181,7 @@ class Disk {
     }
     // An interrupted first write can leave a zero-byte placeholder, not a record.
     // All other read/validation failures propagate; catalogs must not start empty.
-    if (file.size === 0 && name !== "download-intents" && name !== "downloads") return null;
-    if (file.size === 0 && name === "downloads") return parse(emptyDownloadCatalog);
+    if (file.size === 0 && name !== "downloads") return null;
     const text = await file.text();
     return parse(JSON.parse(text));
   }
@@ -595,8 +584,8 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
 /**
  * Key-scoped local data owner, or an empty unscoped UI fallback.
  * Construction performs no I/O.
- * Consumers never mutate collections or records. Library maps are snapshots;
- * binary catalogs are read-only live reactive views with immutable records.
+ * Consumers never mutate collections or records. Library and download maps are snapshots;
+ * image catalogs are read-only live reactive views with immutable records.
  * Mutations publish in memory; checkpoints acknowledge only the revision committed.
  * OPFS is read once per document, not reconciled with other cache instances.
  */
@@ -607,7 +596,7 @@ export class Cache {
   readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
   readonly #playlists: CheckpointStore<Immutable<CachedPlaylists>>;
   readonly #images: BinaryCatalog<Immutable<ImageRecord>>;
-  readonly #downloads = new SvelteMap<string, DownloadEntry>();
+  #downloads = $state.raw<ReadonlyMap<string, DownloadEntry>>(new Map());
   #downloadError = $state.raw<unknown>();
   #downloadSerial = serial();
   #downloadsLoaded = false;
@@ -761,9 +750,6 @@ export class Cache {
   get reportingError() {
     return withoutDownloadErrors(this.error);
   }
-  get downloadsReady() {
-    return this.#downloadsReady;
-  }
   get downloadStorageBlocked() {
     return this.#downloadsBlocked;
   }
@@ -778,164 +764,80 @@ export class Cache {
     }
   }
 
-  async #validDownload(record: { readonly fileName: string; readonly size: number }) {
+  /** Open only the owned named file, validating fresh metadata without buffering bytes. */
+  async #openDownload(record: BinaryRecord, signal?: AbortSignal): Promise<File | null> {
+    signal?.throwIfAborted();
     try {
       const directory = await this.#requireDisk().files();
       const file = await (await directory.getFileHandle(record.fileName)).getFile();
-      return file.size === record.size;
+      signal?.throwIfAborted();
+      return file.size === record.size ? file : null;
     } catch (error) {
-      if (error instanceof DOMException && error.name === "NotFoundError") return false;
+      if (signal?.aborted) throw signal.reason;
+      if (error instanceof DOMException && error.name === "NotFoundError") return null;
       throw error;
     }
   }
 
   async #writeDownloads(records: ReadonlyMap<string, DownloadEntry>) {
     if (this.#downloadsBlocked) throw new DownloadError();
-    const obsolete = [...this.downloads.values()].filter(
-      (entry) =>
-        entry.status === "completed" &&
-        records.get(downloadKey(entry.track.id, entry.format)) !== entry,
-    );
     await this.#requireDisk().write("downloads", { version: 2, records: [...records.values()] });
-    this.#publishDownloads(records);
+    this.#downloads = records;
     this.#downloadsLoaded = true;
     this.#downloadError = undefined;
-    if (obsolete.length) {
-      const directory = await this.#requireDisk().files();
-      const owned = new Set(
-        [...records.values()].flatMap((entry) =>
-          entry.status === "completed"
-            ? [entry.fileName]
-            : entry.attempt
-              ? [entry.attempt.fileName]
-              : [],
-        ),
-      );
-      for (const entry of obsolete)
-        if (entry.status === "completed" && !owned.has(entry.fileName))
-          await directory.removeEntry(entry.fileName).catch(() => {});
-    }
   }
 
-  #publishDownloads(records: ReadonlyMap<string, DownloadEntry>) {
-    const live = this.#downloads;
-    for (const key of live.keys()) if (!records.has(key)) live.delete(key);
-    // Retry's delete/reinsert is observable as FIFO order, not a second queue.
-    const order = [...records.keys()];
-    if ([...live.keys()].some((key, index) => key !== order[index])) live.clear();
-    for (const [key, entry] of records) live.set(key, entry);
-  }
-
-  /** Validate both legacy documents before the single atomic migration commit.
-   * Legacy bytes remain a read-only fallback if journal validation or close fails.
-   * Once canonical state exists, the old journal is an ignored backup. */
-  async #loadDownloads(signal?: AbortSignal) {
-    if (this.#downloadsLoaded) return;
-    let records: Map<string, DownloadEntry>;
+  /** The shipped completed-only array migrates atomically; its fallback stays read-only.
+   * Unknown documents block writes. Unshipped split-store files are never consulted. */
+  async #loadDownloads(signal?: AbortSignal, reconcile = false) {
+    if (this.#downloadsLoaded && (!reconcile || this.#downloadsReady)) return;
+    let records = this.downloads;
     let migrate = false;
-    try {
-      const stored = await this.#requireDisk().read("downloads", (value) => {
-        if (value === emptyDownloadCatalog) return value;
-        if (Array.isArray(value)) return parseDownloads(value);
-        const parsed = v.parse(downloadStoreSchema, value);
-        validateDownloadEntries(parsed.records);
-        return parsed;
-      });
-      signal?.throwIfAborted();
-      if (stored && stored !== emptyDownloadCatalog && !Array.isArray(stored)) {
-        records = new Map(
-          (stored as v.InferOutput<typeof downloadStoreSchema>).records.map((item) => [
-            downloadKey(item.track.id, item.format),
-            item,
-          ]),
-        );
-      } else {
-        migrate = true;
-        records = new Map(
-          (Array.isArray(stored) ? stored : []).map((item) => [
-            downloadKey(item.track.id, item.format),
-            { ...item, status: "completed" as const },
-          ]),
-        );
-        // Keep original ownership even if a missing completed entry is replaced below.
-        const owners = new Map(
-          [...records].flatMap(([key, entry]) =>
-            entry.status === "completed" ? [[entry.fileName, key] as const] : [],
-          ),
-        );
-        const failures = new Map(
-          [...this.downloads].filter(([, entry]) => entry.status === "failed"),
-        );
-        for (const [key, failure] of failures) {
-          const completed = records.get(key);
-          if (completed?.status === "completed" && (await this.#validDownload(completed))) continue;
-          records.set(key, failure);
-        }
-        // This same working map retains known failures through fallback and migration commit.
-        this.#publishDownloads(records);
-        const journal = await this.#requireDisk().read("download-intents", (value) => {
-          const parsed = v.parse(downloadJournalSchema, value);
-          unique(parsed.records, (item) => downloadKey(item.track.id, item.format));
-          unique(
-            parsed.records.filter((item) => item.attempt),
-            (item) => item.attempt!.fileName,
-          );
-          return parsed;
+    if (!this.#downloadsLoaded) {
+      try {
+        const stored = await this.#requireDisk().read("downloads", (value) => {
+          if (Array.isArray(value))
+            return {
+              legacy: true,
+              records: parseDownloads(value).map((item) => ({
+                ...item,
+                status: "completed" as const,
+              })),
+            };
+          const parsed = v.parse(downloadStoreSchema, value);
+          validateDownloadEntries(parsed.records);
+          return { legacy: false, records: parsed.records };
         });
-        if (stored === null && journal === null) migrate = false;
-        for (const item of journal?.records ?? []) {
-          const key = downloadKey(item.track.id, item.format);
-          const owner = item.attempt && owners.get(item.attempt.fileName);
-          if (owner !== undefined && owner !== key) throw new DownloadError();
-          const existing = records.get(key);
-          if (existing?.status === "failed" && failures.has(key)) {
-            if (!existing.attempt && item.attempt)
-              records.set(key, { ...existing, attempt: item.attempt });
+        signal?.throwIfAborted();
+        migrate = stored?.legacy ?? false;
+        const restored = new Map<string, DownloadEntry>(
+          (stored?.records ?? []).map((item) => [downloadKey(item.track.id, item.format), item]),
+        );
+        // Retain attributable memory-only failures when retrying a denied migration.
+        for (const [key, failure] of this.downloads) {
+          if (failure.status !== "failed") continue;
+          const completed = restored.get(key);
+          if (completed?.status === "completed" && (await this.#openDownload(completed, signal)))
             continue;
-          }
-          // Only genuinely committed, usable bytes supersede stale failure/pending state.
-          if (existing?.status === "completed" && (await this.#validDownload(existing))) continue;
-          records.delete(key);
-          records.set(key, { ...item, status: item.status === "pending" ? "queued" : "failed" });
+          restored.set(key, failure);
         }
-        validateDownloadEntries([...records.values()]);
-        if (stored === emptyDownloadCatalog) {
-          // A first-write placeholder is explainable only by measured owned bytes.
-          let owned = false;
-          for (const entry of records.values()) {
-            if (
-              entry.status !== "completed" &&
-              entry.attempt?.size &&
-              (await this.#validDownload({ ...entry.attempt, size: entry.attempt.size }))
-            )
-              owned = true;
-          }
-          if (!owned) throw new DownloadError();
-        }
+        records = restored;
+      } catch (error) {
+        if (!signal?.aborted) this.#downloadsBlocked = true;
+        throw error;
       }
-    } catch (error) {
-      if (!signal?.aborted) this.#downloadsBlocked = true;
-      throw error;
+      this.#downloadsBlocked = false;
+      this.#downloads = records;
+      // Readable legacy bytes are usable, but cannot authorize subset writeback.
+      this.#downloadsLoaded = !migrate;
     }
-    signal?.throwIfAborted();
-    this.#downloadsBlocked = false;
-    // Publish only already committed records; never publish a writable migration before close.
-    if (!migrate) {
-      this.#publishDownloads(records);
-      this.#downloadsLoaded = true;
-    }
-    const reconciled = await this.#reconcileDownloads(records, signal);
-    signal?.throwIfAborted();
-    if (migrate || reconciled !== records) await this.#writeDownloads(reconciled);
-    this.#downloadsReady = true;
-  }
-
-  async #reconcileDownloads(records: ReadonlyMap<string, DownloadEntry>, signal?: AbortSignal) {
     let next: Map<string, DownloadEntry> | undefined;
+    const incomplete: string[] = [];
     for (const [key, entry] of records) {
       signal?.throwIfAborted();
       if (entry.status === "completed") {
-        if (!(await this.#validDownload(entry))) {
+        if (!(await this.#openDownload(entry, signal))) {
+          incomplete.push(entry.fileName);
           next ??= new Map(records);
           next.delete(key);
           next.set(key, {
@@ -948,7 +850,7 @@ export class Cache {
       } else if (
         entry.status === "queued" &&
         entry.attempt?.size &&
-        (await this.#validDownload({ ...entry.attempt, size: entry.attempt.size }))
+        (await this.#openDownload({ ...entry.attempt, size: entry.attempt.size }, signal))
       ) {
         next ??= new Map(records);
         next.set(key, {
@@ -961,7 +863,13 @@ export class Cache {
         });
       }
     }
-    return next ?? records;
+    signal?.throwIfAborted();
+    if (migrate || next) await this.#writeDownloads(next ?? records);
+    this.#downloadsReady = true;
+    if (incomplete.length) {
+      const directory = await this.#requireDisk().files();
+      for (const fileName of incomplete) await directory.removeEntry(fileName).catch(() => {});
+    }
   }
 
   /** Acknowledges queued state only after canonical close. Retry moves to the FIFO tail. */
@@ -1043,7 +951,7 @@ export class Cache {
           await this.#writeDownloads(records);
         } catch (error) {
           // Safe known-track presentation survives persistence denial; never overwrite unknown disk state.
-          this.#publishDownloads(records);
+          this.#downloads = records;
           throw error;
         }
       }),
@@ -1074,13 +982,7 @@ export class Cache {
       () =>
         this.#downloadSerial(async () => {
           signal?.throwIfAborted();
-          await this.#loadDownloads(signal);
-          if (!this.#downloadsReady) {
-            const next = await this.#reconcileDownloads(this.downloads, signal);
-            signal?.throwIfAborted();
-            if (next !== this.downloads) await this.#writeDownloads(next);
-            this.#downloadsReady = true;
-          }
+          await this.#loadDownloads(signal, true);
         }),
       signal,
     );
@@ -1193,17 +1095,12 @@ export class Cache {
       });
       const record = this.completedDownloads.get(key);
       if (!record) return null;
-      const directory = await this.#requireDisk().files();
-      try {
-        const file = await (await directory.getFileHandle(record.fileName)).getFile();
-        signal?.throwIfAborted();
-        if (file.size === record.size) return file;
-      } catch (error) {
-        if (!(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
-      }
+      const file = await this.#openDownload(record, signal);
+      if (file) return file;
       // Legacy fallback is read-only until the complete migration has committed.
       if (this.#downloadsLoaded && !this.#downloadsBlocked)
         await this.#downloadSerial(async () => {
+          signal?.throwIfAborted();
           if (this.downloads.get(key) !== record) return;
           const records = new Map(this.downloads);
           records.delete(key);
@@ -1214,6 +1111,8 @@ export class Cache {
             status: "queued",
           });
           await this.#writeDownloads(records);
+          const directory = await this.#requireDisk().files();
+          await directory.removeEntry(record.fileName).catch(() => {});
         }).catch((error) => {
           if (signal?.aborted) throw error;
           this.#downloadError = new DownloadError();
@@ -1264,6 +1163,10 @@ export class Cache {
             if (!current || current.status !== "queued") throw new DownloadError();
             records.set(key, { ...current, attempt: { ...attempt } });
             await this.#writeDownloads(records);
+            if (current.attempt && current.attempt.fileName !== attempt.fileName) {
+              const directory = await disk.files();
+              await directory.removeEntry(current.attempt.fileName).catch(() => {});
+            }
           });
         await prepare();
         const directory = await disk.files();
