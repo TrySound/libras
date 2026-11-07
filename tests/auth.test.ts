@@ -1,5 +1,72 @@
-import { describe, expect, it } from "vitest";
-import { AuthStore, getAccountKey } from "../src/auth";
+import { describe, expect, it, vi } from "vitest";
+import {
+  AuthStore,
+  authenticate,
+  getAccountKey,
+  normalizeAndValidateServerHost,
+  type Auth,
+  type PasswordAuth,
+} from "../src/auth";
+import { Network } from "../src/network.svelte";
+import { md5 } from "js-md5";
+
+async function createTokenAuth(input: PasswordAuth) {
+  const network = new Network();
+  vi.spyOn(network, "validate").mockResolvedValue(undefined);
+  try {
+    const { auth } = await authenticate(input, network, new AbortController().signal);
+    if (auth.credentials.method !== "token") throw new Error("Expected token authentication.");
+    return { ...auth, credentials: auth.credentials };
+  } finally {
+    network.cancelPending();
+  }
+}
+
+describe("token authentication", () => {
+  it("creates salted tokens without retaining or altering the password", async () => {
+    const input = { host: "https://music.example", username: "listener", password: " secret 音 " };
+    const first = await createTokenAuth(input);
+    const second = await createTokenAuth(input);
+    expect(first).toEqual({
+      host: input.host,
+      username: input.username,
+      credentials: {
+        method: "token",
+        username: input.username,
+        salt: expect.stringMatching(/^[a-f0-9]{24}$/),
+        token: md5(input.password + first.credentials.salt),
+      },
+    });
+    expect(second.credentials.salt).not.toBe(first.credentials.salt);
+    expect(second.credentials.token).toBe(md5(input.password + second.credentials.salt));
+    expect(input.password).toBe(" secret 音 ");
+  });
+
+  it.each([
+    [" music.example/ ", "https://music.example"],
+    ["https://music.example:4533/music/", "https://music.example:4533/music"],
+    ["https://music.example/music/", "https://music.example/music"],
+  ])("normalizes %s before verification", async (host, normalized) => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      expect((await createTokenAuth({ host, username: "listener", password: "secret" })).host).toBe(
+        normalized,
+      );
+      expect(fetcher).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    { host: "https://", username: "listener", password: "secret" },
+    { host: "https://music.example", username: "", password: "secret" },
+    { host: "https://music.example", username: "listener", password: "" },
+  ])("rejects invalid input: %j", async (input) => {
+    await expect(createTokenAuth(input)).rejects.toThrow();
+  });
+});
 
 describe("getAccountKey", () => {
   const account = { host: "https://music.example", username: "listener" };
@@ -60,16 +127,20 @@ describe("auth store", () => {
     const credentials = {
       host: "https://music.example.com",
       username: "listener",
-      token: "token",
-      salt: "salt",
+      credentials: {
+        method: "token" as const,
+        username: "listener",
+        token: "token",
+        salt: "salt",
+        password: "discard",
+      },
       password: "secret",
     };
     store.save(credentials);
     expect(JSON.parse(storage.getItem("navidrome-auth")!)).toEqual({
       host: "https://music.example.com",
       username: "listener",
-      token: "token",
-      salt: "salt",
+      credentials: { method: "token", username: "listener", token: "token", salt: "salt" },
     });
   });
 
@@ -79,8 +150,7 @@ describe("auth store", () => {
     const auth = {
       host: "https://music.example.com",
       username: "listener",
-      token: "token",
-      salt: "salt",
+      credentials: { method: "token" as const, username: "listener", token: "token", salt: "salt" },
     };
 
     store.save(auth);
@@ -108,6 +178,100 @@ describe("auth store", () => {
       storage.setItem("navidrome-account", JSON.stringify(record));
       expect(store.loadAccount()).toBeNull();
       expect(storage.getItem("navidrome-account")).toBeNull();
+    }
+  });
+
+  it.each([false, true])(
+    "migrates legacy tokens without logout even if writeback fails (%s)",
+    (fails) => {
+      const storage = new MemoryStorage();
+      const legacy = {
+        host: "https://music.example",
+        username: "listener",
+        token: "token",
+        salt: "salt",
+      };
+      const original = JSON.stringify(legacy);
+      storage.setItem("navidrome-auth", original);
+      if (fails)
+        vi.spyOn(storage, "setItem").mockImplementation(() => {
+          throw new DOMException("Full", "QuotaExceededError");
+        });
+      const store = new AuthStore(storage);
+      const migrated = {
+        host: legacy.host,
+        username: legacy.username,
+        credentials: {
+          method: "token",
+          username: legacy.username,
+          token: legacy.token,
+          salt: legacy.salt,
+        },
+      };
+      expect(store.load()).toEqual(migrated);
+      expect(store.load()).toEqual(migrated);
+      expect(getAccountKey(migrated)).toBe(getAccountKey(legacy));
+      expect(storage.getItem("navidrome-auth")).toBe(fails ? original : JSON.stringify(migrated));
+    },
+  );
+
+  it("persists direct passwords in localStorage until disconnect and retains only account identity", () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal("localStorage", storage);
+    try {
+      const auth: Auth = {
+        host: "https://music.example",
+        username: "listener",
+        credentials: { method: "password", username: "listener", password: " secret 音 " },
+      };
+      const store = new AuthStore();
+      store.save(auth);
+      store.saveAccount(auth);
+      expect(new AuthStore().load()).toEqual(auth);
+      expect(getAccountKey(auth)).toBe('["https://music.example","listener"]');
+      store.clear();
+      expect(new AuthStore().load()).toBeNull();
+      expect(store.loadAccount()).toEqual({ host: auth.host, username: auth.username });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("rejects mismatched usernames and unknown or incomplete credentials without exposing secrets", () => {
+    const store = new AuthStore(new MemoryStorage());
+    for (const credentials of [
+      { method: "unknown", password: "secret" },
+      { method: "token", username: "listener", salt: "secret" },
+      { method: "password", username: "other", password: "secret" },
+    ])
+      expect(() =>
+        store.save({ host: "https://music.example", username: "listener", credentials } as Auth),
+      ).toThrow("The Subsonic authentication is invalid.");
+  });
+
+  it("rejects unsafe server addresses and requires HTTPS for direct passwords", () => {
+    for (const host of [
+      "http://remote.example",
+      "ftp://music.example",
+      "https://u:p@music.example",
+      "https://music.example/?t=secret",
+      "https://music.example/#secret",
+    ])
+      expect(() => normalizeAndValidateServerHost(host)).toThrow();
+    expect(normalizeAndValidateServerHost(" music.example/base/ ")).toBe(
+      "https://music.example/base",
+    );
+    expect(normalizeAndValidateServerHost("http://localhost:4533")).toBe("http://localhost:4533");
+    expect(() =>
+      normalizeAndValidateServerHost("http://localhost:4533", { method: "password" }),
+    ).toThrow("requires HTTPS");
+    vi.stubEnv("DEV", false);
+    try {
+      expect(() => normalizeAndValidateServerHost("http://localhost:4533")).toThrow(
+        "require HTTPS",
+      );
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 

@@ -7,8 +7,12 @@ import { Network } from "../src/network.svelte";
 const auth = {
   host: "https://example.test",
   username: "deezer-preview-demo",
-  token: "local",
-  salt: "local",
+  credentials: {
+    method: "token" as const,
+    username: "deezer-preview-demo",
+    token: "local",
+    salt: "local",
+  },
 };
 const pagination = {
   artistCount: 100,

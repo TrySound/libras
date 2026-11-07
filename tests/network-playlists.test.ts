@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { Network } from "../src/network.svelte";
 import { SubsonicClient } from "../src/subsonic-client";
 
-const auth = { host: "https://music.example", username: "listener", token: "token", salt: "salt" };
+const auth = {
+  host: "https://music.example",
+  username: "listener",
+  credentials: { method: "token" as const, username: "listener", token: "token", salt: "salt" },
+};
 function reply(data: Record<string, unknown>) {
   return new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...data } }));
 }

@@ -42,7 +42,7 @@ export const trackSchema = v.strictObject({
 
 // Playlist entries are occurrences, not a map keyed by song ID. They retain enough
 // information to render cached details when the library has no matching album/track.
-export const playlistEntrySchema = v.strictObject({
+const playlistEntrySchema = v.strictObject({
   id,
   title: v.string(),
   artist: v.optional(v.string()),

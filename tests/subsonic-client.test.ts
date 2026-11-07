@@ -1,12 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SubsonicClient, createSubsonicAuth } from "../src/subsonic-client";
-import { md5 } from "js-md5";
+import { SubsonicClient } from "../src/subsonic-client";
 
 const auth = {
   host: "https://music.example.com",
   username: "listener",
-  token: "token",
-  salt: "salt",
+  credentials: { method: "token" as const, username: "listener", token: "token", salt: "salt" },
 };
 
 const page = {
@@ -83,21 +81,6 @@ describe("subsonic client", () => {
       ),
     );
     await expect(new SubsonicClient(auth).ping()).rejects.toThrow("Wrong username or password");
-  });
-
-  it("creates salted token credentials without retaining or altering the password", () => {
-    const input = { host: auth.host, username: auth.username, password: " secret 音 " };
-    const first = createSubsonicAuth(input);
-    const second = createSubsonicAuth(input);
-    expect(first).toEqual({
-      host: input.host,
-      username: input.username,
-      salt: expect.stringMatching(/^[a-f0-9]{24}$/),
-      token: md5(input.password + first.salt),
-    });
-    expect(second.salt).not.toBe(first.salt);
-    expect(second.token).toBe(md5(input.password + second.salt));
-    expect(input.password).toBe(" secret 音 ");
   });
 
   it("adds authentication and validates metadata responses", async () => {

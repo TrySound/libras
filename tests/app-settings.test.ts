@@ -5,6 +5,7 @@ import App from "../src/app.svelte";
 import WebappUpdater from "../src/webapp-updater.svelte";
 import { Network } from "../src/network.svelte";
 import { AuthStore } from "../src/auth";
+import { SubsonicError } from "../src/subsonic-client";
 import { registerSW } from "virtual:pwa-register";
 import { installNavigation, navigationEvent } from "./router-test-helpers";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
@@ -96,6 +97,38 @@ async function setup(
 }
 
 describe("app settings", () => {
+  it("keeps one login form and automatically verifies a direct password", async () => {
+    const { target, fill, session, validate, auth } = await setup(false, false);
+    expect(target.querySelectorAll('input[type="radio"]')).toHaveLength(0);
+    const pending = deferred();
+    validate.mockRejectedValueOnce(new SubsonicError(41, "Token unsupported"));
+    validate.mockReturnValueOnce(pending.promise);
+    fill();
+    await vi.waitFor(() => expect(validate).toHaveBeenCalledTimes(2));
+    flushSync();
+    expect(target.querySelectorAll("#settings-server form")).toHaveLength(1);
+    expect(target.querySelector<HTMLInputElement>("#server-password")?.value).toBe("");
+    expect(auth.load()).toBeNull();
+    pending.resolve();
+    await vi.waitFor(() => expect(session.auth?.credentials.method).toBe("password"));
+    expect(auth.load()?.credentials.method).toBe("password");
+  });
+
+  it("does not redirect an automatic password connection after leaving Settings", async () => {
+    const { target, fill, session, validate, navigate } = await setup(false, false);
+    const pending = deferred();
+    validate.mockRejectedValueOnce(new SubsonicError(41, "Token unsupported"));
+    validate.mockReturnValueOnce(pending.promise);
+    fill();
+    await vi.waitFor(() => expect(validate).toHaveBeenCalledTimes(2));
+    target.style.display = "none";
+    window.history.replaceState(null, "", "?/downloads");
+    pending.resolve();
+    await vi.waitFor(() => expect(session.auth?.credentials.method).toBe("password"));
+    await tick();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it("shows startup synchronization immediately and distinguishes server sync from refresh", async () => {
     const local = deferred();
     const modified = deferred<number | null>();
@@ -182,8 +215,12 @@ describe("app settings", () => {
     session.auth = {
       ...credentials,
       host: "https://hidden-user:hidden-secret@music.example:8443/base",
-      token: "private-token-value",
-      salt: "private-salt-value",
+      credentials: {
+        method: "token",
+        username: credentials.username,
+        token: "private-token-value",
+        salt: "private-salt-value",
+      },
     };
     flushSync();
     expect(target.querySelector("#settings-server-identity")?.textContent).toBe(
@@ -247,7 +284,7 @@ describe("app settings", () => {
       "music.example.com",
     );
     expect(server.querySelector("#settings-auth-help")?.textContent).toContain(
-      "Connect to your Navidrome server",
+      "Connect to your Navidrome or another OpenSubsonic-compatible server",
     );
     expect(server.querySelector("#server-password")?.getAttribute("type")).toBe("password");
     expect(offline.classList.contains("card")).toBe(true);

@@ -1,4 +1,4 @@
-import { getAccountKey, type Auth, type AuthStore } from "./auth";
+import { authenticate, getAccountKey, type Auth, type AuthStore, type PasswordAuth } from "./auth";
 import type { Covers } from "./covers.svelte";
 import {
   NetworkTransportError,
@@ -6,7 +6,6 @@ import {
   type LibraryProgress,
   type Network,
   type NetworkConnection,
-  type PasswordAuth,
 } from "./network.svelte";
 import type { Playback } from "./playback.svelte";
 import type { Playlists } from "./playlists.svelte";
@@ -51,6 +50,7 @@ export class Session {
   #refreshPending?: Promise<void>;
   #restoration: Promise<void> = Promise.resolve();
   #loadController?: AbortController;
+  #authController?: AbortController;
   #operationId = 0;
   #started = false;
   #destroyed = false;
@@ -106,6 +106,8 @@ export class Session {
   }
 
   #detach() {
+    this.#authController?.abort();
+    this.#authController = undefined;
     this.loadingAfterConnect = false;
     this.#libraryProgress = undefined;
     this.#refreshPending = undefined;
@@ -212,7 +214,7 @@ export class Session {
     }
   }
 
-  /** Load local data before validating credentials, without selecting the account.
+  /** Load local data for verified credentials, without selecting the account.
    * Same-account reconnects reuse the live writer to retain queue edits. */
   async #prepareWorkspace(connection: NetworkConnection) {
     const previous = this.#options.selection.cache;
@@ -260,23 +262,36 @@ export class Session {
     this.localReady = true;
   }
 
-  /** Login succeeds once local data and credentials are accepted, not when sync finishes. */
+  /** Cancel authentication and candidate workspace work, retaining the offline account. */
+  cancelConnect() {
+    if (this.auth || this.#destroyed) return;
+    this.#beginOperation();
+    this.#authController?.abort();
+    this.#authController = undefined;
+    this.#options.network.cancelPending();
+    this.status = "disconnected";
+  }
+
+  /** Authentication verifies; Session commits the workspace, then syncs in the background. */
   async connect(input: PasswordAuth): Promise<boolean> {
     if (this.auth || this.busy || this.#destroyed) return false;
     const operationId = this.#beginOperation();
+    const controller = new AbortController();
+    this.#authController = controller;
     this.status = "connecting";
     try {
-      const credentials = this.#options.network.createAuth(input);
-      const connection = this.#options.network.prepare(credentials);
+      const verified = await authenticate(input, this.#options.network, controller.signal);
+      if (!this.#isCurrentOperation(operationId)) return false;
+      const { auth, connection } = verified;
       await this.#restoration;
       if (!this.#isCurrentOperation(operationId)) return false;
+      connection.signal.throwIfAborted();
       const cache = await this.#prepareWorkspace(connection);
-      await this.#options.network.validate(connection);
       connection.signal.throwIfAborted();
       if (!this.#isCurrentOperation(operationId)) return false;
       await this.#retireWorkspace(cache, connection.signal);
       if (!this.#isCurrentOperation(operationId)) return false;
-      this.#commitWorkspace(cache, credentials, connection);
+      this.#commitWorkspace(cache, auth, connection);
       this.status = "connected";
       this.loadingAfterConnect = true;
       void this.#refresh(false);
@@ -287,6 +302,10 @@ export class Session {
         if (this.disconnect()) this.#fail(error, this.#operationId);
       }
       return false;
+    } finally {
+      if (this.#authController === controller) this.#authController = undefined;
+      if (this.#isCurrentOperation(operationId) && this.status === "connecting")
+        this.status = "disconnected";
     }
   }
 

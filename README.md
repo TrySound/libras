@@ -21,12 +21,18 @@ Libras is a browser-based minimalistic music player that connects to your own mu
 ## Get started
 
 1. Open [Libras](https://libras-music.app/webapp/).
-2. Connect to your music server with your server address and credentials.
+2. Connect to your music server with your server address, username, and password.
 3. Browse your library and start listening.
 
 Just trying it out? Connect to the [Navidrome demo server](https://demo.navidrome.org/) using `https://demo.navidrome.org` as the server address and `demo` as both the username and password.
 
 You'll need a reachable **HTTPS server with a Subsonic-compatible API**, such as [Navidrome](https://www.navidrome.org/), supporting OpenSubsonic's empty-query `search3` for library synchronization and configured to allow browser requests from `https://libras-music.app` (CORS). Libras is a player, not a music hosting service; bring your own server and library.
+
+### Authentication and device storage
+
+Libras tries salted token authentication first; your password stays in the browser for that attempt. Only a structured server rejection of token authentication (Subsonic code 41 or 42) automatically retries the same username and password over HTTPS, including on localhost. Invalid credentials, connection failures, and other errors never trigger a password retry.
+
+Credentials persist in **localStorage** until you disconnect. Token login saves the username, token, and salt, not your password. Successfully verified direct-password login saves the actual password and sends it with subsequent requests, including artwork and streaming URLs. HTTPS encrypts transport, not localStorage; scripts running on the app's origin and anyone with access to your browser profile can read saved credentials. Use a trusted device and server, and disconnect on shared devices. Disconnect removes credentials but retains your offline account, music, and queue.
 
 ## Install
 

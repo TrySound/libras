@@ -48,11 +48,18 @@
   async function submitConnection(event: SubmitEvent) {
     event.preventDefault();
     const sourceURL = window.location.href;
-    if (await session.connect({ host, username, password })) {
+    const result = session.connect({ host, username, password });
+    password = "";
+    if (await result) {
       host = username = password = "";
       // Session may finish after navigation starts or Settings is hidden.
       if (window.location.href === sourceURL && view?.checkVisibility()) navigate("/library");
     }
+  }
+
+  function cancelConnection() {
+    session.cancelConnect();
+    password = "";
   }
 
   function disconnectServer() {
@@ -135,6 +142,7 @@
           </div>
         {:else if !session.auth}
           <form
+            method="post"
             class="stack-md"
             onsubmit={submitConnection}
             aria-busy={session.busy}
@@ -143,7 +151,8 @@
               : "settings-auth-help"}
           >
             <p class="caption text-secondary" id="settings-auth-help">
-              Connect to your Navidrome server to browse your library and stream music.
+              Connect to your Navidrome or another OpenSubsonic-compatible server to browse your
+              library and stream music.
             </p>
             <div class="stack-xs">
               <label class="label" for="server-host">Host</label>
@@ -156,6 +165,7 @@
                 bind:value={host}
                 placeholder="music.example.com"
                 autocomplete="url"
+                autocorrect="off"
                 autocapitalize="off"
                 spellcheck="false"
                 required
@@ -172,6 +182,7 @@
                 bind:value={username}
                 placeholder="Your username"
                 autocomplete="username"
+                autocorrect="off"
                 autocapitalize="off"
                 spellcheck="false"
                 required
@@ -207,6 +218,11 @@
                 {/if}
                 {session.busy ? "Connecting…" : "Connect"}
               </button>
+              {#if session.busy}
+                <button class="button" type="button" data-size="text" onclick={cancelConnection}>
+                  Cancel
+                </button>
+              {/if}
             </div>
           </form>
         {:else}

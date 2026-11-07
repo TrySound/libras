@@ -2,12 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { Network } from "../src/network.svelte";
 import type { SubsonicApi, SubsonicAuth } from "../src/subsonic-client";
 
-const auth = { host: "https://example.test/demo", username: "demo", token: "local", salt: "local" };
+const auth = {
+  host: "https://example.test/demo",
+  username: "demo",
+  credentials: { method: "token" as const, username: "demo", token: "local", salt: "local" },
+};
 function client(identity: SubsonicAuth): SubsonicApi {
   const controller = new AbortController();
   return {
     host: identity.host,
-    username: identity.username,
+    username: identity.credentials.username,
     signal: controller.signal,
     abort: () => controller.abort(),
     ping: vi.fn(async () => ({
@@ -37,7 +41,7 @@ describe("Network client composition", () => {
     const factory = vi.fn(() => instance);
     const network = new Network(factory);
     const candidate = network.prepare(auth);
-    expect(factory).toHaveBeenCalledWith(auth, { fetch: expect.any(Function) });
+    expect(factory).toHaveBeenCalledWith({ host: auth.host, credentials: auth.credentials }, {});
     expect(network.mode).toBe("offline");
     await network.validate(candidate);
     expect(instance.ping).toHaveBeenCalledOnce();

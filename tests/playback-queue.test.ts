@@ -641,7 +641,10 @@ describe("playback queue synchronization", () => {
     await seed();
     const network = new Network();
     const connection = network.accept(
-      network.prepare({ ...account, token: "token", salt: "salt" }),
+      network.prepare({
+        ...account,
+        credentials: { method: "token", username: account.username, token: "token", salt: "salt" },
+      }),
     );
     vi.stubGlobal(
       "fetch",

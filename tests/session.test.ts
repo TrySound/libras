@@ -398,7 +398,7 @@ describe("session", () => {
       session.disconnect();
       const previous = selection.cache!.artists;
       const previousAccount = auth.loadAccount()!;
-      validate.mockRejectedValueOnce(new NetworkTransportError(new TypeError("Network failed")));
+      validate.mockRejectedValueOnce(new NetworkTransportError());
       expect(
         await session.connect({
           ...input,
@@ -546,7 +546,7 @@ describe("session", () => {
   it("does not report invalid connection input as a transport or CORS failure", async () => {
     const { session, metadata, validate } = setup();
     expect(await session.connect({ ...input, host: "https://" })).toBe(false);
-    expect(session.error).toMatch(/URL/i);
+    expect(session.error).toBe("Enter a valid server address.");
     expect(session.error).not.toContain("CORS");
     expect(validate).not.toHaveBeenCalled();
   });

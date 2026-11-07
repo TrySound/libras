@@ -10,7 +10,15 @@ import { installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
-const auth = { ...account, token: "token", salt: "salt" };
+const auth = {
+  ...account,
+  credentials: {
+    method: "token" as const,
+    username: account.username,
+    token: "token",
+    salt: "salt",
+  },
+};
 const image = (text = "image", validators = {}) => ({
   blob: new Blob([text]),
   type: "image/jpeg",
@@ -314,7 +322,7 @@ describe("cover engine using Cache", () => {
     expect(saved).toEqual([...selection.cache!.images.values()]);
     expect(Array.isArray(saved)).toBe(true);
     expect(disk.blobs.size).toBe(2);
-    for (const secret of ["blob:", "getCoverArt", auth.token, auth.salt])
+    for (const secret of ["blob:", "getCoverArt", auth.credentials.token, auth.credentials.salt])
       expect(JSON.stringify(saved)).not.toContain(secret);
     const restored = new Cache(getAccountKey(account));
     await restored.load();
@@ -937,7 +945,9 @@ describe("cover engine using Cache", () => {
       await next.replaceLibrary(snapshot());
       selection.cache = next;
       covers.activate();
-      covers.setConnection(createConnection({ ...auth, username }));
+      covers.setConnection(
+        createConnection({ ...auth, username, credentials: { ...auth.credentials, username } }),
+      );
       const current = covers.ensureCover("album-cover");
       expect(current.source).toBeUndefined();
       current.load();
