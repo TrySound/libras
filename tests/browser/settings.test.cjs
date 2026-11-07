@@ -262,10 +262,6 @@ test("Settings native controls, layout, and persistence", async (t) => {
       await page.getByLabel("Host", { exact: true }).fill(host);
       await page.getByLabel("Username", { exact: true }).fill(username);
       await page.getByLabel("Password", { exact: true }).fill("enc:literal-password");
-      assert.match(
-        await page.locator("#settings-auth-help").textContent(),
-        /HTTPS[\s\S]*localStorage/,
-      );
       assert.equal(passwordRequests, 0);
       const before = pingMethods.length;
       await page.getByRole("button", { name: "Connect", exact: true }).click();

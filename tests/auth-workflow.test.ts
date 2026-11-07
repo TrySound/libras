@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AuthWorkflow } from "../src/auth.svelte";
+import { AuthWorkflow } from "../src/auth-workflow";
 import { Network } from "../src/network.svelte";
 import { SubsonicError, SubsonicTransportError } from "../src/subsonic-client";
 

@@ -45,20 +45,16 @@
   const connectionFailed = $derived(connectionState === "error");
   const serverAddress = $derived(session.auth ? new URL(session.auth.host).host : "");
 
-  async function finishConnection(result: Promise<boolean>) {
+  async function submitConnection(event: SubmitEvent) {
+    event.preventDefault();
     const sourceURL = window.location.href;
+    const result = session.connect({ host, username, password });
+    password = "";
     if (await result) {
       host = username = password = "";
       // Session may finish after navigation starts or Settings is hidden.
       if (window.location.href === sourceURL && view?.checkVisibility()) navigate("/library");
     }
-  }
-
-  function submitConnection(event: SubmitEvent) {
-    event.preventDefault();
-    const result = session.connect({ host, username, password });
-    password = "";
-    void finishConnection(result);
   }
 
   function cancelConnection() {
@@ -155,10 +151,8 @@
               : "settings-auth-help"}
           >
             <p class="caption text-secondary" id="settings-auth-help">
-              Connect to your OpenSubsonic server. Token authentication is tried first; if
-              unsupported, your password is sent over HTTPS. Verified credentials, including a
-              password if needed, are saved in localStorage until you disconnect. Scripts on this
-              app's origin can read them; use a trusted device and server.
+              Connect to your Navidrome or another OpenSubsonic-compatible server to browse your
+              library and stream music.
             </p>
             <div class="stack-xs">
               <label class="label" for="server-host">Host</label>
@@ -225,9 +219,9 @@
                 {session.busy ? "Connecting…" : "Connect"}
               </button>
               {#if session.busy}
-                <button class="button" type="button" data-size="text" onclick={cancelConnection}
-                  >Cancel</button
-                >
+                <button class="button" type="button" data-size="text" onclick={cancelConnection}>
+                  Cancel
+                </button>
               {/if}
             </div>
           </form>

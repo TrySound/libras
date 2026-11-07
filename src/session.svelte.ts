@@ -1,5 +1,5 @@
 import { getAccountKey, type Auth, type AuthStore, type PasswordAuth } from "./auth";
-import { AuthWorkflow } from "./auth.svelte";
+import { AuthWorkflow } from "./auth-workflow";
 import type { Covers } from "./covers.svelte";
 import {
   NetworkTransportError,

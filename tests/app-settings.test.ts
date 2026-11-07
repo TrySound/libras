@@ -97,12 +97,9 @@ async function setup(
 }
 
 describe("app settings", () => {
-  it("keeps one login form with storage disclosure and automatically verifies a direct password", async () => {
+  it("keeps one login form and automatically verifies a direct password", async () => {
     const { target, fill, session, validate, auth } = await setup(false, false);
     expect(target.querySelectorAll('input[type="radio"]')).toHaveLength(0);
-    const help = target.querySelector("#settings-auth-help")!;
-    expect(help.textContent).toContain("HTTPS");
-    expect(help.textContent).toContain("localStorage");
     const pending = deferred();
     validate.mockRejectedValueOnce(new SubsonicError(41, "Token unsupported"));
     validate.mockReturnValueOnce(pending.promise);
@@ -287,7 +284,7 @@ describe("app settings", () => {
       "music.example.com",
     );
     expect(server.querySelector("#settings-auth-help")?.textContent).toContain(
-      "Connect to your OpenSubsonic server",
+      "Connect to your Navidrome or another OpenSubsonic-compatible server",
     );
     expect(server.querySelector("#server-password")?.getAttribute("type")).toBe("password");
     expect(offline.classList.contains("card")).toBe(true);
