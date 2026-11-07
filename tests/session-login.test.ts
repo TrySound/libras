@@ -29,6 +29,17 @@ const identity = {
 const reply = (response: object) => new Response(JSON.stringify({ "subsonic-response": response }));
 
 describe("Session token/password login", () => {
+  it("rejects another connection while authentication is pending", async () => {
+    const { session, network, validate } = setup();
+    const pending = deferred();
+    validate.mockReturnValueOnce(pending.promise);
+    const first = session.connect(input);
+    expect(await session.connect(input)).toBe(false);
+    expect(network.prepare).toHaveBeenCalledOnce();
+    pending.resolve();
+    expect(await first).toBe(true);
+  });
+
   it("connects token-first without retaining the password or probing capabilities", async () => {
     const { session, network, auth, validate } = setup();
     expect(await session.connect(input)).toBe(true);

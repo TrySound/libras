@@ -33,7 +33,7 @@ The workspace contains the root app (`src/`, `tests/`) and `@libras/website` (`w
 | Module                       | Owns                                                                                             |
 | ---------------------------- | ------------------------------------------------------------------------------------------------ |
 | `Session`                    | Account/cache activation, startup, cancellation, disconnect, and refresh coordination              |
-| `AuthStore` / `AuthWorkflow`  | Credential persistence / token derivation, automatic HTTPS fallback and attempts                  |
+| `AuthStore` / `authenticate` | Credential persistence / token derivation and automatic HTTPS password fallback                  |
 | `Network` / `SubsonicClient` | Connection cancellation, normalized domain access / Subsonic protocol requests                   |
 | `Cache`                      | Account-scoped library, queue, images, downloads, playlists, and OPFS persistence                |
 | `Playback`                   | Queue commands, server synchronization, and playback orchestration                               |

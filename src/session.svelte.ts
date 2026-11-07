@@ -1,5 +1,4 @@
-import { getAccountKey, type Auth, type AuthStore, type PasswordAuth } from "./auth";
-import { AuthWorkflow } from "./auth-workflow";
+import { authenticate, getAccountKey, type Auth, type AuthStore, type PasswordAuth } from "./auth";
 import type { Covers } from "./covers.svelte";
 import {
   NetworkTransportError,
@@ -41,7 +40,6 @@ export class Session {
   error = $state("");
   localReady = $state(false);
   loadingAfterConnect = $state(false);
-  readonly login: AuthWorkflow;
 
   #options: SessionOptions;
   #account?: Readonly<Account>;
@@ -52,13 +50,13 @@ export class Session {
   #refreshPending?: Promise<void>;
   #restoration: Promise<void> = Promise.resolve();
   #loadController?: AbortController;
+  #authController?: AbortController;
   #operationId = 0;
   #started = false;
   #destroyed = false;
 
   constructor(options: SessionOptions) {
     this.#options = options;
-    this.login = new AuthWorkflow(options.network);
   }
 
   get libraryProgress() {
@@ -108,7 +106,8 @@ export class Session {
   }
 
   #detach() {
-    this.login.cancel();
+    this.#authController?.abort();
+    this.#authController = undefined;
     this.loadingAfterConnect = false;
     this.#libraryProgress = undefined;
     this.#refreshPending = undefined;
@@ -267,7 +266,9 @@ export class Session {
   cancelConnect() {
     if (this.auth || this.#destroyed) return;
     this.#beginOperation();
-    this.login.cancel();
+    this.#authController?.abort();
+    this.#authController = undefined;
+    this.#options.network.cancelPending();
     this.status = "disconnected";
   }
 
@@ -275,10 +276,12 @@ export class Session {
   async connect(input: PasswordAuth): Promise<boolean> {
     if (this.auth || this.busy || this.#destroyed) return false;
     const operationId = this.#beginOperation();
+    const controller = new AbortController();
+    this.#authController = controller;
     this.status = "connecting";
     try {
-      const verified = await this.login.connect(input);
-      if (!this.#isCurrentOperation(operationId) || !verified) return false;
+      const verified = await authenticate(input, this.#options.network, controller.signal);
+      if (!this.#isCurrentOperation(operationId)) return false;
       const { auth, connection } = verified;
       await this.#restoration;
       if (!this.#isCurrentOperation(operationId)) return false;
@@ -289,7 +292,6 @@ export class Session {
       await this.#retireWorkspace(cache, connection.signal);
       if (!this.#isCurrentOperation(operationId)) return false;
       this.#commitWorkspace(cache, auth, connection);
-      this.login.cancel();
       this.status = "connected";
       this.loadingAfterConnect = true;
       void this.#refresh(false);
@@ -301,6 +303,7 @@ export class Session {
       }
       return false;
     } finally {
+      if (this.#authController === controller) this.#authController = undefined;
       if (this.#isCurrentOperation(operationId) && this.status === "connecting")
         this.status = "disconnected";
     }

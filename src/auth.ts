@@ -1,6 +1,8 @@
 import * as v from "valibot";
 import { md5 } from "js-md5";
 import { accountSchema, type Account } from "./schema";
+import type { Network, NetworkConnection } from "./network.svelte";
+import { SubsonicError } from "./subsonic-client";
 
 const nonEmpty = v.pipe(v.string(), v.nonEmpty());
 
@@ -79,6 +81,43 @@ export function createAuth(
       salt,
     },
   };
+}
+
+/** Verify token credentials, retrying with a password only when tokens are unsupported. */
+export async function authenticate(
+  input: PasswordAuth,
+  network: Network,
+  signal: AbortSignal,
+): Promise<{ auth: Auth; connection: NetworkConnection }> {
+  const { password } = input;
+  const auth = createAuth(input);
+
+  async function verify(auth: Auth) {
+    signal.throwIfAborted();
+    const connection = network.prepare(auth);
+    try {
+      await network.validate(connection);
+      signal.throwIfAborted();
+      connection.signal.throwIfAborted();
+      return { auth, connection };
+    } catch (error) {
+      if (!signal.aborted) network.cancelPending();
+      throw error;
+    }
+  }
+
+  try {
+    return await verify(auth);
+  } catch (error) {
+    signal.throwIfAborted();
+    if (!(error instanceof SubsonicError) || (error.code !== 41 && error.code !== 42)) throw error;
+    normalizeServerHost(auth.host, true);
+    return verify({
+      host: auth.host,
+      username: auth.username,
+      credentials: { method: "password", username: auth.username, password },
+    });
+  }
 }
 
 /** Stable account identity. Cache hashes this opaque key for its storage directory. */
