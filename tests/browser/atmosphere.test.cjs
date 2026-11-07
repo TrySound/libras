@@ -13,10 +13,10 @@ const backdrop = `<div class="atmosphere-frame" aria-hidden="true">
   <div class="atmosphere-lines"></div></div>
   <div class="foreground" style="height:2400px; flex-shrink:0">Foreground</div>`;
 
-async function fixture(browser, mode) {
+async function fixture(browser, mode, reducedMotion = "no-preference") {
   const page = await browser.newPage({
     viewport: { width: 1000, height: 700 },
-    reducedMotion: "no-preference",
+    reducedMotion,
   });
   const content =
     mode === "dialog"
@@ -63,7 +63,37 @@ async function position(page, scroll) {
   });
 }
 
+// This synthetic Chromium fixture checks layout and motion, not physical Safari
+// painting. It deliberately does not reproduce Atmosphere's SVG displacement filter.
 for (const mode of ["document", "dialog"]) {
+  test(`${mode}: reduced motion keeps loaded artwork and lines static across scrolling`, async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await fixture(browser, mode, "reduce");
+      await page.locator(".atmosphere").evaluate((image) => image.decode());
+      assert.equal(await page.locator(".atmosphere").isVisible(), true);
+      assert.equal(await page.locator(".atmosphere-lines").isVisible(), true);
+      for (const selector of [".atmosphere", ".atmosphere-lines"]) {
+        assert.equal(
+          await page.locator(selector).evaluate((node) => getComputedStyle(node).animationName),
+          "none",
+        );
+      }
+      const start = await position(page, 0);
+      assert.ok(start.range > 0, "fixture must exercise a scrollable surface");
+      for (const scroll of [100, start.range]) {
+        const current = await position(page, scroll);
+        assert.ok(current.scroll > 0, "the native scroll owner must still scroll");
+        assert.ok(Math.abs(current.imageOffset - start.imageOffset) < 1);
+        assert.ok(Math.abs(current.linesOffset - start.linesOffset) < 1);
+        assert.equal(current.extent, start.extent, "decoration must not grow the scroll range");
+        assert.equal(current.covered, true, "static layers must still cover the viewport");
+      }
+    } finally {
+      await browser.close();
+    }
+  });
+
   test(`${mode}: CSS-only depth stays proportional across the full scroll range`, async () => {
     const browser = await chromium.launch({ headless: true });
     try {
