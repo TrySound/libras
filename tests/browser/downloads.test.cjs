@@ -244,7 +244,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     );
 
     await t.test(
-      "online reopen preserves failed and complete files, and only accessible Retry fetches again",
+      "online reopen preserves failures until artist bulk Download retries only missing files",
       async () => {
         await page.reload();
         await page.getByRole("button", { name: /^Retry download of 6/ }).waitFor();
@@ -257,7 +257,14 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
           0,
         );
         retrySucceeds = true;
-        await page.getByRole("button", { name: /^Retry download of 6/ }).click();
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await navigate(`/library/artist/${artist.id}`);
+        await page.getByRole("button", { name: `Actions for ${artist.name}`, exact: true }).click();
+        await page
+          .locator("#artist-detail-menu-popover")
+          .getByRole("button", { name: "Download", exact: true })
+          .click();
+        await page.locator('.app-sidebar a[href="?/downloads"]').click();
         await page.waitForFunction(
           () => document.querySelectorAll("[aria-labelledby=downloads-heading] time").length === 6,
         );

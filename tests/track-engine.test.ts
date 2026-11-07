@@ -729,14 +729,14 @@ describe("durable download scheduling", () => {
     expect(restored.downloads.size).toBe(0);
   });
 
-  it("restores FIFO pending work and keeps failures sticky through bulk, reconnect and reopen until Retry", async () => {
+  it("restores pending work without retrying failures until explicit bulk Download", async () => {
     install();
     const first = setup({ online: true, concurrency: 1 });
     const fetcher = vi.fn(async () => new Response("bad", { status: 500 }));
     vi.stubGlobal("fetch", fetcher);
     await expect(first.engine.download("bad")).rejects.toThrow();
     first.engine.setConnection(undefined);
-    first.engine.downloadMany(["first", "second", "bad"]);
+    first.engine.downloadMany(["first", "second"]);
     await vi.waitFor(() => expect(first.cache.downloads.size).toBe(3));
     first.engine.destroy();
     const restored = new Cache(first.cache.key);
@@ -746,10 +746,10 @@ describe("durable download scheduling", () => {
     next.engine.setConnection(connection());
     await vi.waitFor(() => expect(restored.completedDownloads.size).toBe(2));
     expect(next.engine.getStatus("bad")).toBe("failed");
-    next.engine.downloadMany(["bad"]);
     await next.engine.restoreDownloads();
+    await expect(next.engine.download("bad")).rejects.toThrow();
     expect(fetcher.mock.calls).toHaveLength(3);
-    await next.engine.retryDownload("bad", "mp3");
+    next.engine.downloadMany(["bad", "bad"]);
     await vi.waitFor(() => expect(restored.completedDownloads.size).toBe(3));
     expect(fetcher.mock.calls).toHaveLength(4);
   });
@@ -836,6 +836,32 @@ it("counts raw and MP3 as independent files and treats untrusted AbortError reje
       .join(),
   ).not.toContain("secret");
   expect(engine.downloadCount).toBe(0);
+});
+
+it("bulk Download retries only selected failed formats without duplicating work or saved files", async () => {
+  install();
+  const { engine, cache } = setup();
+  await seed(cache);
+  for (const [id, format] of [
+    ["selected", "raw"],
+    ["selected", "mp3"],
+    ["other", "mp3"],
+  ] as const) {
+    await cache.enqueueDownload({ ...track, id }, format, "audio/mpeg");
+    await cache.failDownload(downloadKey(id, format));
+  }
+  const fetcher = vi.fn(async () => new Response("audio"));
+  vi.stubGlobal("fetch", fetcher);
+  engine.setConnection(connection());
+  await engine.restoreDownloads();
+  expect(fetcher).not.toHaveBeenCalled();
+  engine.downloadMany(["selected", track.id, "selected"]);
+  engine.downloadMany(["selected", track.id]);
+  await vi.waitFor(() => expect(cache.completedDownloads.size).toBe(3));
+  expect(cache.completedDownloads.has(downloadKey("selected", "raw"))).toBe(true);
+  expect(cache.completedDownloads.has(downloadKey("selected", "mp3"))).toBe(true);
+  expect(cache.downloads.get(downloadKey("other", "mp3"))?.status).toBe("failed");
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
 it("does not acknowledge failed durable cancellation and preserves unconfirmed intent", async () => {

@@ -182,7 +182,7 @@ export class TrackEngine {
   retryDownload(trackId: string, format: DownloadFormat) {
     const cache = this.#selection.cache;
     const intent = cache?.downloads.get(downloadKey(trackId, format));
-    if (!cache || !intent || intent.status !== "failed" || this.#canceling)
+    if (!cache || !intent || intent.status !== "failed" || this.#canceling || this.#destroyed)
       return Promise.resolve();
     const persisted = this.#observe(
       cache.enqueueDownload(intent.track, format, intent.contentType, true),
@@ -315,11 +315,18 @@ export class TrackEngine {
     return promise;
   }
 
-  /** Ensure a selection is available offline, accepting either saved format.
-   * Preserve input order; download() owns scheduling and fire-and-forget errors. */
+  /** Explicit bulk Download retries selected failed files in their original formats,
+   * while skipping saved files and deduplicating active/queued work. */
   downloadMany(trackIds: Iterable<string>) {
     for (const id of new Set(trackIds)) {
-      if (this.getStatus(id) === "idle") void this.download(id);
+      let retried = false;
+      for (const format of ["raw", "mp3"] as const) {
+        if (this.#selection.cache?.downloads.get(downloadKey(id, format))?.status === "failed") {
+          void this.retryDownload(id, format);
+          retried = true;
+        }
+      }
+      if (!retried && this.getStatus(id) === "idle") void this.download(id);
     }
   }
 
