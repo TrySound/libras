@@ -1,12 +1,32 @@
 import { describe, expect, it, vi } from "vitest";
-import { AuthStore, createAuth, getAccountKey, normalizeServerHost, type Auth } from "../src/auth";
+import {
+  AuthStore,
+  authenticate,
+  getAccountKey,
+  normalizeAndValidateServerHost,
+  type Auth,
+  type PasswordAuth,
+} from "../src/auth";
+import { Network } from "../src/network.svelte";
 import { md5 } from "js-md5";
 
-describe("createAuth", () => {
-  it("creates salted tokens without retaining or altering the password", () => {
+async function createTokenAuth(input: PasswordAuth) {
+  const network = new Network();
+  vi.spyOn(network, "validate").mockResolvedValue(undefined);
+  try {
+    const { auth } = await authenticate(input, network, new AbortController().signal);
+    if (auth.credentials.method !== "token") throw new Error("Expected token authentication.");
+    return { ...auth, credentials: auth.credentials };
+  } finally {
+    network.cancelPending();
+  }
+}
+
+describe("token authentication", () => {
+  it("creates salted tokens without retaining or altering the password", async () => {
     const input = { host: "https://music.example", username: "listener", password: " secret 音 " };
-    const first = createAuth(input);
-    const second = createAuth(input);
+    const first = await createTokenAuth(input);
+    const second = await createTokenAuth(input);
     expect(first).toEqual({
       host: input.host,
       username: input.username,
@@ -26,11 +46,13 @@ describe("createAuth", () => {
     [" music.example/ ", "https://music.example"],
     ["https://music.example:4533/music/", "https://music.example:4533/music"],
     ["https://music.example/music/", "https://music.example/music"],
-  ])("normalizes %s without fetching", (host, normalized) => {
+  ])("normalizes %s before verification", async (host, normalized) => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     try {
-      expect(createAuth({ host, username: "listener", password: "secret" }).host).toBe(normalized);
+      expect((await createTokenAuth({ host, username: "listener", password: "secret" })).host).toBe(
+        normalized,
+      );
       expect(fetcher).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
@@ -41,8 +63,8 @@ describe("createAuth", () => {
     { host: "https://", username: "listener", password: "secret" },
     { host: "https://music.example", username: "", password: "secret" },
     { host: "https://music.example", username: "listener", password: "" },
-  ])("rejects invalid input: %j", (input) => {
-    expect(() => createAuth(input)).toThrow();
+  ])("rejects invalid input: %j", async (input) => {
+    await expect(createTokenAuth(input)).rejects.toThrow();
   });
 });
 
@@ -235,13 +257,19 @@ describe("auth store", () => {
       "https://music.example/?t=secret",
       "https://music.example/#secret",
     ])
-      expect(() => normalizeServerHost(host)).toThrow();
-    expect(normalizeServerHost(" music.example/base/ ")).toBe("https://music.example/base");
-    expect(normalizeServerHost("http://localhost:4533")).toBe("http://localhost:4533");
-    expect(() => normalizeServerHost("http://localhost:4533", true)).toThrow("requires HTTPS");
+      expect(() => normalizeAndValidateServerHost(host)).toThrow();
+    expect(normalizeAndValidateServerHost(" music.example/base/ ")).toBe(
+      "https://music.example/base",
+    );
+    expect(normalizeAndValidateServerHost("http://localhost:4533")).toBe("http://localhost:4533");
+    expect(() =>
+      normalizeAndValidateServerHost("http://localhost:4533", { method: "password" }),
+    ).toThrow("requires HTTPS");
     vi.stubEnv("DEV", false);
     try {
-      expect(() => normalizeServerHost("http://localhost:4533")).toThrow("require HTTPS");
+      expect(() => normalizeAndValidateServerHost("http://localhost:4533")).toThrow(
+        "require HTTPS",
+      );
     } finally {
       vi.unstubAllEnvs();
     }

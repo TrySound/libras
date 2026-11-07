@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { credentialsSchema, normalizeServerHost, type Credentials } from "./auth";
+import { credentialsSchema, normalizeAndValidateServerHost, type Credentials } from "./auth";
 
 export interface SubsonicAuth {
   host: string;
@@ -109,7 +109,7 @@ const serverInfoSchema = v.object({
   openSubsonic: v.literal(true),
 });
 
-export const responseSchema = v.object({
+const responseSchema = v.object({
   "subsonic-response": v.object({
     status: v.picklist(["ok", "failed"]),
     // Keep identity optional here so minimal failures retain their actual error.
@@ -140,10 +140,7 @@ export const responseSchema = v.object({
 });
 
 type SubsonicResponse = v.InferOutput<typeof responseSchema>["subsonic-response"];
-export type SubsonicArtist = v.InferOutput<typeof artistSchema>;
-export type SubsonicAlbum = v.InferOutput<typeof albumSchema>;
-export type SubsonicTrack = v.InferOutput<typeof trackSchema>;
-export type OpenSubsonicServerInfo = v.InferOutput<typeof serverInfoSchema>;
+type OpenSubsonicServerInfo = v.InferOutput<typeof serverInfoSchema>;
 
 export interface SubsonicPlayQueue {
   current?: string;
@@ -157,7 +154,7 @@ export interface SubsonicStreamOptions {
   format?: "raw" | "mp3";
 }
 
-export interface SubsonicClientOptions {
+interface SubsonicClientOptions {
   apiVersion?: string;
   clientName?: string;
   fetch?: typeof fetch;
@@ -187,7 +184,7 @@ export class SubsonicClient {
     const parsed = v.safeParse(credentialsSchema, auth.credentials);
     if (!parsed.success) throw new Error("The Subsonic authentication is invalid.");
     // Validate restored sessions too. Injected demo clients do not use this transport.
-    normalizeServerHost(auth.host, parsed.output.method === "password");
+    normalizeAndValidateServerHost(auth.host, { method: parsed.output.method });
     this.#auth = { host: auth.host, credentials: parsed.output };
     this.#apiVersion = options.apiVersion ?? "1.16.1";
     this.#clientName = options.clientName ?? "libras";

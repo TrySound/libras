@@ -37,8 +37,11 @@ export interface PasswordAuth {
   password: string;
 }
 
-/** Preserve historical host spelling for account/cache identity across methods. */
-export function normalizeServerHost(input: string, password = false): string {
+/** Validate the connection policy and normalize the address without changing existing cache keys. */
+export function normalizeAndValidateServerHost(
+  input: string,
+  { method = "token" }: { method?: Credentials["method"] } = {},
+): string {
   const host = input.trim();
   let url: URL;
   try {
@@ -53,10 +56,10 @@ export function normalizeServerHost(input: string, password = false): string {
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (
     url.protocol !== "https:" &&
-    !(url.protocol === "http:" && import.meta.env.DEV && loopback && !password)
+    !(url.protocol === "http:" && import.meta.env.DEV && loopback && method !== "password")
   )
     throw new Error(
-      password
+      method === "password"
         ? "Direct password authentication requires HTTPS."
         : "Server connections require HTTPS (HTTP loopback is development-only).",
     );
@@ -64,7 +67,7 @@ export function normalizeServerHost(input: string, password = false): string {
 }
 
 /** Derive token credentials locally; never retain the entered password. */
-export function createAuth(
+function createAuth(
   input: PasswordAuth,
 ): Auth & { credentials: Extract<Credentials, { method: "token" }> } {
   if (!input.username || !input.password) throw new Error("Enter a username and password.");
@@ -72,7 +75,7 @@ export function createAuth(
     byte.toString(16).padStart(2, "0"),
   ).join("");
   return {
-    host: normalizeServerHost(input.host),
+    host: normalizeAndValidateServerHost(input.host),
     username: input.username,
     credentials: {
       method: "token",
@@ -111,7 +114,7 @@ export async function authenticate(
   } catch (error) {
     signal.throwIfAborted();
     if (!(error instanceof SubsonicError) || (error.code !== 41 && error.code !== 42)) throw error;
-    normalizeServerHost(auth.host, true);
+    normalizeAndValidateServerHost(auth.host, { method: "password" });
     return verify({
       host: auth.host,
       username: auth.username,

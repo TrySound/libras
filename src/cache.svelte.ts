@@ -54,7 +54,7 @@ const playlistsSchema = v.strictObject({
 export type CachedPlaylists = v.InferOutput<typeof playlistsSchema>;
 
 const imagesSchema = v.array(imageSchema);
-export interface CachedImage extends ImageMetadata {
+interface CachedImage extends ImageMetadata {
   blob: Blob;
   type: string;
 }
@@ -69,7 +69,7 @@ const cachedDownloadSchema = v.strictObject({
   size: v.pipe(v.number(), v.integer(), v.minValue(1)),
   downloadedAt: timestamp,
 });
-export type CachedDownload = v.InferOutput<typeof cachedDownloadSchema>;
+type CachedDownload = v.InferOutput<typeof cachedDownloadSchema>;
 const downloadsSchema = v.array(cachedDownloadSchema);
 /** Account-local identity, also distinguishing original files from MP3 transcodes. */
 export function downloadKey(trackId: string, format: DownloadFormat) {
