@@ -119,18 +119,18 @@ describe("general checkpoints", () => {
     expect(digest).toHaveBeenCalledOnce();
   });
 
-  it("coalesces edits in every document without rereading or writing JSON per mutation", async () => {
+  it("coalesces ordinary edits while downloads commit at explicit boundaries without rereading JSON", async () => {
     const disk = installDisk();
     const cache = new Cache(getAccountKey(account));
     await cache.load();
     const read = vi.fn(async (_path: string) => {});
     disk.state.beforeRead = read;
     for (let version = 1; version <= 10; version++) await edit(cache, version);
-    expect([...disk.files.keys()].filter((path) => path.endsWith(".json"))).toHaveLength(0);
+    expect([...disk.files.keys()].filter((path) => path.endsWith(".json"))).toHaveLength(2);
     expect(read.mock.calls.some(([path]) => String(path).endsWith(".json"))).toBe(false);
     const writes = disk.state.writes;
     await vi.advanceTimersByTimeAsync(300);
-    expect(disk.state.writes - writes).toBe(4);
+    expect(disk.state.writes - writes).toBe(3);
     expect(cache.dirty).toBe(false);
     expect(disk.blobs.size).toBe(2);
     expect(vi.getTimerCount()).toBe(0);
@@ -194,7 +194,7 @@ describe("general checkpoints", () => {
     expect(cache.error).toBeUndefined();
   });
 
-  it.each(["library", "queue", "images", "downloads"])(
+  it.each(["library", "queue", "images"])(
     "retains %s placeholders on failed close and retries without rereading",
     async (name) => {
       const disk = installDisk();
@@ -230,7 +230,7 @@ describe("general checkpoints", () => {
     await edit(first, 1);
     await edit(second, 2);
     await Promise.all([first.flush(), second.flush()]);
-    expect(disk.files.size).toBe(8);
+    expect(disk.files.size).toBe(10);
     for (const text of disk.files.values()) {
       expect(JSON.parse(text)).not.toHaveProperty("account");
       expect(text).not.toContain(account.username);

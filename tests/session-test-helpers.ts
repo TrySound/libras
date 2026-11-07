@@ -162,6 +162,7 @@ export function createSession(saved = false, storage = createStorage()) {
     metadata,
     covers,
     tracks,
+    trackEngine,
     playback,
     storage,
     validate,

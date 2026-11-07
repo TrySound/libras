@@ -1134,8 +1134,7 @@ it("renders download records and jobs without duplicates and switches account pr
   tracks.setConnection(connection.audio);
   const pending = tracks.download(track.id, { forceTranscode: true });
   flushSync();
-  expect(target.querySelectorAll('[aria-label="Downloading"]')).toHaveLength(1);
-  expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(0);
+  expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
   await pending;
   flushSync();
   expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
@@ -1441,3 +1440,52 @@ it("follows normalized album artwork IDs without publishing a late old image", a
   expect(target.querySelector(".detail-panel .artwork img")?.hasAttribute("hidden")).toBe(true);
   expect(target.querySelector(".detail-panel .artwork svg")).not.toBeNull();
 });
+
+it.each(["/library", "/search", "/downloads", "/settings"])(
+  "removes pure download provenance from all warning consumers on %s",
+  async (route) => {
+    installDisk();
+    const { DownloadError } = await import("../src/download-error");
+    const cache = new Cache("warning-account");
+    vi.spyOn(cache, "error", "get").mockReturnValue(
+      new AggregateError([new AggregateError([new DownloadError()])], "secret transport details"),
+    );
+    mocks.cache = cache;
+    window.history.replaceState(null, "", `?${route}`);
+    const target = document.createElement("main");
+    document.body.append(target);
+    const component = mount(App, { target });
+    cleanups.push(() => unmount(component));
+    flushSync();
+    expect(target.textContent).not.toContain("Some local data could not be restored or saved");
+    expect(target.textContent).not.toContain("Local storage needs attention");
+    expect(target.textContent).not.toContain("secret");
+    expect(target.textContent).not.toContain("Could not save this file");
+    expect(target.querySelector('button[aria-label="Show errors"]')).toBeNull();
+  },
+);
+
+it.each(["/library", "/search", "/downloads"])(
+  "retains unrelated storage warnings from mixed download aggregates on %s",
+  async (route) => {
+    installDisk();
+    const { DownloadError } = await import("../src/download-error");
+    const cache = new Cache("mixed-warning-account");
+    vi.spyOn(cache, "error", "get").mockReturnValue(
+      new AggregateError(
+        [new DownloadError(), new Error("Library storage failure")],
+        "secret transport",
+      ),
+    );
+    mocks.cache = cache;
+    window.history.replaceState(null, "", `?${route}`);
+    const target = document.createElement("main");
+    document.body.append(target);
+    const component = mount(App, { target });
+    cleanups.push(() => unmount(component));
+    flushSync();
+    expect(target.textContent).toContain("Some local data could not be restored or saved");
+    expect(target.textContent).not.toContain("secret");
+    expect(target.textContent).not.toContain("Could not save this file");
+  },
+);

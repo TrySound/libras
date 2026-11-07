@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Cache } from "../src/cache.svelte";
+import { Cache, downloadKey } from "../src/cache.svelte";
+import { DownloadError } from "../src/download-error";
 import { installDisk } from "./cache-test-helpers";
 import { NetworkTransportError } from "../src/network.svelte";
 import { createSession, credentials, deferred } from "./session-test-helpers";
@@ -45,7 +46,8 @@ describe("session", () => {
     "reports %s load failures reactively without duplicating startup warnings",
     async (domain) => {
       const { session, selection, loadCache, playback } = setup(true);
-      const failure = new Error(`Corrupt cached ${domain}`);
+      const failure =
+        domain === "downloads" ? new DownloadError() : new Error(`Corrupt cached ${domain}`);
       loadCache.mockImplementationOnce(async function (this: Cache) {
         const error = new AggregateError([failure]);
         vi.spyOn(this, "error", "get").mockReturnValue(error);
@@ -55,10 +57,12 @@ describe("session", () => {
       await vi.waitFor(() => expect(session.status).toBe("connected"));
       expect(session.localReady).toBe(true);
       expect(session.error).toBe("");
-      expect(session.refreshError).toContain(`Corrupt cached ${domain}`);
+      if (domain === "downloads") expect(session.refreshError).toBe("");
+      else expect(session.refreshError).toContain(`Corrupt cached ${domain}`);
       expect(playback.activate).toHaveBeenCalledOnce();
       await session.refresh();
-      expect(session.refreshError).toContain(`Corrupt cached ${domain}`);
+      if (domain === "downloads") expect(session.refreshError).toBe("");
+      else expect(session.refreshError).toContain(`Corrupt cached ${domain}`);
       vi.spyOn(selection.cache!, "error", "get").mockReturnValue(undefined);
       expect(session.refreshError).toBe("");
     },
@@ -96,12 +100,12 @@ describe("session", () => {
     vi.spyOn(selection.cache!, "error", "get").mockReturnValue(
       new AggregateError([
         new Error("Storage unavailable"),
-        new AggregateError([new Error("Corrupt images"), new Error("Corrupt downloads")]),
+        new AggregateError([new Error("Corrupt images"), new DownloadError()]),
       ]),
     );
     await session.refresh();
     expect(session.refreshError).toBe(
-      "Synchronization failed: Storage unavailable; Corrupt images; Corrupt downloads",
+      "Synchronization failed: Storage unavailable; Corrupt images",
     );
     expect(session.status).toBe("connected");
     expect(session.syncing).toBe(false);
@@ -748,7 +752,7 @@ describe("session", () => {
     expect(restored.queue.position).toBe(2);
   });
 
-  it("keeps failed download checkpoints live when switching accounts, then retries", async () => {
+  it("keeps download storage failures out of account-retirement reporting", async () => {
     const { session, selection, loadCache, saveLibrary } = setup();
     loadCache.mockRestore();
     saveLibrary.mockRestore();
@@ -756,29 +760,27 @@ describe("session", () => {
     expect(await session.connect(input)).toBe(true);
     session.disconnect();
     const previous = selection.cache!;
-    await previous.saveDownload(
-      { id: "track", title: "Track", artist: "Artist", album: "Album" },
-      "mp3",
-      "audio/mpeg",
-      new Response("audio"),
-      new AbortController().signal,
-    );
     disk.state.beforeClose = async (path) => {
-      if (path.endsWith("/downloads.json")) throw new Error("Catalog write failed");
+      if (path.endsWith("/downloads.json")) throw new Error("secret catalog details");
     };
-    expect(await session.connect({ ...input, username: "other" })).toBe(false);
-    expect(selection.cache).toBe(previous);
-    expect(session.error).toBe("Catalog write failed");
-    expect(previous.downloads.size).toBe(1);
-    expect(previous.dirty).toBe(true);
-    previous.setQueue({ tracks: ["track"], index: 0, position: 5 });
-    disk.state.beforeClose = async () => {};
+    await expect(
+      previous.saveDownload(
+        { id: "track", title: "Track", artist: "Artist", album: "Album" },
+        "mp3",
+        "audio/mpeg",
+        new Response("audio"),
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("Could not save this file");
+    expect(session.refreshError).toBe("");
     expect(await session.connect({ ...input, username: "other" })).toBe(true);
-    session.disconnect();
-    expect(await session.connect(input)).toBe(true);
-    expect(selection.cache?.downloads.size).toBe(1);
-    expect(selection.cache?.queue.position).toBe(5);
-    expect(await (await selection.cache?.readDownload("track", "mp3"))?.text()).toBe("audio");
+    expect(selection.cache).not.toBe(previous);
+    expect(session.error).toBe("");
+    disk.state.beforeClose = async () => {};
+    const restored = new Cache(previous.key);
+    await restored.load();
+    expect(restored.downloads.size).toBe(1);
+    expect(await (await restored.readDownload("track", "mp3"))?.text()).toBe("audio");
   });
 
   it("keeps the old cache writable when acceptance fails after flushing", async () => {
@@ -819,4 +821,138 @@ describe("session", () => {
     expect(metadata.readLibrary).toHaveBeenCalledOnce();
     expect(playback.refreshQueue).toHaveBeenCalledTimes(2);
   });
+});
+
+it.each([false, true])(
+  "filters download leaves before account-retirement failure stringification (mixed=%s)",
+  async (mixed) => {
+    const { session, selection } = setup();
+    expect(await session.connect(input)).toBe(true);
+    session.disconnect();
+    const previous = selection.cache!;
+    vi.spyOn(previous, "flush").mockRejectedValue(
+      new AggregateError(
+        [new DownloadError(), ...(mixed ? [new Error("Queue storage failed")] : [])],
+        "secret authenticated URL",
+      ),
+    );
+    expect(await session.connect({ ...input, username: "other" })).toBe(!mixed);
+    expect(session.error).toBe(mixed ? "Queue storage failed" : "");
+    expect(session.error).not.toContain("secret");
+  },
+);
+
+it("joins suspended download reconciliation before retiring an account writer", async () => {
+  const { session, selection, trackEngine, tracks, loadCache, saveLibrary } = setup();
+  loadCache.mockRestore();
+  saveLibrary.mockRestore();
+  tracks.activate.mockRestore();
+  tracks.setConnection.mockRestore();
+  const disk = installDisk();
+  expect(await session.connect(input)).toBe(true);
+  const original = selection.cache!;
+  let committed = false;
+  disk.state.afterClose = (name) => {
+    if (name.endsWith("/downloads.json")) committed = true;
+  };
+  disk.state.beforeClose = async (name) => {
+    if (committed && name.endsWith("download-intents.json")) throw new Error("retirement full");
+  };
+  await expect(
+    original.saveDownload(
+      { id: "saved", title: "Saved", artist: "Artist", album: "Album" },
+      "mp3",
+      "audio/mpeg",
+      new Response("saved bytes"),
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow();
+  disk.state.beforeClose = async () => {};
+  const reading = deferred();
+  const release = deferred();
+  let gated = false;
+  disk.state.beforeRead = async (name) => {
+    if (!gated && name.endsWith(".audio")) {
+      gated = true;
+      reading.resolve();
+      await release.promise;
+    }
+  };
+  const restoration = trackEngine.restoreDownloads();
+  await reading.promise;
+  session.disconnect();
+  let accepted = false;
+  const switching = session.connect({ ...input, username: "other" }).then((result) => {
+    accepted = result;
+    return result;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(accepted).toBe(false);
+  expect(selection.cache).toBe(original);
+  release.resolve();
+  await restoration;
+  expect(await switching).toBe(true);
+  session.disconnect();
+  expect(await session.connect(input)).toBe(true);
+  session.disconnect();
+  await selection.cache!.enqueueDownload(
+    { id: "new-a", title: "New A", artist: "Artist", album: "Album" },
+    "mp3",
+    "audio/mpeg",
+  );
+  const reopened = new Cache(original.key);
+  await reopened.load();
+  expect(reopened.downloadIntents.has(downloadKey("new-a", "mp3"))).toBe(true);
+  expect(reopened.downloads.size).toBe(1);
+});
+
+it("joins a suspended A byte-close before switching A to B and reopening A", async () => {
+  const fixture = setup();
+  const { session, selection, trackEngine, tracks, loadCache, saveLibrary } = fixture;
+  loadCache.mockRestore();
+  saveLibrary.mockRestore();
+  tracks.activate.mockRestore();
+  tracks.setConnection.mockRestore();
+  const disk = installDisk();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("complete audio")),
+  );
+  expect(await session.connect(input)).toBe(true);
+  const original = selection.cache!;
+  const closing = deferred();
+  const release = deferred();
+  disk.state.beforeClose = async (name) => {
+    if (name.endsWith(".audio")) {
+      closing.resolve();
+      await release.promise;
+    }
+  };
+  void trackEngine.download("closing");
+  await closing.promise;
+  session.disconnect();
+  let accepted = false;
+  const switching = session.connect({ ...input, username: "other" }).then((result) => {
+    accepted = result;
+    return result;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(accepted).toBe(false);
+  expect(selection.cache).toBe(original);
+  release.resolve();
+  expect(await switching).toBe(true);
+  session.disconnect();
+  expect(await session.connect(input)).toBe(true);
+  expect(selection.cache).not.toBe(original);
+  expect(selection.cache?.downloads.size).toBe(1);
+  session.disconnect();
+  await selection.cache!.enqueueDownload(
+    { id: "new-a", title: "New A", artist: "Artist", album: "Album" },
+    "mp3",
+    "audio/mpeg",
+  );
+  const reopened = new Cache(original.key);
+  await reopened.load();
+  expect(reopened.downloadIntents.has(downloadKey("new-a", "mp3"))).toBe(true);
+  expect(reopened.downloads.size).toBe(1);
 });

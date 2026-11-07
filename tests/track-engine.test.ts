@@ -121,17 +121,15 @@ describe("TrackEngine using Cache", () => {
     engine.downloadMany([]);
     expect(download).not.toHaveBeenCalled();
     expect(read).not.toHaveBeenCalled();
-    expect(engine.error).toBeUndefined();
   });
 
-  it("deduplicates failed batch setup and reports errors without unhandled rejections", async () => {
+  it("deduplicates waiting offline intent without reporting a setup failure", async () => {
     install();
-    const { engine } = setup();
-    const download = vi.spyOn(engine, "download");
+    const { engine, cache } = setup();
     engine.downloadMany(["missing", "missing"]);
-    await turn();
-    expect(download).toHaveBeenCalledOnce();
-    expect(engine.error).toBeInstanceOf(Error);
+    await vi.waitFor(() => expect(cache.downloadIntents.size).toBe(1));
+    expect(engine.downloadCount).toBe(1);
+    expect(engine.getStatus("missing")).toBe("queued");
   });
 
   it("continues a batch after an individual transfer fails", async () => {
@@ -147,8 +145,7 @@ describe("TrackEngine using Cache", () => {
     engine.downloadMany(["bad", "good"]);
     await vi.waitFor(() => expect(engine.getStatus("good")).toBe("downloaded"));
     expect(engine.downloadJobs).toHaveLength(0);
-    expect(engine.getStatus("bad")).toBe("idle");
-    expect(engine.error).toBeInstanceOf(Error);
+    expect(engine.getStatus("bad")).toBe("failed");
   });
 
   it.each([undefined, "Track artist"])(
@@ -194,46 +191,35 @@ describe("TrackEngine using Cache", () => {
     },
   );
 
-  it.each(["setup", "transfer"])(
-    "handles fire-and-forget %s failures internally",
-    async (phase) => {
-      install();
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async () => new Response("failed", { status: 500 })),
-      );
-      const { engine } = setup({ online: phase === "transfer" });
-      void engine.download(track.id);
-      await vi.waitFor(() => expect(engine.error).toBeInstanceOf(Error));
-      await turn();
-      expect(engine.downloadJobs).toEqual([]);
-    },
-  );
-
-  it.each(["no account", "offline"])("exposes download setup failures: %s", async (scenario) => {
+  it("handles fire-and-forget transfer failures internally", async () => {
     install();
-    const { engine, selection } = setup();
-    if (scenario === "no account") selection.cache = undefined;
-
-    const pending = engine.download(track.id);
-    await expect(pending).rejects.toBeInstanceOf(Error);
-    await expect(pending).rejects.toBe(engine.error);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("failed", { status: 500 })),
+    );
+    const { engine } = setup({ online: true });
+    void engine.download(track.id);
+    await vi.waitFor(() => expect(engine.getStatus(track.id)).toBe("failed"));
     expect(engine.downloadJobs).toEqual([]);
-
-    engine.activate();
-    expect(engine.error).toBeUndefined();
   });
 
-  it("does not report cancelled download setup as an error", async () => {
+  it("exposes a safe setup error without an account", async () => {
     install();
-    const { engine } = setup();
+    const { engine, selection } = setup();
+    selection.cache = undefined;
+    await expect(engine.download(track.id)).rejects.toBeInstanceOf(Error);
+    expect(engine.downloadJobs).toEqual([]);
+  });
+
+  it("keeps queued intent when the connection owner has already interrupted execution", async () => {
+    install();
+    const { engine, cache } = setup();
     const controller = new AbortController();
     controller.abort();
     engine.setConnection({ ...connection(), signal: controller.signal });
-
-    await expect(engine.download(track.id)).rejects.toMatchObject({ name: "AbortError" });
-    expect(engine.error).toBeUndefined();
-    expect(engine.downloadJobs).toEqual([]);
+    void engine.download(track.id);
+    await vi.waitFor(() => expect(cache.downloadIntents.size).toBe(1));
+    expect(engine.getStatus(track.id)).toBe("queued");
   });
 
   it("reads normalized Cache records and owns offline playback URLs", async () => {
@@ -342,7 +328,6 @@ describe("TrackEngine using Cache", () => {
     disk.files.set(path, "broken");
     const { cache, engine } = setup();
     await expect(cache.load()).rejects.toThrow();
-    expect(engine.error).toBeUndefined();
     expect(cache.error).toBeInstanceOf(AggregateError);
     engine.activate();
     expect(disk.files.get(path)).toBe("broken");
@@ -357,7 +342,7 @@ describe("TrackEngine using Cache", () => {
     );
     const { engine, selection, cache } = setup({ online: true });
     const pending = engine.download(track.id);
-    expect(engine.getStatus(track.id)).toBe("downloading");
+    expect(engine.getStatus(track.id)).toBe("queued");
     expect(selection.cache!.downloads.size).toBe(0);
     response.resolve(new Response("audio"));
     await pending;
@@ -386,6 +371,7 @@ describe("TrackEngine using Cache", () => {
     expect(engine.download("active")).toBe(active);
     expect(engine.download("last")).toBe(last);
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(cache.downloadIntents.size).toBe(3));
     expect(engine.downloadJobs.map((job) => [job.track.id, job.status])).toEqual([
       ["active", "downloading"],
       ["queued", "queued"],
@@ -423,13 +409,12 @@ describe("TrackEngine using Cache", () => {
       const { engine, cache } = setup({ online: true, concurrency: 1 });
       const results = await Promise.allSettled([engine.download("bad"), engine.download("good")]);
       expect(results.map((result) => result.status)).toEqual(["rejected", "fulfilled"]);
-      expect(engine.error).toBeDefined();
-      expect(engine.getStatus("bad")).toBe("idle");
+      expect(engine.getStatus("bad")).toBe("failed");
       expect(engine.getStatus("good")).toBe("downloaded");
       expect(disk.blobs.size).toBe(1);
-      await engine.download("bad");
-      expect(engine.error).toBeUndefined();
-      expect(cache.downloads.size).toBe(2);
+      await expect(engine.download("bad")).rejects.toThrow();
+      await engine.retryDownload("bad", "mp3");
+      await vi.waitFor(() => expect(cache.downloads.size).toBe(2));
     },
   );
 
@@ -454,7 +439,7 @@ describe("TrackEngine using Cache", () => {
     const { engine } = setup({ cache });
     expect(engine.getStatus(track.id)).toBe("downloaded");
     await expect(engine.getSource(track)).rejects.toThrow("Connect");
-    expect(engine.getStatus(track.id)).toBe("idle");
+    expect(engine.getStatus(track.id)).toBe("queued");
     expect(disk.files.get("tracks/old.audio")).toBe("legacy");
     engine.setConnection(connection());
     vi.stubGlobal(
@@ -539,7 +524,7 @@ describe("TrackEngine using Cache", () => {
       vi.fn(() => response.promise),
     );
     const pending = engine.download(track.id, { forceTranscode: true });
-    expect(engine.getStatus(track.id)).toBe("downloading");
+    expect(engine.getStatus(track.id)).toBe("queued");
     response.resolve(new Response("mp3"));
     await pending;
     expect(engine.getStatus(track.id)).toBe("downloaded");
@@ -564,10 +549,9 @@ describe("TrackEngine using Cache", () => {
       else if (action === "destroy") engine.destroy();
       else engine.activate();
       expect((await results).map((result) => result.status)).toEqual(["rejected", "rejected"]);
-      expect(engine.downloadJobs).toEqual([]);
+      expect(engine.downloadCount).toBe(2);
       expect(cache.downloads.size).toBe(0);
       expect(disk.blobs.size).toBe(0);
-      expect(engine.error).toBeUndefined();
     },
   );
 
@@ -594,12 +578,11 @@ describe("TrackEngine using Cache", () => {
     await wrote.promise;
     network.setMode("offline");
     expect((await results).map((result) => result.status)).toEqual(["rejected", "rejected"]);
-    expect(cancel).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     expect(fetcher).toHaveBeenCalledOnce();
     expect(disk.blobs.size).toBe(0);
     expect(cache.downloads.size).toBe(0);
-    expect(engine.downloadJobs).toEqual([]);
-    expect(engine.error).toBeUndefined();
+    expect(engine.downloadCount).toBe(2);
   });
 
   it.each(["listener", "other"])(
@@ -621,11 +604,12 @@ describe("TrackEngine using Cache", () => {
       );
       await rejected;
       const retry = engine.download(track.id);
-      await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+      await turn();
+      expect(fetcher).toHaveBeenCalledOnce();
       const cancel = vi.fn();
       const late = new Response(new ReadableStream({ cancel }));
       first.resolve(late);
-      await turn();
+      await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
       expect(cancel).toHaveBeenCalledOnce();
       expect(engine.downloadJobs).toHaveLength(1);
       next.resolve(new Response("new"));
@@ -633,7 +617,6 @@ describe("TrackEngine using Cache", () => {
       expect(cache.downloads.size).toBe(0);
       expect(selection.cache.downloads.size).toBe(1);
       expect(disk.blobs.size).toBe(1);
-      expect(engine.error).toBeUndefined();
     },
   );
 
@@ -695,10 +678,11 @@ describe("TrackEngine using Cache", () => {
         if (path.endsWith(".audio")) engine.setConnection(undefined);
       };
       await expect(engine.download(track.id)).rejects.toMatchObject({ name: "AbortError" });
-      await expect(save.mock.results[0].value).rejects.toMatchObject({ name: "AbortError" });
-      expect(cache.downloads.size).toBe(0);
-      expect(engine.error).toBeUndefined();
-      expect(disk.blobs.size).toBe(0);
+      if (stage === "beforeWrite")
+        await expect(save.mock.results[0].value).rejects.toMatchObject({ name: "AbortError" });
+      else await expect(save.mock.results[0].value).resolves.toBeInstanceOf(File);
+      expect(cache.downloads.size).toBe(stage === "afterClose" ? 1 : 0);
+      expect(disk.blobs.size).toBe(stage === "afterClose" ? 1 : 0);
     },
   );
 
@@ -725,5 +709,337 @@ describe("TrackEngine using Cache", () => {
   it.each([0, -1, 1.5])("rejects invalid download concurrency %s", (concurrency) => {
     install();
     expect(() => setup({ concurrency })).toThrow("positive integer");
+  });
+});
+
+describe("durable download scheduling", () => {
+  it("counts six distinct files with three active, three queued, deduplicated batches and independent formats", async () => {
+    install("probably");
+    const { engine, cache } = setup({ online: true });
+    const releases: (() => void)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => releases.push(() => resolve(new Response("audio")))),
+      ),
+    );
+    engine.downloadMany(["a", "b", "c", "d", "e", "f", "a"]);
+    engine.downloadMany(["a", "b", "c", "d", "e", "f"]);
+    await vi.waitFor(() => expect(cache.downloadIntents.size).toBe(6));
+    expect(engine.downloadJobs.filter((job) => job.status === "downloading")).toHaveLength(3);
+    expect(engine.downloadJobs.filter((job) => job.status === "queued")).toHaveLength(3);
+    expect(engine.downloadCount).toBe(6);
+    const cancel = engine.cancelDownloads();
+    for (const release of releases) release();
+    await cancel;
+    expect(engine.downloadCount).toBe(0);
+    const restored = new Cache(cache.key);
+    await restored.load();
+    expect(restored.downloadIntents.size).toBe(0);
+  });
+
+  it("restores FIFO pending work and keeps failures sticky through bulk, reconnect and reopen until Retry", async () => {
+    install();
+    const first = setup({ online: true, concurrency: 1 });
+    const fetcher = vi.fn(async () => new Response("bad", { status: 500 }));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(first.engine.download("bad")).rejects.toThrow();
+    first.engine.setConnection(undefined);
+    first.engine.downloadMany(["first", "second", "bad"]);
+    await vi.waitFor(() => expect(first.cache.downloadIntents.size).toBe(3));
+    first.engine.destroy();
+    const restored = new Cache(first.cache.key);
+    await restored.load();
+    const next = setup({ cache: restored, concurrency: 1 });
+    fetcher.mockImplementation(async () => new Response("audio"));
+    next.engine.setConnection(connection());
+    await vi.waitFor(() => expect(restored.downloads.size).toBe(2));
+    expect(next.engine.getStatus("bad")).toBe("failed");
+    next.engine.downloadMany(["bad"]);
+    await next.engine.restoreDownloads();
+    expect(fetcher.mock.calls).toHaveLength(3);
+    await next.engine.retryDownload("bad", "mp3");
+    await vi.waitFor(() => expect(restored.downloads.size).toBe(3));
+    expect(fetcher.mock.calls).toHaveLength(4);
+  });
+
+  it("joins close before confirmed cancellation, preserves committed files and failures, and never restarts canceled intent", async () => {
+    const disk = install();
+    const { engine, cache } = setup({ online: true, concurrency: 1 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("audio")),
+    );
+    await cache.enqueueDownload({ ...track, id: "failed" }, "mp3", "audio/mpeg");
+    await cache.failDownload(downloadKey("failed", "mp3"));
+    const closing = deferred();
+    const release = deferred();
+    disk.state.beforeClose = async (name) => {
+      if (name.endsWith(".audio")) {
+        closing.resolve();
+        await release.promise;
+      }
+    };
+    void engine.download("closing");
+    void engine.download("queued");
+    await closing.promise;
+    let acknowledged = false;
+    const cancel = engine.cancelDownloads().then(() => {
+      acknowledged = true;
+    });
+    await turn();
+    expect(acknowledged).toBe(false);
+    release.resolve();
+    await cancel;
+    expect(cache.downloads.size).toBe(1);
+    expect([...cache.downloadIntents.values()].map((item) => item.status)).toEqual(["failed"]);
+    const reopened = new Cache(cache.key);
+    await reopened.load();
+    expect(reopened.downloads.size).toBe(1);
+    expect(reopened.downloadIntents.has(downloadKey("queued", "mp3"))).toBe(false);
+    expect(engine.downloadCount).toBe(0);
+  });
+});
+
+it("counts raw and MP3 as independent files and treats untrusted AbortError rejection as sticky failure", async () => {
+  install("probably");
+  const { engine, cache } = setup({ online: true });
+  await cache.replaceLibrary({
+    artists: [],
+    albums: [],
+    tracks: [
+      {
+        id: "formats",
+        title: "Formats",
+        artistIds: [],
+        albumId: "album",
+        genres: [],
+        mimeType: "audio/flac",
+      },
+    ],
+    lastModified: 1,
+    savedAt: 1,
+  });
+  const response = deferred<Response>();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => response.promise),
+  );
+  const raw = engine.download("formats");
+  const mp3 = engine.download("formats", { forceTranscode: true });
+  await vi.waitFor(() => expect(cache.downloadIntents.size).toBe(2));
+  expect(engine.downloadCount).toBe(2);
+  expect(new Set(engine.downloadJobs.map((job) => job.format))).toEqual(new Set(["raw", "mp3"]));
+  response.reject(new DOMException("untrusted request rejection with secret", "AbortError"));
+  await Promise.allSettled([raw, mp3]);
+  expect([...cache.downloadIntents.values()].map((intent) => intent.status)).toEqual([
+    "failed",
+    "failed",
+  ]);
+  expect(
+    [...cache.downloadIntents.values()].map((intent) => intent.diagnostic).join(),
+  ).not.toContain("secret");
+  expect(engine.downloadCount).toBe(0);
+});
+
+it("does not acknowledge failed durable cancellation and preserves unconfirmed intent", async () => {
+  const disk = install();
+  const { engine, cache } = setup();
+  void engine.download("waiting");
+  await vi.waitFor(() => expect(cache.downloadIntents.size).toBe(1));
+  disk.state.beforeClose = async (name) => {
+    if (name.endsWith("download-intents.json")) throw new Error("full");
+  };
+  await expect(engine.cancelDownloads()).rejects.toThrow();
+  expect(engine.downloadCount).toBe(1);
+  disk.state.beforeClose = async () => {};
+  const reopened = new Cache(cache.key);
+  await reopened.load();
+  expect(reopened.downloadIntents.size).toBe(1);
+  await engine.cancelDownloads();
+  const canceled = new Cache(cache.key);
+  await canceled.load();
+  expect(canceled.downloadIntents.size).toBe(0);
+});
+
+describe("reviewed download failure boundaries", () => {
+  it.each(["catalog", "journal"])(
+    "keeps attributable %s setup failures as safe sticky rows",
+    async (domain) => {
+      const disk = install();
+      const { engine, cache } = setup({ online: true });
+      await cache.load();
+      const seeded = new Cache(cache.key);
+      await seeded.enqueueDownload(track, "mp3", "audio/mpeg");
+      const journalPath = [...disk.files.keys()].find((name) =>
+        name.endsWith("download-intents.json"),
+      )!;
+      // Reopen so the failure occurs before the requested track has any intent.
+      disk.files.set(
+        journalPath,
+        domain === "journal"
+          ? "corrupt secret journal"
+          : JSON.stringify({ version: 1, records: [] }),
+      );
+      const catalogPath = journalPath.replace("download-intents.json", "downloads.json");
+      disk.files.set(catalogPath, domain === "catalog" ? "corrupt secret catalog" : "[]");
+      const reopened = new Cache(cache.key);
+      const next = setup({ cache: reopened, online: true });
+      const fetcher = vi.fn();
+      vi.stubGlobal("fetch", fetcher);
+      await expect(next.engine.download("known")).rejects.toThrow();
+      expect(next.engine.getStatus("known")).toBe("failed");
+      expect(reopened.downloadIntents.get(downloadKey("known", "mp3"))).toMatchObject({
+        track: { id: "known" },
+        status: "failed",
+      });
+      next.engine.downloadMany(["known"]);
+      await next.engine.restoreDownloads();
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(disk.files.get(domain === "journal" ? journalPath : catalogPath)).toContain(
+        "corrupt secret",
+      );
+      expect(
+        [...reopened.downloadIntents.values()].map((item) => item.diagnostic).join(),
+      ).not.toContain("secret");
+      if (domain === "catalog") {
+        const again = new Cache(cache.key);
+        await expect(again.load()).rejects.toThrow();
+        expect(again.downloadIntents.get(downloadKey("known", "mp3"))?.status).toBe("failed");
+      }
+    },
+  );
+
+  it("does not queue or execute rejected Retry persistence on reconnect or reopen", async () => {
+    const disk = install();
+    const { engine, cache } = setup({ online: true });
+    const fetcher = vi.fn(async () => new Response("failure", { status: 500 }));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(engine.download("bad")).rejects.toThrow();
+    const failed = cache.downloadIntents.get(downloadKey("bad", "mp3"));
+    disk.state.beforeClose = async (name) => {
+      if (name.endsWith("download-intents.json")) throw new Error("full");
+    };
+    await expect(engine.retryDownload("bad", "mp3")).rejects.toThrow();
+    expect(cache.downloadIntents.get(downloadKey("bad", "mp3"))).toBe(failed);
+    disk.state.beforeClose = async () => {};
+    engine.setConnection(undefined);
+    engine.setConnection(connection());
+    await engine.restoreDownloads();
+    expect(engine.getStatus("bad")).toBe("failed");
+    expect(fetcher).toHaveBeenCalledOnce();
+    const reopened = new Cache(cache.key);
+    await reopened.load();
+    expect(reopened.downloadIntents.get(downloadKey("bad", "mp3"))?.status).toBe("failed");
+  });
+
+  it.each([false, true])(
+    "Retry recovers measured bytes after catalog failure without fetch (reopen=%s)",
+    async (reopen) => {
+      const disk = install();
+      const first = setup({ online: true });
+      const fetcher = vi.fn(async () => new Response("complete audio"));
+      vi.stubGlobal("fetch", fetcher);
+      disk.state.beforeClose = async (name) => {
+        if (name.endsWith("/downloads.json")) throw new Error("catalog unavailable");
+      };
+      await expect(first.engine.download("recoverable")).rejects.toThrow();
+      const key = downloadKey("recoverable", "mp3");
+      const attempt = first.cache.downloadIntents.get(key)?.attempt;
+      expect(attempt?.size).toBe(14);
+      expect(first.engine.getStatus("recoverable")).toBe("failed");
+      disk.state.beforeClose = async () => {};
+      const current = reopen ? setup({ cache: new Cache(first.cache.key), online: true }) : first;
+      await current.engine.restoreDownloads();
+      expect(current.engine.getStatus("recoverable")).toBe("failed");
+      expect(fetcher).toHaveBeenCalledOnce();
+      await current.engine.retryDownload("recoverable", "mp3");
+      expect(current.cache.downloads.get(key)?.fileName).toBe(attempt?.fileName);
+      expect(current.engine.getStatus("recoverable")).toBe("downloaded");
+      expect(fetcher).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("streams independent tracks and uses saved MP3 fallback despite a corrupt journal", async () => {
+    const disk = install("probably");
+    const cache = await seed();
+    const path = [...disk.files.keys()].find((name) => name.endsWith("download-intents.json"))!;
+    disk.files.set(path, "corrupt");
+    const restored = new Cache(cache.key);
+    const { engine } = setup({ cache: restored, online: true });
+    expect((await engine.getSource(track)).cached).toBe(true);
+    expect((await engine.getSource({ id: "unsaved", contentType: "audio/flac" })).cached).toBe(
+      false,
+    );
+    await expect(engine.download("new")).rejects.toThrow();
+    expect(restored.downloadStorageBlocked).toBe(true);
+    expect(disk.files.get(path)).toBe("corrupt");
+    engine.setConnection(undefined);
+    await expect(engine.getSource({ id: "unsaved" })).rejects.toThrow(
+      "Connect to its music server",
+    );
+  });
+
+  it("does not replace an interrupted close on reconnect before joining it", async () => {
+    const disk = install();
+    const { engine, cache } = setup({ online: true });
+    const closing = deferred();
+    const release = deferred();
+    disk.state.beforeClose = async (name) => {
+      if (name.endsWith(".audio")) {
+        closing.resolve();
+        await release.promise;
+      }
+    };
+    const fetcher = vi.fn(async () => new Response("complete"));
+    vi.stubGlobal("fetch", fetcher);
+    void engine.download("closing");
+    await closing.promise;
+    engine.setConnection(undefined);
+    engine.setConnection(connection());
+    let joined = false;
+    const restoration = engine.restoreDownloads().then(() => {
+      joined = true;
+    });
+    await turn();
+    expect(joined).toBe(false);
+    expect(fetcher).toHaveBeenCalledOnce();
+    release.resolve();
+    await restoration;
+    expect(cache.downloads.size).toBe(1);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("restores the selected account after another account's cancellation freeze ends", async () => {
+    const disk = install();
+    const { engine, selection } = setup({ online: true });
+    const closing = deferred();
+    const release = deferred();
+    disk.state.beforeClose = async (name) => {
+      if (name.endsWith(".audio")) {
+        closing.resolve();
+        await release.promise;
+      }
+    };
+    const fetcher = vi.fn(async () => new Response("audio"));
+    vi.stubGlobal("fetch", fetcher);
+    void engine.download("a");
+    await closing.promise;
+    const cancel = engine.cancelDownloads();
+    const other = {
+      ...auth,
+      username: "other",
+      credentials: { ...auth.credentials, username: "other" },
+    };
+    const next = new Cache(getAccountKey(other));
+    await next.enqueueDownload({ ...track, id: "b" }, "mp3", "audio/mpeg");
+    selection.cache = next;
+    engine.activate();
+    engine.setConnection(connection(other));
+    release.resolve();
+    await cancel;
+    await vi.waitFor(() => expect(next.downloads.size).toBe(1));
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

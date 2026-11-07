@@ -53,7 +53,7 @@ describe("unscoped empty Cache", () => {
     const response = new Response(new ReadableStream({ cancel }));
     await expect(
       cache.saveDownload(track, "mp3", "audio/mpeg", response, new AbortController().signal),
-    ).rejects.toThrow("No cache storage configured");
+    ).rejects.toThrow("Could not save this file");
     expect(cancel).toHaveBeenCalledOnce();
     expect(timer).not.toHaveBeenCalled();
     expect(cache.queueRevision).toBe(0);

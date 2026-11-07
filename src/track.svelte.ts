@@ -2,6 +2,7 @@ import type { AudioConnection } from "./network.svelte";
 import { downloadKey, type Cache, type CacheSelection, type DownloadFormat } from "./cache.svelte";
 import type { DownloadTrack } from "./schema";
 import { getAccountKey } from "./auth";
+import { DownloadError } from "./download-error";
 
 interface SourceTrack {
   id: string;
@@ -18,7 +19,7 @@ export interface TrackSource {
 interface TrackSourceOptions {
   forceTranscode?: boolean;
 }
-type TrackStatus = "idle" | "queued" | "downloading" | "downloaded";
+type TrackStatus = "idle" | "queued" | "downloading" | "downloaded" | "failed";
 interface TrackEngineOptions {
   selection: CacheSelection;
   connection?: AudioConnection;
@@ -28,7 +29,7 @@ type Descriptor = { cacheKey: string; key: string; format: DownloadFormat; conte
 type DownloadJobInfo = Descriptor & { track: DownloadTrack; status: "queued" | "downloading" };
 interface DownloadJob {
   descriptor: Descriptor;
-  connection: AudioConnection;
+  ready: boolean;
   cache: Cache;
   signal: AbortSignal;
   track: DownloadTrack;
@@ -43,11 +44,15 @@ interface DownloadJob {
 export class TrackEngine {
   #sourceReleases = new Set<() => void>();
   #connection?: AudioConnection;
+  #detachConnection?: () => void;
   #jobs = new Map<string, DownloadJob>();
+  #operations = new Set<Promise<unknown>>();
+  #canceling = false;
+  #settling?: Promise<void>;
+  #lifetime = 0;
   #selection: CacheSelection;
   #concurrency: number;
   #destroyed = false;
-  #error = $state.raw<unknown>();
   #mediaProbe = document.createElement("audio");
   #sourceController = new AbortController();
   #version = $state(0);
@@ -63,20 +68,134 @@ export class TrackEngine {
   /** Session selected a cache. Activation performs no hydration or persistence. */
   activate() {
     this.#releaseSources();
-    this.#cancelDownloads();
-    this.#error = undefined;
+    void this.interruptDownloads();
     this.#version++;
   }
   get downloadJobs(): readonly DownloadJobInfo[] {
     this.#version;
-    const jobs = [...this.#jobs.values()].filter((job) => job.cache === this.#selection.cache);
+    const cache = this.#selection.cache;
+    const jobs = [...this.#jobs.values()].filter(
+      (job) =>
+        job.cache === cache &&
+        !cache?.downloads.has(job.descriptor.key) &&
+        cache?.downloadIntents.get(job.descriptor.key)?.status !== "failed",
+    );
+    const listed = new Set(jobs.map((job) => job.descriptor.key));
+    const waiting: DownloadJobInfo[] = [...(cache?.downloadIntents ?? [])]
+      .filter(
+        ([key, intent]) =>
+          intent.status === "pending" && !listed.has(key) && !cache?.downloads.has(key),
+      )
+      .map(([key, intent]) => ({
+        key,
+        cacheKey: cache!.key!,
+        format: intent.format,
+        contentType: intent.contentType,
+        track: intent.track,
+        status: "queued",
+      }));
     return [
       ...jobs.filter((job) => job.status === "downloading"),
       ...jobs.filter((job) => job.status === "queued"),
-    ].map((job) => ({ ...job.descriptor, track: job.track, status: job.status }));
+    ]
+      .map((job) => ({ ...job.descriptor, track: job.track, status: job.status }))
+      .concat(waiting);
   }
-  get error() {
-    return this.#error;
+  get downloadCount() {
+    return this.downloadJobs.length;
+  }
+  get waitingForConnection() {
+    return (
+      !this.#connection ||
+      this.#connection.signal.aborted ||
+      getAccountKey(this.#connection.account) !== this.#selection.cache?.key
+    );
+  }
+  #observe<T>(operation: Promise<T>) {
+    this.#operations.add(operation);
+    void operation.finally(() => this.#operations.delete(operation)).catch(() => {});
+    return operation;
+  }
+  /** Session calls after independent hydration; reconnect also resumes only pending intent. */
+  async restoreDownloads() {
+    const cache = this.#selection.cache;
+    const lifetime = this.#lifetime;
+    if (!cache || this.#destroyed || this.#canceling) return;
+    try {
+      await this.#settling;
+      if (
+        lifetime !== this.#lifetime ||
+        cache !== this.#selection.cache ||
+        this.#destroyed ||
+        this.#canceling
+      )
+        return;
+      await this.#observe(cache.loadDownloads());
+      if (
+        lifetime !== this.#lifetime ||
+        cache !== this.#selection.cache ||
+        this.#destroyed ||
+        this.#canceling
+      )
+        return;
+      for (const [key, intent] of cache.downloadIntents) {
+        if (intent.status === "pending" && !this.#jobs.has(key) && !cache.downloads.has(key))
+          this.#addJob(
+            intent.track,
+            { key, cacheKey: cache.key!, format: intent.format, contentType: intent.contentType },
+            true,
+          );
+      }
+      this.#drain();
+    } catch {
+      /* Unreadable download storage stays intact and blocks this domain only. */
+    }
+  }
+  /** Suspend execution without retiring intent. Session joins before retiring a cache writer. */
+  interruptDownloads(): Promise<void> {
+    this.#lifetime++;
+    this.#cancelDownloads();
+    this.#version++;
+    const settling = Promise.allSettled([
+      ...(this.#settling ? [this.#settling] : []),
+      ...this.#operations,
+    ]).then(() => {
+      if (this.#settling === settling) {
+        this.#settling = undefined;
+        this.#drain();
+      }
+    });
+    this.#settling = settling;
+    return settling;
+  }
+  /** Explicit cancellation is distinct from teardown: freeze, abort, join, then retire. */
+  async cancelDownloads() {
+    if (this.#canceling) throw new DownloadError();
+    const cache = this.#selection.cache;
+    this.#canceling = true;
+    try {
+      await this.interruptDownloads();
+      await cache?.cancelPendingDownloads();
+    } finally {
+      this.#canceling = false;
+      this.#version++;
+      void this.restoreDownloads();
+    }
+  }
+  retryDownload(trackId: string, format: DownloadFormat) {
+    const cache = this.#selection.cache;
+    const intent = cache?.downloadIntents.get(downloadKey(trackId, format));
+    if (!cache || !intent || intent.status !== "failed" || this.#canceling)
+      return Promise.resolve();
+    const persisted = this.#observe(
+      cache.enqueueDownload(intent.track, format, intent.contentType, true),
+    );
+    const operation = persisted.then(async () => {
+      if (cache === this.#selection.cache && !this.#destroyed && !this.#canceling)
+        await this.restoreDownloads();
+    });
+    void operation.catch(() => {});
+    return operation;
   }
 
   #describe(track: SourceTrack, options: TrackSourceOptions = {}): Descriptor {
@@ -118,18 +237,20 @@ export class TrackEngine {
   }
 
   #drain() {
-    if (this.#destroyed || !this.#connection) return;
+    if (this.#destroyed || this.#canceling || this.#settling || this.waitingForConnection) return;
     const jobs = [...this.#jobs.values()];
     let active = jobs.filter((job) => job.status === "downloading").length;
-    for (const job of jobs.filter((job) => job.status === "queued")) {
+    for (const job of jobs.filter((job) => job.status === "queued" && job.ready)) {
       if (active >= this.#concurrency) break;
+      if (job.cache !== this.#selection.cache || job.signal.aborted) continue;
       job.status = "downloading";
       active++;
       const finish = () => {
         if (this.#jobs.get(job.descriptor.key) === job) this.#jobs.delete(job.descriptor.key);
+        this.#version++;
         this.#drain();
       };
-      void this.#download(job).then(
+      void this.#observe(this.#download(job)).then(
         (file) => {
           finish();
           job.resolve(file);
@@ -143,7 +264,9 @@ export class TrackEngine {
     this.#version++;
   }
   async #download(job: DownloadJob) {
-    const { descriptor, track, connection, cache, signal } = job;
+    const { descriptor, track, cache } = job;
+    const connection = this.#connectionFor(descriptor);
+    const signal = AbortSignal.any([job.signal, connection.signal]);
     const check = () => {
       if (cache !== this.#selection.cache) job.controller.abort();
       signal.throwIfAborted();
@@ -167,20 +290,27 @@ export class TrackEngine {
       check();
       return file;
     } catch (error) {
-      if (!this.#destroyed && !signal.aborted && cache === this.#selection.cache)
-        this.#error = error;
+      if (!signal.aborted) {
+        await cache
+          .failDownload(descriptor.key, {
+            track,
+            format: descriptor.format,
+            contentType: descriptor.contentType,
+          })
+          .catch(() => {});
+      }
       throw error;
     }
   }
-  /** Safe to fire and forget: failures are exposed through error, while awaiting
+  /** Safe to fire and forget: Cache owns row-local failures, while awaiting
    * the returned promise still observes rejection. Duplicate jobs share a promise. */
   download(trackId: string, options: TrackSourceOptions = {}) {
     let promise: Promise<File>;
     try {
-      if (this.#destroyed) throw new DOMException("Downloads stopped.", "AbortError");
+      if (this.#destroyed || this.#canceling)
+        throw new DOMException("Downloads stopped.", "AbortError");
       promise = this.#queueDownload(trackId, options);
     } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError")) this.#error = error;
       promise = Promise.reject(error);
     }
     // Handle UI fire-and-forget calls without changing the returned promise.
@@ -210,26 +340,63 @@ export class TrackEngine {
       contentType: record?.mimeType,
     };
     const descriptor = this.#describe(track, options);
-    const connection = this.#connectionFor(descriptor);
     const existing = this.#jobs.get(descriptor.key);
     if (existing) return existing.promise;
+    const failed = selected?.downloadIntents.get(descriptor.key);
+    if (failed?.status === "failed") return Promise.reject(new DownloadError());
+    return this.#addJob(track, descriptor, false);
+  }
+
+  #addJob(track: DownloadTrack, descriptor: Descriptor, ready: boolean) {
     const cache = this.#selection.cache!;
     const { promise, resolve, reject } = Promise.withResolvers<File>();
+    void promise.catch(() => {});
     const controller = new AbortController();
-    this.#jobs.set(descriptor.key, {
+    const job: DownloadJob = {
       descriptor,
-      connection,
       cache,
-      signal: AbortSignal.any([controller.signal, connection.signal]),
+      signal: controller.signal,
       track,
       status: "queued",
       controller,
       promise,
       resolve,
       reject,
-    });
-    this.#error = undefined;
-    this.#drain();
+      ready,
+    };
+    this.#jobs.set(descriptor.key, job);
+    this.#version++;
+    if (ready) this.#drain();
+    else {
+      void this.#observe(
+        (async () => {
+          try {
+            const intent = await cache.enqueueDownload(
+              track,
+              descriptor.format,
+              descriptor.contentType,
+            );
+            controller.signal.throwIfAborted();
+            if (intent?.status === "failed") throw new DownloadError();
+            job.ready = true;
+            this.#drain();
+          } catch (error) {
+            if (this.#jobs.get(descriptor.key) === job) this.#jobs.delete(descriptor.key);
+            if (!controller.signal.aborted) {
+              await cache
+                .failDownload(descriptor.key, {
+                  track,
+                  format: descriptor.format,
+                  contentType: descriptor.contentType,
+                })
+                .catch(() => {});
+            }
+            reject(error);
+            this.#version++;
+          }
+        })(),
+      );
+    }
     return promise;
   }
 
@@ -255,7 +422,16 @@ export class TrackEngine {
     const jobs = keys.map((key) => this.#jobs.get(key)).filter((job) => job?.cache === cache);
     if (jobs.some((job) => job?.status === "downloading")) return "downloading";
     if (jobs.some((job) => job?.status === "queued")) return "queued";
-    return keys.some((key) => cache.downloads.has(key)) ? "downloaded" : "idle";
+    if (
+      keys.some(
+        (key) => cache.downloadIntents.get(key)?.status === "pending" && !cache.downloads.has(key),
+      )
+    )
+      return "queued";
+    if (keys.some((key) => cache.downloads.has(key))) return "downloaded";
+    return keys.some((key) => cache.downloadIntents.get(key)?.status === "failed")
+      ? "failed"
+      : "idle";
   }
   async getSource(
     track: SourceTrack,
@@ -313,8 +489,19 @@ export class TrackEngine {
   setConnection(connection?: AudioConnection) {
     if (this.#connection === connection || this.#destroyed) return;
     this.#cancelSourceRequest();
-    this.#cancelDownloads();
+    void this.interruptDownloads();
+    this.#detachConnection?.();
     this.#connection = connection;
+    if (connection) {
+      const interrupted = () => {
+        if (this.#connection === connection) {
+          void this.interruptDownloads();
+        }
+      };
+      connection.signal.addEventListener("abort", interrupted, { once: true });
+      this.#detachConnection = () => connection.signal.removeEventListener("abort", interrupted);
+    }
+    if (connection) void this.restoreDownloads();
     // Retain the active cached object URL across disconnects.
     this.#version++;
   }
@@ -327,7 +514,8 @@ export class TrackEngine {
   }
   destroy() {
     this.#destroyed = true;
+    this.#detachConnection?.();
     this.#releaseSources();
-    this.#cancelDownloads();
+    void this.interruptDownloads();
   }
 }

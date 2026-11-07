@@ -31,7 +31,6 @@ function setup(realJobs = false) {
   const state = fromStore(store);
   if (!realJobs) {
     vi.spyOn(trackEngine, "downloadJobs", "get").mockImplementation(() => state.current.jobs);
-    vi.spyOn(trackEngine, "error", "get").mockImplementation(() => state.current.error);
   }
   const target = document.createElement("div");
   const component = mount(Downloads, {
@@ -188,8 +187,8 @@ it("updates mounted rows when jobs complete and preserves saved entries during r
   expect(target.querySelector('[role="listitem"]')).toBe(activeRow);
   expect(target.querySelectorAll('[role="listitem"]')[1]).toBe(savedRow);
   expect(activeRow?.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Downloaded");
-  expect(target.textContent).toContain("Download failed");
-  expect(target.textContent).toContain("Transfer interrupted");
+  expect(target.textContent).not.toContain("Transfer interrupted");
+  expect(target.querySelector(".card")).toBeNull();
   expect(target.querySelector('[role="list"]')?.getAttribute("aria-busy")).toBe("false");
 });
 
@@ -206,7 +205,7 @@ it("shows storage failures without presenting an empty library as successfully r
     ),
   ).rejects.toThrow();
   flushSync();
-  expect(target.textContent).toContain("Local storage needs attention");
+  expect(target.textContent).not.toContain("Local storage needs attention");
   expect(target.textContent).not.toContain("No downloads yet");
   disk.state.failClose = false;
   await save(cache, "recovered", 1000);
@@ -234,6 +233,7 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   vi.stubGlobal("fetch", fetcher);
   const active = trackEngine.download("active");
   const queued = trackEngine.download("waiting");
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
   flushSync();
   expect(
     [...target.querySelectorAll('[role="listitem"] [role="img"]')].map((node) =>
@@ -248,8 +248,54 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   fetcher.mockRejectedValueOnce(new Error("Connection lost"));
   await expect(trackEngine.download("failed")).rejects.toThrow("The server request failed.");
   flushSync();
-  expect(target.textContent).toContain("Download failed");
-  expect(target.textContent).toContain("The server request failed.");
+  expect(target.querySelector('[aria-label="Download failed"]')).not.toBeNull();
+  expect(target.textContent).toContain("Could not save this file");
+  expect(target.textContent).not.toContain("The server request failed.");
+  expect(
+    target.querySelector('button[aria-label="Retry download of failed (MP3)"]'),
+  ).not.toBeNull();
   expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(2);
   expect(target.textContent).not.toContain("failed title");
+});
+
+it("keeps durably completed rows visible after engine intent-retirement failure", async () => {
+  const { target, trackEngine, cache, disk } = setup(true);
+  const network = new Network();
+  trackEngine.setConnection(
+    network.accept(
+      network.prepare({
+        ...account,
+        credentials: { method: "token", username: account.username, token: "token", salt: "salt" },
+      }),
+    ).audio,
+  );
+  let committed = false;
+  disk.state.afterClose = (name) => {
+    if (name.endsWith("/downloads.json")) committed = true;
+  };
+  disk.state.beforeClose = async (name) => {
+    if (committed && name.endsWith("download-intents.json")) throw new Error("retirement full");
+  };
+  const fetcher = vi.fn(async () => new Response("complete audio"));
+  vi.stubGlobal("fetch", fetcher);
+  await expect(trackEngine.download("complete")).rejects.toThrow();
+  flushSync();
+  expect(cache.downloads.size).toBe(1);
+  expect(trackEngine.getStatus("complete")).toBe("downloaded");
+  expect(cache.downloadIntents.get(downloadKey("complete", "mp3"))?.status).toBe("pending");
+  expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
+  expect(target.querySelector('button[aria-label^="Retry"]')).toBeNull();
+  expect(trackEngine.downloadCount).toBe(0);
+  const source = await trackEngine.getSource({ id: "complete" });
+  expect(source.cached).toBe(true);
+  source.release();
+  expect(fetcher).toHaveBeenCalledOnce();
+  disk.state.beforeClose = async () => {};
+  await trackEngine.restoreDownloads();
+  flushSync();
+  expect(cache.downloadIntents.size).toBe(0);
+  const reopened = new Cache(cache.key);
+  await reopened.load();
+  expect(reopened.downloads.size).toBe(1);
+  expect(fetcher).toHaveBeenCalledOnce();
 });

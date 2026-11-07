@@ -66,7 +66,7 @@ describe("download cache foundation", () => {
       new Response("new audio"),
       signal(),
     );
-    expect(catalog(disk)).toEqual(originalCatalog);
+    expect(catalog(disk)).toHaveLength(2);
     await merging.flush();
     expect(catalog(disk)).toHaveLength(2);
     expect(catalog(disk)[0]).toEqual(oldRecord);
@@ -96,7 +96,7 @@ describe("download cache foundation", () => {
     },
   );
 
-  it("restores independent descriptions without library metadata or eager binary reads", async () => {
+  it("restores independent descriptions without library metadata or reading audio into memory", async () => {
     const disk = installDisk();
     const cache = new Cache(getAccountKey(account));
     expect(disk.getDirectory).not.toHaveBeenCalled();
@@ -120,7 +120,7 @@ describe("download cache foundation", () => {
     await restored.load();
     expect(restored.artists.size).toBe(0);
     expect(restored.downloads).toEqual(cache.downloads);
-    expect(reads.some((name) => name.endsWith(".audio"))).toBe(false);
+    expect(reads.filter((name) => name.endsWith(".audio"))).toHaveLength(1);
     const bytes = vi.spyOn(File.prototype, "arrayBuffer");
     expect(await restored.readDownload(track.id, "mp3")).toBeInstanceOf(File);
     expect(bytes).not.toHaveBeenCalled();
@@ -203,7 +203,10 @@ describe("download cache foundation", () => {
     expect(cache.downloads.size).toBe(0);
     expect(cache.error).toBeUndefined();
     expect(disk.blobs.size).toBe(0);
-    expect(disk.files.size).toBe(0);
+    expect([...disk.files.keys()].every((name) => name.endsWith("download-intents.json"))).toBe(
+      true,
+    );
+    expect(cache.downloadIntents.get(key)?.status).toBe("pending");
   });
 
   it("reuses a concurrent winner and cancels the unused response", async () => {
@@ -294,7 +297,7 @@ describe("download cache foundation", () => {
     const b = second.saveDownload(track, "mp3", "audio/mpeg", two.response, signal());
     await vi.waitFor(() => {
       expect(one.response.bodyUsed).toBe(true);
-      expect(two.response.bodyUsed).toBe(true);
+      expect(two.response.bodyUsed).toBe(false);
     });
     one.controller.enqueue(new TextEncoder().encode("winner"));
     one.controller.close();
@@ -337,7 +340,7 @@ describe("download cache foundation", () => {
       if (name.endsWith(".audio")) throw new DOMException("Denied", "NotAllowedError");
     };
     await expect(cache.readDownload(track.id, "mp3")).rejects.toMatchObject({
-      name: "NotAllowedError",
+      name: "DownloadError",
     });
     expect(cache.downloads).toBe(original);
     const abort = new AbortController();
@@ -465,4 +468,156 @@ describe("download cache foundation", () => {
     await pending;
     expect(cache.downloads.get(key)!.track.title).toBe("Track");
   });
+});
+
+describe("durable download intent", () => {
+  it("acknowledges ordered whitelisted intent only after its journal close", async () => {
+    const disk = installDisk();
+    const cache = new Cache(getAccountKey(account));
+    const closing = deferred();
+    const release = deferred();
+    disk.state.beforeClose = async (name) => {
+      if (name.endsWith("download-intents.json")) {
+        closing.resolve();
+        await release.promise;
+      }
+    };
+    let acknowledged = false;
+    const input = { ...track, url: "https://secret/?token=secret", credentials: "secret" };
+    const saving = cache.enqueueDownload(input, "mp3", "audio/mpeg").then(() => {
+      acknowledged = true;
+    });
+    await closing.promise;
+    expect(acknowledged).toBe(false);
+    expect(cache.downloadIntents.size).toBe(0);
+    release.resolve();
+    await saving;
+    await cache.enqueueDownload({ ...track, id: "next" }, "raw", "audio/flac");
+    await cache.enqueueDownload(track, "mp3", "audio/mpeg");
+    const restored = new Cache(getAccountKey(account));
+    await restored.load();
+    expect([...restored.downloadIntents.keys()]).toEqual([key, downloadKey("next", "raw")]);
+    expect([...disk.files.values()].join()).not.toMatch(/secret|credentials|url/);
+  });
+
+  it.each(["bytes", "catalog", "retirement"])(
+    "reconciles interruption at %s without adopting partial bytes or refetching complete bytes",
+    async (stage) => {
+      const disk = installDisk();
+      const cache = new Cache(getAccountKey(account));
+      let prepared = false;
+      disk.state.beforeClose = async (name) => {
+        if (name.endsWith(".audio")) {
+          prepared = true;
+          if (stage === "bytes") throw new Error("interrupted close");
+        }
+        if (prepared && stage === "catalog" && name.endsWith("/downloads.json"))
+          throw new Error("interrupted catalog");
+        if (prepared && stage === "retirement" && name.endsWith("download-intents.json"))
+          throw new Error("interrupted retirement");
+      };
+      await expect(save(cache)).rejects.toThrow();
+      disk.state.beforeClose = async () => {};
+      const restored = new Cache(getAccountKey(account));
+      await restored.load();
+      if (stage === "bytes") {
+        expect(restored.downloads.size).toBe(0);
+        expect(restored.downloadIntents.get(key)?.status).toBe("pending");
+        expect(await restored.readDownload(track.id, "mp3")).toBeNull();
+      } else {
+        expect(await (await restored.readDownload(track.id, "mp3"))?.text()).toBe("audio");
+        expect(restored.downloadIntents.size).toBe(0);
+      }
+    },
+  );
+
+  it("converts missing completed-only metadata to intent before durable catalog eviction", async () => {
+    const disk = installDisk();
+    const seed = new Cache(getAccountKey(account));
+    await save(seed);
+    disk.blobs.clear();
+    const restored = new Cache(getAccountKey(account));
+    disk.state.beforeClose = async (name) => {
+      if (name.endsWith("download-intents.json")) throw new Error("full");
+    };
+    await expect(restored.load()).rejects.toThrow();
+    expect(catalog(disk)).toHaveLength(1);
+    disk.state.beforeClose = async () => {};
+    // Atomic failure retained the previous readable journal; reopen can recover intent.
+    const recovered = new Cache(getAccountKey(account));
+    await recovered.load();
+    expect(catalog(disk)).toHaveLength(0);
+    expect(recovered.downloadIntents.get(key)?.status).toBe("pending");
+  });
+
+  it.each(["unreadable secret storage", ""])(
+    "preserves unreadable journal %j, blocks writes, and keeps committed bytes and queue usable",
+    async (corrupt) => {
+      const disk = installDisk();
+      const seed = new Cache(getAccountKey(account));
+      await save(seed);
+      seed.setQueue({ tracks: ["queued"], index: 0, position: 0 });
+      await seed.flush();
+      const journal = [...disk.files.keys()].find((name) =>
+        name.endsWith("download-intents.json"),
+      )!;
+      disk.files.set(journal, corrupt);
+      const restored = new Cache(getAccountKey(account));
+      await expect(restored.load()).rejects.toThrow();
+      expect(restored.reportingError).toBeUndefined();
+      expect(restored.queue.tracks).toEqual(["queued"]);
+      expect(await (await restored.readDownload(track.id, "mp3"))?.text()).toBe("audio");
+      await expect(
+        restored.enqueueDownload({ ...track, id: "other" }, "mp3", "audio/mpeg"),
+      ).rejects.toThrow();
+      await expect(restored.cancelPendingDownloads()).rejects.toThrow();
+      await restored.flush();
+      expect(disk.files.get(journal)).toBe(corrupt);
+    },
+  );
+});
+
+it("places explicit Retry at the durable FIFO tail", async () => {
+  installDisk();
+  const cache = new Cache(getAccountKey(account));
+  await cache.enqueueDownload(track, "mp3", "audio/mpeg");
+  await cache.failDownload(key);
+  await cache.enqueueDownload({ ...track, id: "waiting" }, "raw", "audio/flac");
+  await cache.enqueueDownload(track, "mp3", "audio/mpeg", true);
+  const restored = new Cache(cache.key);
+  await restored.load();
+  expect([...restored.downloadIntents.keys()]).toEqual([downloadKey("waiting", "raw"), key]);
+});
+
+it("preserves actual JSON null catalog corruption even with a measured owned attempt", async () => {
+  const disk = installDisk();
+  const cache = new Cache(getAccountKey(account));
+  disk.state.beforeClose = async (name) => {
+    if (name.endsWith("/downloads.json")) throw new Error("interrupted catalog");
+  };
+  await expect(save(cache)).rejects.toThrow();
+  disk.state.beforeClose = async () => {};
+  const catalogPath = [...disk.files.keys()].find((name) => name.endsWith("/downloads.json"))!;
+  disk.files.set(catalogPath, "null");
+  const restored = new Cache(cache.key);
+  await expect(restored.load()).rejects.toThrow();
+  await expect(save(restored)).rejects.toThrow();
+  expect(disk.files.get(catalogPath)).toBe("null");
+  expect(disk.blobs.size).toBe(1);
+});
+
+it("does not accept a zero-byte catalog placeholder without usable owned candidate bytes", async () => {
+  const disk = installDisk();
+  const cache = new Cache(getAccountKey(account));
+  disk.state.beforeClose = async (name) => {
+    if (name.endsWith("/downloads.json")) throw new Error("interrupted catalog");
+  };
+  await expect(save(cache)).rejects.toThrow();
+  disk.state.beforeClose = async () => {};
+  disk.blobs.clear();
+  const catalogPath = [...disk.files.keys()].find((name) => name.endsWith("/downloads.json"))!;
+  const reopened = new Cache(cache.key);
+  await expect(reopened.load()).rejects.toThrow();
+  expect(disk.files.get(catalogPath)).toBe("");
+  expect(reopened.downloadIntents.size).toBe(1);
 });

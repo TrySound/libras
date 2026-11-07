@@ -12,6 +12,7 @@ import type { Playlists } from "./playlists.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
 import { Cache } from "./cache.svelte";
+import { withoutDownloadErrors } from "./download-error";
 
 const offlineModeStorageKey = "navidrome-offline-mode";
 
@@ -27,6 +28,8 @@ interface SessionOptions {
 }
 
 function connectionError(error: unknown): string {
+  error = withoutDownloadErrors(error);
+  if (error === undefined) return "";
   if (error instanceof AggregateError)
     return error.errors.length ? error.errors.map(connectionError).join("; ") : error.message;
   if (error instanceof NetworkTransportError)
@@ -74,11 +77,12 @@ export class Session {
 
   get refreshError() {
     const error =
-      this.#refreshError ??
-      this.#options.playback.queueError ??
-      this.#options.playlists?.error ??
-      this.#options.selection.cache?.error;
-    return error ? `Synchronization failed: ${connectionError(error)}` : "";
+      withoutDownloadErrors(this.#refreshError) ??
+      withoutDownloadErrors(this.#options.playback.queueError) ??
+      withoutDownloadErrors(this.#options.playlists?.error) ??
+      this.#options.selection.cache?.reportingError;
+    const message = connectionError(error);
+    return message ? `Synchronization failed: ${message}` : "";
   }
 
   get busy() {
@@ -101,8 +105,8 @@ export class Session {
 
   #fail(error: unknown, operationId: number) {
     if (!this.#isCurrentOperation(operationId)) return;
-    this.status = "error";
     this.error = connectionError(error);
+    this.status = this.error ? "error" : "disconnected";
   }
 
   #detach() {
@@ -206,6 +210,7 @@ export class Session {
       if (!canPublish()) return;
       // Notify playback only after the cache's independent load attempts finish.
       playback.activate();
+      void this.#options.tracks.restoreDownloads();
       if (!canPublish()) return;
       await covers.refresh();
       if (canPublish()) this.localReady = true;
@@ -239,8 +244,16 @@ export class Session {
     if (!previous || previous === next) return;
     covers.activate();
     tracks.activate();
+    await tracks.interruptDownloads();
+    signal.throwIfAborted();
     do {
-      await previous.flush();
+      try {
+        await previous.flush();
+      } catch (error) {
+        const unrelated = withoutDownloadErrors(error);
+        if (unrelated !== undefined) throw unrelated;
+        break;
+      }
       signal.throwIfAborted();
     } while (previous.dirty);
   }
