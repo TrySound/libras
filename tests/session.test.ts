@@ -760,8 +760,13 @@ describe("session", () => {
     expect(await session.connect(input)).toBe(true);
     session.disconnect();
     const previous = selection.cache!;
+    let bytesClosed = false;
+    disk.state.afterClose = (name) => {
+      if (name.endsWith(".audio")) bytesClosed = true;
+    };
     disk.state.beforeClose = async (path) => {
-      if (path.endsWith("/downloads.json")) throw new Error("secret catalog details");
+      if (bytesClosed && path.endsWith("/downloads.json"))
+        throw new Error("secret catalog details");
     };
     await expect(
       previous.saveDownload(
@@ -779,7 +784,7 @@ describe("session", () => {
     disk.state.beforeClose = async () => {};
     const restored = new Cache(previous.key);
     await restored.load();
-    expect(restored.downloads.size).toBe(1);
+    expect(restored.completedDownloads.size).toBe(1);
     expect(await (await restored.readDownload("track", "mp3"))?.text()).toBe("audio");
   });
 
@@ -857,12 +862,12 @@ it.each(["byte close", "reconciliation"])(
     const release = deferred();
     let restoration: Promise<void> | undefined;
     if (boundary === "reconciliation") {
-      let committed = false;
+      let bytesClosed = false;
       disk.state.afterClose = (name) => {
-        if (name.endsWith("/downloads.json")) committed = true;
+        if (name.endsWith(".audio")) bytesClosed = true;
       };
       disk.state.beforeClose = async (name) => {
-        if (committed && name.endsWith("download-intents.json")) throw new Error("retirement full");
+        if (bytesClosed && name.endsWith("downloads.json")) throw new Error("completion full");
       };
       await expect(
         original.saveDownload(
@@ -912,7 +917,7 @@ it.each(["byte close", "reconciliation"])(
     session.disconnect();
     expect(await session.connect(input)).toBe(true);
     expect(selection.cache).not.toBe(original);
-    expect(selection.cache?.downloads.size).toBe(1);
+    expect(selection.cache?.completedDownloads.size).toBe(1);
     session.disconnect();
     await selection.cache!.enqueueDownload(
       { id: "new-a", title: "New A", artist: "Artist", album: "Album" },
@@ -921,7 +926,7 @@ it.each(["byte close", "reconciliation"])(
     );
     const reopened = new Cache(original.key);
     await reopened.load();
-    expect(reopened.downloadIntents.has(downloadKey("new-a", "mp3"))).toBe(true);
-    expect(reopened.downloads.size).toBe(1);
+    expect(reopened.downloads.has(downloadKey("new-a", "mp3"))).toBe(true);
+    expect(reopened.completedDownloads.size).toBe(1);
   },
 );

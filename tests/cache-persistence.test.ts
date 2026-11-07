@@ -126,7 +126,7 @@ describe("general checkpoints", () => {
     const read = vi.fn(async (_path: string) => {});
     disk.state.beforeRead = read;
     for (let version = 1; version <= 10; version++) await edit(cache, version);
-    expect([...disk.files.keys()].filter((path) => path.endsWith(".json"))).toHaveLength(2);
+    expect([...disk.files.keys()].filter((path) => path.endsWith(".json"))).toHaveLength(1);
     expect(read.mock.calls.some(([path]) => String(path).endsWith(".json"))).toBe(false);
     const writes = disk.state.writes;
     await vi.advanceTimersByTimeAsync(300);
@@ -142,7 +142,7 @@ describe("general checkpoints", () => {
     expect(restored.savedAt).toBe(10);
     expect(restored.queue.position).toBe(10);
     expect(restored.images.size).toBe(1);
-    expect(restored.downloads.size).toBe(1);
+    expect(restored.completedDownloads.size).toBe(1);
   });
 
   it("captures the latest state when a queued flush starts and acknowledges only its revision", async () => {
@@ -185,7 +185,7 @@ describe("general checkpoints", () => {
     });
     expect(disk.state.writes).toBe(writes);
     expect(cache.savedAt).toBe(1);
-    expect(cache.downloads.size).toBe(1);
+    expect(cache.completedDownloads.size).toBe(1);
     // A successful resource read must not hide the checkpoint error.
     await cache.readImage("cover");
     expect(cache.error).toBeDefined();
@@ -230,7 +230,7 @@ describe("general checkpoints", () => {
     await edit(first, 1);
     await edit(second, 2);
     await Promise.all([first.flush(), second.flush()]);
-    expect(disk.files.size).toBe(10);
+    expect(disk.files.size).toBe(8);
     for (const text of disk.files.values()) {
       expect(JSON.parse(text)).not.toHaveProperty("account");
       expect(text).not.toContain(account.username);

@@ -77,15 +77,12 @@ export class TrackEngine {
     const jobs = [...this.#jobs.values()].filter(
       (job) =>
         job.cache === cache &&
-        !cache?.downloads.has(job.descriptor.key) &&
-        cache?.downloadIntents.get(job.descriptor.key)?.status !== "failed",
+        !cache?.completedDownloads.has(job.descriptor.key) &&
+        cache?.downloads.get(job.descriptor.key)?.status !== "failed",
     );
     const listed = new Set(jobs.map((job) => job.descriptor.key));
-    const waiting: DownloadJobInfo[] = [...(cache?.downloadIntents ?? [])]
-      .filter(
-        ([key, intent]) =>
-          intent.status === "pending" && !listed.has(key) && !cache?.downloads.has(key),
-      )
+    const waiting: DownloadJobInfo[] = [...(cache?.downloads ?? [])]
+      .filter(([key, intent]) => intent.status === "queued" && !listed.has(key))
       .map(([key, intent]) => ({
         key,
         cacheKey: cache!.key!,
@@ -138,8 +135,8 @@ export class TrackEngine {
         this.#canceling
       )
         return;
-      for (const [key, intent] of cache.downloadIntents) {
-        if (intent.status === "pending" && !this.#jobs.has(key) && !cache.downloads.has(key))
+      for (const [key, intent] of cache.downloads) {
+        if (intent.status === "queued" && !this.#jobs.has(key))
           this.#addJob(
             intent.track,
             { key, cacheKey: cache.key!, format: intent.format, contentType: intent.contentType },
@@ -184,7 +181,7 @@ export class TrackEngine {
   }
   retryDownload(trackId: string, format: DownloadFormat) {
     const cache = this.#selection.cache;
-    const intent = cache?.downloadIntents.get(downloadKey(trackId, format));
+    const intent = cache?.downloads.get(downloadKey(trackId, format));
     if (!cache || !intent || intent.status !== "failed" || this.#canceling)
       return Promise.resolve();
     const persisted = this.#observe(
@@ -342,7 +339,7 @@ export class TrackEngine {
     const descriptor = this.#describe(track, options);
     const existing = this.#jobs.get(descriptor.key);
     if (existing) return existing.promise;
-    const failed = selected?.downloadIntents.get(descriptor.key);
+    const failed = selected?.downloads.get(descriptor.key);
     if (failed?.status === "failed") return Promise.reject(new DownloadError());
     return this.#addJob(track, descriptor, false);
   }
@@ -422,16 +419,9 @@ export class TrackEngine {
     const jobs = keys.map((key) => this.#jobs.get(key)).filter((job) => job?.cache === cache);
     if (jobs.some((job) => job?.status === "downloading")) return "downloading";
     if (jobs.some((job) => job?.status === "queued")) return "queued";
-    if (
-      keys.some(
-        (key) => cache.downloadIntents.get(key)?.status === "pending" && !cache.downloads.has(key),
-      )
-    )
-      return "queued";
-    if (keys.some((key) => cache.downloads.has(key))) return "downloaded";
-    return keys.some((key) => cache.downloadIntents.get(key)?.status === "failed")
-      ? "failed"
-      : "idle";
+    if (keys.some((key) => cache.downloads.get(key)?.status === "queued")) return "queued";
+    if (keys.some((key) => cache.completedDownloads.has(key))) return "downloaded";
+    return keys.some((key) => cache.downloads.get(key)?.status === "failed") ? "failed" : "idle";
   }
   async getSource(
     track: SourceTrack,

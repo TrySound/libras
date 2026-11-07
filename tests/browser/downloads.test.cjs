@@ -118,7 +118,10 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
         await page.waitForFunction(
           () =>
             document.querySelectorAll('[aria-labelledby=downloads-heading] [role="listitem"]')
-              .length === 6,
+              .length === 6 &&
+            document.querySelectorAll(
+              '[aria-labelledby=downloads-heading] [aria-label="Downloading"]',
+            ).length === 3,
         );
         const rows = page.locator('[aria-labelledby=downloads-heading] [role="listitem"]');
         assert.equal(await rows.locator('[role="img"][aria-label="Downloading"]').count(), 3);
@@ -224,7 +227,12 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
               const accounts = await root.getDirectoryHandle("accounts");
               for await (const [, directory] of accounts.entries()) {
                 const file = await (await directory.getFileHandle("downloads.json")).getFile();
-                if (JSON.parse(await file.text()).length === 5) return true;
+                if (
+                  JSON.parse(await file.text()).records.filter(
+                    (entry) => entry.status === "completed",
+                  ).length === 5
+                )
+                  return true;
               }
             } catch {}
             return false;

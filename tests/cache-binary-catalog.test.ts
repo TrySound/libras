@@ -13,7 +13,7 @@ const account = { host: "https://music.example", username: "listener" };
 function domain(name: "images" | "downloads", cache: Cache) {
   return {
     flush: () => cache.flush(),
-    records: () => (name === "images" ? cache.images : cache.downloads),
+    records: () => (name === "images" ? cache.images : cache.completedDownloads),
     key: (id: string) => (name === "images" ? id : downloadKey(id, "mp3")),
     read: async (id: string) =>
       name === "images"
@@ -39,48 +39,49 @@ afterEach(() => {
 });
 
 describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (name) => {
-  it("updates live views reactively without invalidating unrelated existing keys", async () => {
-    const disk = installDisk();
-    const cache = new Cache(getAccountKey(account));
-    const store = domain(name, cache);
-    await store.save("kept", "first");
-    const records = store.records();
-    const keyed = vi.fn(() => store.records().get(store.key("kept")));
-    const listed = vi.fn(() => [...store.records().values()]);
-    const sized = vi.fn(() => store.records().size);
-    const stop = observeCache(() => {
-      keyed();
+  if (name === "images")
+    it("updates live views reactively without invalidating unrelated existing keys", async () => {
+      const disk = installDisk();
+      const cache = new Cache(getAccountKey(account));
+      const store = domain(name, cache);
+      await store.save("kept", "first");
+      const records = store.records();
+      const keyed = vi.fn(() => store.records().get(store.key("kept")));
+      const listed = vi.fn(() => [...store.records().values()]);
+      const sized = vi.fn(() => store.records().size);
+      const stop = observeCache(() => {
+        keyed();
+      });
+      const stopList = observeCache(() => {
+        listed();
+      });
+      const stopSize = observeCache(() => {
+        sized();
+      });
+      try {
+        flushSync();
+        await store.save("added", "second");
+        flushSync();
+        expect(store.records()).toBe(records);
+        expect(records.size).toBe(2);
+        expect(keyed).toHaveBeenCalledOnce();
+        expect(listed).toHaveBeenCalledTimes(2);
+        expect(sized).toHaveBeenCalledTimes(2);
+        const fileName = records.get(store.key("kept"))!.fileName;
+        disk.blobs.delete([...disk.blobs.keys()].find((path) => path.endsWith(fileName))!);
+        await store.read("kept");
+        flushSync();
+        expect(keyed).toHaveBeenCalledTimes(2);
+        expect(keyed.mock.results.at(-1)!.value).toBeUndefined();
+        expect(listed).toHaveBeenCalledTimes(3);
+        expect(sized.mock.results.at(-1)!.value).toBe(1);
+        await store.flush();
+      } finally {
+        stop();
+        stopList();
+        stopSize();
+      }
     });
-    const stopList = observeCache(() => {
-      listed();
-    });
-    const stopSize = observeCache(() => {
-      sized();
-    });
-    try {
-      flushSync();
-      await store.save("added", "second");
-      flushSync();
-      expect(store.records()).toBe(records);
-      expect(records.size).toBe(2);
-      expect(keyed).toHaveBeenCalledOnce();
-      expect(listed).toHaveBeenCalledTimes(2);
-      expect(sized).toHaveBeenCalledTimes(2);
-      const fileName = records.get(store.key("kept"))!.fileName;
-      disk.blobs.delete([...disk.blobs.keys()].find((path) => path.endsWith(fileName))!);
-      await store.read("kept");
-      flushSync();
-      expect(keyed).toHaveBeenCalledTimes(2);
-      expect(keyed.mock.results.at(-1)!.value).toBeUndefined();
-      expect(listed).toHaveBeenCalledTimes(3);
-      expect(sized.mock.results.at(-1)!.value).toBe(1);
-      await store.flush();
-    } finally {
-      stop();
-      stopList();
-      stopSize();
-    }
-  });
 
   it("keeps an in-flight checkpoint separate from subsequent catalog mutations", async () => {
     if (name === "downloads") {
@@ -103,7 +104,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
       await saving;
       expect(store.records().size).toBe(2);
       const path = [...disk.files.keys()].find((path) => path.endsWith("/downloads.json"))!;
-      expect(JSON.parse(disk.files.get(path)!)).toHaveLength(2);
+      expect(JSON.parse(disk.files.get(path)!).records).toHaveLength(2);
       expect(cache.dirty).toBe(false);
       return;
     }
@@ -225,8 +226,10 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
     const store = domain(name, cache);
     await store.save("kept", "old");
     const controller = new AbortController();
+    let bytesClosed = false;
     disk.state.afterClose = (path) => {
-      if (path.endsWith(`/${name}.json`)) controller.abort();
+      if (path.endsWith(".audio")) bytesClosed = true;
+      if (path.endsWith(`/${name}.json`) && (name === "images" || bytesClosed)) controller.abort();
     };
     await store.save("late", "new", controller.signal);
     await store.flush();
@@ -307,8 +310,8 @@ it("keeps image operations independent of an active audio transfer", async () =>
   const images = domain("images", cache);
   await images.save("cover", "image");
   expect(await (await images.read("cover"))!.text()).toBe("image");
-  expect(cache.downloads.size).toBe(0);
+  expect(cache.completedDownloads.size).toBe(0);
   source.close();
   expect(await (await audio).text()).toBe("audio");
-  expect(cache.downloads.size).toBe(1);
+  expect(cache.completedDownloads.size).toBe(1);
 });

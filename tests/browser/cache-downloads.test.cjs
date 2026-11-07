@@ -4,12 +4,12 @@ const { test } = require("node:test");
 const { chromium } = require("playwright");
 const base = process.env.PREVIEW_URL ?? "http://127.0.0.1:5173";
 
-test("Cache download journal reconciles native OPFS failure boundaries", async (t) => {
+test("Cache unified downloads reconcile native OPFS failure boundaries", async (t) => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   try {
     await page.goto(base);
-    for (const stage of ["bytes", "catalog", "retirement"]) {
+    for (const stage of ["bytes", "catalog"]) {
       await t.test(stage, async () => {
         const result = await page.evaluate(async (stage) => {
           const { Cache, downloadKey } = await import("/src/cache.svelte.ts");
@@ -18,7 +18,6 @@ test("Cache download journal reconciles native OPFS failure boundaries", async (
           const key = downloadKey(track.id, "mp3");
           const original = FileSystemFileHandle.prototype.createWritable;
           let bytesClosed = false;
-          let catalogClosed = false;
           FileSystemFileHandle.prototype.createWritable = async function (...args) {
             const writable = await original.apply(this, args);
             const close = writable.close.bind(writable);
@@ -26,13 +25,11 @@ test("Cache download journal reconciles native OPFS failure boundaries", async (
             writable.close = async () => {
               if (
                 (stage === "bytes" && name.endsWith(".audio")) ||
-                (stage === "catalog" && bytesClosed && name === "downloads.json") ||
-                (stage === "retirement" && catalogClosed && name === "download-intents.json")
+                (stage === "catalog" && bytesClosed && name === "downloads.json")
               )
                 throw new DOMException("Injected boundary interruption", "UnknownError");
               await close();
               if (name.endsWith(".audio")) bytesClosed = true;
-              if (name === "downloads.json") catalogClosed = true;
             };
             return writable;
           };
@@ -55,8 +52,8 @@ test("Cache download journal reconciles native OPFS failure boundaries", async (
           const file = await reopen.readDownload(track.id, "mp3");
           return {
             rejected,
-            completed: reopen.downloads.size,
-            pending: reopen.downloadIntents.get(key)?.status ?? null,
+            completed: reopen.completedDownloads.size,
+            pending: reopen.downloads.get(key)?.status === "queued" ? "queued" : null,
             text: file ? await file.text() : null,
           };
         }, stage);
@@ -65,7 +62,7 @@ test("Cache download journal reconciles native OPFS failure boundaries", async (
           assert.deepEqual(result, {
             rejected: true,
             completed: 0,
-            pending: "pending",
+            pending: "queued",
             text: null,
           });
         else
@@ -132,15 +129,17 @@ test("Cache download journal reconciles native OPFS failure boundaries", async (
             await engine.restoreDownloads();
             const deadline = Date.now() + 10000;
             while (
-              (cache.downloads.size !== 7 || cache.downloadIntents.size !== 0) &&
+              (cache.completedDownloads.size !== 7 ||
+                [...cache.downloads.values()].some((entry) => entry.status === "queued")) &&
               Date.now() < deadline
             )
               await new Promise((resolve) => setTimeout(resolve, 10));
             return {
               requests,
               peak,
-              completed: cache.downloads.size,
-              pending: cache.downloadIntents.size,
+              completed: cache.completedDownloads.size,
+              pending: [...cache.downloads.values()].filter((entry) => entry.status === "queued")
+                .length,
             };
           } finally {
             engine.destroy();
@@ -167,7 +166,7 @@ test("Cache download journal reconciles native OPFS failure boundaries", async (
         });
         FileSystemFileHandle.prototype.createWritable = async function (...args) {
           const writable = await original.apply(this, args);
-          if (this.name === "download-intents.json") {
+          if (this.name === "downloads.json") {
             const close = writable.close.bind(writable);
             writable.close = async () => {
               started();
@@ -189,12 +188,12 @@ test("Cache download journal reconciles native OPFS failure boundaries", async (
               acknowledged = true;
             });
           await closing;
-          const before = { acknowledged, size: cache.downloadIntents.size };
+          const before = { acknowledged, size: cache.downloads.size };
           release();
           await saving;
           const reopen = new Cache(cache.key);
           await reopen.load();
-          return { before, after: reopen.downloadIntents.size };
+          return { before, after: reopen.downloads.size };
         } finally {
           release();
           FileSystemFileHandle.prototype.createWritable = original;
@@ -251,12 +250,119 @@ test("document destruction before byte close never promotes native OPFS partial 
       const cache = new Cache(key);
       await cache.load();
       return {
-        completed: cache.downloads.size,
-        pending: cache.downloadIntents.size,
+        completed: cache.completedDownloads.size,
+        pending: [...cache.downloads.values()].filter((entry) => entry.status === "queued").length,
         file: await cache.readDownload("partial", "mp3"),
       };
     }, key);
     assert.deepEqual(result, { completed: 0, pending: 1, file: null });
+  } finally {
+    await browser.close();
+  }
+});
+
+test("native OPFS migration close preserves legacy input and ignores stale journal after commit", async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  try {
+    await page.goto(base);
+    const result = await page.evaluate(async () => {
+      const { Cache, downloadKey } = await import("/src/cache.svelte.ts");
+      const cache = new Cache(`native-migration-${crypto.randomUUID()}`);
+      const track = { id: "saved", title: "Saved", artist: "Artist", album: "Album" };
+      await cache.saveDownload(
+        track,
+        "mp3",
+        "audio/mpeg",
+        new Response("saved bytes"),
+        new AbortController().signal,
+      );
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(cache.key));
+      const hash = [...new Uint8Array(digest)]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      const accounts = await (
+        await navigator.storage.getDirectory()
+      ).getDirectoryHandle("accounts");
+      const directory = await accounts.getDirectoryHandle(hash);
+      const handle = await directory.getFileHandle("downloads.json");
+      const canonical = JSON.parse(await (await handle.getFile()).text());
+      const legacy = JSON.stringify(canonical.records.map(({ status, ...record }) => record));
+      const write = async (name, text) => {
+        const writable = await (
+          await directory.getFileHandle(name, { create: true })
+        ).createWritable();
+        await writable.write(text);
+        await writable.close();
+      };
+      await write("downloads.json", legacy);
+      await write(
+        "download-intents.json",
+        JSON.stringify({
+          version: 1,
+          records: [
+            {
+              track: { ...track, id: "waiting" },
+              format: "mp3",
+              contentType: "audio/mpeg",
+              status: "pending",
+            },
+            {
+              track: { ...track, id: "failed" },
+              format: "raw",
+              contentType: "audio/flac",
+              status: "failed",
+            },
+          ],
+        }),
+      );
+      const original = FileSystemFileHandle.prototype.createWritable;
+      FileSystemFileHandle.prototype.createWritable = async function (...args) {
+        const writable = await original.apply(this, args);
+        if (this.name === "downloads.json")
+          writable.close = async () => {
+            throw new DOMException("Denied", "NotAllowedError");
+          };
+        return writable;
+      };
+      const interrupted = new Cache(cache.key);
+      let rejected = false;
+      let playable;
+      try {
+        await interrupted.load().catch(() => {
+          rejected = true;
+        });
+        playable = await (await interrupted.readDownload("saved", "mp3"))?.text();
+      } finally {
+        FileSystemFileHandle.prototype.createWritable = original;
+      }
+      const preserved = (await (await handle.getFile()).text()) === legacy;
+      const migrated = new Cache(cache.key);
+      await migrated.load();
+      await migrated.cancelPendingDownloads();
+      // Simulate stale/corrupt backup after the canonical close; it is never read again.
+      await write("download-intents.json", "corrupt stale journal");
+      const reopened = new Cache(cache.key);
+      await reopened.load();
+      return {
+        rejected,
+        playable,
+        preserved,
+        version: JSON.parse(await (await handle.getFile()).text()).version,
+        waiting: reopened.downloads.has(downloadKey("waiting", "mp3")),
+        failed: reopened.downloads.get(downloadKey("failed", "raw"))?.status,
+        saved: await (await reopened.readDownload("saved", "mp3"))?.text(),
+      };
+    });
+    assert.deepEqual(result, {
+      rejected: true,
+      playable: "saved bytes",
+      preserved: true,
+      version: 2,
+      waiting: false,
+      failed: "failed",
+      saved: "saved bytes",
+    });
   } finally {
     await browser.close();
   }

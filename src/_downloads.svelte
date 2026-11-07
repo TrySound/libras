@@ -24,15 +24,13 @@
   const downloads = $derived.by(() => {
     const jobs = trackEngine.downloadJobs;
     const activeKeys = new Set(jobs.map((job) => job.key));
-    const completed = [...cache.downloads]
-      .filter(
-        ([key]) => !activeKeys.has(key) && cache.downloadIntents.get(key)?.status !== "failed",
-      )
+    const completed = [...cache.completedDownloads]
+      .filter(([key]) => !activeKeys.has(key))
       .sort(([aKey, a], [bKey, b]) => b.downloadedAt - a.downloadedAt || aKey.localeCompare(bKey))
       .map(([key, file]) => ({ ...file, key, status: "downloaded" as const }));
-    const failed = [...cache.downloadIntents]
-      .filter(([, intent]) => intent.status === "failed")
-      .map(([key, intent]) => ({ ...intent, key, status: "failed" as const }));
+    const failed = [...cache.downloads].flatMap(([key, entry]) =>
+      entry.status === "failed" ? [{ ...entry, key, status: "failed" as const }] : [],
+    );
     return [...jobs, ...failed, ...completed];
   });
 </script>

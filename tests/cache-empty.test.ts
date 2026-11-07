@@ -22,7 +22,7 @@ describe("unscoped empty Cache", () => {
       cache.artistAlbums,
       cache.albumTracks,
       cache.images,
-      cache.downloads,
+      cache.completedDownloads,
     ];
     expect(collections.every((collection) => collection.size === 0)).toBe(true);
     expect(cache.key).toBeUndefined();
@@ -35,7 +35,7 @@ describe("unscoped empty Cache", () => {
     expect(await cache.readImage("cover")).toBeNull();
     expect(await cache.readDownload("track", "mp3")).toBeNull();
     expect(cache.artists).toBe(collections[0]);
-    expect(cache.downloads).toBe(collections.at(-1));
+    expect(cache.completedDownloads).toBe(collections.at(-1));
     expect(disk.getDirectory).not.toHaveBeenCalled();
     expect(navigator.locks.request).not.toHaveBeenCalled();
   });
@@ -59,7 +59,7 @@ describe("unscoped empty Cache", () => {
     expect(cache.queueRevision).toBe(0);
     expect(cache.queueDirty).toBe(false);
     expect(cache.images.size).toBe(0);
-    expect(cache.downloads.size).toBe(0);
+    expect(cache.completedDownloads.size).toBe(0);
     expect(cache.savedAt).toBeUndefined();
     expect(cache.error).toBeUndefined();
     expect(disk.getDirectory).not.toHaveBeenCalled();

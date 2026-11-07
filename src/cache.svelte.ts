@@ -90,7 +90,21 @@ const downloadJournalSchema = v.strictObject({
   version: v.literal(1),
   records: v.array(downloadIntentSchema),
 });
-export type DownloadIntent = Immutable<v.InferOutput<typeof downloadIntentSchema>>;
+const queuedDownloadSchema = v.strictObject({
+  ...downloadIntentSchema.entries,
+  status: v.picklist(["queued", "failed"]),
+});
+const completedDownloadSchema = v.strictObject({
+  ...cachedDownloadSchema.entries,
+  status: v.literal("completed"),
+});
+const downloadEntrySchema = v.variant("status", [queuedDownloadSchema, completedDownloadSchema]);
+const downloadStoreSchema = v.strictObject({
+  version: v.literal(2),
+  records: v.array(downloadEntrySchema),
+});
+export type DownloadEntry = Immutable<v.InferOutput<typeof downloadEntrySchema>>;
+type CompletedDownload = Extract<DownloadEntry, { status: "completed" }>;
 /** Account-local identity, also distinguishing original files from MP3 transcodes. */
 export function downloadKey(trackId: string, format: DownloadFormat) {
   return JSON.stringify([trackId, format]);
@@ -286,18 +300,6 @@ class CheckpointStore<T> {
     this.#debounceTimer = this.#checkpointTimer = undefined;
   }
 
-  /** Durable publication for download catalogs; no memory success before close. */
-  commit(value: T, publish = () => value) {
-    return this.#serial(async () => {
-      await this.disk?.write(this.options.document, this.options.serialize(value));
-      this.#clearTimers();
-      this.#value = publish();
-      this.#savedRevision = ++this.#revision;
-      this.#loaded = true;
-      this.error = undefined;
-    });
-  }
-
   /** Capture at write time, never per edit. Later edits remain dirty. */
   flush(): Promise<void> {
     this.#clearTimers();
@@ -423,35 +425,6 @@ class BinaryCatalog<R extends BinaryRecord> {
     });
   }
 
-  commit(key: string, record?: R) {
-    return this.commitChanges([[key, record]]);
-  }
-
-  commitChanges(changes: readonly (readonly [string, R | undefined])[]) {
-    return this.#serial(async () => {
-      const records = new SvelteMap(this.records);
-      const obsolete: string[] = [];
-      for (const [key, record] of changes) {
-        const previous = records.get(key);
-        if (record) records.set(key, record);
-        else records.delete(key);
-        if (previous && previous.fileName !== record?.fileName) obsolete.push(previous.fileName);
-      }
-      await this.store.commit(records, () => {
-        const live = this.store.value;
-        for (const [key, record] of changes) {
-          if (record) live.set(key, record);
-          else live.delete(key);
-        }
-        return live;
-      });
-      if (obsolete.length) {
-        const directory = await this.disk?.files();
-        for (const name of obsolete) await directory?.removeEntry(name).catch(() => {});
-      }
-    });
-  }
-
   /** Update metadata (or evict) without rewriting bytes; never overwrite a replacement. */
   updateRecord(
     key: string,
@@ -543,6 +516,16 @@ function parseDownloads(value: unknown): Immutable<v.InferOutput<typeof download
   return catalog;
 }
 
+function validateDownloadEntries(records: readonly DownloadEntry[]) {
+  unique(records, (item) => downloadKey(item.track.id, item.format));
+  unique(
+    records.flatMap((item) =>
+      item.status === "completed" ? [item.fileName] : item.attempt ? [item.attempt.fileName] : [],
+    ),
+    (name) => name,
+  );
+}
+
 function entityMap<T extends { readonly id: string }>(
   records: readonly T[],
 ): ReadonlyMap<string, T> {
@@ -624,13 +607,11 @@ export class Cache {
   readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
   readonly #playlists: CheckpointStore<Immutable<CachedPlaylists>>;
   readonly #images: BinaryCatalog<Immutable<ImageRecord>>;
-  readonly #downloads: BinaryCatalog<Immutable<CachedDownload>>;
-  #intents = $state.raw<ReadonlyMap<string, DownloadIntent>>(new Map());
+  readonly #downloads = new SvelteMap<string, DownloadEntry>();
   #downloadError = $state.raw<unknown>();
   #downloadSerial = serial();
-  #journalLoaded = false;
-  #journalBlocked = false;
-  #allowDownloadPlaceholder = false;
+  #downloadsLoaded = false;
+  #downloadsBlocked = false;
   #downloadsReady = false;
 
   /** Omitting the key creates an empty, non-persisting UI fallback.
@@ -666,17 +647,6 @@ export class Cache {
       document: "images",
       parse: parseImages,
       key: (image) => image.id,
-    });
-    this.#downloads = new BinaryCatalog(this.#disk, {
-      document: "downloads",
-      // A failed first catalog close leaves a placeholder. Only an owned prepared
-      // attempt can explain it; otherwise preserve it as unreadable storage.
-      parse: (value) => {
-        if (value !== emptyDownloadCatalog) return parseDownloads(value);
-        if (!this.#allowDownloadPlaceholder) throw emptyDownloadCatalog;
-        return [];
-      },
-      key: (item) => downloadKey(item.track.id, item.format),
     });
   }
 
@@ -766,7 +736,7 @@ export class Cache {
       this.#queue.flush(),
       this.#playlists.flush(),
       this.#images.store.flush(),
-      this.#downloadOperation(() => this.#downloadSerial(() => this.#downloads.store.flush())),
+      this.#downloadOperation(() => this.#downloadSerial(async () => {})),
     ]);
     const errors = results.flatMap((result) =>
       result.status === "rejected" ? [result.reason] : [],
@@ -781,7 +751,6 @@ export class Cache {
       this.#playlists.error,
       this.#images.error,
       this.#downloadError,
-      this.#downloads.error === undefined ? undefined : new DownloadError(),
     ].filter((error) => error !== undefined);
     return errors.length ? new AggregateError(errors, "Cache failed.") : undefined;
   });
@@ -795,11 +764,8 @@ export class Cache {
   get downloadsReady() {
     return this.#downloadsReady;
   }
-  get downloadIntents() {
-    return this.#intents;
-  }
   get downloadStorageBlocked() {
-    return this.#journalBlocked;
+    return this.#downloadsBlocked;
   }
 
   async #downloadOperation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -812,72 +778,199 @@ export class Cache {
     }
   }
 
-  async #loadJournal() {
-    if (this.#journalBlocked) throw new DownloadError();
-    if (this.#journalLoaded) return;
+  async #validDownload(record: { readonly fileName: string; readonly size: number }) {
     try {
-      const journal = await this.#requireDisk().read("download-intents", (value) => {
-        const parsed = v.parse(downloadJournalSchema, value);
-        unique(parsed.records, (item) => downloadKey(item.track.id, item.format));
-        unique(
-          parsed.records.filter((item) => item.attempt),
-          (item) => item.attempt!.fileName,
-        );
-        return parsed;
-      });
-      this.#intents = new Map(
-        (journal?.records ?? []).map((item) => [downloadKey(item.track.id, item.format), item]),
-      );
-      this.#journalLoaded = true;
+      const directory = await this.#requireDisk().files();
+      const file = await (await directory.getFileHandle(record.fileName)).getFile();
+      return file.size === record.size;
     } catch (error) {
-      this.#journalBlocked = true;
+      if (error instanceof DOMException && error.name === "NotFoundError") return false;
       throw error;
     }
   }
 
-  async #loadDownloadCatalog(signal?: AbortSignal) {
-    try {
-      await this.#downloads.load(signal);
-    } catch (error) {
-      if (error !== emptyDownloadCatalog || this.#journalBlocked) throw error;
+  async #writeDownloads(records: ReadonlyMap<string, DownloadEntry>) {
+    if (this.#downloadsBlocked) throw new DownloadError();
+    const obsolete = [...this.downloads.values()].filter(
+      (entry) =>
+        entry.status === "completed" &&
+        records.get(downloadKey(entry.track.id, entry.format)) !== entry,
+    );
+    await this.#requireDisk().write("downloads", { version: 2, records: [...records.values()] });
+    this.#publishDownloads(records);
+    this.#downloadsLoaded = true;
+    this.#downloadError = undefined;
+    if (obsolete.length) {
       const directory = await this.#requireDisk().files();
-      for (const intent of this.#intents.values()) {
-        const attempt = intent.attempt;
-        if (!attempt?.size) continue;
-        try {
-          const file = await (await directory.getFileHandle(attempt.fileName)).getFile();
-          signal?.throwIfAborted();
-          if (file.size === attempt.size) {
-            this.#allowDownloadPlaceholder = true;
-            break;
-          }
-        } catch (error) {
-          if (!(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
-        }
-      }
-      if (!this.#allowDownloadPlaceholder) throw new DownloadError();
-      await this.#downloads.load(signal);
+      const owned = new Set(
+        [...records.values()].flatMap((entry) =>
+          entry.status === "completed"
+            ? [entry.fileName]
+            : entry.attempt
+              ? [entry.attempt.fileName]
+              : [],
+        ),
+      );
+      for (const entry of obsolete)
+        if (entry.status === "completed" && !owned.has(entry.fileName))
+          await directory.removeEntry(entry.fileName).catch(() => {});
     }
   }
 
-  async #writeIntents(records: ReadonlyMap<string, DownloadIntent>) {
-    if (this.#journalBlocked) throw new DownloadError();
-    await this.#requireDisk().write("download-intents", {
-      version: 1,
-      records: [...records.values()],
-    });
-    this.#intents = records;
-    this.#downloadError = undefined;
+  #publishDownloads(records: ReadonlyMap<string, DownloadEntry>) {
+    const live = this.#downloads;
+    for (const key of live.keys()) if (!records.has(key)) live.delete(key);
+    // Retry's delete/reinsert is observable as FIFO order, not a second queue.
+    const order = [...records.keys()];
+    if ([...live.keys()].some((key, index) => key !== order[index])) live.clear();
+    for (const [key, entry] of records) live.set(key, entry);
   }
 
-  /** Acknowledges only the atomic journal close, never a memory-only enqueue. */
+  /** Validate both legacy documents before the single atomic migration commit.
+   * Legacy bytes remain a read-only fallback if journal validation or close fails.
+   * Once canonical state exists, the old journal is an ignored backup. */
+  async #loadDownloads(signal?: AbortSignal) {
+    if (this.#downloadsLoaded) return;
+    let records: Map<string, DownloadEntry>;
+    let migrate = false;
+    try {
+      const stored = await this.#requireDisk().read("downloads", (value) => {
+        if (value === emptyDownloadCatalog) return value;
+        if (Array.isArray(value)) return parseDownloads(value);
+        const parsed = v.parse(downloadStoreSchema, value);
+        validateDownloadEntries(parsed.records);
+        return parsed;
+      });
+      signal?.throwIfAborted();
+      if (stored && stored !== emptyDownloadCatalog && !Array.isArray(stored)) {
+        records = new Map(
+          (stored as v.InferOutput<typeof downloadStoreSchema>).records.map((item) => [
+            downloadKey(item.track.id, item.format),
+            item,
+          ]),
+        );
+      } else {
+        migrate = true;
+        records = new Map(
+          (Array.isArray(stored) ? stored : []).map((item) => [
+            downloadKey(item.track.id, item.format),
+            { ...item, status: "completed" as const },
+          ]),
+        );
+        // Keep original ownership even if a missing completed entry is replaced below.
+        const owners = new Map(
+          [...records].flatMap(([key, entry]) =>
+            entry.status === "completed" ? [[entry.fileName, key] as const] : [],
+          ),
+        );
+        const failures = new Map(
+          [...this.downloads].filter(([, entry]) => entry.status === "failed"),
+        );
+        for (const [key, failure] of failures) {
+          const completed = records.get(key);
+          if (completed?.status === "completed" && (await this.#validDownload(completed))) continue;
+          records.set(key, failure);
+        }
+        // This same working map retains known failures through fallback and migration commit.
+        this.#publishDownloads(records);
+        const journal = await this.#requireDisk().read("download-intents", (value) => {
+          const parsed = v.parse(downloadJournalSchema, value);
+          unique(parsed.records, (item) => downloadKey(item.track.id, item.format));
+          unique(
+            parsed.records.filter((item) => item.attempt),
+            (item) => item.attempt!.fileName,
+          );
+          return parsed;
+        });
+        if (stored === null && journal === null) migrate = false;
+        for (const item of journal?.records ?? []) {
+          const key = downloadKey(item.track.id, item.format);
+          const owner = item.attempt && owners.get(item.attempt.fileName);
+          if (owner !== undefined && owner !== key) throw new DownloadError();
+          const existing = records.get(key);
+          if (existing?.status === "failed" && failures.has(key)) {
+            if (!existing.attempt && item.attempt)
+              records.set(key, { ...existing, attempt: item.attempt });
+            continue;
+          }
+          // Only genuinely committed, usable bytes supersede stale failure/pending state.
+          if (existing?.status === "completed" && (await this.#validDownload(existing))) continue;
+          records.delete(key);
+          records.set(key, { ...item, status: item.status === "pending" ? "queued" : "failed" });
+        }
+        validateDownloadEntries([...records.values()]);
+        if (stored === emptyDownloadCatalog) {
+          // A first-write placeholder is explainable only by measured owned bytes.
+          let owned = false;
+          for (const entry of records.values()) {
+            if (
+              entry.status !== "completed" &&
+              entry.attempt?.size &&
+              (await this.#validDownload({ ...entry.attempt, size: entry.attempt.size }))
+            )
+              owned = true;
+          }
+          if (!owned) throw new DownloadError();
+        }
+      }
+    } catch (error) {
+      if (!signal?.aborted) this.#downloadsBlocked = true;
+      throw error;
+    }
+    signal?.throwIfAborted();
+    this.#downloadsBlocked = false;
+    // Publish only already committed records; never publish a writable migration before close.
+    if (!migrate) {
+      this.#publishDownloads(records);
+      this.#downloadsLoaded = true;
+    }
+    const reconciled = await this.#reconcileDownloads(records, signal);
+    signal?.throwIfAborted();
+    if (migrate || reconciled !== records) await this.#writeDownloads(reconciled);
+    this.#downloadsReady = true;
+  }
+
+  async #reconcileDownloads(records: ReadonlyMap<string, DownloadEntry>, signal?: AbortSignal) {
+    let next: Map<string, DownloadEntry> | undefined;
+    for (const [key, entry] of records) {
+      signal?.throwIfAborted();
+      if (entry.status === "completed") {
+        if (!(await this.#validDownload(entry))) {
+          next ??= new Map(records);
+          next.delete(key);
+          next.set(key, {
+            track: entry.track,
+            format: entry.format,
+            contentType: entry.contentType,
+            status: "queued",
+          });
+        }
+      } else if (
+        entry.status === "queued" &&
+        entry.attempt?.size &&
+        (await this.#validDownload({ ...entry.attempt, size: entry.attempt.size }))
+      ) {
+        next ??= new Map(records);
+        next.set(key, {
+          track: entry.track,
+          format: entry.format,
+          contentType: entry.contentType,
+          ...entry.attempt,
+          size: entry.attempt.size,
+          status: "completed",
+        });
+      }
+    }
+    return next ?? records;
+  }
+
+  /** Acknowledges queued state only after canonical close. Retry moves to the FIFO tail. */
   enqueueDownload(
     track: Immutable<CachedDownload["track"]>,
     format: DownloadFormat,
     contentType: string,
     retry = false,
   ) {
-    // Explicit selection prevents extra runtime fields or authenticated URLs entering storage.
     const safeTrack = {
       id: track.id,
       title: track.title,
@@ -887,44 +980,40 @@ export class Cache {
     };
     return this.#downloadOperation(() =>
       this.#downloadSerial(async () => {
-        await this.#loadJournal();
-        await this.#loadDownloadCatalog();
+        await this.#loadDownloads();
         const key = downloadKey(track.id, format);
-        const existing = this.#intents.get(key);
+        const existing = this.downloads.get(key);
         if (existing && (!retry || existing.status !== "failed")) return existing;
-        if (this.downloads.has(key) && !existing) return undefined;
-        const intent: DownloadIntent = v.parse(downloadIntentSchema, {
+        const entry = v.parse(queuedDownloadSchema, {
           track: safeTrack,
           format,
           contentType,
-          status: "pending",
-          ...(retry && existing?.attempt ? { attempt: existing.attempt } : {}),
+          status: "queued",
+          ...(existing?.status === "failed" && existing.attempt
+            ? { attempt: existing.attempt }
+            : {}),
         });
-        const records = new Map(this.#intents);
+        const records = new Map(this.downloads);
         if (retry) records.delete(key);
-        records.set(key, intent);
-        await this.#writeIntents(records);
-        if (retry) this.#downloadsReady = false;
-        return intent;
+        records.set(key, entry);
+        await this.#writeDownloads(records);
+        this.#downloadsReady = false;
+        return entry;
       }),
     );
   }
 
-  failDownload(key: string, known?: Pick<DownloadIntent, "track" | "format" | "contentType">) {
+  failDownload(key: string, known?: Pick<DownloadEntry, "track" | "format" | "contentType">) {
     return this.#downloadOperation(() =>
       this.#downloadSerial(async () => {
-        // A catalog commit is completed even if its subsequent retirement failed.
-        if (this.downloads.has(key)) {
-          this.#downloadsReady = false;
-          return;
-        }
         let loadError: unknown;
         try {
-          await this.#loadJournal();
+          await this.#loadDownloads();
         } catch (error) {
           loadError = error;
         }
-        const previous = this.#intents.get(key);
+        const previous = this.downloads.get(key);
+        if (previous?.status === "completed") return;
         const description =
           previous ??
           (known && {
@@ -942,125 +1031,56 @@ export class Cache {
           if (loadError) throw loadError;
           return;
         }
-        const failed: DownloadIntent = v.parse(downloadIntentSchema, {
+        const failed = v.parse(queuedDownloadSchema, {
           ...description,
           status: "failed",
           diagnostic: downloadFailureDiagnostic,
         });
-        const records = new Map(this.#intents);
+        const records = new Map(this.downloads);
         records.set(key, failed);
         try {
           if (loadError) throw loadError;
-          await this.#writeIntents(records);
+          await this.#writeDownloads(records);
         } catch (error) {
-          // Known-track presentation survives even when no durable write is possible.
-          this.#intents = records;
+          // Safe known-track presentation survives persistence denial; never overwrite unknown disk state.
+          this.#publishDownloads(records);
           throw error;
         }
       }),
     );
   }
 
-  /** Caller freezes, aborts and joins incomplete workers before retiring their intent. */
+  /** Caller freezes, aborts and joins workers before removing only queued entries. */
   cancelPendingDownloads() {
     return this.#downloadOperation(() =>
       this.#downloadSerial(async () => {
-        await this.#loadJournal();
-        await this.#loadDownloadCatalog();
-        const pending = [...this.#intents.values()].filter((item) => item.status === "pending");
-        const records = new Map([...this.#intents].filter(([, item]) => item.status === "failed"));
-        await this.#writeIntents(records);
+        await this.#loadDownloads();
+        const pending = [...this.downloads.values()].filter((item) => item.status === "queued");
+        const records = new Map([...this.downloads].filter(([, item]) => item.status !== "queued"));
+        await this.#writeDownloads(records);
         const directory = await this.#requireDisk().files();
-        const committed = new Set([...this.downloads.values()].map((item) => item.fileName));
         for (const item of pending) {
-          if (item.attempt && !committed.has(item.attempt.fileName))
+          if (item.status === "queued" && item.attempt)
             await directory.removeEntry(item.attempt.fileName).catch(() => {});
         }
       }),
     );
   }
 
-  /** Validate only named files using getFile metadata, never read audio into memory.
-   * A unique reservation with a measured exhausted-stream size proves atomic close.
-   * Missing completed-only files become durable intent before catalog eviction. */
+  /** Named-file metadata only: never buffer audio to validate recovery. */
   loadDownloads(signal?: AbortSignal) {
     if (!this.#disk) return Promise.resolve();
     return this.#downloadOperation(
       () =>
         this.#downloadSerial(async () => {
           signal?.throwIfAborted();
-          try {
-            await this.#loadJournal();
-          } catch (error) {
-            await this.#loadDownloadCatalog(signal);
-            throw error;
-          }
-          await this.#loadDownloadCatalog(signal);
-          if (this.#downloadsReady) return;
-          const directory = await this.#requireDisk().files();
-          const valid = async (record: { fileName: string; size: number }) => {
-            try {
-              const file = await (await directory.getFileHandle(record.fileName)).getFile();
-              return file.size === record.size;
-            } catch (error) {
-              if (error instanceof DOMException && error.name === "NotFoundError") return false;
-              throw error;
-            }
-          };
-          const records = new Map(this.#intents);
-          const changes: [string, Immutable<CachedDownload> | undefined][] = [];
-          const satisfied = new Set<string>();
-          let journalChanged = false;
-          const owners = new Map(
-            [...this.downloads].map(([key, record]) => [record.fileName, key]),
-          );
-          for (const [key, record] of this.downloads) {
+          await this.#loadDownloads(signal);
+          if (!this.#downloadsReady) {
+            const next = await this.#reconcileDownloads(this.downloads, signal);
             signal?.throwIfAborted();
-            if (await valid(record)) {
-              if (records.get(key)?.status === "pending") satisfied.add(key);
-            } else {
-              if (!records.has(key)) {
-                records.set(key, {
-                  track: record.track,
-                  format: record.format,
-                  contentType: record.contentType,
-                  status: "pending",
-                });
-                journalChanged = true;
-              }
-              changes.push([key, undefined]);
-            }
+            if (next !== this.downloads) await this.#writeDownloads(next);
+            this.#downloadsReady = true;
           }
-          for (const [key, intent] of records) {
-            signal?.throwIfAborted();
-            if (intent.status !== "pending" || satisfied.has(key)) continue;
-            const attempt = intent.attempt;
-            if (attempt?.size && (await valid({ ...attempt, size: attempt.size }))) {
-              const owner = owners.get(attempt.fileName);
-              if (owner !== undefined && owner !== key) throw new DownloadError();
-              changes.push([
-                key,
-                {
-                  track: intent.track,
-                  format: intent.format,
-                  contentType: intent.contentType,
-                  ...attempt,
-                  size: attempt.size,
-                },
-              ]);
-              satisfied.add(key);
-            }
-          }
-          signal?.throwIfAborted();
-          // Batch recovery, but never evict completed metadata before intent is durable.
-          if (journalChanged) await this.#writeIntents(records);
-          if (changes.length) await this.#downloads.commitChanges(changes);
-          if (satisfied.size) {
-            for (const key of satisfied) records.delete(key);
-            await this.#writeIntents(records);
-          }
-          signal?.throwIfAborted();
-          this.#downloadsReady = true;
         }),
       signal,
     );
@@ -1068,11 +1088,7 @@ export class Cache {
 
   get dirty() {
     return (
-      this.#library.dirty ||
-      this.#queue.dirty ||
-      this.#playlists.dirty ||
-      this.#images.store.dirty ||
-      this.#downloads.store.dirty
+      this.#library.dirty || this.#queue.dirty || this.#playlists.dirty || this.#images.store.dirty
     );
   }
 
@@ -1145,11 +1161,23 @@ export class Cache {
     );
   }
 
-  get downloads() {
-    return this.#downloads.records;
+  get downloads(): ReadonlyMap<string, DownloadEntry> {
+    return this.#downloads;
   }
 
-  /** Open only listed bytes; persist recovery intent before a missing record is evicted. */
+  /** A derived completed-only view for saved-file consumers, never a second store. */
+  #completedDownloads = $derived(
+    new Map(
+      [...this.#downloads].filter(
+        (entry): entry is [string, CompletedDownload] => entry[1].status === "completed",
+      ),
+    ),
+  );
+  get completedDownloads(): ReadonlyMap<string, CompletedDownload> {
+    return this.#completedDownloads;
+  }
+
+  /** Reconciliation failures do not prevent read-only use of committed bytes or format fallback. */
   async readDownload(
     trackId: string,
     format: DownloadFormat,
@@ -1160,10 +1188,10 @@ export class Cache {
     try {
       const key = downloadKey(trackId, format);
       await this.loadDownloads(signal).catch((error) => {
-        // Reconciliation writes must not prevent read-only use of committed bytes.
-        if (signal?.aborted || (!this.#journalBlocked && !this.downloads.has(key))) throw error;
+        // Download-domain failures do not gate independent saved-file or online playback.
+        if (signal?.aborted) throw error;
       });
-      const record = this.downloads.get(key);
+      const record = this.completedDownloads.get(key);
       if (!record) return null;
       const directory = await this.#requireDisk().files();
       try {
@@ -1173,7 +1201,23 @@ export class Cache {
       } catch (error) {
         if (!(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
       }
-      if (!this.#journalBlocked) await this.#enqueueDownloadRecovery(record);
+      // Legacy fallback is read-only until the complete migration has committed.
+      if (this.#downloadsLoaded && !this.#downloadsBlocked)
+        await this.#downloadSerial(async () => {
+          if (this.downloads.get(key) !== record) return;
+          const records = new Map(this.downloads);
+          records.delete(key);
+          records.set(key, {
+            track: record.track,
+            format,
+            contentType: record.contentType,
+            status: "queued",
+          });
+          await this.#writeDownloads(records);
+        }).catch((error) => {
+          if (signal?.aborted) throw error;
+          this.#downloadError = new DownloadError();
+        });
       return null;
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
@@ -1182,25 +1226,8 @@ export class Cache {
     }
   }
 
-  #enqueueDownloadRecovery(record: Immutable<CachedDownload>) {
-    return this.#downloadSerial(async () => {
-      const key = downloadKey(record.track.id, record.format);
-      if (!this.#intents.has(key)) {
-        const records = new Map(this.#intents);
-        records.set(key, {
-          track: record.track,
-          format: record.format,
-          contentType: record.contentType,
-          status: "pending",
-        });
-        await this.#writeIntents(records);
-      }
-      await this.#downloads.commit(key);
-    });
-  }
-
-  /** Reservation -> exhausted size -> atomic byte close -> durable catalog -> retirement.
-   * Closed bytes remain owned by the reservation if a later checkpoint fails. */
+  /** Reservation -> measured exhausted size -> atomic byte close -> single completed publication.
+   * Closed bytes remain owned by queued state if the final commit fails. */
   async saveDownload(
     track: Immutable<CachedDownload["track"]>,
     format: DownloadFormat,
@@ -1232,11 +1259,11 @@ export class Cache {
         const prepare = () =>
           this.#downloadSerial(async () => {
             signal.throwIfAborted();
-            const records = new Map(this.#intents);
+            const records = new Map(this.downloads);
             const current = records.get(key);
-            if (!current || current.status !== "pending") throw new DownloadError();
+            if (!current || current.status !== "queued") throw new DownloadError();
             records.set(key, { ...current, attempt: { ...attempt } });
-            await this.#writeIntents(records);
+            await this.#writeDownloads(records);
           });
         await prepare();
         const directory = await disk.files();
@@ -1275,20 +1302,19 @@ export class Cache {
           await writable.close();
           closed = true;
           this.#downloadsReady = false;
-          // Once close has succeeded, finish catalog/retirement even during teardown.
+          // Once close has succeeded, finish completed publication even during teardown.
           // Explicit cancel joins this boundary before acknowledging cancellation.
           await this.#downloadSerial(async () => {
-            await this.#downloads.commit(key, {
+            const records = new Map(this.downloads);
+            records.set(key, {
               track: safeTrack,
               format,
               contentType,
               ...attempt,
               size,
+              status: "completed",
             });
-            const records = new Map(this.#intents);
-            records.delete(key);
-            this.#downloadsReady = false;
-            await this.#writeIntents(records);
+            await this.#writeDownloads(records);
           });
           return await handle.getFile();
         } finally {
