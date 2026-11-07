@@ -57,34 +57,23 @@
       <div class="stack-sm" role="list" aria-label="Downloads" aria-busy={loading}>
         {#each downloads as entry (entry.key)}
           <div class="menu-item track-row" role="listitem">
-            <span
-              class="track-row-number row-sm"
-              role="img"
-              aria-label={entry.status === "downloading"
-                ? "Downloading"
-                : entry.status === "queued"
-                  ? "Queued for download"
-                  : entry.status === "failed"
-                    ? "Download failed"
-                    : "Downloaded"}
-            >
-              {#if entry.status === "downloading"}
+            {#if entry.status === "downloading"}
+              <span class="track-row-number row-sm" role="img" aria-label="Downloading">
                 <Loader />
-              {:else}
-                <Icon
-                  name={entry.status === "queued"
-                    ? "clock"
-                    : entry.status === "failed"
-                      ? "cross"
-                      : "check"}
-                  color={entry.status === "queued"
-                    ? "var(--text-subtle)"
-                    : entry.status === "failed"
-                      ? "var(--error-text)"
-                      : "var(--accent)"}
-                />
-              {/if}
-            </span>
+              </span>
+            {:else if entry.status === "queued"}
+              <span class="track-row-number row-sm" role="img" aria-label="Queued for download">
+                <Icon name="clock" color="var(--text-subtle)" />
+              </span>
+            {:else if entry.status === "failed"}
+              <span class="track-row-number row-sm" role="img" aria-label="Download failed">
+                <Icon name="cross" color="var(--error-text)" />
+              </span>
+            {:else}
+              <span class="track-row-number row-sm" role="img" aria-label="Downloaded">
+                <Icon name="check" color="var(--accent)" />
+              </span>
+            {/if}
             <div class="row-sm">
               <Artwork
                 {covers}
