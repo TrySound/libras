@@ -985,9 +985,9 @@ export class Cache {
         const existing = this.downloads.get(key);
         if (existing && (!retry || existing.status !== "failed")) return existing;
         const entry = v.parse(queuedDownloadSchema, {
-          track: safeTrack,
+          track: existing?.track ?? safeTrack,
           format,
-          contentType,
+          contentType: existing?.contentType ?? contentType,
           status: "queued",
           ...(existing?.status === "failed" && existing.attempt
             ? { attempt: existing.attempt }

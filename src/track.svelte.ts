@@ -19,6 +19,9 @@ export interface TrackSource {
 interface TrackSourceOptions {
   forceTranscode?: boolean;
 }
+interface DownloadOptions extends TrackSourceOptions {
+  format?: DownloadFormat;
+}
 type TrackStatus = "idle" | "queued" | "downloading" | "downloaded" | "failed";
 interface TrackEngineOptions {
   selection: CacheSelection;
@@ -47,7 +50,7 @@ export class TrackEngine {
   #detachConnection?: () => void;
   #jobs = new Map<string, DownloadJob>();
   #operations = new Set<Promise<unknown>>();
-  #canceling = false;
+  #canceling = $state(false);
   #settling?: Promise<void>;
   #lifetime = 0;
   #selection: CacheSelection;
@@ -179,31 +182,20 @@ export class TrackEngine {
       void this.restoreDownloads();
     }
   }
-  retryDownload(trackId: string, format: DownloadFormat) {
-    const cache = this.#selection.cache;
-    const intent = cache?.downloads.get(downloadKey(trackId, format));
-    if (!cache || !intent || intent.status !== "failed" || this.#canceling || this.#destroyed)
-      return Promise.resolve();
-    const persisted = this.#observe(
-      cache.enqueueDownload(intent.track, format, intent.contentType, true),
-    );
-    const operation = persisted.then(async () => {
-      if (cache === this.#selection.cache && !this.#destroyed && !this.#canceling)
-        await this.restoreDownloads();
-    });
-    void operation.catch(() => {});
-    return operation;
+  get cancelingDownloads() {
+    return this.#canceling;
   }
 
-  #describe(track: SourceTrack, options: TrackSourceOptions = {}): Descriptor {
+  #describe(track: SourceTrack, options: DownloadOptions = {}): Descriptor {
     const cache = this.#selection.cache;
     if (cache?.key === undefined) throw new Error("No music account selected.");
     const format =
-      !options.forceTranscode &&
+      options.format ??
+      (!options.forceTranscode &&
       track.contentType &&
       this.#mediaProbe.canPlayType(track.contentType)
         ? "raw"
-        : "mp3";
+        : "mp3");
     return {
       key: downloadKey(track.id, format),
       cacheKey: cache.key,
@@ -234,12 +226,14 @@ export class TrackEngine {
   }
 
   #drain() {
-    if (this.#destroyed || this.#canceling || this.#settling || this.waitingForConnection) return;
+    if (this.#destroyed || this.#canceling || this.#settling) return;
     const jobs = [...this.#jobs.values()];
     let active = jobs.filter((job) => job.status === "downloading").length;
     for (const job of jobs.filter((job) => job.status === "queued" && job.ready)) {
       if (active >= this.#concurrency) break;
       if (job.cache !== this.#selection.cache || job.signal.aborted) continue;
+      if (this.waitingForConnection && !job.cache.completedDownloads.has(job.descriptor.key))
+        continue;
       job.status = "downloading";
       active++;
       const finish = () => {
@@ -249,6 +243,11 @@ export class TrackEngine {
       };
       void this.#observe(this.#download(job)).then(
         (file) => {
+          if (!file) {
+            this.#version++;
+            this.#drain();
+            return;
+          }
           finish();
           job.resolve(file);
         },
@@ -262,8 +261,7 @@ export class TrackEngine {
   }
   async #download(job: DownloadJob) {
     const { descriptor, track, cache } = job;
-    const connection = this.#connectionFor(descriptor);
-    const signal = AbortSignal.any([job.signal, connection.signal]);
+    const signal = job.signal;
     const check = () => {
       if (cache !== this.#selection.cache) job.controller.abort();
       signal.throwIfAborted();
@@ -273,6 +271,13 @@ export class TrackEngine {
       let file = await cache.readDownload(track.id, descriptor.format, signal);
       check();
       if (!file) {
+        if (this.waitingForConnection) {
+          if (cache.downloads.get(descriptor.key)?.status !== "queued") throw new DownloadError();
+          // Missing saved bytes remain queued until a matching connection arrives.
+          job.status = "queued";
+          return;
+        }
+        const connection = this.#connectionFor(descriptor);
         const response = await connection.read(track.id, { format: descriptor.format, signal });
         if (cache !== this.#selection.cache) job.controller.abort();
         // Cache also releases unused responses, including cancellation before save.
@@ -301,7 +306,7 @@ export class TrackEngine {
   }
   /** Safe to fire and forget: Cache owns row-local failures, while awaiting
    * the returned promise still observes rejection. Duplicate jobs share a promise. */
-  download(trackId: string, options: TrackSourceOptions = {}) {
+  download(trackId: string, options: DownloadOptions = {}) {
     let promise: Promise<File>;
     try {
       if (this.#destroyed || this.#canceling)
@@ -322,7 +327,7 @@ export class TrackEngine {
       let retried = false;
       for (const format of ["raw", "mp3"] as const) {
         if (this.#selection.cache?.downloads.get(downloadKey(id, format))?.status === "failed") {
-          void this.retryDownload(id, format);
+          void this.download(id, { format });
           retried = true;
         }
       }
@@ -330,10 +335,13 @@ export class TrackEngine {
     }
   }
 
-  #queueDownload(trackId: string, options: TrackSourceOptions) {
+  #queueDownload(trackId: string, options: DownloadOptions) {
     const selected = this.#selection.cache;
     const record = selected?.tracks.get(trackId);
-    const track: DownloadTrack = {
+    const known = options.format
+      ? selected?.downloads.get(downloadKey(trackId, options.format))
+      : undefined;
+    const track: DownloadTrack = known?.track ?? {
       id: trackId,
       title: record?.title ?? trackId,
       artist:
@@ -346,9 +354,12 @@ export class TrackEngine {
     const descriptor = this.#describe(track, options);
     const existing = this.#jobs.get(descriptor.key);
     if (existing) return existing.promise;
-    const failed = selected?.downloads.get(descriptor.key);
-    if (failed?.status === "failed") return Promise.reject(new DownloadError());
-    return this.#addJob(track, descriptor, false);
+    const intent = selected?.downloads.get(descriptor.key);
+    return this.#addJob(
+      intent?.track ?? track,
+      intent ? { ...descriptor, contentType: intent.contentType } : descriptor,
+      false,
+    );
   }
 
   #addJob(track: DownloadTrack, descriptor: Descriptor, ready: boolean) {
@@ -379,14 +390,22 @@ export class TrackEngine {
               track,
               descriptor.format,
               descriptor.contentType,
+              true,
             );
             controller.signal.throwIfAborted();
             if (intent?.status === "failed") throw new DownloadError();
+            if (intent) {
+              job.track = intent.track;
+              descriptor.contentType = intent.contentType;
+            }
             job.ready = true;
             this.#drain();
           } catch (error) {
             if (this.#jobs.get(descriptor.key) === job) this.#jobs.delete(descriptor.key);
-            if (!controller.signal.aborted) {
+            if (
+              !controller.signal.aborted &&
+              cache.downloads.get(descriptor.key)?.status !== "failed"
+            ) {
               await cache
                 .failDownload(descriptor.key, {
                   track,
@@ -486,7 +505,14 @@ export class TrackEngine {
   setConnection(connection?: AudioConnection) {
     if (this.#connection === connection || this.#destroyed) return;
     this.#cancelSourceRequest();
-    void this.interruptDownloads();
+    // Attaching the first matching connection can resume offline queued promises.
+    // Replacing/detaching a connection still retires its execution before reuse.
+    if (
+      this.#connection ||
+      !connection ||
+      getAccountKey(connection.account) !== this.#selection.cache?.key
+    )
+      void this.interruptDownloads();
     this.#detachConnection?.();
     this.#connection = connection;
     if (connection) {

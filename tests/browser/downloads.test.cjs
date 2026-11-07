@@ -23,7 +23,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     reducedMotion: "reduce",
   });
   let release;
-  const gate = new Promise((resolve) => {
+  let gate = new Promise((resolve) => {
     release = resolve;
   });
   let streams = 0;
@@ -92,6 +92,14 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
         true,
       );
       assert.equal(await page.locator(".app-sidebar").isVisible(), true);
+      assert.equal(
+        await page.getByRole("button", { name: "Retry all", exact: true }).isDisabled(),
+        true,
+      );
+      assert.equal(
+        await page.getByRole("button", { name: "Cancel all", exact: true }).isDisabled(),
+        true,
+      );
     });
 
     await navigate("/settings");
@@ -185,6 +193,43 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       },
     );
 
+    await t.test("Cancel all retires real active and queued intent across reload", async () => {
+      await page.getByRole("button", { name: "Cancel all", exact: true }).click();
+      await page.getByRole("heading", { name: "No downloads yet", exact: true }).waitFor();
+      assert.equal(streams, 3);
+      release();
+      await page.reload();
+      await page.getByRole("heading", { name: "No downloads yet", exact: true }).waitFor();
+      assert.equal(streams, 3, "canceled queued files must not resume on reopen");
+      assert.equal(
+        await page.getByRole("button", { name: "Cancel all", exact: true }).isDisabled(),
+        true,
+      );
+      assert.equal(
+        await page.getByRole("button", { name: "Retry all", exact: true }).isDisabled(),
+        true,
+      );
+      // Start a new explicit batch; subsequent counts exclude the three canceled requests.
+      streams = 0;
+      gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await navigate(`/library/artist/${artist.id}`);
+      await page.getByRole("button", { name: `Actions for ${artist.name}`, exact: true }).click();
+      await page
+        .locator("#artist-detail-menu-popover")
+        .getByRole("button", { name: "Download", exact: true })
+        .click();
+      await page.locator('.app-sidebar a[href="?/downloads"]').click();
+      await page.waitForFunction(
+        () =>
+          document.querySelectorAll(
+            '[aria-labelledby=downloads-heading] [aria-label="Downloading"]',
+          ).length === 3,
+      );
+    });
+
     release();
     await t.test(
       "completion and failure update the real cache without discarding saved rows",
@@ -244,7 +289,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     );
 
     await t.test(
-      "online reopen preserves failures until artist bulk Download retries only missing files",
+      "online reopen preserves failures until row Retry and Retry all explicitly retry",
       async () => {
         await page.reload();
         await page.getByRole("button", { name: /^Retry download of 6/ }).waitFor();
@@ -256,19 +301,27 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
           await page.getByRole("button", { name: "Show errors", exact: true }).count(),
           0,
         );
+        const retried = page.waitForResponse((response) => {
+          const url = new URL(response.url());
+          return (
+            /\/stream(?:\.view)?$/.test(url.pathname) && url.searchParams.get("id") === "track-6"
+          );
+        });
+        await page.getByRole("button", { name: /^Retry download of 6/ }).click();
+        await retried;
+        await page.getByRole("button", { name: /^Retry download of 6/ }).waitFor();
+        await page.waitForFunction(() =>
+          document.querySelector(
+            '[aria-labelledby=downloads-heading] [aria-label="Download failed"]',
+          ),
+        );
+        assert.equal(streams, 7);
         retrySucceeds = true;
-        await page.setViewportSize({ width: 1280, height: 900 });
-        await navigate(`/library/artist/${artist.id}`);
-        await page.getByRole("button", { name: `Actions for ${artist.name}`, exact: true }).click();
-        await page
-          .locator("#artist-detail-menu-popover")
-          .getByRole("button", { name: "Download", exact: true })
-          .click();
-        await page.locator('.app-sidebar a[href="?/downloads"]').click();
+        await page.getByRole("button", { name: "Retry all", exact: true }).click();
         await page.waitForFunction(
           () => document.querySelectorAll("[aria-labelledby=downloads-heading] time").length === 6,
         );
-        assert.equal(streams, 7);
+        assert.equal(streams, 8);
         assert.equal(await page.getByRole("button", { name: /^Retry download of 6/ }).count(), 0);
       },
     );
@@ -285,7 +338,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       );
       assert.equal(await page.locator("[aria-labelledby=downloads-heading] time").count(), 6);
       assert.equal(await page.getByRole("heading", { name: "No downloads yet" }).count(), 0);
-      assert.equal(streams, 7);
+      assert.equal(streams, 8);
       assert.equal(await page.getByRole("button", { name: /^Retry download of 6/ }).count(), 0);
       assert.equal(await page.getByRole("button", { name: "Show errors", exact: true }).count(), 0);
     });

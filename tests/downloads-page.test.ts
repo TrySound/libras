@@ -257,3 +257,101 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(2);
   expect(target.textContent).not.toContain("failed title");
 });
+
+it("Retry all snapshots only failed files in exact formats and guards loading and reentry", async () => {
+  const { target, cache, trackEngine, set } = setup();
+  await save(cache, "saved", 1000);
+  for (const format of ["raw", "mp3"] as const) {
+    await cache.enqueueDownload(
+      { id: "failed", title: "Failed title", artist: "Artist", album: "Album" },
+      format,
+      "audio/mpeg",
+    );
+    await cache.failDownload(downloadKey("failed", format));
+  }
+  set({ jobs: [job(cache, "active", "downloading"), job(cache, "queued", "queued")] });
+  const pending = deferred<File>();
+  const download = vi.spyOn(trackEngine, "download").mockReturnValue(pending.promise);
+  const retryAll = [...target.querySelectorAll("button")].find(
+    (button) => button.textContent === "Retry all",
+  )!;
+  const cancelAll = [...target.querySelectorAll("button")].find(
+    (button) => button.textContent === "Cancel all",
+  )!;
+  const rowRetry = target.querySelector<HTMLButtonElement>(
+    'button[aria-label="Retry download of Failed title (RAW)"]',
+  )!;
+  set({ loading: true });
+  expect(retryAll.disabled).toBe(true);
+  expect(cancelAll.disabled).toBe(true);
+  expect(rowRetry.disabled).toBe(true);
+  set({ loading: false });
+  rowRetry.click();
+  expect(download).toHaveBeenLastCalledWith("failed", { format: "raw" });
+  download.mockClear();
+  retryAll.click();
+  flushSync();
+  expect(download.mock.calls).toEqual([
+    ["failed", { format: "raw" }],
+    ["failed", { format: "mp3" }],
+  ]);
+  expect(retryAll.disabled).toBe(true);
+  expect(cancelAll.disabled).toBe(false);
+  retryAll.click();
+  expect(download).toHaveBeenCalledTimes(2);
+  pending.resolve(new File(["audio"], "audio"));
+  await vi.waitFor(() => expect(retryAll.disabled).toBe(false));
+  expect(target.querySelectorAll("time")).toHaveLength(1);
+});
+
+it("Cancel all guards busy controls and preserves saved and failed files when durable cancellation rejects", async () => {
+  const { target, cache, trackEngine, disk } = setup(true);
+  await save(cache, "saved", 1000);
+  await cache.enqueueDownload(
+    { id: "failed", title: "Failed", artist: "Artist", album: "Album" },
+    "mp3",
+    "audio/mpeg",
+  );
+  await cache.failDownload(downloadKey("failed", "mp3"));
+  void trackEngine.download("queued");
+  await vi.waitFor(() =>
+    expect(cache.downloads.get(downloadKey("queued", "mp3"))?.status).toBe("queued"),
+  );
+  flushSync();
+  const retryAll = [...target.querySelectorAll("button")].find(
+    (button) => button.textContent === "Retry all",
+  )!;
+  const cancelAll = [...target.querySelectorAll("button")].find(
+    (button) => button.textContent === "Cancel all",
+  )!;
+  const close = deferred<void>();
+  disk.state.beforeClose = async (name) => {
+    if (name.endsWith("downloads.json")) {
+      await close.promise;
+      throw new Error("full");
+    }
+  };
+  const cancel = vi.spyOn(trackEngine, "cancelDownloads");
+  cancelAll.click();
+  flushSync();
+  expect(cancelAll.disabled).toBe(true);
+  expect(retryAll.disabled).toBe(true);
+  expect(
+    target.querySelector<HTMLButtonElement>('button[aria-label="Retry download of Failed (MP3)"]')
+      ?.disabled,
+  ).toBe(true);
+  cancelAll.click();
+  expect(cancel).toHaveBeenCalledOnce();
+  close.resolve();
+  await vi.waitFor(() => expect(cancelAll.disabled).toBe(false));
+  expect(cache.downloads.get(downloadKey("queued", "mp3"))?.status).toBe("queued");
+  expect(target.querySelectorAll("time")).toHaveLength(1);
+  expect(target.querySelectorAll('[aria-label="Download failed"]')).toHaveLength(1);
+  disk.state.beforeClose = async () => {};
+  cancelAll.click();
+  await vi.waitFor(() => expect(trackEngine.downloadCount).toBe(0));
+  flushSync();
+  expect(cancelAll.disabled).toBe(true);
+  expect(retryAll.disabled).toBe(false);
+  expect(cache.downloads.size).toBe(2);
+});

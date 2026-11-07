@@ -16,6 +16,34 @@
 
   let { cache, covers, trackEngine, loading, appName = "Libras" }: Props = $props();
 
+  let retrying = $state(false);
+  const canceling = $derived(trackEngine.cancelingDownloads);
+  const failed = $derived(
+    [...cache.downloads.values()].filter((entry) => entry.status === "failed"),
+  );
+
+  async function retryAll() {
+    if (loading || canceling || retrying || !failed.length) return;
+    const entries = [...failed];
+    retrying = true;
+    try {
+      await Promise.allSettled(
+        entries.map((entry) => trackEngine.download(entry.track.id, { format: entry.format })),
+      );
+    } finally {
+      retrying = false;
+    }
+  }
+
+  async function cancelAll() {
+    if (loading || canceling || !trackEngine.downloadCount) return;
+    try {
+      await trackEngine.cancelDownloads();
+    } catch {
+      // Durable intent and the existing rows remain authoritative on failure.
+    }
+  }
+
   const sizeFormatter = new Intl.NumberFormat(undefined, {
     style: "unit",
     unit: "megabyte",
@@ -42,6 +70,22 @@
     <header class="stack-sm">
       <h1 class="heading-lg uppercase" id="downloads-heading">Downloads</h1>
       <p class="body text-secondary">Tracks available for offline listening.</p>
+      <div class="row-sm row-wrap">
+        <button
+          class="button"
+          data-variant="secondary"
+          data-size="text"
+          disabled={loading || canceling || retrying || !failed.length}
+          onclick={retryAll}>Retry all</button
+        >
+        <button
+          class="button"
+          data-variant="secondary"
+          data-size="text"
+          disabled={loading || canceling || !trackEngine.downloadCount}
+          onclick={cancelAll}>Cancel all</button
+        >
+      </div>
     </header>
 
     {#if cache.reportingError}
@@ -93,8 +137,9 @@
                     data-variant="secondary"
                     data-size="text"
                     aria-label={`Retry download of ${entry.track.title} (${entry.format.toUpperCase()})`}
+                    disabled={loading || canceling}
                     onclick={() => {
-                      void trackEngine.retryDownload(entry.track.id, entry.format);
+                      void trackEngine.download(entry.track.id, { format: entry.format });
                     }}>Retry</button
                   >
                 {:else if entry.status === "queued"}
