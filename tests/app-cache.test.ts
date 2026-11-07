@@ -1441,40 +1441,25 @@ it("follows normalized album artwork IDs without publishing a late old image", a
   expect(target.querySelector(".detail-panel .artwork svg")).not.toBeNull();
 });
 
-it.each(["/library", "/search", "/downloads", "/settings"])(
-  "removes pure download provenance from all warning consumers on %s",
-  async (route) => {
+it.each([
+  ...["/library", "/search", "/downloads"].flatMap((route) => [
+    { route, mixed: false },
+    { route, mixed: true },
+  ]),
+  { route: "/settings", mixed: false },
+])(
+  "filters download warnings on $route while retaining unrelated errors (mixed=$mixed)",
+  async ({ route, mixed }) => {
     installDisk();
     const { DownloadError } = await import("../src/download-error");
     const cache = new Cache("warning-account");
     vi.spyOn(cache, "error", "get").mockReturnValue(
-      new AggregateError([new AggregateError([new DownloadError()])], "secret transport details"),
-    );
-    mocks.cache = cache;
-    window.history.replaceState(null, "", `?${route}`);
-    const target = document.createElement("main");
-    document.body.append(target);
-    const component = mount(App, { target });
-    cleanups.push(() => unmount(component));
-    flushSync();
-    expect(target.textContent).not.toContain("Some local data could not be restored or saved");
-    expect(target.textContent).not.toContain("Local storage needs attention");
-    expect(target.textContent).not.toContain("secret");
-    expect(target.textContent).not.toContain("Could not save this file");
-    expect(target.querySelector('button[aria-label="Show errors"]')).toBeNull();
-  },
-);
-
-it.each(["/library", "/search", "/downloads"])(
-  "retains unrelated storage warnings from mixed download aggregates on %s",
-  async (route) => {
-    installDisk();
-    const { DownloadError } = await import("../src/download-error");
-    const cache = new Cache("mixed-warning-account");
-    vi.spyOn(cache, "error", "get").mockReturnValue(
       new AggregateError(
-        [new DownloadError(), new Error("Library storage failure")],
-        "secret transport",
+        [
+          new AggregateError([new DownloadError()]),
+          ...(mixed ? [new Error("Library storage failure")] : []),
+        ],
+        "secret transport details",
       ),
     );
     mocks.cache = cache;
@@ -1484,8 +1469,14 @@ it.each(["/library", "/search", "/downloads"])(
     const component = mount(App, { target });
     cleanups.push(() => unmount(component));
     flushSync();
-    expect(target.textContent).toContain("Some local data could not be restored or saved");
+    expect(target.textContent?.includes("Some local data could not be restored or saved")).toBe(
+      mixed,
+    );
     expect(target.textContent).not.toContain("secret");
     expect(target.textContent).not.toContain("Could not save this file");
+    if (!mixed) {
+      expect(target.textContent).not.toContain("Local storage needs attention");
+      expect(target.querySelector('button[aria-label="Show errors"]')).toBeNull();
+    }
   },
 );

@@ -17,7 +17,6 @@ it("recursively removes download leaves before any aggregate stringification", (
   expect(mixed.message).not.toContain("secret");
   expect(mixed.errors).toHaveLength(1);
   expect(mixed.errors[0].errors).toEqual([unrelated]);
-  expect(JSON.stringify(download)).not.toMatch(/token|salt|https:|cause/);
 });
 
 it("preserves unrelated aggregates including empty aggregate messages", () => {

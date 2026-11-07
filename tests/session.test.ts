@@ -842,117 +842,86 @@ it.each([false, true])(
   },
 );
 
-it("joins suspended download reconciliation before retiring an account writer", async () => {
-  const { session, selection, trackEngine, tracks, loadCache, saveLibrary } = setup();
-  loadCache.mockRestore();
-  saveLibrary.mockRestore();
-  tracks.activate.mockRestore();
-  tracks.setConnection.mockRestore();
-  const disk = installDisk();
-  expect(await session.connect(input)).toBe(true);
-  const original = selection.cache!;
-  let committed = false;
-  disk.state.afterClose = (name) => {
-    if (name.endsWith("/downloads.json")) committed = true;
-  };
-  disk.state.beforeClose = async (name) => {
-    if (committed && name.endsWith("download-intents.json")) throw new Error("retirement full");
-  };
-  await expect(
-    original.saveDownload(
-      { id: "saved", title: "Saved", artist: "Artist", album: "Album" },
+it.each(["byte close", "reconciliation"])(
+  "joins suspended %s before switching A to B and reopening A",
+  async (boundary) => {
+    const { session, selection, trackEngine, tracks, loadCache, saveLibrary } = setup();
+    loadCache.mockRestore();
+    saveLibrary.mockRestore();
+    tracks.activate.mockRestore();
+    tracks.setConnection.mockRestore();
+    const disk = installDisk();
+    expect(await session.connect(input)).toBe(true);
+    const original = selection.cache!;
+    const reached = deferred();
+    const release = deferred();
+    let restoration: Promise<void> | undefined;
+    if (boundary === "reconciliation") {
+      let committed = false;
+      disk.state.afterClose = (name) => {
+        if (name.endsWith("/downloads.json")) committed = true;
+      };
+      disk.state.beforeClose = async (name) => {
+        if (committed && name.endsWith("download-intents.json")) throw new Error("retirement full");
+      };
+      await expect(
+        original.saveDownload(
+          { id: "saved", title: "Saved", artist: "Artist", album: "Album" },
+          "mp3",
+          "audio/mpeg",
+          new Response("saved bytes"),
+          new AbortController().signal,
+        ),
+      ).rejects.toThrow();
+      disk.state.beforeClose = async () => {};
+      let gated = false;
+      disk.state.beforeRead = async (name) => {
+        if (!gated && name.endsWith(".audio")) {
+          gated = true;
+          reached.resolve();
+          await release.promise;
+        }
+      };
+      restoration = trackEngine.restoreDownloads();
+    } else {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("complete audio")),
+      );
+      disk.state.beforeClose = async (name) => {
+        if (name.endsWith(".audio")) {
+          reached.resolve();
+          await release.promise;
+        }
+      };
+      void trackEngine.download("closing");
+    }
+    await reached.promise;
+    session.disconnect();
+    let accepted = false;
+    const switching = session.connect({ ...input, username: "other" }).then((result) => {
+      accepted = result;
+      return result;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(accepted).toBe(false);
+    expect(selection.cache).toBe(original);
+    release.resolve();
+    await restoration;
+    expect(await switching).toBe(true);
+    session.disconnect();
+    expect(await session.connect(input)).toBe(true);
+    expect(selection.cache).not.toBe(original);
+    expect(selection.cache?.downloads.size).toBe(1);
+    session.disconnect();
+    await selection.cache!.enqueueDownload(
+      { id: "new-a", title: "New A", artist: "Artist", album: "Album" },
       "mp3",
       "audio/mpeg",
-      new Response("saved bytes"),
-      new AbortController().signal,
-    ),
-  ).rejects.toThrow();
-  disk.state.beforeClose = async () => {};
-  const reading = deferred();
-  const release = deferred();
-  let gated = false;
-  disk.state.beforeRead = async (name) => {
-    if (!gated && name.endsWith(".audio")) {
-      gated = true;
-      reading.resolve();
-      await release.promise;
-    }
-  };
-  const restoration = trackEngine.restoreDownloads();
-  await reading.promise;
-  session.disconnect();
-  let accepted = false;
-  const switching = session.connect({ ...input, username: "other" }).then((result) => {
-    accepted = result;
-    return result;
-  });
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  expect(accepted).toBe(false);
-  expect(selection.cache).toBe(original);
-  release.resolve();
-  await restoration;
-  expect(await switching).toBe(true);
-  session.disconnect();
-  expect(await session.connect(input)).toBe(true);
-  session.disconnect();
-  await selection.cache!.enqueueDownload(
-    { id: "new-a", title: "New A", artist: "Artist", album: "Album" },
-    "mp3",
-    "audio/mpeg",
-  );
-  const reopened = new Cache(original.key);
-  await reopened.load();
-  expect(reopened.downloadIntents.has(downloadKey("new-a", "mp3"))).toBe(true);
-  expect(reopened.downloads.size).toBe(1);
-});
-
-it("joins a suspended A byte-close before switching A to B and reopening A", async () => {
-  const fixture = setup();
-  const { session, selection, trackEngine, tracks, loadCache, saveLibrary } = fixture;
-  loadCache.mockRestore();
-  saveLibrary.mockRestore();
-  tracks.activate.mockRestore();
-  tracks.setConnection.mockRestore();
-  const disk = installDisk();
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => new Response("complete audio")),
-  );
-  expect(await session.connect(input)).toBe(true);
-  const original = selection.cache!;
-  const closing = deferred();
-  const release = deferred();
-  disk.state.beforeClose = async (name) => {
-    if (name.endsWith(".audio")) {
-      closing.resolve();
-      await release.promise;
-    }
-  };
-  void trackEngine.download("closing");
-  await closing.promise;
-  session.disconnect();
-  let accepted = false;
-  const switching = session.connect({ ...input, username: "other" }).then((result) => {
-    accepted = result;
-    return result;
-  });
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  expect(accepted).toBe(false);
-  expect(selection.cache).toBe(original);
-  release.resolve();
-  expect(await switching).toBe(true);
-  session.disconnect();
-  expect(await session.connect(input)).toBe(true);
-  expect(selection.cache).not.toBe(original);
-  expect(selection.cache?.downloads.size).toBe(1);
-  session.disconnect();
-  await selection.cache!.enqueueDownload(
-    { id: "new-a", title: "New A", artist: "Artist", album: "Album" },
-    "mp3",
-    "audio/mpeg",
-  );
-  const reopened = new Cache(original.key);
-  await reopened.load();
-  expect(reopened.downloadIntents.has(downloadKey("new-a", "mp3"))).toBe(true);
-  expect(reopened.downloads.size).toBe(1);
-});
+    );
+    const reopened = new Cache(original.key);
+    await reopened.load();
+    expect(reopened.downloadIntents.has(downloadKey("new-a", "mp3"))).toBe(true);
+    expect(reopened.downloads.size).toBe(1);
+  },
+);

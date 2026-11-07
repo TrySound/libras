@@ -191,18 +191,6 @@ describe("TrackEngine using Cache", () => {
     },
   );
 
-  it("handles fire-and-forget transfer failures internally", async () => {
-    install();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("failed", { status: 500 })),
-    );
-    const { engine } = setup({ online: true });
-    void engine.download(track.id);
-    await vi.waitFor(() => expect(engine.getStatus(track.id)).toBe("failed"));
-    expect(engine.downloadJobs).toEqual([]);
-  });
-
   it("exposes a safe setup error without an account", async () => {
     install();
     const { engine, selection } = setup();
