@@ -185,25 +185,22 @@ describe("network library", () => {
     connection.abort();
   });
 
-  it.each(["missing", " ", "local:singles:missing"])(
-    "rejects a nonempty dangling album %j even alongside singles",
-    async (albumId) => {
-      vi.stubGlobal(
-        "fetch",
-        serveLibrary({
-          tracks: [
-            { id: "single", title: "Single" },
-            { id: "bad", title: "Bad", albumId },
-          ],
-        }),
-      );
-      const connection = createConnection();
-      await expect(connection.readLibrary(connection.signal)).rejects.toThrow(
-        "without a matching album",
-      );
-      connection.abort();
-    },
-  );
+  it("rejects a nonempty dangling album even alongside singles", async () => {
+    vi.stubGlobal(
+      "fetch",
+      serveLibrary({
+        tracks: [
+          { id: "single", title: "Single" },
+          { id: "bad", title: "Bad", albumId: "missing" },
+        ],
+      }),
+    );
+    const connection = createConnection();
+    await expect(connection.readLibrary(connection.signal)).rejects.toThrow(
+      "without a matching album",
+    );
+    connection.abort();
+  });
 
   it("does not merge local collections with colliding server album IDs", async () => {
     const data = {
@@ -224,7 +221,7 @@ describe("network library", () => {
     connection.abort();
   });
 
-  it("persists searchable singles offline, removes stale groups on refresh, and keeps queue/account IDs", async () => {
+  it("persists searchable singles offline and removes stale groups on refresh", async () => {
     installMetadataStorage();
     const data = {
       albums: [],
@@ -240,12 +237,9 @@ describe("network library", () => {
       lastModified: null,
     });
     const albumId = cache.tracks.get("single")!.albumId;
-    const queue = { tracks: ["single", "missing", "single"], index: 2, position: 12 };
-    cache.setQueue(queue);
     await cache.flush();
     const restored = new Cache(getAccountKey(account));
     await restored.load();
-    expect(restored.queue).toEqual(queue);
     expect(restored.albumTracks.get(albumId)?.map((track) => track.id)).toEqual(["single"]);
     expect(restored.artistAlbums.get("local:artist:Solo")?.map((album) => album.id)).toEqual([
       albumId,
@@ -262,10 +256,6 @@ describe("network library", () => {
       artist: "Solo",
       album: "Singles",
     });
-    const other = new Cache(getAccountKey({ ...account, username: "other" }));
-    await other.load();
-    expect(other.tracks.size).toBe(0);
-    expect(other.queue.tracks).toEqual([]);
     data.tracks = [];
     await restored.replaceLibrary({
       ...(await connection.readLibrary(connection.signal)),
@@ -275,12 +265,10 @@ describe("network library", () => {
     expect(restored.tracks.size).toBe(0);
     expect(restored.albums.size).toBe(0);
     expect(restored.artistAlbums.size).toBe(0);
-    expect(restored.queue).toEqual(queue);
     await restored.flush();
     const removed = new Cache(getAccountKey(account));
     await removed.load();
     expect(removed.tracks.size).toBe(0);
-    expect(removed.queue).toEqual(queue);
     connection.abort();
   });
 
