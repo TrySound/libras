@@ -134,6 +134,54 @@ async function setup() {
   };
 }
 
+it("marks only the selected playing album across external queues, transport states and navigation", async () => {
+  const { playback, target, app, audio, getSource } = await setup();
+  const indicators = () =>
+    target.querySelectorAll('[aria-label="Artist details"] [role="img"][aria-label="Playing"]');
+  const expectAlbum = (title?: string) => {
+    flushSync();
+    expect(indicators()).toHaveLength(title ? 1 : 0);
+    if (!title) return;
+    const indicator = indicators()[0];
+    expect(indicator.querySelector('use[href="#icon-sound-bars"]')).not.toBeNull();
+    const link = indicator.closest("article")?.querySelector(`a[aria-label="Open ${title}"]`);
+    expect(link).not.toBeNull();
+    expect(link?.hasAttribute("aria-current")).toBe(false);
+  };
+  expectAlbum();
+  await playback.replaceQueueAndPlay(["first", "unrelated", "later", "later"], 3);
+  expectAlbum("Later");
+  playback.pause();
+  expectAlbum();
+  await playback.play();
+  expectAlbum("Later");
+  audio.dispatchEvent(new Event("waiting"));
+  expectAlbum();
+  audio.dispatchEvent(new Event("canplay"));
+  expectAlbum("Later");
+  const pending = deferred<TrackSource>();
+  getSource.mockReturnValueOnce(pending.promise);
+  const seek = playback.seek(30);
+  expectAlbum();
+  pending.resolve(source());
+  await seek;
+  expectAlbum("Later");
+  await playback.playIndex(0);
+  expectAlbum("Earlier");
+  await playback.playIndex(1);
+  expectAlbum();
+  await playback.playIndex(3);
+  expectAlbum("Later");
+  app.navigateArtist("co");
+  expectAlbum();
+  app.navigateArtist("guest");
+  expectAlbum("Later");
+  app.navigateArtist("artist");
+  expectAlbum("Later");
+  playback.clearQueue();
+  expectAlbum();
+});
+
 it("starts the whole catalog in existing album/track order and leaves album links and explicit menu Play intact", async () => {
   const { button, state, cache, replace, target } = await setup();
   state("paused");

@@ -462,7 +462,7 @@ it("keeps pause/cancel available offline but never substitutes another track for
   expect(replace).toHaveBeenCalledExactlyOnceWith(["first"]);
 });
 
-it("uses decorative action cues for album and selected queue occurrence and labels pending transports Pause", async () => {
+it("shows playing indicators only on selected track rows and labels pending transports Pause", async () => {
   const { button, state, playback, target, getSource } = await setup();
   const pending = deferred<TrackSource>();
   getSource.mockReturnValueOnce(pending.promise);
@@ -474,6 +474,7 @@ it("uses decorative action cues for album and selected queue occurrence and labe
   for (const scope of [albumScope, queueScope]) {
     expect(row(scope).querySelector('button[aria-label="Pause second"]')).not.toBeNull();
     expect(row(scope).querySelector('[aria-label="Loading playback"]')).toBeNull();
+    expect(row(scope).querySelector('use[href="#icon-sound-bars"]')).toBeNull();
     expect(row(scope).querySelector('[aria-hidden="true"]')).not.toBeNull();
   }
   const transportButtons = () =>
@@ -490,17 +491,21 @@ it("uses decorative action cues for album and selected queue occurrence and labe
   await playing;
   state("Playing");
   for (const scope of [albumScope, queueScope]) {
-    expect(row(scope).querySelector('use[href="#icon-pause"]')).not.toBeNull();
+    expect(row(scope).querySelector('use[href="#icon-sound-bars"]')).not.toBeNull();
+    expect(row(scope).querySelector('use[href="#icon-sound-bars-static"]')).not.toBeNull();
+    expect(row(scope).querySelector('button[aria-label="Pause second"]')).not.toBeNull();
     expect(row(scope).querySelector('[role="img"]')).toBeNull();
   }
   const queueRows = target.querySelectorAll("#player-dialog .track-row");
   expect(queueRows[0].hasAttribute("aria-current")).toBe(false);
+  expect(queueRows[0].querySelector('use[href="#icon-sound-bars"]')).toBeNull();
   expect(queueRows[0].querySelector('button[aria-label="Play second"]')).not.toBeNull();
   expect(queueRows[2].getAttribute("aria-current")).toBe("true");
   button().click();
   state("Playback paused");
   for (const scope of [albumScope, queueScope]) {
     expect(row(scope).querySelector('use[href="#icon-play"]')).not.toBeNull();
+    expect(row(scope).querySelector('use[href="#icon-sound-bars"]')).toBeNull();
     expect(row(scope).querySelector('button[aria-label="Play second"]')).not.toBeNull();
   }
 });

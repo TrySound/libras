@@ -178,7 +178,7 @@
               {#if currentTrack?.id === track.id && playbackState === "loading"}
                 <Loader />
               {:else if currentTrack?.id === track.id && playbackState === "playing"}
-                <Icon name="pause" color="var(--accent)" />
+                <Icon name="sound-bars" color="var(--accent)" />
               {:else if currentTrack?.id === track.id}
                 <Icon name="play" color="var(--accent)" />
               {:else if downloadStatus === "downloading"}

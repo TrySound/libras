@@ -15,7 +15,7 @@ it("renders a decorative icon using the inline sprite", async () => {
     const svg = target.querySelector("svg")!;
     expect(svg.getAttribute("width")).toBe("40");
     expect(svg.getAttribute("height")).toBe("40");
-    expect(svg.getAttribute("class")).toBe("text-subtle");
+    expect(svg.classList.contains("text-subtle")).toBe(true);
     expect(svg.getAttribute("aria-hidden")).toBe("true");
     expect(svg.querySelector("use")?.getAttribute("href")).toBe("#icon-play");
     expect(svg.querySelector("path, symbol")).toBeNull();
@@ -52,6 +52,25 @@ it("allows a semantic status color", async () => {
     flushSync();
     expect(target.querySelector("svg")?.getAttribute("color")).toBe("var(--accent)");
     expect(target.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  } finally {
+    await unmount(component);
+  }
+});
+
+it("provides a nonanimated sprite alternative for sound bars", async () => {
+  const target = document.createElement("div");
+  const component = mount(Icon, { target, props: { name: "sound-bars" } });
+  try {
+    flushSync();
+    expect(target.querySelector('use[href="#icon-sound-bars"]')).not.toBeNull();
+    expect(target.querySelector('use[href="#icon-sound-bars-static"]')).not.toBeNull();
+    const sprite = new DOMParser().parseFromString(
+      readFileSync("src/sprite.svg", "utf8"),
+      "image/svg+xml",
+    );
+    expect(sprite.querySelector("#icon-sound-bars animate")).not.toBeNull();
+    expect(sprite.querySelector("#icon-sound-bars-static rect")).not.toBeNull();
+    expect(sprite.querySelector("#icon-sound-bars-static animate")).toBeNull();
   } finally {
     await unmount(component);
   }

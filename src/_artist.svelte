@@ -162,7 +162,14 @@
           {@const ids = availableTrackIds(cache.albumTracks.get(album.id) ?? [])}
           <article class="menu-item track-row">
             <div class="row-sm">
-              <Artwork {covers} id={album.artworkId} size="sm" />
+              <span class="album-cover">
+                <Artwork {covers} id={album.artworkId} size="sm" />
+                {#if currentTrack?.albumId === album.id && playbackState === "playing"}
+                  <span class="album-playing" role="img" aria-label="Playing">
+                    <Icon name="sound-bars" />
+                  </span>
+                {/if}
+              </span>
               <div>
                 <p class="label">{album.title}</p>
                 <p class="caption text-subtle">

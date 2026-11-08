@@ -300,7 +300,7 @@
                     {#if index === cache.queue.index && loading}
                       <Loader />
                     {:else if index === cache.queue.index && playing}
-                      <Icon name="pause" color="var(--accent)" />
+                      <Icon name="sound-bars" color="var(--accent)" />
                     {:else if index === cache.queue.index}
                       <Icon name="play" color="var(--accent)" />
                     {:else if downloadStatus === "downloading"}
