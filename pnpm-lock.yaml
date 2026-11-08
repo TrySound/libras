@@ -207,12 +207,18 @@ importers:
 
   .:
     dependencies:
+      '@virtualstate/navigation':
+        specifier: 1.0.1-alpha.212
+        version: 1.0.1-alpha.212
       dialog-closedby-polyfill:
         specifier: ^1.3.0
         version: 1.3.0
       fuzzysort:
         specifier: 4.0.2
         version: 4.0.2
+      invokers-polyfill:
+        specifier: ^1.0.4
+        version: 1.0.4
       js-md5:
         specifier: 0.9.2
         version: 0.9.2
@@ -262,6 +268,15 @@ importers:
 
   website:
     dependencies:
+      '@virtualstate/navigation':
+        specifier: 1.0.1-alpha.212
+        version: 1.0.1-alpha.212
+      dialog-closedby-polyfill:
+        specifier: ^1.3.0
+        version: 1.3.0
+      invokers-polyfill:
+        specifier: ^1.0.4
+        version: 1.0.4
       svelte:
         specifier: 5.57.0
         version: 5.57.0
@@ -1279,6 +1294,12 @@ packages:
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
+  '@virtualstate/composite-key@1.0.0':
+    resolution: {integrity: sha512-5G3RT87X1w39UQyBvqQpTfsxK9FjoKlXfonvIY9esAHe9d0vOWVGtbElJppwJKWzh508Ja6gWn7W7dWHwj50Jw==}
+
+  '@virtualstate/navigation@1.0.1-alpha.212':
+    resolution: {integrity: sha512-eJOaPBMMysztiuEQzvazsKlMCK+AE+f84XtCG36+jbHWKVqO3Ie7ZVATiaUECGOz7U67TRUdGS1jn6H4c9nsgA==}
+
   '@vitest/expect@4.1.11':
     resolution: {integrity: sha512-VX2x5vNJXET47KAFzwERI+KRMtTTCSWTfSMKsW7JsUsXV4psq++e3DvZpuTDOpHcxytiDs6p2nhVb2tVDiiUYw==}
 
@@ -1693,6 +1714,9 @@ packages:
   internal-slot@1.1.0:
     resolution: {integrity: sha512-4gd7VpWNQNB4UKKCFFVcp1AVv+FMOgs9NKzjHKusc8jTMhd5eL1NqQqOpE0KzMds804/yHlglp3uxgluOqAPLw==}
     engines: {node: '>= 0.4'}
+
+  invokers-polyfill@1.0.4:
+    resolution: {integrity: sha512-mgs5JuNbd9aQ++wL3Gk2poHfZejTN9N/UlH9IGOsfkEFnPiN3A72bYf4mL/62YF0htWtaJ0WqfGdS0V6xdwywg==}
 
   is-array-buffer@3.0.5:
     resolution: {integrity: sha512-DDfANUiiG2wC1qawP66qlTugJeL5HyzMpfr8lLK+jMQirGzNod0B12cFB/9q838Ru27sBwfw78/rdoU7RERz6A==}
@@ -3618,6 +3642,12 @@ snapshots:
     dependencies:
       '@types/node': 26.4.1
 
+  '@virtualstate/composite-key@1.0.0': {}
+
+  '@virtualstate/navigation@1.0.1-alpha.212':
+    dependencies:
+      '@virtualstate/composite-key': 1.0.0
+
   '@vitest/expect@4.1.11':
     dependencies:
       '@standard-schema/spec': 1.1.0
@@ -4101,6 +4131,8 @@ snapshots:
       es-errors: 1.3.0
       hasown: 2.0.4
       side-channel: 1.1.1
+
+  invokers-polyfill@1.0.4: {}
 
   is-array-buffer@3.0.5:
     dependencies:

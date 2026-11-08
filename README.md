@@ -28,6 +28,10 @@ Just trying it out? Connect to the [Navidrome demo server](https://demo.navidrom
 
 You'll need a reachable **HTTPS server with a Subsonic-compatible API**, such as [Navidrome](https://www.navidrome.org/), supporting OpenSubsonic's empty-query `search3` for library synchronization and configured to allow browser requests from `https://libras-music.app` (CORS). Libras is a player, not a music hosting service; bring your own server and library.
 
+### Browser support
+
+Safari 26.0 or newer is required; older Safari versions are not supported. The app uses native URLPattern and OPFS writable files. Safari 26.0–26.1 load Navigation API and invoker commands polyfills on demand; Safari 26.2+ use the native APIs. The dialog `closedby` polyfill and relative `rgb()` colors remain necessary for Safari 26. The standalone styleguide uses native browser features without polyfills.
+
 ### Authentication and device storage
 
 Libras tries salted token authentication first; your password stays in the browser for that attempt. Only a structured server rejection of token authentication (Subsonic code 41 or 42) automatically retries the same username and password over HTTPS, including on localhost. Invalid credentials, connection failures, and other errors never trigger a password retry.

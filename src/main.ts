@@ -1,4 +1,3 @@
-import "dialog-closedby-polyfill";
 import { mount } from "svelte";
 import App from "./app.svelte";
 import WebappUpdater from "./webapp-updater.svelte";
@@ -12,11 +11,25 @@ if (!target) {
   throw new Error("App target was not found.");
 }
 
-mount(App, {
-  target,
-  props: {
-    network: new Network(),
-    auth: new AuthStore(),
-    updaterComponent: WebappUpdater,
-  },
-});
+async function start(target: HTMLElement) {
+  if (!("closedBy" in HTMLDialogElement.prototype)) {
+    await import("dialog-closedby-polyfill");
+  }
+  if (!("commandForElement" in HTMLButtonElement.prototype)) {
+    await import("invokers-polyfill");
+  }
+  if (typeof window.navigation === "undefined") {
+    await import("@virtualstate/navigation/polyfill");
+  }
+
+  mount(App, {
+    target,
+    props: {
+      network: new Network(),
+      auth: new AuthStore(),
+      updaterComponent: WebappUpdater,
+    },
+  });
+}
+
+void start(target);
