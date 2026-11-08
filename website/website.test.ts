@@ -108,21 +108,12 @@ it("keeps home in the same tab and opens apps and external links separately", ()
   const page = landingPage();
   expect(page.querySelector("header .brand")?.textContent).toContain("Libras");
   expect(page.querySelector(".site-hero .brand")).toBeNull();
-  expect(page.querySelectorAll('header nav a.button[data-size="text"]')).toHaveLength(2);
   expect(page.querySelectorAll('main .button[data-size="large-text"]')).toHaveLength(6);
-  expect(page.querySelector("header nav a[data-variant='primary']")?.textContent?.trim()).toBe(
-    "Open player",
-  );
   const links = [...page.querySelectorAll("header a")];
-  expect(links.map((link) => link.textContent?.trim())).toEqual([
-    "Libras",
-    "GitHub",
-    "Open player",
-  ]);
+  expect(links.map((link) => link.textContent?.trim())).toEqual(["Libras", "GitHub"]);
   expect(links.map((link) => link.getAttribute("href"))).toEqual([
     "/",
     "https://github.com/TrySound/libras",
-    "/webapp/",
   ]);
   expect(links[0].hasAttribute("target")).toBe(false);
   for (const link of links.slice(1)) {
