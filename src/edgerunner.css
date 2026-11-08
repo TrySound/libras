@@ -1094,7 +1094,7 @@
     place-items: center;
     border-radius: var(--radius-sm);
     corner-shape: var(--corner-shape);
-    color: var(--tile-text);
+    color: var(--accent);
     background: rgb(from var(--palette-black) r g b / 75%);
     pointer-events: none;
   }
