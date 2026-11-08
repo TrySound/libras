@@ -139,6 +139,22 @@ class Disk {
     return (await this.#directory()).getDirectoryHandle("files", { create: true });
   }
 
+  /** Open only the named file, validating fresh metadata without buffering bytes. */
+  async openBinary(record: BinaryRecord, signal?: AbortSignal): Promise<File | null> {
+    signal?.throwIfAborted();
+    try {
+      const directory = await this.files();
+      signal?.throwIfAborted();
+      const file = await (await directory.getFileHandle(record.fileName)).getFile();
+      signal?.throwIfAborted();
+      return file.size === record.size ? file : null;
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason;
+      if (error instanceof DOMException && error.name === "NotFoundError") return null;
+      throw error;
+    }
+  }
+
   async lockDownload<T>(key: string, signal: AbortSignal, operation: () => Promise<T>) {
     signal.throwIfAborted();
     const name = `libras-download:${await this.key}:${key}.audio`;
@@ -398,16 +414,9 @@ class BinaryCatalog<R extends BinaryRecord> {
       await this.store.load(signal);
       const record = this.records.get(key);
       if (!record) return null;
-      const directory = await this.disk?.files();
-      if (!directory) return null;
-      signal?.throwIfAborted();
-      try {
-        const file = await (await directory.getFileHandle(record.fileName)).getFile();
-        signal?.throwIfAborted();
-        if (file.size === record.size) return { file, record };
-      } catch (error) {
-        if (!(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
-      }
+      if (!this.disk) return null;
+      const file = await this.disk.openBinary(record, signal);
+      if (file) return { file, record };
       signal?.throwIfAborted();
       this.#replace(key);
       return null;
@@ -764,21 +773,6 @@ export class Cache {
     }
   }
 
-  /** Open only the owned named file, validating fresh metadata without buffering bytes. */
-  async #openDownload(record: BinaryRecord, signal?: AbortSignal): Promise<File | null> {
-    signal?.throwIfAborted();
-    try {
-      const directory = await this.#requireDisk().files();
-      const file = await (await directory.getFileHandle(record.fileName)).getFile();
-      signal?.throwIfAborted();
-      return file.size === record.size ? file : null;
-    } catch (error) {
-      if (signal?.aborted) throw signal.reason;
-      if (error instanceof DOMException && error.name === "NotFoundError") return null;
-      throw error;
-    }
-  }
-
   async #writeDownloads(records: ReadonlyMap<string, DownloadEntry>) {
     if (this.#downloadsBlocked) throw new DownloadError();
     await this.#requireDisk().write("downloads", { version: 2, records: [...records.values()] });
@@ -817,7 +811,10 @@ export class Cache {
         for (const [key, failure] of this.downloads) {
           if (failure.status !== "failed") continue;
           const completed = restored.get(key);
-          if (completed?.status === "completed" && (await this.#openDownload(completed, signal)))
+          if (
+            completed?.status === "completed" &&
+            (await this.#requireDisk().openBinary(completed, signal))
+          )
             continue;
           restored.set(key, failure);
         }
@@ -836,7 +833,7 @@ export class Cache {
     for (const [key, entry] of records) {
       signal?.throwIfAborted();
       if (entry.status === "completed") {
-        if (!(await this.#openDownload(entry, signal))) {
+        if (!(await this.#requireDisk().openBinary(entry, signal))) {
           incomplete.push(entry.fileName);
           next ??= new Map(records);
           next.delete(key);
@@ -850,7 +847,10 @@ export class Cache {
       } else if (
         entry.status === "queued" &&
         entry.attempt?.size &&
-        (await this.#openDownload({ ...entry.attempt, size: entry.attempt.size }, signal))
+        (await this.#requireDisk().openBinary(
+          { ...entry.attempt, size: entry.attempt.size },
+          signal,
+        ))
       ) {
         next ??= new Map(records);
         next.set(key, {
@@ -1095,7 +1095,7 @@ export class Cache {
       });
       const record = this.completedDownloads.get(key);
       if (!record) return null;
-      const file = await this.#openDownload(record, signal);
+      const file = await this.#requireDisk().openBinary(record, signal);
       if (file) return file;
       // Legacy fallback is read-only until the complete migration has committed.
       if (this.#downloadsLoaded && !this.#downloadsBlocked)
