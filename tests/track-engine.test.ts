@@ -614,11 +614,12 @@ describe("TrackEngine using Cache", () => {
     const fetcher = vi.fn(async () => new Response(body));
     vi.stubGlobal("fetch", fetcher);
     const network = new Network();
+    const controller = new AbortController();
     const { engine, cache } = setup({ concurrency: 1 });
-    engine.setDownloadConnection(network.openDownloadAccess(auth));
+    engine.setDownloadConnection(network.open(auth, controller.signal).audio);
     const results = Promise.allSettled([engine.download("active"), engine.download("queued")]);
     await wrote.promise;
-    network.closeDownloadAccess();
+    controller.abort();
     expect((await results).map((result) => result.status)).toEqual(["rejected", "rejected"]);
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     expect(fetcher).toHaveBeenCalledOnce();

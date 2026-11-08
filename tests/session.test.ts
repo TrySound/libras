@@ -848,9 +848,9 @@ describe("session", () => {
 
   it("closes download access when the session is destroyed", async () => {
     const { session, network } = setup(true);
-    const open = vi.spyOn(network, "openDownloadAccess");
+    const open = vi.spyOn(network, "open");
     session.start();
-    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(session.status).toBe("connected"));
     const connection = open.mock.results[0].value;
     session.destroy();
     expect(connection.signal.aborted).toBe(true);
@@ -859,7 +859,7 @@ describe("session", () => {
   it("retains download access on offline startup without browsing sync or restoring cleared credentials", async () => {
     const { session, storage, network, metadata, auth } = setup(true);
     storage.setItem("navidrome-offline-mode", "true");
-    const open = vi.spyOn(network, "openDownloadAccess");
+    const open = vi.spyOn(network, "open");
     session.start();
     await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
     expect(metadata.getModifiedAt).not.toHaveBeenCalled();

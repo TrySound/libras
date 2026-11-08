@@ -519,7 +519,6 @@ type CandidateConnection = { handle: NetworkConnection; client: SubsonicApi };
 export class Network {
   #mode = $state<"online" | "offline">("offline");
   #active?: SubsonicApi;
-  #downloads?: SubsonicApi;
   #candidate?: CandidateConnection;
   #createClient: SubsonicClientFactory;
 
@@ -547,35 +546,34 @@ export class Network {
     this.#active = undefined;
   }
 
-  /** Requested downloads have their own cancellation domain, never browsing/sync access. */
-  openDownloadAccess(auth: Auth): AudioConnection {
+  #createConnection(auth: Auth): CandidateConnection {
     if (!v.safeParse(authSchema, auth).success)
       throw new Error("The Subsonic authentication is invalid.");
     const client = this.#createClient({ host: auth.host, credentials: auth.credentials }, {});
-    const account = Object.freeze({ host: auth.host, username: auth.username });
-    const audio = audioAccess(account, client, (run) => this.#request(client, run));
-    this.closeDownloadAccess();
-    this.#downloads = client;
-    return audio;
-  }
-
-  closeDownloadAccess() {
-    this.#downloads?.abort();
-    this.#downloads = undefined;
-  }
-
-  /** Explicit login validation is allowed while normal access remains offline. */
-  prepare(auth: Auth): NetworkConnection {
-    if (!v.safeParse(authSchema, auth).success)
-      throw new Error("The Subsonic authentication is invalid.");
-    const client = this.#createClient({ host: auth.host, credentials: auth.credentials }, {});
-    this.cancelPending();
     const account = Object.freeze({ host: auth.host, username: auth.username });
     const request: Request = (run) => this.#request(client, run);
     const metadata = metadataAccess(account, client, request);
     const connection = Object.freeze({ account, signal: client.signal, metadata });
-    this.#candidate = { handle: connection, client };
-    return connection;
+    return { handle: connection, client };
+  }
+
+  /** Explicit login validation is allowed while normal access remains offline. */
+  prepare(auth: Auth): NetworkConnection {
+    const candidate = this.#createConnection(auth);
+    this.cancelPending();
+    this.#candidate = candidate;
+    return candidate.handle;
+  }
+
+  #access({ handle: connection, client }: CandidateConnection): ActiveNetworkConnection {
+    const request: Request = (run) => this.#request(client, run);
+    return Object.freeze({
+      ...connection,
+      queue: queueAccess(connection.account, client, request),
+      playlists: playlistAccess(connection.account, client, request),
+      artwork: artworkAccess(connection.account, client, request),
+      audio: audioAccess(connection.account, client, request),
+    });
   }
 
   /** Validate explicit login without fetching a library or enabling normal access. */
@@ -594,15 +592,9 @@ export class Network {
     if (!candidate || candidate.handle !== connection) {
       throw new DOMException("Connection superseded.", "AbortError");
     }
-    const { client } = candidate;
-    const request: Request = (run) => this.#request(client, run);
-    const queue = queueAccess(connection.account, client, request);
-    const playlists = playlistAccess(connection.account, client, request);
-    const artwork = artworkAccess(connection.account, client, request);
-    const audio = audioAccess(connection.account, client, request);
-    const active = Object.freeze({ ...connection, queue, playlists, artwork, audio });
+    const active = this.#access(candidate);
     this.#active?.abort();
-    this.#active = client;
+    this.#active = candidate.client;
     this.#candidate = undefined;
     this.#mode = "online";
     return active;
@@ -615,8 +607,15 @@ export class Network {
     return result;
   }
 
-  /** Resume an authenticated session after access has explicitly been enabled. */
-  open(auth: Auth) {
+  /** Open authenticated access. A supplied signal owns an independent lifetime,
+   * including while browsing is offline; otherwise Network owns browsing access. */
+  open(auth: Auth, signal?: AbortSignal) {
+    if (signal) {
+      signal.throwIfAborted();
+      const connection = this.#createConnection(auth);
+      signal.addEventListener("abort", () => connection.client.abort(), { once: true });
+      return this.#access(connection);
+    }
     if (this.#mode === "offline") throw new Error("Network access is offline.");
     const connection = this.prepare(auth);
     return this.accept(connection);

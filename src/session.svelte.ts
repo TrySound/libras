@@ -54,6 +54,7 @@ export class Session {
   #restoration: Promise<void> = Promise.resolve();
   #loadController?: AbortController;
   #authController?: AbortController;
+  #downloadController?: AbortController;
   #operationId = 0;
   #started = false;
   #destroyed = false;
@@ -63,10 +64,12 @@ export class Session {
   }
 
   #openDownloadAccess() {
-    if (this.auth)
-      this.#options.tracks.setDownloadConnection(
-        this.#options.network.openDownloadAccess(this.auth),
-      );
+    if (!this.auth) return;
+    this.#downloadController?.abort();
+    const controller = new AbortController();
+    const connection = this.#options.network.open(this.auth, controller.signal);
+    this.#downloadController = controller;
+    this.#options.tracks.setDownloadConnection(connection.audio);
   }
 
   get libraryProgress() {
@@ -336,7 +339,8 @@ export class Session {
     const operationId = this.#beginOperation();
     this.auth = null;
     this.#detach();
-    this.#options.network.closeDownloadAccess();
+    this.#downloadController?.abort();
+    this.#downloadController = undefined;
     this.#options.tracks.setDownloadConnection(undefined);
     this.status = "disconnected";
     try {
@@ -462,7 +466,8 @@ export class Session {
     this.#loadController?.abort();
     this.#loadController = undefined;
     this.#detach();
-    this.#options.network.closeDownloadAccess();
+    this.#downloadController?.abort();
+    this.#downloadController = undefined;
     this.#options.tracks.setDownloadConnection(undefined);
   }
 }
