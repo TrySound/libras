@@ -166,7 +166,16 @@
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
-  <ArtistRoute {params} {cache} {covers} {trackEngine} {session} {playback} {appName} />
+  <ArtistRoute
+    {params}
+    {cache}
+    {covers}
+    {trackEngine}
+    {session}
+    {playback}
+    {appName}
+    playbackState={playbackLoading ? "loading" : player?.playing ? "playing" : "paused"}
+  />
 {/snippet}
 
 {#snippet albumRoute(params: RouteParams)}
