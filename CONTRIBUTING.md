@@ -32,7 +32,7 @@ The workspace contains the root app (`src/`, `tests/`) and `@libras/website` (`w
 
 | Module                       | Owns                                                                                             |
 | ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `Session`                    | Account/cache activation, startup, cancellation, disconnect, and refresh coordination              |
+| `Session`                    | Account/cache activation, startup, cancellation, disconnect, and refresh coordination            |
 | `AuthStore` / `authenticate` | Credential persistence / token derivation and automatic HTTPS password fallback                  |
 | `Network` / `SubsonicClient` | Connection cancellation, normalized domain access / Subsonic protocol requests                   |
 | `Cache`                      | Account-scoped library, queue, images, downloads, playlists, and OPFS persistence                |
@@ -47,7 +47,7 @@ Routes use the bare query, for example `/webapp/?/library/artist/123#section`. E
 ### Persistence and account safety
 
 - Read Cache collections directly; change them through explicit methods. Session owns account details; Cache accepts an opaque account key and hashes it for storage. An undefined key creates an empty, non-persisting fallback. A defined key does not mean hydration succeeded.
-- Memory updates immediately; disk checkpoints happen asynchronously. Failed writes retain local state and report errors. Do not treat visible state as proof of persistence.
+- Library, queue, playlist, and image memory updates checkpoint asynchronously. Downloads instead await explicit queued/failed/completed commits in one versioned store; failed jobs require explicit Retry or a bulk Download action. Do not treat visible state as proof of persistence. Unreadable download documents are preserved, not reset; readable saved files remain usable.
 - Credentials use localStorage only, until disconnect. Token login stores username/token/salt; verified direct-password fallback stores the actual password. localStorage is not encrypted and is readable by same-origin scripts. Never log credentials or credential-bearing URLs. Legacy token records migrate without changing account keys; migration writeback is best-effort.
 - Disconnect retains local data for offline use. Same-account reconnects reuse the live cache to preserve edits. Account changes drain old writes and retire resources before committing the new workspace. Late results must not leak into a different account.
 - Startup and manual refresh pull server state. Reconnecting must not upload an offline queue automatically, and refresh must not replace a playing or paused queue.
@@ -104,6 +104,8 @@ Select suites for the behavior being changed:
 | `atmosphere.test.cjs`                     | Document/dialog scroll timelines; self-contained, no server required                                                                    |
 | `website-cascade.test.cjs`                | Script-free landing layout, keyboard/FAQ behavior, and standalone demo journeys                                                         |
 | `design-improvements.test.cjs`            | Compact details, full-height player, queue anchors, confirmation, gradients, popover timing, titles, and demo guidance (website server) |
+
+`cache-downloads.test.cjs` exercises native OPFS recovery by importing the owning modules. Run it against the app **dev** server; Downloads, Settings, and navigation checks can run against production preview.
 
 Run the website suite against the website server, not the app:
 

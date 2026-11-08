@@ -2,7 +2,7 @@ import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
 import { Cache, downloadKey } from "../src/cache.svelte";
-import { installDisk } from "./cache-test-helpers";
+import { completedDownloadCount, expectCompletedDownload, installDisk } from "./cache-test-helpers";
 import { observeCache } from "./cache-reactivity.test.svelte";
 import { deferred } from "./session-test-helpers";
 
@@ -17,7 +17,7 @@ function path(disk: ReturnType<typeof installDisk>) {
   return [...disk.files.keys()].find((name) => name.endsWith("/downloads.json"))!;
 }
 function catalog(disk: ReturnType<typeof installDisk>) {
-  return JSON.parse(disk.files.get(path(disk))!);
+  return JSON.parse(disk.files.get(path(disk))!).records;
 }
 function stream() {
   let controller!: ReadableStreamDefaultController<Uint8Array>;
@@ -51,7 +51,7 @@ describe("download cache foundation", () => {
     const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(restored.error).toBeUndefined();
-    expect(restored.downloads.get(key)).toEqual(oldRecord);
+    expect(expectCompletedDownload(restored, key)).toEqual(oldRecord);
     expect(restored.queue).toEqual(queue);
     expect(disk.state.writes).toBe(writes);
     expect(catalog(disk)).toEqual(originalCatalog);
@@ -66,7 +66,7 @@ describe("download cache foundation", () => {
       new Response("new audio"),
       signal(),
     );
-    expect(catalog(disk)).toEqual(originalCatalog);
+    expect(catalog(disk)).toHaveLength(2);
     await merging.flush();
     expect(catalog(disk)).toHaveLength(2);
     expect(catalog(disk)[0]).toEqual(oldRecord);
@@ -74,7 +74,7 @@ describe("download cache foundation", () => {
     const final = new Cache(getAccountKey(account));
     await final.load();
     expect(final.queue).toEqual(queue);
-    expect(final.downloads.get(key)?.fileName).toBe(oldRecord.fileName);
+    expect(expectCompletedDownload(final, key).fileName).toBe(oldRecord.fileName);
     expect(await (await final.readDownload(track.id, "mp3"))!.text()).toBe("original audio");
     expect(await (await final.readDownload("next", "mp3"))!.text()).toBe("new audio");
   });
@@ -87,22 +87,25 @@ describe("download cache foundation", () => {
       await save(original);
       await original.flush();
       const record = catalog(disk)[0];
-      disk.files.set(path(disk), JSON.stringify([{ ...record, track: { ...track, ...extra } }]));
+      disk.files.set(
+        path(disk),
+        JSON.stringify({ version: 2, records: [{ ...record, track: { ...track, ...extra } }] }),
+      );
       const restored = new Cache(getAccountKey(account));
       await expect(restored.load()).rejects.toBeInstanceOf(AggregateError);
       expect(restored.error).toBeDefined();
-      expect(restored.downloads.size).toBe(0);
+      expect(completedDownloadCount(restored)).toBe(0);
       expect(disk.blobs.size).toBe(1);
     },
   );
 
-  it("restores independent descriptions without library metadata or eager binary reads", async () => {
+  it("restores independent descriptions without library metadata or reading audio into memory", async () => {
     const disk = installDisk();
     const cache = new Cache(getAccountKey(account));
     expect(disk.getDirectory).not.toHaveBeenCalled();
     const file = await save(cache);
     expect(await file.text()).toBe("audio");
-    expect(cache.downloads.get(key)).toMatchObject({
+    expect(expectCompletedDownload(cache, key)).toMatchObject({
       track,
       format: "mp3",
       contentType: "audio/mpeg",
@@ -120,7 +123,7 @@ describe("download cache foundation", () => {
     await restored.load();
     expect(restored.artists.size).toBe(0);
     expect(restored.downloads).toEqual(cache.downloads);
-    expect(reads.some((name) => name.endsWith(".audio"))).toBe(false);
+    expect(reads.filter((name) => name.endsWith(".audio"))).toHaveLength(1);
     const bytes = vi.spyOn(File.prototype, "arrayBuffer");
     expect(await restored.readDownload(track.id, "mp3")).toBeInstanceOf(File);
     expect(bytes).not.toHaveBeenCalled();
@@ -132,7 +135,7 @@ describe("download cache foundation", () => {
     const cache = new Cache(getAccountKey(account));
     const source = stream();
     const seen: number[] = [];
-    const stop = observeCache(() => seen.push(cache.downloads.size));
+    const stop = observeCache(() => seen.push(completedDownloadCount(cache)));
     flushSync();
     const gate = deferred();
     const closing = deferred();
@@ -175,7 +178,7 @@ describe("download cache foundation", () => {
         source.controller.error(new Error("Truncated stream"));
       }
       await expect(pending).rejects.toThrow();
-      expect(cache.downloads.size).toBe(0);
+      expect(completedDownloadCount(cache)).toBe(0);
       expect(cache.error).toBeDefined();
       expect(disk.blobs.size).toBe(0);
       expect([...disk.files.keys()].some((name) => name.endsWith(".audio"))).toBe(false);
@@ -200,10 +203,11 @@ describe("download cache foundation", () => {
     abort.abort();
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(source.cancel).toHaveBeenCalledOnce();
-    expect(cache.downloads.size).toBe(0);
+    expect(completedDownloadCount(cache)).toBe(0);
     expect(cache.error).toBeUndefined();
     expect(disk.blobs.size).toBe(0);
-    expect(disk.files.size).toBe(0);
+    expect([...disk.files.keys()].every((name) => name.endsWith("downloads.json"))).toBe(true);
+    expect(cache.downloads.get(key)?.status).toBe("queued");
   });
 
   it("reuses a concurrent winner and cancels the unused response", async () => {
@@ -228,7 +232,7 @@ describe("download cache foundation", () => {
     expect(await results[1].text()).toBe("winner");
     expect(unused.cancel).toHaveBeenCalledOnce();
     expect(disk.blobs.size).toBe(1);
-    expect(second.downloads).toEqual(first.downloads);
+    expect(expectCompletedDownload(second, key)).toMatchObject({ track, size: 6 });
   });
 
   it("cancels a lock waiter and releases its unused response before the winner finishes", async () => {
@@ -279,7 +283,7 @@ describe("download cache foundation", () => {
     two.controller.enqueue(new TextEncoder().encode("raw"));
     two.controller.close();
     await Promise.all(pending);
-    expect(cache.downloads.size).toBe(2);
+    expect(completedDownloadCount(cache)).toBe(2);
     expect(await (await cache.readDownload(track.id, "raw"))!.text()).toBe("raw");
   });
 
@@ -294,7 +298,7 @@ describe("download cache foundation", () => {
     const b = second.saveDownload(track, "mp3", "audio/mpeg", two.response, signal());
     await vi.waitFor(() => {
       expect(one.response.bodyUsed).toBe(true);
-      expect(two.response.bodyUsed).toBe(true);
+      expect(two.response.bodyUsed).toBe(false);
     });
     one.controller.enqueue(new TextEncoder().encode("winner"));
     one.controller.close();
@@ -312,17 +316,17 @@ describe("download cache foundation", () => {
       const cache = new Cache(getAccountKey(account));
       await save(cache);
       await cache.saveDownload(track, "raw", "audio/flac", new Response("original"), signal());
-      const fileName = cache.downloads.get(key)!.fileName;
+      const fileName = expectCompletedDownload(cache, key).fileName;
       const binary = [...disk.blobs.keys()].find((name) => name.endsWith(fileName))!;
       if (kind === "missing") disk.blobs.delete(binary);
       else disk.blobs.set(binary, new Blob(["x"]));
       expect(await cache.readDownload(track.id, "mp3")).toBeNull();
-      expect(cache.downloads.size).toBe(1);
+      expect(completedDownloadCount(cache)).toBe(1);
       await cache.flush();
-      expect(catalog(disk)).toHaveLength(1);
+      expect(catalog(disk)).toHaveLength(2);
       expect(disk.blobs.has(binary)).toBe(false);
       await save(cache, "replacement");
-      expect(cache.downloads.get(key)!.fileName).not.toBe(fileName);
+      expect(expectCompletedDownload(cache, key).fileName).not.toBe(fileName);
       expect(disk.blobs.size).toBe(2);
     },
   );
@@ -332,14 +336,14 @@ describe("download cache foundation", () => {
     const cache = new Cache(getAccountKey(account));
     await save(cache);
     await cache.flush();
-    const original = cache.downloads;
+    const original = expectCompletedDownload(cache, key);
     disk.state.beforeRead = async (name) => {
       if (name.endsWith(".audio")) throw new DOMException("Denied", "NotAllowedError");
     };
     await expect(cache.readDownload(track.id, "mp3")).rejects.toMatchObject({
-      name: "NotAllowedError",
+      name: "DownloadError",
     });
-    expect(cache.downloads).toBe(original);
+    expect(expectCompletedDownload(cache, key)).toEqual(original);
     const abort = new AbortController();
     disk.state.beforeRead = async (name) => {
       if (name.endsWith(".audio")) abort.abort();
@@ -347,7 +351,7 @@ describe("download cache foundation", () => {
     await expect(cache.readDownload(track.id, "mp3", abort.signal)).rejects.toMatchObject({
       name: "AbortError",
     });
-    expect(cache.downloads).toBe(original);
+    expect(expectCompletedDownload(cache, key)).toEqual(original);
     expect(catalog(disk)).toHaveLength(1);
   });
 
@@ -357,7 +361,7 @@ describe("download cache foundation", () => {
     await save(first, "first");
     const second = new Cache(getAccountKey({ ...account, username: "other" }));
     await second.load();
-    expect(second.downloads.size).toBe(0);
+    expect(completedDownloadCount(second)).toBe(0);
     expect(await second.readDownload(track.id, "mp3")).toBeNull();
     await save(second, "other");
     expect(await (await first.readDownload(track.id, "mp3"))!.text()).toBe("first");
@@ -382,7 +386,8 @@ describe("download cache foundation", () => {
       if (kind === "duplicate") data.push(data[0]);
       if (kind === "shared file") data.push({ ...data[0], format: "raw" });
       if (kind === "unsafe filename") data[0].fileName = "../outside.audio";
-      const value = kind === "broken" ? "broken JSON" : JSON.stringify(data);
+      const value =
+        kind === "broken" ? "broken JSON" : JSON.stringify({ version: 2, records: data });
       disk.files.set(path(disk), value);
       const cache = new Cache(getAccountKey(account));
       await expect(cache.load()).rejects.toBeInstanceOf(AggregateError);
@@ -406,7 +411,7 @@ describe("download cache foundation", () => {
     disk.files.set(path(disk).replace("downloads.json", "library.json"), "broken JSON");
     const cache = new Cache(getAccountKey(account));
     await expect(cache.load()).rejects.toMatchObject({ errors: [expect.any(Error)] });
-    expect(cache.downloads.size).toBe(1);
+    expect(completedDownloadCount(cache)).toBe(1);
     expect(await (await cache.readDownload(track.id, "mp3"))!.text()).toBe("audio");
   });
 
@@ -430,12 +435,12 @@ describe("download cache foundation", () => {
       const abort = new AbortController();
       const loading = cache.load(abort.signal);
       await reading.promise;
-      expect(cache.downloads.size).toBe(0);
+      expect(completedDownloadCount(cache)).toBe(0);
       if (cancel) {
         abort.abort();
         gate.resolve();
         await expect(loading).rejects.toMatchObject({ name: "AbortError" });
-        expect(cache.downloads.size).toBe(0);
+        expect(completedDownloadCount(cache)).toBe(0);
       } else {
         const saving = cache.saveDownload(
           track,
@@ -446,7 +451,7 @@ describe("download cache foundation", () => {
         );
         gate.resolve();
         await Promise.all([loading, saving]);
-        expect(cache.downloads.size).toBe(2);
+        expect(completedDownloadCount(cache)).toBe(2);
         await cache.flush();
         expect(catalog(disk)).toHaveLength(2);
       }
@@ -463,6 +468,215 @@ describe("download cache foundation", () => {
     source.controller.enqueue(new TextEncoder().encode("audio"));
     source.controller.close();
     await pending;
-    expect(cache.downloads.get(key)!.track.title).toBe("Track");
+    expect(expectCompletedDownload(cache, key).track.title).toBe("Track");
   });
 });
+
+describe("durable download intent", () => {
+  it("acknowledges ordered whitelisted intent only after its canonical close", async () => {
+    const disk = installDisk();
+    const cache = new Cache(getAccountKey(account));
+    const closing = deferred();
+    const release = deferred();
+    disk.state.beforeClose = async (name) => {
+      if (name.endsWith("downloads.json")) {
+        closing.resolve();
+        await release.promise;
+      }
+    };
+    let acknowledged = false;
+    const input = { ...track, url: "https://secret/?token=secret", credentials: "secret" };
+    const saving = cache.enqueueDownload(input, "mp3", "audio/mpeg").then(() => {
+      acknowledged = true;
+    });
+    await closing.promise;
+    expect(acknowledged).toBe(false);
+    expect(cache.downloads.size).toBe(0);
+    release.resolve();
+    await saving;
+    await cache.enqueueDownload({ ...track, id: "next" }, "raw", "audio/flac");
+    await cache.enqueueDownload(track, "mp3", "audio/mpeg");
+    const restored = new Cache(getAccountKey(account));
+    await restored.load();
+    expect([...restored.downloads.keys()]).toEqual([key, downloadKey("next", "raw")]);
+    expect([...disk.files.values()].join()).not.toMatch(/secret|credentials|url/);
+  });
+
+  it.each(["bytes", "catalog"])(
+    "reconciles interruption at %s without adopting partial bytes or refetching complete bytes",
+    async (stage) => {
+      const disk = installDisk();
+      const cache = new Cache(getAccountKey(account));
+      let prepared = false;
+      disk.state.beforeClose = async (name) => {
+        if (name.endsWith(".audio")) {
+          prepared = true;
+          if (stage === "bytes") throw new Error("interrupted close");
+        }
+        if (prepared && stage === "catalog" && name.endsWith("/downloads.json"))
+          throw new Error("interrupted catalog");
+      };
+      await expect(save(cache)).rejects.toThrow();
+      disk.state.beforeClose = async () => {};
+      const restored = new Cache(getAccountKey(account));
+      await restored.load();
+      if (stage === "bytes") {
+        expect(completedDownloadCount(restored)).toBe(0);
+        expect(restored.downloads.get(key)?.status).toBe("queued");
+        expect(await restored.readDownload(track.id, "mp3")).toBeNull();
+      } else {
+        expect(await (await restored.readDownload(track.id, "mp3"))?.text()).toBe("audio");
+        expect(restored.downloads.get(key)?.status).toBe("completed");
+      }
+    },
+  );
+
+  it("converts missing completed-only metadata to intent before durable catalog eviction", async () => {
+    const disk = installDisk();
+    const seed = new Cache(getAccountKey(account));
+    await save(seed);
+    disk.blobs.clear();
+    const restored = new Cache(getAccountKey(account));
+    disk.state.beforeClose = async (name) => {
+      if (name.endsWith("downloads.json")) throw new Error("full");
+    };
+    await expect(restored.load()).rejects.toThrow();
+    expect(catalog(disk)).toHaveLength(1);
+    disk.state.beforeClose = async () => {};
+    // Atomic failure retained the previous committed catalog; reopen can recover intent.
+    const recovered = new Cache(getAccountKey(account));
+    await recovered.load();
+    expect(catalog(disk)).toMatchObject([{ status: "queued" }]);
+    expect(recovered.downloads.get(key)?.status).toBe("queued");
+  });
+});
+
+it("places explicit Retry at the durable FIFO tail", async () => {
+  installDisk();
+  const cache = new Cache(getAccountKey(account));
+  await cache.enqueueDownload(track, "mp3", "audio/mpeg");
+  await cache.failDownload(key);
+  await cache.enqueueDownload({ ...track, id: "waiting" }, "raw", "audio/flac");
+  await cache.enqueueDownload(track, "mp3", "audio/mpeg", true);
+  const restored = new Cache(cache.key);
+  await restored.load();
+  expect([...restored.downloads.keys()]).toEqual([downloadKey("waiting", "raw"), key]);
+});
+
+/** Restore the representation used by released completed-only installs. */
+function legacy(disk: ReturnType<typeof installDisk>, cache: Cache) {
+  const records = [...cache.downloads.keys()].map((key) => {
+    const record = expectCompletedDownload(cache, key);
+    return {
+      track: {
+        id: record.track.id,
+        title: record.track.title,
+        artist: record.track.artist,
+        album: record.track.album,
+      },
+      format: record.format,
+      contentType: record.contentType,
+      fileName: record.fileName,
+      size: record.size,
+      downloadedAt: record.downloadedAt,
+    };
+  });
+  disk.files.set(path(disk), JSON.stringify(records));
+  return records;
+}
+
+it("migrates completed-only installs once, preserving saved metadata and both formats", async () => {
+  const disk = installDisk();
+  const seed = new Cache(getAccountKey(account));
+  await save(seed);
+  await seed.saveDownload(track, "raw", "audio/flac", new Response("raw"), signal());
+  const before = legacy(disk, seed);
+  const cache = new Cache(seed.key);
+  await cache.load();
+  expect(catalog(disk)).toEqual(
+    before.map((record: object) => ({ ...record, status: "completed" })),
+  );
+  const writes = disk.state.writes;
+  const reopened = new Cache(seed.key);
+  await reopened.load();
+  expect(disk.state.writes).toBe(writes);
+  expect(await (await reopened.readDownload(track.id, "raw"))?.text()).toBe("raw");
+});
+
+it("does not write partial legacy fallback after a transient migration failure", async () => {
+  const disk = installDisk();
+  const seed = new Cache(getAccountKey(account));
+  await save(seed);
+  await seed.saveDownload(
+    { ...track, id: "saved" },
+    "raw",
+    "audio/flac",
+    new Response("saved"),
+    signal(),
+  );
+  legacy(disk, seed);
+  const missing = expectCompletedDownload(seed, key);
+  disk.blobs.delete([...disk.blobs.keys()].find((name) => name.endsWith(missing.fileName))!);
+  const before = new Map(disk.files);
+  disk.state.beforeClose = async (name) => {
+    if (name.endsWith("downloads.json")) {
+      disk.state.beforeClose = async () => {};
+      throw new Error("transient migration failure");
+    }
+  };
+  const cache = new Cache(seed.key);
+  expect(await cache.readDownload(track.id, "mp3")).toBeNull();
+  expect(disk.files).toEqual(before);
+  await cache.load();
+  const reopened = new Cache(seed.key);
+  await reopened.load();
+  expect(reopened.downloads.get(key)?.status).toBe("queued");
+  expect(await (await reopened.readDownload("saved", "raw"))?.text()).toBe("saved");
+});
+
+it.each(["before", "after"])(
+  "uses canonical close as the migration commit (%s close interruption)",
+  async (boundary) => {
+    const disk = installDisk();
+    const seed = new Cache(getAccountKey(account));
+    await save(seed);
+    legacy(disk, seed);
+    const previous = disk.files.get(path(disk));
+    if (boundary === "before")
+      disk.state.beforeClose = async (name) => {
+        if (name.endsWith("downloads.json")) throw new DOMException("Denied", "NotAllowedError");
+      };
+    else
+      disk.state.afterClose = (name) => {
+        if (name.endsWith("downloads.json")) throw new Error("page interrupted after commit");
+      };
+    const cache = new Cache(seed.key);
+    await expect(cache.load()).rejects.toThrow();
+    expect(await (await cache.readDownload(track.id, "mp3"))?.text()).toBe("audio");
+    if (boundary === "before") expect(disk.files.get(path(disk))).toBe(previous);
+    disk.state.beforeClose = async () => {};
+    disk.state.afterClose = () => {};
+    const reopened = new Cache(seed.key);
+    await reopened.load();
+    expect(await (await reopened.readDownload(track.id, "mp3"))?.text()).toBe("audio");
+    await reopened.cancelPendingDownloads();
+    const again = new Cache(seed.key);
+    await again.load();
+    expect(again.downloads.size).toBe(1);
+  },
+);
+
+it.each(["null", "", "broken JSON", '[{"invalid":true}]'])(
+  "preserves corrupt completed-only catalog %j and blocks writes",
+  async (corrupt) => {
+    const disk = installDisk();
+    const seed = new Cache(getAccountKey(account));
+    await save(seed);
+    disk.files.set(path(disk), corrupt);
+    const cache = new Cache(seed.key);
+    await expect(cache.load()).rejects.toThrow();
+    await expect(save(cache)).rejects.toThrow();
+    expect(disk.files.get(path(disk))).toBe(corrupt);
+    expect(disk.blobs.size).toBe(1);
+  },
+);

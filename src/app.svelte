@@ -89,9 +89,9 @@
   );
   let playbackError = $derived(
     player?.error instanceof Error
-      ? player.error.message
+      ? player?.error.message
       : player?.error
-        ? String(player.error)
+        ? String(player?.error)
         : "",
   );
   let initialized = $state(false);
@@ -101,14 +101,6 @@
     {
       id: "refresh",
       message: refreshError ? `${refreshError} Your existing library is still available.` : "",
-    },
-    {
-      id: "tracks",
-      message: trackEngine.error
-        ? trackEngine.error instanceof Error
-          ? trackEngine.error.message
-          : String(trackEngine.error)
-        : "",
     },
     { id: "playback", message: playbackError },
   ]);
@@ -225,11 +217,15 @@
     <a
       class="menu-item"
       href="?/downloads"
+      aria-label={trackEngine.downloadCount
+        ? `Downloads, ${trackEngine.downloadCount} active and queued files`
+        : "Downloads"}
       aria-current={isCurrentPage("/downloads") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
       <Icon name="download" color={isCurrentPage("/downloads") ? "var(--accent)" : undefined} />
       Downloads
+      {#if trackEngine.downloadCount}<span class="caption">{trackEngine.downloadCount}</span>{/if}
     </a>
     <a
       class="menu-item"

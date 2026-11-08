@@ -44,7 +44,7 @@
   const libraryError = $derived(
     session.refreshError ||
       session.error ||
-      (cache.error ? "Some local data could not be restored or saved." : ""),
+      (cache.reportingError ? "Some local data could not be restored or saved." : ""),
   );
   const artists = $derived([...cache.artists.values()]);
   const visibleArtists = $derived(

@@ -1134,8 +1134,7 @@ it("renders download records and jobs without duplicates and switches account pr
   tracks.setConnection(connection.audio);
   const pending = tracks.download(track.id, { forceTranscode: true });
   flushSync();
-  expect(target.querySelectorAll('[aria-label="Downloading"]')).toHaveLength(1);
-  expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(0);
+  expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
   await pending;
   flushSync();
   expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);
@@ -1441,3 +1440,43 @@ it("follows normalized album artwork IDs without publishing a late old image", a
   expect(target.querySelector(".detail-panel .artwork img")?.hasAttribute("hidden")).toBe(true);
   expect(target.querySelector(".detail-panel .artwork svg")).not.toBeNull();
 });
+
+it.each([
+  ...["/library", "/search", "/downloads"].flatMap((route) => [
+    { route, mixed: false },
+    { route, mixed: true },
+  ]),
+  { route: "/settings", mixed: false },
+])(
+  "filters download warnings on $route while retaining unrelated errors (mixed=$mixed)",
+  async ({ route, mixed }) => {
+    installDisk();
+    const { DownloadError } = await import("../src/download-error");
+    const cache = new Cache("warning-account");
+    vi.spyOn(cache, "error", "get").mockReturnValue(
+      new AggregateError(
+        [
+          new AggregateError([new DownloadError()]),
+          ...(mixed ? [new Error("Library storage failure")] : []),
+        ],
+        "secret transport details",
+      ),
+    );
+    mocks.cache = cache;
+    window.history.replaceState(null, "", `?${route}`);
+    const target = document.createElement("main");
+    document.body.append(target);
+    const component = mount(App, { target });
+    cleanups.push(() => unmount(component));
+    flushSync();
+    expect(target.textContent?.includes("Some local data could not be restored or saved")).toBe(
+      mixed,
+    );
+    expect(target.textContent).not.toContain("secret");
+    expect(target.textContent).not.toContain("Could not save this file");
+    if (!mixed) {
+      expect(target.textContent).not.toContain("Local storage needs attention");
+      expect(target.querySelector('button[aria-label="Show errors"]')).toBeNull();
+    }
+  },
+);

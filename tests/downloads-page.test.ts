@@ -8,7 +8,7 @@ import { Covers } from "../src/covers.svelte";
 import { TrackEngine } from "../src/track.svelte";
 import { getAccountKey } from "../src/auth";
 import { Network } from "../src/network.svelte";
-import { installDisk } from "./cache-test-helpers";
+import { expectCompletedDownload, installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
@@ -27,11 +27,10 @@ function setup(realJobs = false) {
   const selection = { cache };
   const covers = new Covers(selection);
   const trackEngine = new TrackEngine({ selection, concurrency: 1 });
-  const store = writable({ jobs: [] as Jobs, error: undefined as unknown, loading: false });
+  const store = writable({ jobs: [] as Jobs, loading: false });
   const state = fromStore(store);
   if (!realJobs) {
     vi.spyOn(trackEngine, "downloadJobs", "get").mockImplementation(() => state.current.jobs);
-    vi.spyOn(trackEngine, "error", "get").mockImplementation(() => state.current.error);
   }
   const target = document.createElement("div");
   const component = mount(Downloads, {
@@ -170,12 +169,12 @@ it("preserves a saved track name verbatim without adding badges", async () => {
   expect(target.querySelector(".badge, .track-badges")).toBeNull();
   const restored = new Cache(getAccountKey(account));
   await restored.load();
-  expect(restored.downloads.get(downloadKey("preview", "raw"))?.track.title).toBe(
+  expect(expectCompletedDownload(restored, downloadKey("preview", "raw")).track.title).toBe(
     "A preview — Preview [Explicit]",
   );
 });
 
-it("updates mounted rows when jobs complete and preserves saved entries during restoration and failures", async () => {
+it("preserves keyed rows when jobs complete during restoration", async () => {
   const { target, cache, set } = setup();
   await save(cache, "saved", 1000);
   set({ jobs: [job(cache, "active", "downloading")], loading: true });
@@ -184,12 +183,11 @@ it("updates mounted rows when jobs complete and preserves saved entries during r
   await save(cache, "active", 2000);
   expect(target.querySelectorAll('[role="listitem"]')).toHaveLength(2);
   const activeRow = target.querySelector('[role="listitem"]');
-  set({ jobs: [], loading: false, error: new Error("Transfer interrupted") });
+  set({ jobs: [], loading: false });
   expect(target.querySelector('[role="listitem"]')).toBe(activeRow);
   expect(target.querySelectorAll('[role="listitem"]')[1]).toBe(savedRow);
   expect(activeRow?.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Downloaded");
-  expect(target.textContent).toContain("Download failed");
-  expect(target.textContent).toContain("Transfer interrupted");
+  expect(target.querySelector(".card")).toBeNull();
   expect(target.querySelector('[role="list"]')?.getAttribute("aria-busy")).toBe("false");
 });
 
@@ -206,7 +204,7 @@ it("shows storage failures without presenting an empty library as successfully r
     ),
   ).rejects.toThrow();
   flushSync();
-  expect(target.textContent).toContain("Local storage needs attention");
+  expect(target.textContent).not.toContain("Local storage needs attention");
   expect(target.textContent).not.toContain("No downloads yet");
   disk.state.failClose = false;
   await save(cache, "recovered", 1000);
@@ -234,6 +232,7 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   vi.stubGlobal("fetch", fetcher);
   const active = trackEngine.download("active");
   const queued = trackEngine.download("waiting");
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
   flushSync();
   expect(
     [...target.querySelectorAll('[role="listitem"] [role="img"]')].map((node) =>
@@ -248,8 +247,107 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   fetcher.mockRejectedValueOnce(new Error("Connection lost"));
   await expect(trackEngine.download("failed")).rejects.toThrow("The server request failed.");
   flushSync();
-  expect(target.textContent).toContain("Download failed");
-  expect(target.textContent).toContain("The server request failed.");
+  expect(target.querySelector('[aria-label="Download failed"]')).not.toBeNull();
+  expect(target.textContent).toContain("Could not save this file");
+  expect(target.textContent).not.toContain("The server request failed.");
+  expect(
+    target.querySelector('button[aria-label="Retry download of failed (MP3)"]'),
+  ).not.toBeNull();
   expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(2);
   expect(target.textContent).not.toContain("failed title");
+});
+
+it("Retry all snapshots only failed files in exact formats without waiting for transfers", async () => {
+  const { target, cache, trackEngine, set } = setup();
+  await save(cache, "saved", 1000);
+  for (const format of ["raw", "mp3"] as const) {
+    await cache.enqueueDownload(
+      { id: "failed", title: "Failed title", artist: "Artist", album: "Album" },
+      format,
+      "audio/mpeg",
+    );
+    await cache.failDownload(downloadKey("failed", format));
+  }
+  set({ jobs: [job(cache, "active", "downloading"), job(cache, "queued", "queued")] });
+  const pending = deferred<File>();
+  const download = vi.spyOn(trackEngine, "download").mockReturnValue(pending.promise);
+  const retryAll = [...target.querySelectorAll("button")].find(
+    (button) => button.textContent === "Retry all",
+  )!;
+  const cancelAll = [...target.querySelectorAll("button")].find(
+    (button) => button.textContent === "Cancel all",
+  )!;
+  const rowRetry = target.querySelector<HTMLButtonElement>(
+    'button[aria-label="Retry download of Failed title (RAW)"]',
+  )!;
+  set({ loading: true });
+  expect(retryAll.disabled).toBe(true);
+  expect(cancelAll.disabled).toBe(true);
+  expect(rowRetry.disabled).toBe(true);
+  set({ loading: false });
+  rowRetry.click();
+  expect(download).toHaveBeenLastCalledWith("failed", { format: "raw" });
+  download.mockClear();
+  retryAll.click();
+  flushSync();
+  expect(download.mock.calls).toEqual([
+    ["failed", { format: "raw" }],
+    ["failed", { format: "mp3" }],
+  ]);
+  expect(retryAll.disabled).toBe(false);
+  expect(cancelAll.disabled).toBe(false);
+  pending.resolve(new File(["audio"], "audio"));
+  expect(target.querySelectorAll("time")).toHaveLength(1);
+});
+
+it("Cancel all guards busy controls and preserves saved and failed files when durable cancellation rejects", async () => {
+  const { target, cache, trackEngine, disk } = setup(true);
+  await save(cache, "saved", 1000);
+  await cache.enqueueDownload(
+    { id: "failed", title: "Failed", artist: "Artist", album: "Album" },
+    "mp3",
+    "audio/mpeg",
+  );
+  await cache.failDownload(downloadKey("failed", "mp3"));
+  void trackEngine.download("queued");
+  await vi.waitFor(() =>
+    expect(cache.downloads.get(downloadKey("queued", "mp3"))?.status).toBe("queued"),
+  );
+  flushSync();
+  const retryAll = [...target.querySelectorAll("button")].find(
+    (button) => button.textContent === "Retry all",
+  )!;
+  const cancelAll = [...target.querySelectorAll("button")].find(
+    (button) => button.textContent === "Cancel all",
+  )!;
+  const close = deferred<void>();
+  disk.state.beforeClose = async (name) => {
+    if (name.endsWith("downloads.json")) {
+      await close.promise;
+      throw new Error("full");
+    }
+  };
+  const cancel = vi.spyOn(trackEngine, "cancelDownloads");
+  cancelAll.click();
+  flushSync();
+  expect(cancelAll.disabled).toBe(true);
+  expect(retryAll.disabled).toBe(true);
+  expect(
+    target.querySelector<HTMLButtonElement>('button[aria-label="Retry download of Failed (MP3)"]')
+      ?.disabled,
+  ).toBe(true);
+  cancelAll.click();
+  expect(cancel).toHaveBeenCalledOnce();
+  close.resolve();
+  await vi.waitFor(() => expect(cancelAll.disabled).toBe(false));
+  expect(cache.downloads.get(downloadKey("queued", "mp3"))?.status).toBe("queued");
+  expect(target.querySelectorAll("time")).toHaveLength(1);
+  expect(target.querySelectorAll('[aria-label="Download failed"]')).toHaveLength(1);
+  disk.state.beforeClose = async () => {};
+  cancelAll.click();
+  await vi.waitFor(() => expect(trackEngine.downloadCount).toBe(0));
+  flushSync();
+  expect(cancelAll.disabled).toBe(true);
+  expect(retryAll.disabled).toBe(false);
+  expect(cache.downloads.size).toBe(2);
 });

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Cache, downloadKey } from "../src/cache.svelte";
 import { flushSync } from "svelte";
 import { observeCache } from "./cache-reactivity.test.svelte";
-import { installDisk } from "./cache-test-helpers";
+import { completedDownloadCount, expectCompletedDownload, installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example", username: "listener" };
@@ -39,112 +39,115 @@ afterEach(() => {
 });
 
 describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (name) => {
-  it("updates live views reactively without invalidating unrelated existing keys", async () => {
-    const disk = installDisk();
-    const cache = new Cache(getAccountKey(account));
-    const store = domain(name, cache);
-    await store.save("kept", "first");
-    const records = store.records();
-    const keyed = vi.fn(() => store.records().get(store.key("kept")));
-    const listed = vi.fn(() => [...store.records().values()]);
-    const sized = vi.fn(() => store.records().size);
-    const stop = observeCache(() => {
-      keyed();
-    });
-    const stopList = observeCache(() => {
-      listed();
-    });
-    const stopSize = observeCache(() => {
-      sized();
-    });
-    try {
-      flushSync();
-      await store.save("added", "second");
-      flushSync();
-      expect(store.records()).toBe(records);
-      expect(records.size).toBe(2);
-      expect(keyed).toHaveBeenCalledOnce();
-      expect(listed).toHaveBeenCalledTimes(2);
-      expect(sized).toHaveBeenCalledTimes(2);
-      const fileName = records.get(store.key("kept"))!.fileName;
-      disk.blobs.delete([...disk.blobs.keys()].find((path) => path.endsWith(fileName))!);
-      await store.read("kept");
-      flushSync();
-      expect(keyed).toHaveBeenCalledTimes(2);
-      expect(keyed.mock.results.at(-1)!.value).toBeUndefined();
-      expect(listed).toHaveBeenCalledTimes(3);
-      expect(sized.mock.results.at(-1)!.value).toBe(1);
-      await store.flush();
-    } finally {
-      stop();
-      stopList();
-      stopSize();
-    }
-  });
-
-  it("keeps an in-flight checkpoint separate from subsequent catalog mutations", async () => {
-    vi.useFakeTimers();
-    const disk = installDisk();
-    const cache = new Cache(getAccountKey(account));
-    const store = domain(name, cache);
-    await store.save("first", "first");
-    const closing = deferred<void>();
-    const release = deferred<void>();
-    disk.state.beforeClose = async (path) => {
-      if (path.endsWith(`/${name}.json`)) {
-        closing.resolve();
-        await release.promise;
+  if (name === "images")
+    it("updates live views reactively without invalidating unrelated existing keys", async () => {
+      const disk = installDisk();
+      const cache = new Cache(getAccountKey(account));
+      const store = domain(name, cache);
+      await store.save("kept", "first");
+      const records = store.records();
+      const keyed = vi.fn(() => store.records().get(store.key("kept")));
+      const listed = vi.fn(() => [...store.records().values()]);
+      const sized = vi.fn(() => store.records().size);
+      const stop = observeCache(() => {
+        keyed();
+      });
+      const stopList = observeCache(() => {
+        listed();
+      });
+      const stopSize = observeCache(() => {
+        sized();
+      });
+      try {
+        flushSync();
+        await store.save("added", "second");
+        flushSync();
+        expect(store.records()).toBe(records);
+        expect(records.size).toBe(2);
+        expect(keyed).toHaveBeenCalledOnce();
+        expect(listed).toHaveBeenCalledTimes(2);
+        expect(sized).toHaveBeenCalledTimes(2);
+        const fileName = cache.images.get("kept")!.fileName;
+        disk.blobs.delete([...disk.blobs.keys()].find((path) => path.endsWith(fileName))!);
+        await store.read("kept");
+        flushSync();
+        expect(keyed).toHaveBeenCalledTimes(2);
+        expect(keyed.mock.results.at(-1)!.value).toBeUndefined();
+        expect(listed).toHaveBeenCalledTimes(3);
+        expect(sized.mock.results.at(-1)!.value).toBe(1);
+        await store.flush();
+      } finally {
+        stop();
+        stopList();
+        stopSize();
       }
-    };
-    const saving = store.flush();
-    await closing.promise;
-    await store.save("second", "second");
-    release.resolve();
-    await saving;
-    const path = [...disk.files.keys()].find((path) => path.endsWith(`/${name}.json`))!;
-    expect(JSON.parse(disk.files.get(path)!)).toHaveLength(1);
-    expect(store.records().size).toBe(2);
-    expect(cache.dirty).toBe(true);
-    await store.flush();
-    expect(JSON.parse(disk.files.get(path)!)).toHaveLength(2);
-    expect(cache.dirty).toBe(false);
-  });
+    });
 
-  it("does not traverse a 20,907-record catalog when adding records", async () => {
-    vi.useFakeTimers();
-    const disk = installDisk();
-    const seed = domain(name, new Cache(getAccountKey(account)));
-    await seed.save("seed", "bytes");
-    await seed.flush();
-    const path = [...disk.files.keys()].find((path) => path.endsWith(`/${name}.json`))!;
-    const [sample] = JSON.parse(disk.files.get(path)!);
-    disk.files.set(
-      path,
-      JSON.stringify(
-        Array.from({ length: 20_907 }, (_, index) => ({
-          ...sample,
-          ...(name === "images"
-            ? { id: String(index) }
-            : { track: { ...sample.track, id: String(index) } }),
-          fileName: `${index.toString(16)}.${name === "images" ? "image" : "audio"}`,
-        })),
-      ),
-    );
-    const cache = new Cache(getAccountKey(account));
-    await cache.load();
-    const store = domain(name, cache);
-    const records = store.records();
-    const iterate = vi.spyOn(records, Symbol.iterator);
-    const values = vi.spyOn(records, "values");
-    for (let index = 0; index < 20; index++) await store.save(`new-${index}`, "bytes");
-    expect(store.records()).toBe(records);
-    expect(records.size).toBe(20_927);
-    expect(iterate).not.toHaveBeenCalled();
-    expect(values).not.toHaveBeenCalled();
-    await store.flush();
-    expect(values).toHaveBeenCalledOnce();
-    expect(JSON.parse(disk.files.get(path)!)).toHaveLength(20_927);
-  });
+  if (name === "images")
+    it("keeps an in-flight checkpoint separate from subsequent catalog mutations", async () => {
+      vi.useFakeTimers();
+      const disk = installDisk();
+      const cache = new Cache(getAccountKey(account));
+      const store = domain(name, cache);
+      await store.save("first", "first");
+      const closing = deferred<void>();
+      const release = deferred<void>();
+      disk.state.beforeClose = async (path) => {
+        if (path.endsWith(`/${name}.json`)) {
+          closing.resolve();
+          await release.promise;
+        }
+      };
+      const saving = store.flush();
+      await closing.promise;
+      await store.save("second", "second");
+      release.resolve();
+      await saving;
+      const path = [...disk.files.keys()].find((path) => path.endsWith(`/${name}.json`))!;
+      expect(JSON.parse(disk.files.get(path)!)).toHaveLength(1);
+      expect(store.records().size).toBe(2);
+      expect(cache.dirty).toBe(true);
+      await store.flush();
+      expect(JSON.parse(disk.files.get(path)!)).toHaveLength(2);
+      expect(cache.dirty).toBe(false);
+    });
+
+  if (name === "images")
+    it("does not traverse a 20,907-record image catalog when adding records", async () => {
+      vi.useFakeTimers();
+      const disk = installDisk();
+      const seed = domain(name, new Cache(getAccountKey(account)));
+      await seed.save("seed", "bytes");
+      await seed.flush();
+      const path = [...disk.files.keys()].find((path) => path.endsWith(`/${name}.json`))!;
+      const [sample] = JSON.parse(disk.files.get(path)!);
+      disk.files.set(
+        path,
+        JSON.stringify(
+          Array.from({ length: 20_907 }, (_, index) => ({
+            ...sample,
+            ...(name === "images"
+              ? { id: String(index) }
+              : { track: { ...sample.track, id: String(index) } }),
+            fileName: `${index.toString(16)}.${name === "images" ? "image" : "audio"}`,
+          })),
+        ),
+      );
+      const cache = new Cache(getAccountKey(account));
+      await cache.load();
+      const store = domain(name, cache);
+      const records = store.records();
+      const iterate = vi.spyOn(records, Symbol.iterator);
+      const values = vi.spyOn(records, "values");
+      for (let index = 0; index < 20; index++) await store.save(`new-${index}`, "bytes");
+      expect(store.records()).toBe(records);
+      expect(records.size).toBe(20_927);
+      expect(iterate).not.toHaveBeenCalled();
+      expect(values).not.toHaveBeenCalled();
+      await store.flush();
+      expect(values).toHaveBeenCalledOnce();
+      expect(JSON.parse(disk.files.get(path)!)).toHaveLength(20_927);
+    });
 
   it("orders byte acquisition behind hydration", async () => {
     const disk = installDisk();
@@ -178,20 +181,33 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
 
   it("repairs only a missing reference, retaining unrelated records and bytes", async () => {
     const disk = installDisk();
-    const store = domain(name, new Cache(getAccountKey(account)));
+    const cache = new Cache(getAccountKey(account));
+    const store = domain(name, cache);
     await store.save("missing", "first");
     await store.save("kept", "second");
-    const missing = store.records().get(store.key("missing"))!.fileName;
+    const missing =
+      name === "images"
+        ? cache.images.get("missing")!.fileName
+        : expectCompletedDownload(cache, store.key("missing")).fileName;
     const path = [...disk.blobs.keys()].find((path) => path.endsWith(`/${missing}`))!;
     disk.blobs.delete(path);
     expect(await store.read("missing")).toBeNull();
-    expect([...store.records().keys()]).toEqual([store.key("kept")]);
+    const keys = name === "images" ? ["kept"] : [store.key("kept"), store.key("missing")];
+    expect([...store.records().keys()]).toEqual(keys);
+    if (name === "downloads") {
+      expect(cache.downloads.get(store.key("missing"))?.status).toBe("queued");
+      expectCompletedDownload(cache, store.key("kept"));
+    }
     expect(await (await store.read("kept"))!.text()).toBe("second");
     expect(disk.blobs.size).toBe(1);
     await store.flush();
-    const cache = new Cache(getAccountKey(account));
-    await cache.load();
-    expect([...domain(name, cache).records().keys()]).toEqual([store.key("kept")]);
+    const restored = new Cache(getAccountKey(account));
+    await restored.load();
+    expect([...domain(name, restored).records().keys()]).toEqual(keys);
+    if (name === "downloads") {
+      expect(restored.downloads.get(store.key("missing"))?.status).toBe("queued");
+      expectCompletedDownload(restored, store.key("kept"));
+    }
   });
 
   it("does not tie checkpoints to a completed caller's cancellation signal", async () => {
@@ -200,8 +216,10 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
     const store = domain(name, cache);
     await store.save("kept", "old");
     const controller = new AbortController();
+    let bytesClosed = false;
     disk.state.afterClose = (path) => {
-      if (path.endsWith(`/${name}.json`)) controller.abort();
+      if (path.endsWith(".audio")) bytesClosed = true;
+      if (path.endsWith(`/${name}.json`) && (name === "images" || bytesClosed)) controller.abort();
     };
     await store.save("late", "new", controller.signal);
     await store.flush();
@@ -282,8 +300,8 @@ it("keeps image operations independent of an active audio transfer", async () =>
   const images = domain("images", cache);
   await images.save("cover", "image");
   expect(await (await images.read("cover"))!.text()).toBe("image");
-  expect(cache.downloads.size).toBe(0);
+  expect(completedDownloadCount(cache)).toBe(0);
   source.close();
   expect(await (await audio).text()).toBe("audio");
-  expect(cache.downloads.size).toBe(1);
+  expect(completedDownloadCount(cache)).toBe(1);
 });

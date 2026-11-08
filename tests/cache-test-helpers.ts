@@ -1,4 +1,5 @@
-import { expect, onTestFinished, vi } from "vitest";
+import type { Cache } from "../src/cache.svelte";
+import { assert, expect, onTestFinished, vi } from "vitest";
 
 /** Real checkpoint timers must not write into the next test's mocked navigator. */
 export function clearTestTimers() {
@@ -118,4 +119,14 @@ export function installDisk() {
   );
   vi.stubGlobal("navigator", { storage: { getDirectory }, locks: { request } });
   return { files, blobs, state, getDirectory };
+}
+
+export function completedDownloadCount(cache: Cache) {
+  return [...cache.downloads.values()].filter((entry) => entry.status === "completed").length;
+}
+
+export function expectCompletedDownload(cache: Cache, key: string) {
+  const entry = cache.downloads.get(key);
+  assert(entry?.status === "completed", `Expected completed download for ${key}`);
+  return entry;
 }

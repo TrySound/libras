@@ -16,27 +16,46 @@
 
   let { cache, covers, trackEngine, loading, appName = "Libras" }: Props = $props();
 
+  const canceling = $derived(trackEngine.cancelingDownloads);
+  const failed = $derived(
+    [...cache.downloads.values()].filter((entry) => entry.status === "failed"),
+  );
+
+  function retryAll() {
+    if (loading || canceling || !failed.length) return;
+    const entries = [...failed];
+    for (const entry of entries)
+      void trackEngine.download(entry.track.id, { format: entry.format });
+  }
+
+  async function cancelAll() {
+    if (loading || canceling || !trackEngine.downloadCount) return;
+    try {
+      await trackEngine.cancelDownloads();
+    } catch {
+      // Durable intent and the existing rows remain authoritative on failure.
+    }
+  }
+
   const sizeFormatter = new Intl.NumberFormat(undefined, {
     style: "unit",
     unit: "megabyte",
     maximumFractionDigits: 1,
   });
-  const downloadError = $derived(
-    trackEngine.error instanceof Error
-      ? trackEngine.error.message
-      : trackEngine.error
-        ? String(trackEngine.error)
-        : "",
-  );
-
   const downloads = $derived.by(() => {
     const jobs = trackEngine.downloadJobs;
     const activeKeys = new Set(jobs.map((job) => job.key));
     const completed = [...cache.downloads]
-      .filter(([key]) => !activeKeys.has(key))
-      .sort(([aKey, a], [bKey, b]) => b.downloadedAt - a.downloadedAt || aKey.localeCompare(bKey))
-      .map(([key, file]) => ({ ...file, key, status: "downloaded" as const }));
-    return [...jobs, ...completed];
+      .flatMap(([key, entry]) =>
+        entry.status === "completed" && !activeKeys.has(key)
+          ? [{ ...entry, key, status: "downloaded" as const }]
+          : [],
+      )
+      .sort((a, b) => b.downloadedAt - a.downloadedAt || a.key.localeCompare(b.key));
+    const failed = [...cache.downloads].flatMap(([key, entry]) =>
+      entry.status === "failed" ? [{ ...entry, key, status: "failed" as const }] : [],
+    );
+    return [...jobs, ...failed, ...completed];
   });
 </script>
 
@@ -47,29 +66,25 @@
     <header class="stack-sm">
       <h1 class="heading-lg uppercase" id="downloads-heading">Downloads</h1>
       <p class="body text-secondary">Tracks available for offline listening.</p>
+      <div class="row-sm row-wrap">
+        <button
+          class="button"
+          data-variant="secondary"
+          data-size="text"
+          disabled={loading || canceling || !failed.length}
+          onclick={retryAll}>Retry all</button
+        >
+        <button
+          class="button"
+          data-variant="secondary"
+          data-size="text"
+          disabled={loading || canceling || !trackEngine.downloadCount}
+          onclick={cancelAll}>Cancel all</button
+        >
+      </div>
     </header>
 
-    {#if downloadError}
-      <div class="card stack-md">
-        <h2 class="row-sm heading-sm">
-          <span class="row-sm">
-            <Icon name="cross" color="var(--error-text)" />
-          </span>
-          Download failed
-        </h2>
-        <p class="body">{downloadError}</p>
-        <p class="body">
-          Your saved files remain available. Open the library to try downloading again.
-        </p>
-        <div class="row-sm">
-          <a class="button" data-variant="secondary" data-size="text" href="?/library"
-            >Open library</a
-          >
-        </div>
-      </div>
-    {/if}
-
-    {#if cache.error}
+    {#if cache.reportingError}
       <div class="card stack-md">
         <h2 class="heading-sm">Local storage needs attention</h2>
         <p class="body">
@@ -82,24 +97,23 @@
       <div class="stack-sm" role="list" aria-label="Downloads" aria-busy={loading}>
         {#each downloads as entry (entry.key)}
           <div class="menu-item track-row" role="listitem">
-            <span
-              class="track-row-number row-sm"
-              role="img"
-              aria-label={entry.status === "downloading"
-                ? "Downloading"
-                : entry.status === "queued"
-                  ? "Queued for download"
-                  : "Downloaded"}
-            >
-              {#if entry.status === "downloading"}
+            {#if entry.status === "downloading"}
+              <span class="track-row-number row-sm" role="img" aria-label="Downloading">
                 <Loader />
-              {:else}
-                <Icon
-                  name={entry.status === "queued" ? "clock" : "check"}
-                  color={entry.status === "queued" ? "var(--text-subtle)" : "var(--accent)"}
-                />
-              {/if}
-            </span>
+              </span>
+            {:else if entry.status === "queued"}
+              <span class="track-row-number row-sm" role="img" aria-label="Queued for download">
+                <Icon name="clock" color="var(--text-subtle)" />
+              </span>
+            {:else if entry.status === "failed"}
+              <span class="track-row-number row-sm" role="img" aria-label="Download failed">
+                <Icon name="cross" color="var(--error-text)" />
+              </span>
+            {:else}
+              <span class="track-row-number row-sm" role="img" aria-label="Downloaded">
+                <Icon name="check" color="var(--accent)" />
+              </span>
+            {/if}
             <div class="row-sm">
               <Artwork
                 {covers}
@@ -110,7 +124,25 @@
               <div>
                 <p class="label">{entry.track.title}</p>
                 <p class="caption text-secondary">{entry.track.artist} · {entry.track.album}</p>
-                {#if entry.status === "downloaded"}
+                {#if entry.status === "failed"}
+                  <p class="caption text-secondary" aria-live="polite">
+                    {entry.format === "mp3" ? "MP3" : entry.contentType} · {entry.diagnostic}
+                  </p>
+                  <button
+                    class="button"
+                    data-variant="secondary"
+                    data-size="text"
+                    aria-label={`Retry download of ${entry.track.title} (${entry.format.toUpperCase()})`}
+                    disabled={loading || canceling}
+                    onclick={() => {
+                      void trackEngine.download(entry.track.id, { format: entry.format });
+                    }}>Retry</button
+                  >
+                {:else if entry.status === "queued"}
+                  <p class="caption text-subtle">
+                    {trackEngine.waitingForConnection ? "Waiting for connection" : "Queued"} · {entry.format.toUpperCase()}
+                  </p>
+                {:else if entry.status === "downloaded"}
                   <p class="caption text-subtle">
                     Downloaded
                     <time datetime={new Date(entry.downloadedAt).toISOString()}>
@@ -125,7 +157,7 @@
           </div>
         {/each}
       </div>
-    {:else if !loading && !downloadError && !cache.error}
+    {:else if !loading && !cache.error && !cache.downloadStorageBlocked}
       <div class="stack-md">
         <h2 class="heading-sm">No downloads yet</h2>
         <p class="body">Your saved tracks will appear here.</p>
