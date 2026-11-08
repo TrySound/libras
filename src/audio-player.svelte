@@ -54,7 +54,7 @@
   import { onMount, untrack } from "svelte";
 
   const interactive =
-    'input, textarea, select, summary, audio, video, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]';
+    'button, input, textarea, select, summary, audio, video, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]';
 
   let {
     hasPrevious = false,
@@ -478,7 +478,9 @@
       await load(position, true, forced, status === "seeking");
       return;
     }
-    if (!audio.currentSrc || status === "error" || status === "ended") {
+    // currentSrc can still name the retired resource after removeAttribute/load.
+    // A cancelled acquisition must get a fresh source, not play the cleared element.
+    if (!source || !audio.currentSrc || status === "error" || status === "ended") {
       await load(status === "ended" ? 0 : position, true);
       return;
     }

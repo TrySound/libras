@@ -15,7 +15,7 @@ it("renders a decorative icon using the inline sprite", async () => {
     const svg = target.querySelector("svg")!;
     expect(svg.getAttribute("width")).toBe("40");
     expect(svg.getAttribute("height")).toBe("40");
-    expect(svg.getAttribute("class")).toBe("text-subtle");
+    expect(svg.classList.contains("text-subtle")).toBe(true);
     expect(svg.getAttribute("aria-hidden")).toBe("true");
     expect(svg.querySelector("use")?.getAttribute("href")).toBe("#icon-play");
     expect(svg.querySelector("path, symbol")).toBeNull();

@@ -238,7 +238,45 @@ describe("Player component", () => {
       expect(toggle).toHaveBeenCalledOnce();
     });
 
-    it.each(["button", "a[href]", '[role="button"]'])(
+    it("preserves native button Space activation, including descendants, while background Space toggles", async () => {
+      const { player, audio, item } = setup();
+      await player.play(item);
+      const background = document.createElement("div");
+      const button = document.createElement("button");
+      const label = document.createElement("span");
+      button.append(label);
+      background.append(button);
+      document.body.append(background);
+      try {
+        const space = (target: Element) => {
+          const event = new KeyboardEvent("keydown", {
+            key: " ",
+            bubbles: true,
+            cancelable: true,
+          });
+          target.dispatchEvent(event);
+          return event;
+        };
+        for (const playing of [true, false]) {
+          if (!playing) player.pause();
+          audio.play.mockClear();
+          for (const target of [button, label]) {
+            expect(space(target).defaultPrevented).toBe(false);
+            expect(player.playing).toBe(playing);
+            expect(audio.play).not.toHaveBeenCalled();
+          }
+        }
+        expect(space(background).defaultPrevented).toBe(true);
+        expect(player.playing).toBe(true);
+        expect(audio.play).toHaveBeenCalledOnce();
+        expect(space(background).defaultPrevented).toBe(true);
+        expect(player.playing).toBe(false);
+      } finally {
+        background.remove();
+      }
+    });
+
+    it.each(["a[href]", '[role="button"]'])(
       "uses Space for playback on %s but leaves Enter alone",
       async (control) => {
         const { toggle, dispatch } = await setupShortcuts();
@@ -306,6 +344,39 @@ describe("Player component", () => {
     expect(getSource).toHaveBeenCalledOnce();
     player.unload();
     expect(space().defaultPrevented).toBe(false);
+  });
+
+  it("reacquires a cancelled source even while native currentSrc still reports the retired URL", async () => {
+    const { player, audio, item, getSource } = setup();
+    const nativePlay = Promise.withResolvers<void>();
+    audio.play.mockImplementationOnce(() => nativePlay.promise);
+    const pending = player.play(item);
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledOnce());
+    Object.defineProperty(audio, "currentSrc", { get: () => "blob:retired" });
+    player.pause();
+    expect(audio.src).toBe("");
+    await player.resume();
+    expect(getSource).toHaveBeenCalledTimes(2);
+    expect(audio.src).toBe("blob:track");
+    expect(player.playing).toBe(true);
+    nativePlay.reject(new DOMException("The play request was interrupted.", "AbortError"));
+    await pending;
+    expect(player.status).toBe("ready");
+    expect(player.error).toBeUndefined();
+  });
+
+  it("reports an abort from the current source provider and retries rather than hiding it", async () => {
+    const { player, item, getSource } = setup();
+    const error = new DOMException("signal is aborted without reason", "AbortError");
+    getSource.mockRejectedValueOnce(error);
+    await player.play(item);
+    expect(player.status).toBe("error");
+    expect(player.error).toBe(error);
+    expect(getSource.mock.calls).toHaveLength(1);
+    await player.resume();
+    expect(getSource).toHaveBeenCalledTimes(2);
+    expect(player.playing).toBe(true);
+    expect(player.error).toBeUndefined();
   });
 
   it("pauses a pending load with Space and ignores its late source", async () => {

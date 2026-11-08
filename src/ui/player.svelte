@@ -97,7 +97,7 @@
       <button
         class="button"
         data-variant="primary"
-        aria-label={playing ? "Pause" : "Play"}
+        aria-label={playing || loading ? "Pause" : "Play"}
         aria-describedby={`${id}-title`}
         aria-busy={loading}
         onclick={() => playback.toggle()}
@@ -216,7 +216,7 @@
                 <button
                   class="button"
                   data-variant="primary"
-                  aria-label={playing ? "Pause" : "Play"}
+                  aria-label={playing || loading ? "Pause" : "Play"}
                   aria-describedby={`${id}-now-title`}
                   aria-busy={loading}
                   disabled={!queue.length}
@@ -298,17 +298,11 @@
                 >
                   <span class="track-row-number metadata text-subtle">
                     {#if index === cache.queue.index && loading}
-                      <span role="img" aria-label="Loading playback">
-                        <Loader />
-                      </span>
+                      <Loader />
                     {:else if index === cache.queue.index && playing}
-                      <span role="img" aria-label="Playing">
-                        <Icon name="sound-bars" color="var(--accent)" />
-                      </span>
+                      <Icon name="sound-bars" color="var(--accent)" />
                     {:else if index === cache.queue.index}
-                      <span role="img" aria-label="Current track, not playing">
-                        <Icon name="pause" color="var(--accent)" />
-                      </span>
+                      <Icon name="play" color="var(--accent)" />
                     {:else if downloadStatus === "downloading"}
                       <span role="img" aria-label="Downloading">
                         <Loader />

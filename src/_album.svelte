@@ -40,6 +40,12 @@
   const libraryAvailable = $derived(cache.savedAt !== undefined);
   const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const album = $derived(params.albumId ? cache.albums.get(params.albumId) : undefined);
+  const albumPlaybackState = $derived(
+    album && currentTrack?.albumId === album.id ? playbackState : undefined,
+  );
+  const albumCanPause = $derived(
+    albumPlaybackState === "playing" || albumPlaybackState === "loading",
+  );
   const artist = $derived(album ? cache.artists.get(album.artistIds[0]) : undefined);
   const atmosphere = $derived(album?.artworkId ? covers.ensureCover(album.artworkId) : undefined);
   const visibleTracks = $derived(
@@ -96,11 +102,19 @@
             <button
               class="button"
               data-variant="primary"
-              aria-label={`Play ${album.title}`}
-              disabled={!visibleTrackIds.length}
-              onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
+              aria-label={`${albumCanPause ? "Pause" : "Play"} ${album.title}`}
+              aria-busy={albumPlaybackState === "loading"}
+              disabled={!albumPlaybackState && !visibleTrackIds.length}
+              onclick={() => {
+                if (albumPlaybackState) void playback.toggle();
+                else void playback.replaceQueueAndPlay(visibleTrackIds);
+              }}
             >
-              <Icon name="play" />
+              {#if albumPlaybackState === "loading"}
+                <Loader />
+              {:else}
+                <Icon name={albumCanPause ? "pause" : "play"} />
+              {/if}
             </button>
             <button
               class="button only-mobile"
@@ -155,17 +169,11 @@
           >
             <span class="track-row-number metadata text-subtle">
               {#if currentTrack?.id === track.id && playbackState === "loading"}
-                <span role="img" aria-label="Loading playback">
-                  <Loader />
-                </span>
+                <Loader />
               {:else if currentTrack?.id === track.id && playbackState === "playing"}
-                <span role="img" aria-label="Playing">
-                  <Icon name="sound-bars" color="var(--accent)" />
-                </span>
+                <Icon name="sound-bars" color="var(--accent)" />
               {:else if currentTrack?.id === track.id}
-                <span role="img" aria-label="Current track, not playing">
-                  <Icon name="pause" color="var(--accent)" />
-                </span>
+                <Icon name="play" color="var(--accent)" />
               {:else if downloadStatus === "downloading"}
                 <span role="img" aria-label="Downloading">
                   <Loader />

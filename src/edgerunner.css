@@ -1082,6 +1082,23 @@
     }
   }
 
+  .album-cover {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .album-playing {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    corner-shape: var(--corner-shape);
+    color: var(--accent);
+    background: rgb(from var(--palette-black) r g b / 75%);
+    pointer-events: none;
+  }
+
   .artwork-placeholder {
     position: absolute;
     inset: 0;

@@ -4,6 +4,7 @@
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
   import Atmosphere from "./ui/atmosphere.svelte";
+  import Loader from "./ui/loader.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -16,6 +17,7 @@
     covers: Covers;
     trackEngine: TrackEngine;
     session: Session;
+    playbackState: "loading" | "playing" | "paused";
     playback: Playback;
     appName?: string;
   }
@@ -26,6 +28,7 @@
     covers,
     trackEngine,
     session,
+    playbackState,
     playback,
     appName = "Libras",
   }: Props = $props();
@@ -37,6 +40,16 @@
   const atmosphere = $derived(artist?.artworkId ? covers.ensureCover(artist.artworkId) : undefined);
   const albums = $derived(artist ? (cache.artistAlbums.get(artist.id) ?? []) : []);
   const tracks = $derived(albums.flatMap((album) => cache.albumTracks.get(album.id) ?? []));
+  const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
+  const artistPlaybackState = $derived(
+    currentTrack && albums.some((album) => album.id === currentTrack.albumId)
+      ? playbackState
+      : undefined,
+  );
+  const artistCanPause = $derived(
+    artistPlaybackState === "playing" || artistPlaybackState === "loading",
+  );
+  const visibleTrackIds = $derived(availableTrackIds(tracks));
   const visibleAlbums = $derived(
     offlineMode
       ? albums.filter((album) =>
@@ -89,11 +102,19 @@
             <button
               class="button"
               data-variant="primary"
-              aria-label={`Play ${artist.name}`}
-              disabled={!availableTrackIds(tracks).length}
-              onclick={() => void playback.replaceQueueAndPlay(availableTrackIds(tracks))}
+              aria-label={`${artistCanPause ? "Pause" : "Play"} ${artist.name}`}
+              aria-busy={artistPlaybackState === "loading"}
+              disabled={!artistPlaybackState && !visibleTrackIds.length}
+              onclick={() => {
+                if (artistPlaybackState) void playback.toggle();
+                else void playback.replaceQueueAndPlay(visibleTrackIds);
+              }}
             >
-              <Icon name="play" />
+              {#if artistPlaybackState === "loading"}
+                <Loader />
+              {:else}
+                <Icon name={artistCanPause ? "pause" : "play"} />
+              {/if}
             </button>
             <button
               class="button only-mobile"
@@ -134,7 +155,14 @@
           {@const ids = availableTrackIds(cache.albumTracks.get(album.id) ?? [])}
           <article class="menu-item track-row">
             <div class="row-sm">
-              <Artwork {covers} id={album.artworkId} size="sm" />
+              <span class="album-cover">
+                <Artwork {covers} id={album.artworkId} size="sm" />
+                {#if currentTrack?.albumId === album.id && playbackState === "playing"}
+                  <span class="album-playing" role="img" aria-label="Playing">
+                    <Icon name="sound-bars" />
+                  </span>
+                {/if}
+              </span>
               <div>
                 <p class="label">{album.title}</p>
                 <p class="caption text-subtle">

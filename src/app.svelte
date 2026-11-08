@@ -166,7 +166,16 @@
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
-  <ArtistRoute {params} {cache} {covers} {trackEngine} {session} {playback} {appName} />
+  <ArtistRoute
+    {params}
+    {cache}
+    {covers}
+    {trackEngine}
+    {session}
+    {playback}
+    {appName}
+    playbackState={playbackLoading ? "loading" : player?.playing ? "playing" : "paused"}
+  />
 {/snippet}
 
 {#snippet albumRoute(params: RouteParams)}
@@ -334,7 +343,7 @@
           <div class="stack-sm">
             {#each alerts as alert (alert.id)}
               {#if alert.message}
-                <div class="card stack-sm" role="alert">
+                <div class="stack-sm" role="alert">
                   <p class="caption">{alert.message}</p>
                   {#if alert.id === "playback" && playback.track}
                     <p class="caption text-secondary">{playback.track.title}</p>
