@@ -331,8 +331,12 @@ describe("TrackEngine using Cache", () => {
       vi.fn(() => response.promise),
     );
     const { engine, selection, cache } = setup({ online: true });
+    expect(engine.getStatus(track.id)).toBe("idle");
+    expect(engine.downloadCount).toBe(0);
     const pending = engine.download(track.id);
+    expect(cache.downloads.has(downloadKey(track.id, "mp3"))).toBe(false);
     expect(engine.getStatus(track.id)).toBe("queued");
+    expect(engine.downloadCount).toBe(1);
     expect(selection.cache!.completedDownloads.size).toBe(0);
     response.resolve(new Response("audio"));
     await pending;

@@ -1093,8 +1093,8 @@ export class Cache {
         // Download-domain failures do not gate independent saved-file or online playback.
         if (signal?.aborted) throw error;
       });
-      const record = this.completedDownloads.get(key);
-      if (!record) return null;
+      const record = this.downloads.get(key);
+      if (record?.status !== "completed") return null;
       const file = await this.#requireDisk().openBinary(record, signal);
       if (file) return file;
       // Legacy fallback is read-only until the complete migration has committed.
