@@ -46,11 +46,24 @@ it("loads 16 unique artists, 53 editions and 663 recordings without persisting p
     "The xx",
     "TOOL",
   ]);
+  expect(new Set(result.artists.map((artist) => artist.coverArt)).size).toBe(16);
   expect(result.albums).toHaveLength(53);
   expect(result.tracks).toHaveLength(663);
   expect(new Set(result.tracks.map((track) => track.id)).size).toBe(663);
   for (const fixture of albumFixtures) {
     expect(client.getCoverArtUrl(String(fixture.id))).toBe(fixture.cover_medium);
+    const artist = result.artists.find((artist) => artist.id === String(fixture.artist.id))!;
+    expect(artist.coverArt).toBe(`artist:${fixture.artist.id}`);
+    expect(client.getCoverArtUrl(artist.coverArt)).toBe(fixture.artist.picture_big);
+    expect(client.getCoverArtUrl(artist.coverArt)).not.toBe(fixture.cover_medium);
+    expect(result.albums.find((album) => album.id === String(fixture.id))?.coverArt).toBe(
+      String(fixture.id),
+    );
+    expect(
+      result.tracks
+        .filter((track) => track.albumId === String(fixture.id))
+        .every((track) => track.coverArt === String(fixture.id)),
+    ).toBe(true);
     expect(
       result.tracks
         .filter((track) => track.albumId === String(fixture.id))

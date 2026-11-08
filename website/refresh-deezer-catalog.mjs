@@ -63,6 +63,33 @@ export const selections = [
   [108996972, 689, 10, 2019, "Fear_Inoculum"],
 ];
 
+export async function refreshArtistArtwork(albums, fetcher = fetch) {
+  const artwork = new Map();
+  for (const artistId of new Set(albums.map((album) => album.artistId))) {
+    const response = await fetcher(`https://api.deezer.com/artist/${artistId}`, {
+      signal: AbortSignal.timeout(20_000),
+      cache: "no-store",
+      credentials: "omit",
+      redirect: "error",
+    });
+    if (!response.ok) throw new Error(`Artist ${artistId}: metadata HTTP ${response.status}.`);
+    const artist = await response.json();
+    if (artist.id !== artistId) throw new Error(`Artist ${artistId}: mismatched artist response.`);
+    const value = artist.picture_big || artist.picture_medium;
+    let url;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new Error(`Artist ${artistId}: missing or invalid photo URL.`);
+    }
+    if (url.origin !== "https://cdn-images.dzcdn.net" || url.username || url.password)
+      throw new Error(`Artist ${artistId}: unexpected photo URL.`);
+    artwork.set(artistId, url.href);
+  }
+  // Add photos without changing the supplied album/track metadata.
+  return albums.map((album) => ({ ...album, artistArtwork: artwork.get(album.artistId) }));
+}
+
 export async function refreshCatalog() {
   const albums = [];
   const trackIds = new Set();
@@ -132,10 +159,14 @@ export async function refreshCatalog() {
   ) {
     throw new Error("Catalog totals changed; review the selection before refreshing.");
   }
+  const enriched = await refreshArtistArtwork(albums, async (...args) => {
+    await delay(200);
+    return fetch(...args);
+  });
   // Only stable metadata is stored. Never write preview URLs, tokens, or audio.
   await writeFile(
     new URL("./deezer-catalog.json", import.meta.url),
-    JSON.stringify(albums, null, 2) + "\n",
+    JSON.stringify(enriched, null, 2) + "\n",
   );
   console.log("Refreshed 16 artists, 53 albums, 663 preview entries. No audio downloaded.");
 }

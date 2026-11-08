@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, it } from "vitest";
 import { demoAlbums } from "./deezer-catalog";
 
@@ -70,6 +71,26 @@ it("preserves edition labels, explicit flags and independently curated years", (
     expect(album.year).toBeGreaterThan(1900);
     expect(album.sourceReleaseDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   }
+});
+
+it("has one distinct committed photo per artist and preserves every album/track snapshot value", () => {
+  const photos = new Map<number, string>();
+  for (const album of demoAlbums) {
+    const url = new URL(album.artistArtwork);
+    expect(url.origin).toBe("https://cdn-images.dzcdn.net");
+    expect(url.username + url.password).toBe("");
+    expect(url.pathname).toMatch(/^\/images\/artist\//);
+    expect(album.artistArtwork).not.toBe(album.artwork);
+    if (photos.has(album.artistId)) expect(album.artistArtwork).toBe(photos.get(album.artistId));
+    photos.set(album.artistId, album.artistArtwork);
+  }
+  expect(photos.size).toBe(16);
+  expect(new Set(photos.values()).size).toBe(16);
+  const original = demoAlbums.map(({ artistArtwork: _photo, ...album }) => album);
+  // Baseline snapshot before adding artistArtwork: no unrelated live metadata drift.
+  expect(createHash("sha256").update(JSON.stringify(original)).digest("hex")).toBe(
+    "a7b90d268acaa02dac30594e1a4c34a6acc1e226981d3285afff3f59bc7bde30",
+  );
 });
 
 it("contains no playback URLs or API tokens", () => {
