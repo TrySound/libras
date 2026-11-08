@@ -334,20 +334,27 @@ it("toggles the selected duplicate occurrence without replacing a mixed queue or
 });
 
 it("keeps pause/cancel available offline but never substitutes another track for an unavailable selection", async () => {
-  const { button, state, playback, tracks, offline, cache, replace, getSource } = await setup();
+  const { button, state, playback, tracks, offline, cache, replace, getSource, audio } =
+    await setup();
   vi.spyOn(tracks, "getStatus").mockImplementation((id) =>
     id === "first" ? "downloaded" : "idle",
   );
   await playback.replaceQueueAndPlay(["unrelated", "second", "second"], 2);
   await playback.seek(25);
   replace.mockClear();
+  getSource.mockClear();
+  audio.play.mockClear();
   offline.set(true);
   state("playing");
   expect(button().disabled).toBe(false);
   button().click();
   state("paused");
-  expect(button().disabled).toBe(true);
+  expect(button().disabled).toBe(false);
   button().click();
+  await settle();
+  state("paused");
+  expect(getSource).not.toHaveBeenCalled();
+  expect(audio.play).not.toHaveBeenCalled();
   expect(cache.queue).toMatchObject({
     tracks: ["unrelated", "second", "second"],
     index: 2,
@@ -365,10 +372,20 @@ it("keeps pause/cancel available offline but never substitutes another track for
   expect(button().disabled).toBe(false);
   button().click();
   state("paused");
-  expect(button().disabled).toBe(true);
+  expect(button().disabled).toBe(false);
   pending.resolve(source());
   await settle();
+  button().click();
+  await settle();
   state("paused");
+  expect(getSource).toHaveBeenCalledOnce();
+  expect(audio.play).not.toHaveBeenCalled();
+  expect(cache.queue).toMatchObject({
+    tracks: ["unrelated", "second", "second"],
+    index: 2,
+    position: 25,
+  });
+  expect(replace).not.toHaveBeenCalled();
   playback.clearQueue();
   state();
   expect(button().disabled).toBe(false);

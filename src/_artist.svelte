@@ -50,13 +50,6 @@
     artistPlaybackState === "playing" || artistPlaybackState === "loading",
   );
   const visibleTrackIds = $derived(availableTrackIds(tracks));
-  const artistPlaybackDisabled = $derived(
-    artistPlaybackState
-      ? !artistCanPause &&
-          offlineMode &&
-          (!currentTrack || trackEngine.getStatus(currentTrack.id) !== "downloaded")
-      : !visibleTrackIds.length,
-  );
   const visibleAlbums = $derived(
     offlineMode
       ? albums.filter((album) =>
@@ -111,7 +104,7 @@
               data-variant="primary"
               aria-label={`${artistCanPause ? "Pause" : "Play"} ${artist.name}`}
               aria-busy={artistPlaybackState === "loading"}
-              disabled={artistPlaybackDisabled}
+              disabled={!artistPlaybackState && !visibleTrackIds.length}
               onclick={() => {
                 if (artistPlaybackState) void playback.toggle();
                 else void playback.replaceQueueAndPlay(visibleTrackIds);
