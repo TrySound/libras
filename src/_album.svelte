@@ -104,10 +104,6 @@
               aria-describedby={albumPlaybackState ? `${id}-playback` : undefined}
               aria-busy={albumPlaybackState === "loading"}
               disabled={!visibleTrackIds.length}
-              onkeydown={(event) => {
-                // Keep native Space activation instead of the document's transport shortcut.
-                if (event.key === " ") event.stopPropagation();
-              }}
               onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
             >
               {#if albumPlaybackState === "loading"}
@@ -147,11 +143,13 @@
         </p>
         {#if albumPlaybackState}
           <p id={`${id}-playback`} class="caption text-secondary">
-            {albumPlaybackState === "loading"
-              ? "Loading playback…"
-              : albumPlaybackState === "playing"
-                ? "Playing"
-                : "Playback paused"}
+            {#if albumPlaybackState === "loading"}
+              Loading playback…
+            {:else if albumPlaybackState === "playing"}
+              Playing
+            {:else}
+              Playback paused
+            {/if}
           </p>
         {/if}
         {#if album.genres.length}

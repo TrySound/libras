@@ -54,7 +54,7 @@
   import { onMount, untrack } from "svelte";
 
   const interactive =
-    'input, textarea, select, summary, audio, video, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]';
+    'button, input, textarea, select, summary, audio, video, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]';
 
   let {
     hasPrevious = false,

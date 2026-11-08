@@ -238,7 +238,45 @@ describe("Player component", () => {
       expect(toggle).toHaveBeenCalledOnce();
     });
 
-    it.each(["button", "a[href]", '[role="button"]'])(
+    it("preserves native button Space activation, including descendants, while background Space toggles", async () => {
+      const { player, audio, item } = setup();
+      await player.play(item);
+      const background = document.createElement("div");
+      const button = document.createElement("button");
+      const label = document.createElement("span");
+      button.append(label);
+      background.append(button);
+      document.body.append(background);
+      try {
+        const space = (target: Element) => {
+          const event = new KeyboardEvent("keydown", {
+            key: " ",
+            bubbles: true,
+            cancelable: true,
+          });
+          target.dispatchEvent(event);
+          return event;
+        };
+        for (const playing of [true, false]) {
+          if (!playing) player.pause();
+          audio.play.mockClear();
+          for (const target of [button, label]) {
+            expect(space(target).defaultPrevented).toBe(false);
+            expect(player.playing).toBe(playing);
+            expect(audio.play).not.toHaveBeenCalled();
+          }
+        }
+        expect(space(background).defaultPrevented).toBe(true);
+        expect(player.playing).toBe(true);
+        expect(audio.play).toHaveBeenCalledOnce();
+        expect(space(background).defaultPrevented).toBe(true);
+        expect(player.playing).toBe(false);
+      } finally {
+        background.remove();
+      }
+    });
+
+    it.each(["a[href]", '[role="button"]'])(
       "uses Space for playback on %s but leaves Enter alone",
       async (control) => {
         const { toggle, dispatch } = await setupShortcuts();
