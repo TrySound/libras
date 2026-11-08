@@ -35,7 +35,6 @@
     appName = "Libras",
   }: Props = $props();
 
-  const id = $props.id();
   const offlineMode = $derived(session.offlineMode);
   const loading = $derived(!session.localReady);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
@@ -43,6 +42,9 @@
   const album = $derived(params.albumId ? cache.albums.get(params.albumId) : undefined);
   const albumPlaybackState = $derived(
     album && currentTrack?.albumId === album.id ? playbackState : undefined,
+  );
+  const albumCanPause = $derived(
+    albumPlaybackState === "playing" || albumPlaybackState === "loading",
   );
   const artist = $derived(album ? cache.artists.get(album.artistIds[0]) : undefined);
   const atmosphere = $derived(album?.artworkId ? covers.ensureCover(album.artworkId) : undefined);
@@ -56,6 +58,13 @@
       : [],
   );
   const visibleTrackIds = $derived(visibleTracks.map((track) => track.id));
+  const albumPlaybackDisabled = $derived(
+    albumPlaybackState
+      ? !albumCanPause &&
+          offlineMode &&
+          (!currentTrack || trackEngine.getStatus(currentTrack.id) !== "downloaded")
+      : !visibleTrackIds.length,
+  );
 
   function playTrack(track: Immutable<Track>) {
     void playback.replaceQueueAndPlay(visibleTrackIds, visibleTrackIds.indexOf(track.id));
@@ -100,16 +109,18 @@
             <button
               class="button"
               data-variant="primary"
-              aria-label={`Play ${album.title}`}
-              aria-describedby={albumPlaybackState ? `${id}-playback` : undefined}
+              aria-label={`${albumCanPause ? "Pause" : "Play"} ${album.title}`}
               aria-busy={albumPlaybackState === "loading"}
-              disabled={!visibleTrackIds.length}
-              onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
+              disabled={albumPlaybackDisabled}
+              onclick={() => {
+                if (albumPlaybackState) void playback.toggle();
+                else void playback.replaceQueueAndPlay(visibleTrackIds);
+              }}
             >
               {#if albumPlaybackState === "loading"}
                 <Loader />
               {:else}
-                <Icon name={albumPlaybackState === "playing" ? "sound-bars" : "play"} />
+                <Icon name={albumCanPause ? "pause" : "play"} />
               {/if}
             </button>
             <button
@@ -141,17 +152,6 @@
             ...(totalDuration ? [`${Math.ceil(totalDuration / 60)} min`] : []),
           ].join(" · ")}
         </p>
-        {#if albumPlaybackState}
-          <p id={`${id}-playback`} class="caption text-secondary">
-            {#if albumPlaybackState === "loading"}
-              Loading playback…
-            {:else if albumPlaybackState === "playing"}
-              Playing
-            {:else}
-              Playback paused
-            {/if}
-          </p>
-        {/if}
         {#if album.genres.length}
           <p class="caption text-secondary" role="group" aria-label="Genres">
             {album.genres.join(" · ")}
@@ -176,17 +176,11 @@
           >
             <span class="track-row-number metadata text-subtle">
               {#if currentTrack?.id === track.id && playbackState === "loading"}
-                <span role="img" aria-label="Loading playback">
-                  <Loader />
-                </span>
+                <Loader />
               {:else if currentTrack?.id === track.id && playbackState === "playing"}
-                <span role="img" aria-label="Playing">
-                  <Icon name="sound-bars" color="var(--accent)" />
-                </span>
+                <Icon name="pause" color="var(--accent)" />
               {:else if currentTrack?.id === track.id}
-                <span role="img" aria-label="Current track, not playing">
-                  <Icon name="pause" color="var(--accent)" />
-                </span>
+                <Icon name="play" color="var(--accent)" />
               {:else if downloadStatus === "downloading"}
                 <span role="img" aria-label="Downloading">
                   <Loader />

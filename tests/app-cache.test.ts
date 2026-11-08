@@ -189,12 +189,11 @@ it("shows compact track credits, durations, and padded numbers in albums and que
     expect(rows.map(duration)).toEqual(["4:32", "0:00", ""]);
   }
   expect(albumRows[0].getAttribute("aria-current")).toBe("true");
-  expect(
-    albumRows[0]
-      .querySelector('[aria-label="Current track, not playing"] use')
-      ?.getAttribute("href"),
-  ).toBe("#icon-pause");
-  expect(queueRows[0].querySelector('[aria-label="Current track, not playing"]')).not.toBeNull();
+  for (const row of [albumRows[0], queueRows[0]]) {
+    expect(row.querySelector('use[href="#icon-play"]')).not.toBeNull();
+    expect(row.querySelector('button[aria-label="Play First track"]')).not.toBeNull();
+    expect(row.querySelector('[aria-label="Current track, not playing"]')).toBeNull();
+  }
   for (const row of queueRows) expect(row.textContent).not.toContain("Album title");
   expect(albumRows[1].querySelector('[aria-label="Actions for Second track"]')).not.toBeNull();
   const toggle = vi.spyOn(mocks.options!.playback, "toggle").mockResolvedValue();

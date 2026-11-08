@@ -2,6 +2,7 @@
   import { onMount, type ComponentProps } from "svelte";
   import Album from "../src/_album.svelte";
   import AudioPlayer from "../src/audio-player.svelte";
+  import Player from "../src/ui/player.svelte";
 
   let { props }: { props: Omit<ComponentProps<typeof Album>, "params" | "playbackState"> } =
     $props();
@@ -23,6 +24,14 @@
   onposition={(position) => props.playback.setPosition(position)}
   onended={() => props.playback.ended()}
   onstatechange={(state) => props.playback.updatePlayerState(state)}
+/>
+<Player
+  cache={props.cache}
+  covers={props.covers}
+  playback={props.playback}
+  trackEngine={props.trackEngine}
+  {audio}
+  offlineMode={props.session.offlineMode}
 />
 {#if albumId}
   <Album
