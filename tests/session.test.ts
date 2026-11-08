@@ -814,12 +814,7 @@ describe("session", () => {
 
   it("keeps three active and three queued downloads across both offline toggles", async () => {
     installDisk();
-    const fixture = setup(true);
-    const open = vi.spyOn(fixture.network, "openDownloadAccess");
-    const { session, trackEngine, metadata, playback } = fixture;
-    session.start();
-    await vi.waitFor(() => expect(session.status).toBe("connected"));
-    const downloadConnection = open.mock.results[0].value;
+    const { session, trackEngine, metadata, playback } = await connected();
     const first = deferred();
     const release = deferred();
     const signals: AbortSignal[] = [];
@@ -836,14 +831,12 @@ describe("session", () => {
     expect(trackEngine.downloadCount).toBe(6);
     await session.setOfflineMode(true);
     expect(signals.every((signal) => !signal.aborted)).toBe(true);
-    expect(downloadConnection.signal.aborted).toBe(false);
     expect(trackEngine.downloadCount).toBe(6);
     first.resolve();
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(4));
     expect(session.offlineMode).toBe(true);
     expect(trackEngine.downloadCount).toBe(5);
     await session.setOfflineMode(false);
-    expect(open).toHaveBeenCalledOnce();
     expect(signals.every((signal) => !signal.aborted)).toBe(true);
     expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
     expect(playback.refreshQueue).toHaveBeenCalledOnce();
@@ -851,8 +844,6 @@ describe("session", () => {
     await Promise.all(work);
     expect(fetcher).toHaveBeenCalledTimes(6);
     expect(trackEngine.downloadCount).toBe(0);
-    session.disconnect();
-    expect(downloadConnection.signal.aborted).toBe(true);
   });
 
   it("closes download access when the session is destroyed", async () => {

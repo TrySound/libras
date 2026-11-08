@@ -598,7 +598,7 @@ describe("TrackEngine using Cache", () => {
     },
   );
 
-  it("cancels an in-progress stream and queued work when Network goes offline", async () => {
+  it("interrupts an in-progress stream and queued work when download access closes", async () => {
     const disk = install();
     const wrote = deferred();
     disk.state.beforeWrite = (path) => {
@@ -614,12 +614,11 @@ describe("TrackEngine using Cache", () => {
     const fetcher = vi.fn(async () => new Response(body));
     vi.stubGlobal("fetch", fetcher);
     const network = new Network();
-    const client = network.accept(network.prepare(auth));
     const { engine, cache } = setup({ concurrency: 1 });
-    engine.setDownloadConnection(client.audio);
+    engine.setDownloadConnection(network.openDownloadAccess(auth));
     const results = Promise.allSettled([engine.download("active"), engine.download("queued")]);
     await wrote.promise;
-    network.setMode("offline");
+    network.closeDownloadAccess();
     expect((await results).map((result) => result.status)).toEqual(["rejected", "rejected"]);
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     expect(fetcher).toHaveBeenCalledOnce();
