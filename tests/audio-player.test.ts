@@ -346,6 +346,39 @@ describe("Player component", () => {
     expect(space().defaultPrevented).toBe(false);
   });
 
+  it("reacquires a cancelled source even while native currentSrc still reports the retired URL", async () => {
+    const { player, audio, item, getSource } = setup();
+    const nativePlay = Promise.withResolvers<void>();
+    audio.play.mockImplementationOnce(() => nativePlay.promise);
+    const pending = player.play(item);
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledOnce());
+    Object.defineProperty(audio, "currentSrc", { get: () => "blob:retired" });
+    player.pause();
+    expect(audio.src).toBe("");
+    await player.resume();
+    expect(getSource).toHaveBeenCalledTimes(2);
+    expect(audio.src).toBe("blob:track");
+    expect(player.playing).toBe(true);
+    nativePlay.reject(new DOMException("The play request was interrupted.", "AbortError"));
+    await pending;
+    expect(player.status).toBe("ready");
+    expect(player.error).toBeUndefined();
+  });
+
+  it("reports an abort from the current source provider and retries rather than hiding it", async () => {
+    const { player, item, getSource } = setup();
+    const error = new DOMException("signal is aborted without reason", "AbortError");
+    getSource.mockRejectedValueOnce(error);
+    await player.play(item);
+    expect(player.status).toBe("error");
+    expect(player.error).toBe(error);
+    expect(getSource.mock.calls).toHaveLength(1);
+    await player.resume();
+    expect(getSource).toHaveBeenCalledTimes(2);
+    expect(player.playing).toBe(true);
+    expect(player.error).toBeUndefined();
+  });
+
   it("pauses a pending load with Space and ignores its late source", async () => {
     const { player, audio, item, getSource } = setup();
     let resolve!: (source: PlayerSource) => void;

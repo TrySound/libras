@@ -9,6 +9,8 @@ import { Covers } from "../src/covers.svelte";
 import { TrackEngine, type TrackSource } from "../src/track.svelte";
 import { Playback } from "../src/playback.svelte";
 import { installDisk } from "./cache-test-helpers";
+import { getAccountKey } from "../src/auth";
+import { Network } from "../src/network.svelte";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -50,7 +52,9 @@ async function setup() {
       setPositionState: vi.fn(),
     },
   });
-  const cache = new Cache("album-header-tests");
+  const cache = new Cache(
+    getAccountKey({ host: "https://music.example.test", username: "listener" }),
+  );
   await cache.replaceLibrary({
     lastModified: 1,
     savedAt: 1,
@@ -148,6 +152,44 @@ async function setup() {
     state,
   };
 }
+
+it("reacquires real streaming sources after header cancellation and selection changes", async () => {
+  const { button, state, tracks, getSource, playback, audio } = await setup();
+  getSource.mockRestore();
+  const network = new Network();
+  const auth = {
+    host: "https://music.example.test",
+    username: "listener",
+    credentials: { method: "token" as const, username: "listener", token: "test", salt: "test" },
+  };
+  tracks.setPlaybackConnection(network.accept(network.prepare(auth)).audio);
+  const playing = () => vi.waitFor(() => state("Playing"));
+  const nativePlay = deferred<void>();
+  audio.play.mockImplementationOnce(() => nativePlay.promise);
+  button().click();
+  state("Loading playback…");
+  await vi.waitFor(() => expect(audio.play).toHaveBeenCalledOnce());
+  // Native currentSrc can retain the cancelled resource until selection runs again.
+  const retiredUrl = audio.src;
+  Object.defineProperty(audio, "currentSrc", { get: () => retiredUrl });
+  button().click();
+  state("Playback paused");
+  expect(audio.src).toBe("");
+  button().click();
+  await playing();
+  expect(audio.src).not.toBe("");
+  nativePlay.reject(new DOMException("The play request was interrupted.", "AbortError"));
+  await settle();
+  state("Playing");
+  button().click();
+  state("Playback paused");
+  button().click();
+  await playing();
+  await playback.replaceQueueAndPlay(["unrelated"]);
+  state();
+  button().click();
+  await playing();
+});
 
 it("immediately exposes startup, then actual playing, paused, resumed, buffering and seeking state", async () => {
   const { button, state, audio, playback, getSource, cache, replace } = await setup();
