@@ -243,8 +243,7 @@ export class Session {
     const previous = selection.cache;
     if (!previous || previous === next) return;
     covers.activate();
-    tracks.activate();
-    await tracks.interruptDownloads();
+    await tracks.activate();
     signal.throwIfAborted();
     do {
       try {

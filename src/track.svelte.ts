@@ -71,8 +71,7 @@ export class TrackEngine {
   /** Session selected a cache. Activation performs no hydration or persistence. */
   activate() {
     this.#releaseSources();
-    void this.interruptDownloads();
-    this.#version++;
+    return this.interruptDownloads();
   }
   get downloadJobs(): readonly DownloadJobInfo[] {
     this.#version;
@@ -428,7 +427,13 @@ export class TrackEngine {
   }
 
   async #cached(cache: Cache, track: SourceTrack, descriptor: Descriptor, signal: AbortSignal) {
-    const file = await cache.readDownload(track.id, descriptor.format, signal);
+    const read = (format: DownloadFormat) =>
+      cache.readDownload(track.id, format, signal).catch((error: unknown) => {
+        signal.throwIfAborted();
+        if (error instanceof DownloadError) return null;
+        throw error;
+      });
+    const file = await read(descriptor.format);
     if (file)
       return {
         file,
@@ -436,7 +441,7 @@ export class TrackEngine {
       };
     // A codec retry may have saved MP3 despite the browser claiming raw support.
     if (descriptor.format === "raw") {
-      const mp3 = await cache.readDownload(track.id, "mp3", signal);
+      const mp3 = await read("mp3");
       if (mp3) return { file: mp3, contentType: "audio/mpeg" };
     }
     return null;

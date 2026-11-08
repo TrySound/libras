@@ -564,8 +564,23 @@ it("places explicit Retry at the durable FIFO tail", async () => {
 });
 
 /** Restore the representation used by released completed-only installs. */
-function legacy(disk: ReturnType<typeof installDisk>) {
-  const records = catalog(disk).map(({ status, ...record }: { status: string }) => record);
+function legacy(disk: ReturnType<typeof installDisk>, cache: Cache) {
+  const records = [...cache.downloads.keys()].map((key) => {
+    const record = expectCompletedDownload(cache, key);
+    return {
+      track: {
+        id: record.track.id,
+        title: record.track.title,
+        artist: record.track.artist,
+        album: record.track.album,
+      },
+      format: record.format,
+      contentType: record.contentType,
+      fileName: record.fileName,
+      size: record.size,
+      downloadedAt: record.downloadedAt,
+    };
+  });
   disk.files.set(path(disk), JSON.stringify(records));
   return records;
 }
@@ -575,7 +590,7 @@ it("migrates completed-only installs once, preserving saved metadata and both fo
   const seed = new Cache(getAccountKey(account));
   await save(seed);
   await seed.saveDownload(track, "raw", "audio/flac", new Response("raw"), signal());
-  const before = legacy(disk);
+  const before = legacy(disk, seed);
   const cache = new Cache(seed.key);
   await cache.load();
   expect(catalog(disk)).toEqual(
@@ -599,7 +614,7 @@ it("does not write partial legacy fallback after a transient migration failure",
     new Response("saved"),
     signal(),
   );
-  legacy(disk);
+  legacy(disk, seed);
   const missing = expectCompletedDownload(seed, key);
   disk.blobs.delete([...disk.blobs.keys()].find((name) => name.endsWith(missing.fileName))!);
   const before = new Map(disk.files);
@@ -625,7 +640,7 @@ it.each(["before", "after"])(
     const disk = installDisk();
     const seed = new Cache(getAccountKey(account));
     await save(seed);
-    legacy(disk);
+    legacy(disk, seed);
     const previous = disk.files.get(path(disk));
     if (boundary === "before")
       disk.state.beforeClose = async (name) => {

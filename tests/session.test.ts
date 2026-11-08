@@ -368,10 +368,10 @@ describe("session", () => {
     validate.mockReturnValueOnce(prepared.promise);
     const next = { host: "https://other.example", username: "other" };
     tracks.activate
-      .mockImplementationOnce(() => {
+      .mockImplementationOnce(async () => {
         expect(selection.cache?.artists).toBe(previous);
       })
-      .mockImplementation(() => {
+      .mockImplementation(async () => {
         expect(selection.cache?.key).toBe(getAccountKey(next));
       });
     const connecting = session.connect({ ...next, password: "secret" });

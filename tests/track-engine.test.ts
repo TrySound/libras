@@ -279,10 +279,11 @@ describe("TrackEngine using Cache", () => {
     };
     const controller = new AbortController();
     const first = engine.getSource(track, { signal: controller.signal });
-    const rejected = expect(first).rejects.toMatchObject({ name: "AbortError" });
+    const reason = new Error("Source request canceled");
+    const rejected = expect(first).rejects.toBe(reason);
     await reading.promise;
     const second = engine.getSource(track);
-    controller.abort();
+    controller.abort(reason);
     gate.resolve();
     await rejected;
     expect((await second).cached).toBe(true);
@@ -457,6 +458,42 @@ describe("TrackEngine using Cache", () => {
     const { engine } = setup({ cache: await seed() });
     expect((await engine.getSource(track)).cached).toBe(true);
     expect((vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob).type).toBe("audio/mpeg");
+  });
+
+  it("uses saved MP3 when reading a completed raw file is denied", async () => {
+    const disk = install("probably");
+    const cache = await seed();
+    await seed(cache, "raw");
+    const raw = expectCompletedDownload(cache, downloadKey(track.id, "raw"));
+    disk.state.beforeRead = async (path) => {
+      if (path.endsWith(raw.fileName)) throw new DOMException("Denied", "NotAllowedError");
+    };
+    const { engine } = setup({ cache });
+    const source = await engine.getSource(track);
+    expect(source.cached).toBe(true);
+    expect((vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob).type).toBe("audio/mpeg");
+    source.release();
+  });
+
+  it("streams denied cached audio but preserves unavailable-source and unrelated failures", async () => {
+    const disk = install("probably");
+    const cache = await seed(undefined, "raw");
+    disk.state.beforeRead = async (path) => {
+      if (path.endsWith(".audio")) throw new DOMException("Denied", "NotAllowedError");
+    };
+    const { engine } = setup({ cache, online: true });
+    const source = await engine.getSource(track);
+    expect(source.cached).toBe(false);
+    expect(new URL(source.url).pathname).toBe("/rest/stream.view");
+    const failure = new Error("Stream source failed");
+    engine.setConnection({ ...connection(), url: vi.fn().mockRejectedValue(failure) });
+    await expect(engine.getSource(track)).rejects.toBe(failure);
+    engine.setConnection(undefined);
+    await expect(engine.getSource(track)).rejects.toThrow(
+      "This track is not downloaded. Connect to its music server to stream it.",
+    );
+    vi.spyOn(cache, "readDownload").mockRejectedValue(failure);
+    await expect(engine.getSource(track)).rejects.toBe(failure);
   });
 
   it.each([
@@ -926,9 +963,23 @@ describe("reviewed download failure boundaries", () => {
     const seeded = await seed();
     await seed(seeded, "raw");
     const catalogPath = [...disk.files.keys()].find((name) => name.endsWith("downloads.json"))!;
-    const legacy = JSON.parse(disk.files.get(catalogPath)!).records.map(
-      ({ status, ...record }: { status: string }) => record,
-    );
+    const legacy = (["mp3", "raw"] as const).map((format) => {
+      const record = expectCompletedDownload(seeded, downloadKey(track.id, format));
+      return {
+        track: {
+          id: track.id,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          contentType: track.contentType,
+        },
+        format,
+        contentType: format === "mp3" ? "audio/mpeg" : "audio/flac",
+        fileName: record.fileName,
+        size: record.size,
+        downloadedAt: record.downloadedAt,
+      };
+    });
     const raw = expectCompletedDownload(seeded, downloadKey(track.id, "raw"));
     disk.blobs.delete([...disk.blobs.keys()].find((name) => name.endsWith(raw.fileName))!);
     disk.files.set(catalogPath, "[]");

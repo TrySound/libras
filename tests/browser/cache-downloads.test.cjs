@@ -292,8 +292,17 @@ test("native OPFS completed-only migration close preserves input and reopens can
       ).getDirectoryHandle("accounts");
       const directory = await accounts.getDirectoryHandle(hash);
       const handle = await directory.getFileHandle("downloads.json");
-      const canonical = JSON.parse(await (await handle.getFile()).text());
-      const legacy = JSON.stringify(canonical.records.map(({ status, ...record }) => record));
+      const saved = [...cache.downloads.values()][0];
+      const legacy = JSON.stringify([
+        {
+          track: { id: "saved", title: "Saved", artist: "Artist", album: "Album" },
+          format: "mp3",
+          contentType: "audio/mpeg",
+          fileName: saved.fileName,
+          size: saved.size,
+          downloadedAt: saved.downloadedAt,
+        },
+      ]);
       const write = async (name, text) => {
         const writable = await (
           await directory.getFileHandle(name, { create: true })

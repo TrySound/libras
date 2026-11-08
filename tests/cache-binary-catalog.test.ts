@@ -83,57 +83,34 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
       }
     });
 
-  it("keeps an in-flight checkpoint separate from subsequent catalog mutations", async () => {
-    if (name === "downloads") {
+  if (name === "images")
+    it("keeps an in-flight checkpoint separate from subsequent catalog mutations", async () => {
+      vi.useFakeTimers();
       const disk = installDisk();
       const cache = new Cache(getAccountKey(account));
       const store = domain(name, cache);
       await store.save("first", "first");
-      const closing = deferred();
-      const release = deferred();
+      const closing = deferred<void>();
+      const release = deferred<void>();
       disk.state.beforeClose = async (path) => {
-        if (path.endsWith("/downloads.json")) {
+        if (path.endsWith(`/${name}.json`)) {
           closing.resolve();
           await release.promise;
         }
       };
-      const saving = store.save("second", "second");
+      const saving = store.flush();
       await closing.promise;
-      expect(store.records().size).toBe(1);
+      await store.save("second", "second");
       release.resolve();
       await saving;
+      const path = [...disk.files.keys()].find((path) => path.endsWith(`/${name}.json`))!;
+      expect(JSON.parse(disk.files.get(path)!)).toHaveLength(1);
       expect(store.records().size).toBe(2);
-      const path = [...disk.files.keys()].find((path) => path.endsWith("/downloads.json"))!;
-      expect(JSON.parse(disk.files.get(path)!).records).toHaveLength(2);
+      expect(cache.dirty).toBe(true);
+      await store.flush();
+      expect(JSON.parse(disk.files.get(path)!)).toHaveLength(2);
       expect(cache.dirty).toBe(false);
-      return;
-    }
-    vi.useFakeTimers();
-    const disk = installDisk();
-    const cache = new Cache(getAccountKey(account));
-    const store = domain(name, cache);
-    await store.save("first", "first");
-    const closing = deferred<void>();
-    const release = deferred<void>();
-    disk.state.beforeClose = async (path) => {
-      if (path.endsWith(`/${name}.json`)) {
-        closing.resolve();
-        await release.promise;
-      }
-    };
-    const saving = store.flush();
-    await closing.promise;
-    await store.save("second", "second");
-    release.resolve();
-    await saving;
-    const path = [...disk.files.keys()].find((path) => path.endsWith(`/${name}.json`))!;
-    expect(JSON.parse(disk.files.get(path)!)).toHaveLength(1);
-    expect(store.records().size).toBe(2);
-    expect(cache.dirty).toBe(true);
-    await store.flush();
-    expect(JSON.parse(disk.files.get(path)!)).toHaveLength(2);
-    expect(cache.dirty).toBe(false);
-  });
+    });
 
   if (name === "images")
     it("does not traverse a 20,907-record image catalog when adding records", async () => {

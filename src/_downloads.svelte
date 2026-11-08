@@ -16,23 +16,16 @@
 
   let { cache, covers, trackEngine, loading, appName = "Libras" }: Props = $props();
 
-  let retrying = $state(false);
   const canceling = $derived(trackEngine.cancelingDownloads);
   const failed = $derived(
     [...cache.downloads.values()].filter((entry) => entry.status === "failed"),
   );
 
-  async function retryAll() {
-    if (loading || canceling || retrying || !failed.length) return;
+  function retryAll() {
+    if (loading || canceling || !failed.length) return;
     const entries = [...failed];
-    retrying = true;
-    try {
-      await Promise.allSettled(
-        entries.map((entry) => trackEngine.download(entry.track.id, { format: entry.format })),
-      );
-    } finally {
-      retrying = false;
-    }
+    for (const entry of entries)
+      void trackEngine.download(entry.track.id, { format: entry.format });
   }
 
   async function cancelAll() {
@@ -78,7 +71,7 @@
           class="button"
           data-variant="secondary"
           data-size="text"
-          disabled={loading || canceling || retrying || !failed.length}
+          disabled={loading || canceling || !failed.length}
           onclick={retryAll}>Retry all</button
         >
         <button

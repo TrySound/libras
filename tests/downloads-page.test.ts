@@ -27,7 +27,7 @@ function setup(realJobs = false) {
   const selection = { cache };
   const covers = new Covers(selection);
   const trackEngine = new TrackEngine({ selection, concurrency: 1 });
-  const store = writable({ jobs: [] as Jobs, error: undefined as unknown, loading: false });
+  const store = writable({ jobs: [] as Jobs, loading: false });
   const state = fromStore(store);
   if (!realJobs) {
     vi.spyOn(trackEngine, "downloadJobs", "get").mockImplementation(() => state.current.jobs);
@@ -174,7 +174,7 @@ it("preserves a saved track name verbatim without adding badges", async () => {
   );
 });
 
-it("updates mounted rows when jobs complete and preserves saved entries during restoration and failures", async () => {
+it("preserves keyed rows when jobs complete during restoration", async () => {
   const { target, cache, set } = setup();
   await save(cache, "saved", 1000);
   set({ jobs: [job(cache, "active", "downloading")], loading: true });
@@ -183,11 +183,10 @@ it("updates mounted rows when jobs complete and preserves saved entries during r
   await save(cache, "active", 2000);
   expect(target.querySelectorAll('[role="listitem"]')).toHaveLength(2);
   const activeRow = target.querySelector('[role="listitem"]');
-  set({ jobs: [], loading: false, error: new Error("Transfer interrupted") });
+  set({ jobs: [], loading: false });
   expect(target.querySelector('[role="listitem"]')).toBe(activeRow);
   expect(target.querySelectorAll('[role="listitem"]')[1]).toBe(savedRow);
   expect(activeRow?.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Downloaded");
-  expect(target.textContent).not.toContain("Transfer interrupted");
   expect(target.querySelector(".card")).toBeNull();
   expect(target.querySelector('[role="list"]')?.getAttribute("aria-busy")).toBe("false");
 });
@@ -258,7 +257,7 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   expect(target.textContent).not.toContain("failed title");
 });
 
-it("Retry all snapshots only failed files in exact formats and guards loading and reentry", async () => {
+it("Retry all snapshots only failed files in exact formats without waiting for transfers", async () => {
   const { target, cache, trackEngine, set } = setup();
   await save(cache, "saved", 1000);
   for (const format of ["raw", "mp3"] as const) {
@@ -295,12 +294,9 @@ it("Retry all snapshots only failed files in exact formats and guards loading an
     ["failed", { format: "raw" }],
     ["failed", { format: "mp3" }],
   ]);
-  expect(retryAll.disabled).toBe(true);
+  expect(retryAll.disabled).toBe(false);
   expect(cancelAll.disabled).toBe(false);
-  retryAll.click();
-  expect(download).toHaveBeenCalledTimes(2);
   pending.resolve(new File(["audio"], "audio"));
-  await vi.waitFor(() => expect(retryAll.disabled).toBe(false));
   expect(target.querySelectorAll("time")).toHaveLength(1);
 });
 

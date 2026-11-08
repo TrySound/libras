@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { withoutDownloadErrors } from "./download-error";
   import Icon from "./icon.svelte";
   import { onDestroy, onMount, untrack, type Snippet } from "svelte";
   import { installLongPress } from "./long-press";
@@ -88,12 +87,11 @@
   let playbackLoading = $derived(
     ["loading", "buffering", "seeking"].includes(player?.status ?? "idle"),
   );
-  const visiblePlaybackError = $derived(withoutDownloadErrors(player?.error));
   let playbackError = $derived(
-    visiblePlaybackError instanceof Error
-      ? visiblePlaybackError.message
-      : visiblePlaybackError
-        ? String(visiblePlaybackError)
+    player?.error instanceof Error
+      ? player?.error.message
+      : player?.error
+        ? String(player?.error)
         : "",
   );
   let initialized = $state(false);
