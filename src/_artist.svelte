@@ -42,7 +42,7 @@
   const tracks = $derived(albums.flatMap((album) => cache.albumTracks.get(album.id) ?? []));
   const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const artistPlaybackState = $derived(
-    currentTrack && tracks.some((track) => track.id === currentTrack.id)
+    currentTrack && albums.some((album) => album.id === currentTrack.albumId)
       ? playbackState
       : undefined,
   );

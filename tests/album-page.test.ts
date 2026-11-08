@@ -1,31 +1,11 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from "vitest";
-import { flushSync, mount, unmount, type ComponentProps } from "svelte";
-import Harness from "./album-test-app.svelte";
-import { fromStore, writable } from "svelte/store";
-import { AudioStub } from "./audio-test-helpers";
-import { Cache } from "../src/cache.svelte";
-import { Covers } from "../src/covers.svelte";
-import { TrackEngine, type TrackSource } from "../src/track.svelte";
-import { Playback } from "../src/playback.svelte";
-import { installDisk } from "./cache-test-helpers";
-import { getAccountKey } from "../src/auth";
+import { expect, it, vi } from "vitest";
+import { flushSync } from "svelte";
+import { setupPlaybackPage } from "./playback-page-test-helpers";
+import type { TrackSource } from "../src/track.svelte";
 import { Network } from "../src/network.svelte";
-
-const cleanups: (() => Promise<void>)[] = [];
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0)) await cleanup();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-});
 function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<T>((yes, no) => {
-    resolve = yes;
-    reject = no;
-  });
-  return { promise, resolve, reject };
+  return Promise.withResolvers<T>();
 }
 const source = (id = "track"): TrackSource => ({
   url: `blob:${id}`,
@@ -38,24 +18,7 @@ async function settle() {
   flushSync();
 }
 async function setup() {
-  installDisk();
-  const audio = new AudioStub();
-  vi.stubGlobal("Audio", function () {
-    return audio;
-  });
-  const handlers = new Map<MediaSessionAction, MediaSessionActionHandler | null>();
-  Object.defineProperty(navigator, "mediaSession", {
-    configurable: true,
-    value: {
-      setActionHandler: (action: MediaSessionAction, handler: MediaSessionActionHandler | null) =>
-        handlers.set(action, handler),
-      setPositionState: vi.fn(),
-    },
-  });
-  const cache = new Cache(
-    getAccountKey({ host: "https://music.example.test", username: "listener" }),
-  );
-  await cache.replaceLibrary({
+  const fixture = await setupPlaybackPage({
     lastModified: 1,
     savedAt: 1,
     artists: [{ id: "artist", name: "Artist" }],
@@ -74,84 +37,37 @@ async function setup() {
       duration: 120,
     })),
   });
-  const selection = { cache };
-  const covers = new Covers(selection);
-  vi.spyOn(covers, "ensureCover").mockReturnValue({
-    pending: false,
-    source: undefined,
-    load: vi.fn(),
-  });
-  const tracks = new TrackEngine({ selection });
-  const getSource = vi
-    .spyOn(tracks, "getSource")
-    .mockImplementation(async (track) => source(track.id));
-  const offline = writable(false);
-  const offlineState = fromStore(offline);
-  const playback = new Playback({
-    selection,
-    tracks,
-    covers,
-    isAvailable: (id) => !offlineState.current || tracks.getStatus(id) === "downloaded",
-  });
-  const replace = vi.spyOn(playback, "replaceQueueAndPlay");
-  const target = document.createElement("div");
-  document.body.append(target);
-  const props = {
-    cache,
-    covers,
-    trackEngine: tracks,
-    playback,
-    session: {
-      localReady: true,
-      get offlineMode() {
-        return offlineState.current;
-      },
-    },
-  } as ComponentProps<typeof Harness>["props"];
-  const app = mount(Harness, { target, props: { props } });
-  flushSync();
-  cleanups.push(async () => {
-    await unmount(app);
-    await playback.destroy();
-    covers.destroy();
-    tracks.destroy();
-    target.remove();
-  });
+  const { target } = fixture;
   const button = () =>
     target.querySelector<HTMLButtonElement>(
       '[aria-label="Album details"] button[data-variant="primary"]',
     )!;
-  function state(expected?: string) {
+  function state(expected?: "loading" | "playing" | "paused") {
     flushSync();
-    const active = expected === "Playing" || expected === "Loading playback…";
+    const active = expected === "playing" || expected === "loading";
     expect(button().getAttribute("aria-label")).toBe(`${active ? "Pause" : "Play"} Album`);
-    expect(button().hasAttribute("aria-describedby")).toBe(false);
-    if (expected !== "Loading playback…") {
+    if (expected !== "loading") {
       expect(button().querySelector("use")?.getAttribute("href")).toBe(
         `#icon-${active ? "pause" : "play"}`,
       );
     }
-    expect(button().hasAttribute("aria-pressed")).toBe(false);
-    expect(button().getAttribute("aria-busy")).toBe(String(expected === "Loading playback…"));
-    expect(target.querySelector('[aria-label="Album details"]')?.textContent).not.toContain(
-      "Playback paused",
-    );
+    expect(button().getAttribute("aria-busy")).toBe(String(expected === "loading"));
   }
-  return {
-    audio,
-    offline,
-    handlers,
-    cache,
-    tracks,
-    getSource,
-    playback,
-    replace,
-    target,
-    app,
-    button,
-    state,
-  };
+  return { ...fixture, button, state };
 }
+
+it("presents header playback through its action, icon and busy state without redundant status text", async () => {
+  const { button, playback, target, state } = await setup();
+  for (const playing of [false, true]) {
+    if (playing) await playback.replaceQueueAndPlay(["first"]);
+    state(playing ? "playing" : "paused");
+    expect(button().hasAttribute("aria-describedby")).toBe(false);
+    expect(button().hasAttribute("aria-pressed")).toBe(false);
+    const details = target.querySelector('[aria-label="Album details"]')!;
+    for (const text of ["Loading playback…", "Playback paused", "Playing"])
+      expect(details.textContent).not.toContain(text);
+  }
+});
 
 it("reacquires real streaming sources after header cancellation and selection changes", async () => {
   const { button, state, tracks, getSource, playback, audio } = await setup();
@@ -163,26 +79,26 @@ it("reacquires real streaming sources after header cancellation and selection ch
     credentials: { method: "token" as const, username: "listener", token: "test", salt: "test" },
   };
   tracks.setPlaybackConnection(network.accept(network.prepare(auth)).audio);
-  const playing = () => vi.waitFor(() => state("Playing"));
+  const playing = () => vi.waitFor(() => state("playing"));
   const nativePlay = deferred<void>();
   audio.play.mockImplementationOnce(() => nativePlay.promise);
   button().click();
-  state("Loading playback…");
+  state("loading");
   await vi.waitFor(() => expect(audio.play).toHaveBeenCalledOnce());
   // Native currentSrc can retain the cancelled resource until selection runs again.
   const retiredUrl = audio.src;
   Object.defineProperty(audio, "currentSrc", { get: () => retiredUrl });
   button().click();
-  state("Playback paused");
+  state("paused");
   expect(audio.src).toBe("");
   button().click();
   await playing();
   expect(audio.src).not.toBe("");
   nativePlay.reject(new DOMException("The play request was interrupted.", "AbortError"));
   await settle();
-  state("Playing");
+  state("playing");
   button().click();
-  state("Playback paused");
+  state("paused");
   button().click();
   await playing();
   await playback.replaceQueueAndPlay(["unrelated"]);
@@ -198,31 +114,31 @@ it("immediately exposes startup, then actual playing, paused, resumed, buffering
   getSource.mockReturnValueOnce(pending.promise);
   button().focus();
   button().click();
-  state("Loading playback…");
+  state("loading");
   expect(document.activeElement).toBe(button());
   expect(replace).toHaveBeenCalledExactlyOnceWith(["first", "second"]);
   expect(cache.queue).toMatchObject({ tracks: ["first", "second"], index: 0, position: 0 });
   pending.resolve(source());
   await settle();
-  state("Playing");
+  state("playing");
   playback.pause();
-  state("Playback paused");
+  state("paused");
   await playback.play();
-  state("Playing");
+  state("playing");
   audio.dispatchEvent(new Event("waiting"));
-  state("Loading playback…");
+  state("loading");
   audio.dispatchEvent(new Event("canplay"));
-  state("Playing");
+  state("playing");
   const seeking = deferred<TrackSource>();
   getSource.mockReturnValueOnce(seeking.promise);
   const seek = playback.seek(30);
-  state("Loading playback…");
+  state("loading");
   seeking.resolve(source());
   await seek;
-  state("Playing");
+  state("playing");
   playback.pause();
   await playback.seek(40);
-  state("Playback paused");
+  state("paused");
 });
 
 it.each([
@@ -237,19 +153,19 @@ it.each([
     const tracks = ["second", "unrelated", "second", "first"];
     await playback.replaceQueueAndPlay(tracks, 2);
     if (!initiallyPlaying) playback.pause();
-    state(initiallyPlaying ? "Playing" : "Playback paused");
+    state(initiallyPlaying ? "playing" : "paused");
     replace.mockClear();
     audio.play.mockClear();
     const pending = deferred<TrackSource>();
     getSource.mockReturnValueOnce(pending.promise);
     const seek = playback.seek(30);
-    state("Loading playback…");
+    state("loading");
     expect(button().disabled).toBe(false);
     expect(cache.queue).toMatchObject({ tracks, index: 2, position: 30 });
 
     button().click();
     // Cancellation must be visible before the source request settles.
-    state("Playback paused");
+    state("paused");
     expect(audio.paused).toBe(true);
     expect(cache.queue).toMatchObject({ tracks, index: 2, position: 30 });
     expect(replace).not.toHaveBeenCalled();
@@ -259,7 +175,7 @@ it.each([
     else pending.reject(new Error("Cancelled seek"));
     await seek;
     await settle();
-    state("Playback paused");
+    state("paused");
     expect(audio.paused).toBe(true);
     expect(audio.play).not.toHaveBeenCalled();
     expect(cache.queue).toMatchObject({ tracks, index: 2, position: 30 });
@@ -267,7 +183,7 @@ it.each([
 
     button().click();
     await settle();
-    state("Playing");
+    state("playing");
     expect(audio.currentTime).toBe(30);
     expect(cache.queue).toMatchObject({ tracks, index: 2, position: 30 });
     expect(replace).not.toHaveBeenCalled();
@@ -282,13 +198,13 @@ it("pauses buffering through the header without losing selection or reviving on 
   replace.mockClear();
   audio.play.mockClear();
   audio.dispatchEvent(new Event("waiting"));
-  state("Loading playback…");
+  state("loading");
   expect(button().disabled).toBe(false);
   button().click();
-  state("Playback paused");
+  state("paused");
   expect(audio.paused).toBe(true);
   audio.dispatchEvent(new Event("canplay"));
-  state("Playback paused");
+  state("paused");
   expect(audio.play).not.toHaveBeenCalled();
   expect(cache.queue).toMatchObject({ tracks, index: 2, position: 25 });
   expect(replace).not.toHaveBeenCalled();
@@ -299,30 +215,30 @@ it("clears failed and cancelled startup, even when cancelled requests resolve or
   const failed = deferred<TrackSource>();
   getSource.mockReturnValueOnce(failed.promise);
   button().click();
-  state("Loading playback…");
+  state("loading");
   failed.reject(new Error("Source unavailable"));
   await settle();
-  state("Playback paused");
+  state("paused");
   const cancelled = deferred<TrackSource>();
   getSource.mockReturnValueOnce(cancelled.promise);
   button().click();
-  state("Loading playback…");
+  state("loading");
   button().click();
-  state("Playback paused");
+  state("paused");
   const late = source();
   cancelled.resolve(late);
   await settle();
-  state("Playback paused");
+  state("paused");
   expect(late.release).toHaveBeenCalledOnce();
   const rejected = deferred<TrackSource>();
   getSource.mockReturnValueOnce(rejected.promise);
   button().click();
-  state("Loading playback…");
+  state("loading");
   button().click();
-  state("Playback paused");
+  state("paused");
   rejected.reject(new Error("Cancelled"));
   await settle();
-  state("Playback paused");
+  state("paused");
 });
 
 it("keeps rapid replacements and navigation tied to the current selected album, not stale completion", async () => {
@@ -332,24 +248,24 @@ it("keeps rapid replacements and navigation tied to the current selected album, 
   getSource.mockReturnValueOnce(stale.promise).mockReturnValueOnce(current.promise);
   button().click();
   button().click();
-  state("Playback paused");
+  state("paused");
   button().click();
-  state("Loading playback…");
+  state("loading");
   stale.reject(new Error("Old failure"));
   await settle();
-  state("Loading playback…");
+  state("loading");
   app.navigate();
   flushSync();
   expect(target.querySelector('button[aria-label="Play Album"]')).toBeNull();
   current.resolve(source());
   await settle();
   app.navigate("album");
-  state("Playing");
+  state("playing");
   const superseded = deferred<TrackSource>();
   getSource.mockReturnValueOnce(superseded.promise);
   playback.suspend();
   button().click();
-  state("Loading playback…");
+  state("loading");
   await playback.replaceQueueAndPlay(["unrelated"]);
   state();
   const late = source();
@@ -367,34 +283,34 @@ it("keeps rapid replacements and navigation tied to the current selected album, 
 it("uses selected-track membership for external mixed queues, rows, next/previous and Media Session", async () => {
   const { state, playback, handlers, cache, target, app } = await setup();
   await playback.replaceQueueAndPlay(["unrelated", "second", "first"], 1);
-  state("Playing");
+  state("playing");
   expect(cache.queue.index).toBe(1);
   handlers.get("pause")?.({ action: "pause" });
-  state("Playback paused");
+  state("paused");
   handlers.get("play")?.({ action: "play" });
   await settle();
-  state("Playing");
+  state("playing");
   handlers.get("previoustrack")?.({ action: "previoustrack" });
   await settle();
   state();
   handlers.get("nexttrack")?.({ action: "nexttrack" });
   await settle();
-  state("Playing");
+  state("playing");
   await playback.next();
-  state("Playing");
+  state("playing");
   await playback.previous();
-  state("Playing");
+  state("playing");
   await playback.replaceQueueAndPlay(["unrelated"]);
   state();
   target.querySelector<HTMLButtonElement>('button[aria-label="Play second"]')!.click();
   await settle();
-  state("Playing");
+  state("playing");
   expect(cache.queue).toMatchObject({ tracks: ["first", "second"], index: 1 });
   app.navigate();
   flushSync();
   playback.pause();
   app.navigate("album");
-  state("Playback paused");
+  state("paused");
   playback.clearQueue();
   state();
 });
@@ -407,11 +323,11 @@ it("toggles the selected duplicate occurrence without replacing a mixed queue or
   replace.mockClear();
   const requests = getSource.mock.calls.length;
   button().click();
-  state("Playback paused");
+  state("paused");
   expect(cache.queue).toMatchObject({ tracks, index: 2, position: 25 });
   button().click();
   await settle();
-  state("Playing");
+  state("playing");
   expect(cache.queue).toMatchObject({ tracks, index: 2, position: 25 });
   expect(replace).not.toHaveBeenCalled();
   expect(getSource).toHaveBeenCalledTimes(requests);
@@ -426,10 +342,10 @@ it("keeps pause/cancel available offline but never substitutes another track for
   await playback.seek(25);
   replace.mockClear();
   offline.set(true);
-  state("Playing");
+  state("playing");
   expect(button().disabled).toBe(false);
   button().click();
-  state("Playback paused");
+  state("paused");
   expect(button().disabled).toBe(true);
   button().click();
   expect(cache.queue).toMatchObject({
@@ -445,20 +361,20 @@ it("keeps pause/cancel available offline but never substitutes another track for
   getSource.mockReturnValueOnce(pending.promise);
   button().click();
   offline.set(true);
-  state("Loading playback…");
+  state("loading");
   expect(button().disabled).toBe(false);
   button().click();
-  state("Playback paused");
+  state("paused");
   expect(button().disabled).toBe(true);
   pending.resolve(source());
   await settle();
-  state("Playback paused");
+  state("paused");
   playback.clearQueue();
   state();
   expect(button().disabled).toBe(false);
   button().click();
   await settle();
-  state("Playing");
+  state("playing");
   expect(replace).toHaveBeenCalledExactlyOnceWith(["first"]);
 });
 
@@ -467,7 +383,7 @@ it("shows playing indicators only on selected track rows and labels pending tran
   const pending = deferred<TrackSource>();
   getSource.mockReturnValueOnce(pending.promise);
   const playing = playback.replaceQueueAndPlay(["second", "unrelated", "second"], 2);
-  state("Loading playback…");
+  state("loading");
   const row = (scope: string) => target.querySelector(`${scope} [aria-current="true"]`)!;
   const albumScope = '[aria-label="Album details"]';
   const queueScope = "#player-dialog";
@@ -489,10 +405,9 @@ it("shows playing indicators only on selected track rows and labels pending tran
   ).toBe(true);
   pending.resolve(source());
   await playing;
-  state("Playing");
+  state("playing");
   for (const scope of [albumScope, queueScope]) {
     expect(row(scope).querySelector('use[href="#icon-sound-bars"]')).not.toBeNull();
-    expect(row(scope).querySelector('use[href="#icon-sound-bars-static"]')).not.toBeNull();
     expect(row(scope).querySelector('button[aria-label="Pause second"]')).not.toBeNull();
     expect(row(scope).querySelector('[role="img"]')).toBeNull();
   }
@@ -502,7 +417,7 @@ it("shows playing indicators only on selected track rows and labels pending tran
   expect(queueRows[0].querySelector('button[aria-label="Play second"]')).not.toBeNull();
   expect(queueRows[2].getAttribute("aria-current")).toBe("true");
   button().click();
-  state("Playback paused");
+  state("paused");
   for (const scope of [albumScope, queueScope]) {
     expect(row(scope).querySelector('use[href="#icon-play"]')).not.toBeNull();
     expect(row(scope).querySelector('use[href="#icon-sound-bars"]')).toBeNull();
@@ -519,11 +434,11 @@ it("leaves native header Space and Enter activation to the button, not the globa
     const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
     button().dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
-    state(index === 0 ? "Playing" : "Playback paused");
+    state(index === 0 ? "playing" : "paused");
     // DOM emulation does not synthesize native keyboard clicks; browser validation does.
     button().click();
     await settle();
   }
   expect(replace).not.toHaveBeenCalled();
-  state("Playing");
+  state("playing");
 });

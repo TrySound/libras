@@ -57,25 +57,6 @@ it("allows a semantic status color", async () => {
   }
 });
 
-it("provides a nonanimated sprite alternative for sound bars", async () => {
-  const target = document.createElement("div");
-  const component = mount(Icon, { target, props: { name: "sound-bars" } });
-  try {
-    flushSync();
-    expect(target.querySelector('use[href="#icon-sound-bars"]')).not.toBeNull();
-    expect(target.querySelector('use[href="#icon-sound-bars-static"]')).not.toBeNull();
-    const sprite = new DOMParser().parseFromString(
-      readFileSync("src/sprite.svg", "utf8"),
-      "image/svg+xml",
-    );
-    expect(sprite.querySelector("#icon-sound-bars animate")).not.toBeNull();
-    expect(sprite.querySelector("#icon-sound-bars-static rect")).not.toBeNull();
-    expect(sprite.querySelector("#icon-sound-bars-static animate")).toBeNull();
-  } finally {
-    await unmount(component);
-  }
-});
-
 it("keeps the typed icon names in sync with the sprite symbols", () => {
   const sprite = readFileSync("src/sprite.svg", "utf8");
   const component = readFileSync("src/icon.svelte", "utf8");

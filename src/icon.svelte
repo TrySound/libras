@@ -19,7 +19,6 @@
     | "previous"
     | "queue"
     | "sound-bars"
-    | "sound-bars-static"
     | "cross"
     | "error"
     | "unlink"
@@ -40,25 +39,5 @@
 </script>
 
 <svg class={className} {color} aria-hidden="true" width={dimension} height={dimension}>
-  {#if name === "sound-bars"}
-    <use class="sound-bars-animated" href="#icon-sound-bars"></use>
-    <use class="sound-bars-static" href="#icon-sound-bars-static"></use>
-  {:else}
-    <use href={`#icon-${name}`}></use>
-  {/if}
+  <use href={`#icon-${name}`}></use>
 </svg>
-
-<style>
-  /* SMIL cannot be paused with animation-play-state. Render static geometry instead. */
-  .sound-bars-animated {
-    display: none;
-    @media (prefers-reduced-motion: no-preference) {
-      display: inline;
-    }
-  }
-  .sound-bars-static {
-    @media (prefers-reduced-motion: no-preference) {
-      display: none;
-    }
-  }
-</style>

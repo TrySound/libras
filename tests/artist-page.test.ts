@@ -1,21 +1,8 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from "vitest";
-import { flushSync, mount, unmount, type ComponentProps } from "svelte";
-import { fromStore, writable } from "svelte/store";
-import Harness from "./album-test-app.svelte";
-import { AudioStub } from "./audio-test-helpers";
-import { installDisk } from "./cache-test-helpers";
-import { Cache } from "../src/cache.svelte";
-import { Covers } from "../src/covers.svelte";
-import { TrackEngine, type TrackSource } from "../src/track.svelte";
-import { Playback } from "../src/playback.svelte";
-
-const cleanups: (() => Promise<void>)[] = [];
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0)) await cleanup();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-});
+import { expect, it, vi } from "vitest";
+import { flushSync } from "svelte";
+import { setupPlaybackPage } from "./playback-page-test-helpers";
+import type { TrackSource } from "../src/track.svelte";
 function deferred<T>() {
   return Promise.withResolvers<T>();
 }
@@ -30,13 +17,7 @@ async function settle() {
   flushSync();
 }
 async function setup() {
-  installDisk();
-  const audio = new AudioStub();
-  vi.stubGlobal("Audio", function () {
-    return audio;
-  });
-  const cache = new Cache("artist-header-tests");
-  await cache.replaceLibrary({
+  const fixture = await setupPlaybackPage({
     lastModified: 1,
     savedAt: 1,
     artists: [
@@ -59,49 +40,9 @@ async function setup() {
       { id: "unrelated", albumId: "outside", number: 1, artistIds: ["other"] },
     ].map((track) => ({ ...track, title: track.id, duration: 120, genres: [] })),
   });
-  const selection = { cache };
-  const covers = new Covers(selection);
-  vi.spyOn(covers, "ensureCover").mockReturnValue({
-    pending: false,
-    source: undefined,
-    load: vi.fn(),
-  });
-  const tracks = new TrackEngine({ selection });
-  const getSource = vi.spyOn(tracks, "getSource").mockImplementation(async () => source());
-  const offline = writable(false);
-  const offlineState = fromStore(offline);
-  const playback = new Playback({
-    selection,
-    tracks,
-    covers,
-    isAvailable: (id) => !offlineState.current || tracks.getStatus(id) === "downloaded",
-  });
-  const replace = vi.spyOn(playback, "replaceQueueAndPlay");
-  const target = document.createElement("div");
-  document.body.append(target);
-  const props = {
-    cache,
-    covers,
-    trackEngine: tracks,
-    playback,
-    session: {
-      localReady: true,
-      get offlineMode() {
-        return offlineState.current;
-      },
-    },
-  } as ComponentProps<typeof Harness>["props"];
-  const app = mount(Harness, { target, props: { props } });
-  flushSync();
+  const { target, app } = fixture;
   app.navigateArtist("artist");
   flushSync();
-  cleanups.push(async () => {
-    await unmount(app);
-    await playback.destroy();
-    covers.destroy();
-    tracks.destroy();
-    target.remove();
-  });
   const button = () =>
     target.querySelector<HTMLButtonElement>(
       '[aria-label="Artist details"] button[data-variant="primary"]',
@@ -119,19 +60,7 @@ async function setup() {
         `#icon-${expected === "playing" ? "pause" : "play"}`,
       );
   }
-  return {
-    audio,
-    cache,
-    tracks,
-    getSource,
-    offline,
-    playback,
-    replace,
-    target,
-    app,
-    button,
-    state,
-  };
+  return { ...fixture, button, state };
 }
 
 it("marks only the selected playing album across external queues, transport states and navigation", async () => {
