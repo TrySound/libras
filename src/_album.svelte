@@ -35,11 +35,15 @@
     appName = "Libras",
   }: Props = $props();
 
+  const id = $props.id();
   const offlineMode = $derived(session.offlineMode);
   const loading = $derived(!session.localReady);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
   const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const album = $derived(params.albumId ? cache.albums.get(params.albumId) : undefined);
+  const albumPlaybackState = $derived(
+    album && currentTrack?.albumId === album.id ? playbackState : undefined,
+  );
   const artist = $derived(album ? cache.artists.get(album.artistIds[0]) : undefined);
   const atmosphere = $derived(album?.artworkId ? covers.ensureCover(album.artworkId) : undefined);
   const visibleTracks = $derived(
@@ -97,10 +101,20 @@
               class="button"
               data-variant="primary"
               aria-label={`Play ${album.title}`}
+              aria-describedby={albumPlaybackState ? `${id}-playback` : undefined}
+              aria-busy={albumPlaybackState === "loading"}
               disabled={!visibleTrackIds.length}
+              onkeydown={(event) => {
+                // Keep native Space activation instead of the document's transport shortcut.
+                if (event.key === " ") event.stopPropagation();
+              }}
               onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
             >
-              <Icon name="play" />
+              {#if albumPlaybackState === "loading"}
+                <Loader />
+              {:else}
+                <Icon name={albumPlaybackState === "playing" ? "sound-bars" : "play"} />
+              {/if}
             </button>
             <button
               class="button only-mobile"
@@ -131,6 +145,15 @@
             ...(totalDuration ? [`${Math.ceil(totalDuration / 60)} min`] : []),
           ].join(" · ")}
         </p>
+        {#if albumPlaybackState}
+          <p id={`${id}-playback`} class="caption text-secondary">
+            {albumPlaybackState === "loading"
+              ? "Loading playback…"
+              : albumPlaybackState === "playing"
+                ? "Playing"
+                : "Playback paused"}
+          </p>
+        {/if}
         {#if album.genres.length}
           <p class="caption text-secondary" role="group" aria-label="Genres">
             {album.genres.join(" · ")}
