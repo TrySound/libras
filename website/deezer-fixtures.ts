@@ -2,7 +2,7 @@ import { demoAlbums } from "./deezer-catalog";
 
 // Synthetic API responses: committed IDs/labels, no live requests or signed URLs.
 export const albumFixtures = demoAlbums.map((album) => {
-  const artist = { id: album.artistId, name: album.artist };
+  const artist = { id: album.artistId, name: album.artist, picture_big: album.artistArtwork };
   return {
     id: album.id,
     title: album.title,

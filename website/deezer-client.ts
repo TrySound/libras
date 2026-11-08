@@ -27,7 +27,11 @@ function mediaUrl(value: string, origin: string) {
 function catalogMetadata() {
   const entries = demoAlbums.map((selection) => {
     const albumId = String(selection.id);
-    const artist = { id: String(selection.artistId), name: selection.artist, coverArt: albumId };
+    const artist = {
+      id: String(selection.artistId),
+      name: selection.artist,
+      coverArt: `artist:${selection.artistId}`,
+    };
     return {
       artist,
       album: {
@@ -52,13 +56,19 @@ function catalogMetadata() {
         // Full-song duration is not the preview duration. The player measures the clip.
       })),
       artwork: mediaUrl(selection.artwork, "https://cdn-images.dzcdn.net"),
+      artistArtwork: mediaUrl(selection.artistArtwork, "https://cdn-images.dzcdn.net"),
     };
   });
   return {
     artists: [...new Map(entries.map((entry) => [entry.artist.id, entry.artist])).values()],
     albums: entries.map((entry) => entry.album),
     tracks: entries.flatMap((entry) => entry.tracks),
-    artwork: Object.fromEntries(entries.map((entry) => [entry.album.id, entry.artwork])),
+    artwork: Object.fromEntries(
+      entries.flatMap((entry) => [
+        [entry.album.id, entry.artwork],
+        [entry.artist.coverArt, entry.artistArtwork],
+      ]),
+    ),
   };
 }
 
