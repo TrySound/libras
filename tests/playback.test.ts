@@ -661,16 +661,16 @@ describe("playback", () => {
     selection.cache = restored;
     player.activate();
     const network = new Network();
-    const engine = new TrackEngine({
-      selection,
-      connection: network.accept(
+    const engine = new TrackEngine({ selection });
+    engine.setPlaybackConnection(
+      network.accept(
         network.prepare({
           host: "https://music.example.com",
           username: "listener",
           credentials: { method: "token", username: "listener", token: "token", salt: "salt" },
         }),
       ).audio,
-    });
+    );
     cleanups.push(() => {
       engine.destroy();
       network.setMode("offline");

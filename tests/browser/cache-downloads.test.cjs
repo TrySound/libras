@@ -112,19 +112,17 @@ test("Cache unified downloads reconcile native OPFS failure boundaries", async (
           const requests = [];
           let active = 0;
           let peak = 0;
-          const engine = new TrackEngine({
-            selection: { cache },
-            connection: {
-              account,
-              signal: new AbortController().signal,
-              async read(id) {
-                requests.push(id);
-                active++;
-                peak = Math.max(peak, active);
-                await new Promise((resolve) => setTimeout(resolve, 20));
-                active--;
-                return new Response("audio");
-              },
+          const engine = new TrackEngine({ selection: { cache } });
+          engine.setDownloadConnection({
+            account,
+            signal: new AbortController().signal,
+            async read(id) {
+              requests.push(id);
+              active++;
+              peak = Math.max(peak, active);
+              await new Promise((resolve) => setTimeout(resolve, 20));
+              active--;
+              return new Response("audio");
             },
           });
           try {

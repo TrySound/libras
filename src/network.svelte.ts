@@ -519,7 +519,7 @@ type CandidateConnection = { handle: NetworkConnection; client: SubsonicApi };
 export class Network {
   #mode = $state<"online" | "offline">("offline");
   #active?: SubsonicApi;
-  #downloads?: { client: SubsonicApi; audio: AudioConnection };
+  #downloads?: SubsonicApi;
   #candidate?: CandidateConnection;
   #createClient: SubsonicClientFactory;
 
@@ -549,27 +549,18 @@ export class Network {
 
   /** Requested downloads have their own cancellation domain, never browsing/sync access. */
   openDownloads(auth: Auth): AudioConnection {
-    if (this.#downloads) {
-      const { audio } = this.#downloads;
-      if (
-        !audio.signal.aborted &&
-        audio.account.host === auth.host &&
-        audio.account.username === auth.username
-      )
-        return audio;
-      this.closeDownloads();
-    }
     if (!v.safeParse(authSchema, auth).success)
       throw new Error("The Subsonic authentication is invalid.");
     const client = this.#createClient({ host: auth.host, credentials: auth.credentials }, {});
     const account = Object.freeze({ host: auth.host, username: auth.username });
     const audio = audioAccess(account, client, (run) => this.#request(client, run));
-    this.#downloads = { client, audio };
+    this.closeDownloads();
+    this.#downloads = client;
     return audio;
   }
 
   closeDownloads() {
-    this.#downloads?.client.abort();
+    this.#downloads?.abort();
     this.#downloads = undefined;
   }
 

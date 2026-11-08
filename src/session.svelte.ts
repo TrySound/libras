@@ -276,8 +276,6 @@ export class Session {
     auth.saveAccount(connection.account);
     preferences.setItem(offlineModeStorageKey, "false");
     const active = network.accept(connection);
-    this.#options.network.closeDownloads();
-    this.#options.tracks.setDownloadConnection(undefined);
     this.#setConnection(undefined);
     this.#select(cache, connection.account);
     playback.activate();

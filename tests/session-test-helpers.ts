@@ -112,7 +112,9 @@ export function createSession(saved = false, storage = createStorage()) {
   };
   const tracks = {
     activate: vi.spyOn(trackEngine, "activate").mockResolvedValue(undefined),
-    setConnection: vi.spyOn(trackEngine, "setPlaybackConnection").mockImplementation(() => {}),
+    setPlaybackConnection: vi
+      .spyOn(trackEngine, "setPlaybackConnection")
+      .mockImplementation(() => {}),
   };
   const playback = {
     setConnection: vi.spyOn(player, "setConnection").mockImplementation(() => {}),

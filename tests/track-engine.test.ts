@@ -44,8 +44,12 @@ function setup(options: { cache?: Cache; online?: boolean; concurrency?: number 
   const engine = new TrackEngine({
     selection,
     concurrency: options.concurrency,
-    connection: options.online ? connection() : undefined,
   });
+  if (options.online) {
+    const audio = connection();
+    engine.setPlaybackConnection(audio);
+    engine.setDownloadConnection(audio);
+  }
   engines.push(engine);
   engine.activate();
   return { selection, cache, engine };
@@ -206,7 +210,7 @@ describe("TrackEngine using Cache", () => {
     const { engine, cache } = setup();
     const controller = new AbortController();
     controller.abort();
-    engine.setConnection({ ...connection(), signal: controller.signal });
+    engine.setDownloadConnection({ ...connection(), signal: controller.signal });
     void engine.download(track.id);
     await vi.waitFor(() => expect(cache.downloads.size).toBe(1));
     expect(engine.getStatus(track.id)).toBe("queued");
@@ -229,8 +233,8 @@ describe("TrackEngine using Cache", () => {
     expect(disk.getDirectory).not.toHaveBeenCalled();
     const first = await engine.getSource(track);
     expect(first).toMatchObject({ cached: true, url: "blob:track-1" });
-    engine.setConnection(connection());
-    engine.setConnection(undefined);
+    engine.setPlaybackConnection(connection());
+    engine.setPlaybackConnection(undefined);
     expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     expect(engine.getStatus(track.id)).toBe("downloaded");
     const second = await engine.getSource(track);
@@ -420,7 +424,7 @@ describe("TrackEngine using Cache", () => {
     const { engine } = setup({ cache });
     expect(await (await engine.download(track.id)).text()).toBe("cached");
     expect(fetcher).not.toHaveBeenCalled();
-    engine.setConnection(connection());
+    engine.setPlaybackConnection(connection());
     const source = await engine.getSource({ id: "remote" });
     expect(source.cached).toBe(false);
     expect(fetcher).not.toHaveBeenCalled();
@@ -447,7 +451,7 @@ describe("TrackEngine using Cache", () => {
     expect(cache.downloads.get(downloadKey(track.id, "mp3"))?.status).toBe("queued");
     expect(fetcher).not.toHaveBeenCalled();
     expect(disk.files.get("tracks/old.audio")).toBe("legacy");
-    engine.setConnection(connection());
+    engine.setDownloadConnection(connection());
     expect(await (await pending).text()).toBe("replacement");
     expect(engine.getStatus(track.id)).toBe("downloaded");
     expect(fetcher).toHaveBeenCalledOnce();
@@ -486,9 +490,9 @@ describe("TrackEngine using Cache", () => {
     expect(source.cached).toBe(false);
     expect(new URL(source.url).pathname).toBe("/rest/stream.view");
     const failure = new Error("Stream source failed");
-    engine.setConnection({ ...connection(), url: vi.fn().mockRejectedValue(failure) });
+    engine.setPlaybackConnection({ ...connection(), url: vi.fn().mockRejectedValue(failure) });
     await expect(engine.getSource(track)).rejects.toBe(failure);
-    engine.setConnection(undefined);
+    engine.setPlaybackConnection(undefined);
     await expect(engine.getSource(track)).rejects.toThrow(
       "This track is not downloaded. Connect to its music server to stream it.",
     );
@@ -584,7 +588,7 @@ describe("TrackEngine using Cache", () => {
       const { engine, cache } = setup({ online: true, concurrency: 1 });
       const results = Promise.allSettled([engine.download("active"), engine.download("queued")]);
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
-      if (action === "detach") engine.setConnection(undefined);
+      if (action === "detach") engine.setDownloadConnection(undefined);
       else if (action === "destroy") engine.destroy();
       else engine.activate();
       expect((await results).map((result) => result.status)).toEqual(["rejected", "rejected"]);
@@ -612,7 +616,7 @@ describe("TrackEngine using Cache", () => {
     const network = new Network();
     const client = network.accept(network.prepare(auth));
     const { engine, cache } = setup({ concurrency: 1 });
-    engine.setConnection(client.audio);
+    engine.setDownloadConnection(client.audio);
     const results = Promise.allSettled([engine.download("active"), engine.download("queued")]);
     await wrote.promise;
     network.setMode("offline");
@@ -638,7 +642,7 @@ describe("TrackEngine using Cache", () => {
       await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
       selection.cache = new Cache(getAccountKey({ ...account, username }));
       engine.activate();
-      engine.setConnection(
+      engine.setDownloadConnection(
         connection({ ...auth, username, credentials: { ...auth.credentials, username } }),
       );
       await rejected;
@@ -683,7 +687,7 @@ describe("TrackEngine using Cache", () => {
       }
       if (action === "abort") controller.abort();
       if (action === "destroy") engine.destroy();
-      if (action === "disconnect") engine.setConnection(connection());
+      if (action === "disconnect") engine.setPlaybackConnection(connection());
       gate.resolve();
       await rejected;
       expect(URL.createObjectURL).not.toHaveBeenCalled();
@@ -714,7 +718,7 @@ describe("TrackEngine using Cache", () => {
       const { engine, cache } = setup({ online: true });
       const save = vi.spyOn(cache, "saveDownload");
       disk.state[stage] = (path) => {
-        if (path.endsWith(".audio")) engine.setConnection(undefined);
+        if (path.endsWith(".audio")) engine.setDownloadConnection(undefined);
       };
       await expect(engine.download(track.id)).rejects.toMatchObject({ name: "AbortError" });
       if (stage === "beforeWrite")
@@ -784,7 +788,7 @@ describe("durable download scheduling", () => {
     const fetcher = vi.fn(async () => new Response("bad", { status: 500 }));
     vi.stubGlobal("fetch", fetcher);
     await expect(first.engine.download("bad")).rejects.toThrow();
-    first.engine.setConnection(undefined);
+    first.engine.setDownloadConnection(undefined);
     first.engine.downloadMany(["first", "second"]);
     await vi.waitFor(() => expect(first.cache.downloads.size).toBe(3));
     first.engine.destroy();
@@ -792,7 +796,7 @@ describe("durable download scheduling", () => {
     await restored.load();
     const next = setup({ cache: restored, concurrency: 1 });
     fetcher.mockImplementation(async () => new Response("audio"));
-    next.engine.setConnection(connection());
+    next.engine.setDownloadConnection(connection());
     await vi.waitFor(() => expect(completedDownloadCount(restored)).toBe(2));
     expect(next.engine.getStatus("bad")).toBe("failed");
     await next.engine.restoreDownloads();
@@ -901,7 +905,7 @@ it("bulk Download retries only selected failed formats without duplicating work 
   }
   const fetcher = vi.fn(async () => new Response("audio"));
   vi.stubGlobal("fetch", fetcher);
-  engine.setConnection(connection());
+  engine.setDownloadConnection(connection());
   await engine.restoreDownloads();
   expect(fetcher).not.toHaveBeenCalled();
   engine.downloadMany(["selected", track.id, "selected"]);
@@ -1015,8 +1019,8 @@ describe("reviewed download failure boundaries", () => {
     await expect(engine.download("bad", { format: "mp3" })).rejects.toThrow();
     expect(cache.downloads.get(downloadKey("bad", "mp3"))).toBe(failed);
     disk.state.beforeClose = async () => {};
-    engine.setConnection(undefined);
-    engine.setConnection(connection());
+    engine.setDownloadConnection(undefined);
+    engine.setDownloadConnection(connection());
     await engine.restoreDownloads();
     expect(engine.getStatus("bad")).toBe("failed");
     expect(fetcher).toHaveBeenCalledOnce();
@@ -1075,8 +1079,8 @@ describe("reviewed download failure boundaries", () => {
     vi.stubGlobal("fetch", fetcher);
     void engine.download("closing");
     await closing.promise;
-    engine.setConnection(undefined);
-    engine.setConnection(connection());
+    engine.setDownloadConnection(undefined);
+    engine.setDownloadConnection(connection());
     let joined = false;
     const restoration = engine.restoreDownloads().then(() => {
       joined = true;
@@ -1115,7 +1119,7 @@ describe("reviewed download failure boundaries", () => {
     await next.enqueueDownload({ ...track, id: "b" }, "mp3", "audio/mpeg");
     selection.cache = next;
     engine.activate();
-    engine.setConnection(connection(other));
+    engine.setDownloadConnection(connection(other));
     release.resolve();
     await cancel;
     await vi.waitFor(() => expect(completedDownloadCount(next)).toBe(1));

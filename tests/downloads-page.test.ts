@@ -216,7 +216,7 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   const { target, trackEngine } = setup(true);
   vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockReturnValue("");
   const network = new Network();
-  trackEngine.setConnection(
+  trackEngine.setDownloadConnection(
     network.accept(
       network.prepare({
         ...account,

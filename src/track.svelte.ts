@@ -25,7 +25,6 @@ interface DownloadOptions extends TrackSourceOptions {
 type TrackStatus = "idle" | "queued" | "downloading" | "downloaded" | "failed";
 interface TrackEngineOptions {
   selection: CacheSelection;
-  connection?: AudioConnection;
   concurrency?: number;
 }
 type Descriptor = { cacheKey: string; key: string; format: DownloadFormat; contentType: string };
@@ -66,7 +65,6 @@ export class TrackEngine {
     this.#concurrency = options.concurrency ?? 3;
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1)
       throw new Error("Download concurrency must be a positive integer.");
-    if (options.connection) this.setConnection(options.connection);
   }
 
   /** Session selected a cache. Activation performs no hydration or persistence. */
@@ -512,11 +510,6 @@ export class TrackEngine {
   #releaseSources() {
     this.#cancelSourceRequest();
     for (const release of this.#sourceReleases) release();
-  }
-  /** Convenience for consumers whose playback and download lifetimes are shared. */
-  setConnection(connection?: AudioConnection) {
-    this.setPlaybackConnection(connection);
-    this.setDownloadConnection(connection);
   }
   setPlaybackConnection(connection?: AudioConnection) {
     if (this.#connection === connection || this.#destroyed) return;
