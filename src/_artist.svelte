@@ -128,7 +128,7 @@
       </div>
     </div>
     <div class="stack-lg scroll-runway view-slide-left">
-      <h2 class="heading-lg uppercase">{offlineMode ? "Downloaded albums" : "Albums"}</h2>
+      <h2 class="heading-lg uppercase">Albums</h2>
       <div class="stack-sm">
         {#each visibleAlbums as album (album.id)}
           {@const ids = availableTrackIds(cache.albumTracks.get(album.id) ?? [])}

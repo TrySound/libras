@@ -1131,7 +1131,7 @@ it("renders download records and jobs without duplicates and switches account pr
       credentials: { method: "token", username: "first", token: "token", salt: "salt" },
     }),
   );
-  tracks.setConnection(connection.audio);
+  tracks.setDownloadConnection(connection.audio);
   const pending = tracks.download(track.id, { forceTranscode: true });
   flushSync();
   expect(target.querySelectorAll('[aria-label="Downloaded"]')).toHaveLength(1);

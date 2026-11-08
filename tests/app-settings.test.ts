@@ -290,8 +290,10 @@ describe("app settings", () => {
     expect(offline.classList.contains("card")).toBe(true);
     const control = offline.querySelector('input[role="switch"]')!;
     expect(control.classList.contains("switch")).toBe(true);
-    expect(control.getAttribute("aria-labelledby")).toBe("settings-offline-label");
-    expect(target.querySelector("#settings-offline-label")?.textContent).toBe("Offline library");
+    expect(target.querySelector('label[for="settings-offline"]')?.textContent).toBe(
+      "Offline library",
+    );
+    expect(control.id).toBe("settings-offline");
     expect(target.querySelector("#settings-offline-title")?.textContent).toContain("is on");
     expect(control.getAttribute("aria-describedby")).toBe("settings-offline-help");
     expect(target.querySelector("select")).toBeNull();

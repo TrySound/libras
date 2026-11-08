@@ -269,7 +269,7 @@
       >
         <div class="row-md row-justify">
           <h2 class="heading-md uppercase" id="settings-offline-title">
-            <span id="settings-offline-label">Offline library</span> is {session.offlineMode
+            <label for="settings-offline">Offline library</label> is {session.offlineMode
               ? "on"
               : "off"}
           </h2>
@@ -278,7 +278,6 @@
             id="settings-offline"
             type="checkbox"
             role="switch"
-            aria-labelledby="settings-offline-label"
             aria-describedby="settings-offline-help"
             checked={session.offlineMode}
             disabled={!session.auth || session.busy}
@@ -298,6 +297,7 @@
             Browse your full library and stream {demo ? "demo previews" : "from your server"}. Turn
             this on to show downloaded music only.
           {/if}
+          Requested downloads continue when connected, including with Offline library on.
         </p>
         <div class="row-sm">
           <a class="button" data-size="text" data-variant="secondary" href="?/downloads"

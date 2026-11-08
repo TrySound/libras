@@ -216,7 +216,7 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   const { target, trackEngine } = setup(true);
   vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockReturnValue("");
   const network = new Network();
-  trackEngine.setConnection(
+  trackEngine.setDownloadConnection(
     network.accept(
       network.prepare({
         ...account,
@@ -275,7 +275,7 @@ it("Retry all snapshots only failed files in exact formats without waiting for t
     (button) => button.textContent === "Retry all",
   )!;
   const cancelAll = [...target.querySelectorAll("button")].find(
-    (button) => button.textContent === "Cancel all",
+    (button) => button.textContent === "Cancel downloads",
   )!;
   const rowRetry = target.querySelector<HTMLButtonElement>(
     'button[aria-label="Retry download of Failed title (RAW)"]',
@@ -300,7 +300,7 @@ it("Retry all snapshots only failed files in exact formats without waiting for t
   expect(target.querySelectorAll("time")).toHaveLength(1);
 });
 
-it("Cancel all guards busy controls and preserves saved and failed files when durable cancellation rejects", async () => {
+it("Cancel downloads guards busy controls and preserves saved and failed files when durable cancellation rejects", async () => {
   const { target, cache, trackEngine, disk } = setup(true);
   await save(cache, "saved", 1000);
   await cache.enqueueDownload(
@@ -318,7 +318,7 @@ it("Cancel all guards busy controls and preserves saved and failed files when du
     (button) => button.textContent === "Retry all",
   )!;
   const cancelAll = [...target.querySelectorAll("button")].find(
-    (button) => button.textContent === "Cancel all",
+    (button) => button.textContent === "Cancel downloads",
   )!;
   const close = deferred<void>();
   disk.state.beforeClose = async (name) => {

@@ -253,7 +253,7 @@ describe("session", () => {
       host: credentials.host,
       username: credentials.username,
     });
-    const client = tracks.setConnection.mock.calls.at(-1)![0];
+    const client = tracks.setPlaybackConnection.mock.calls.at(-1)![0];
     const refresh = deferred();
     metadata.readLibrary.mockImplementationOnce(async () => {
       await refresh.promise;
@@ -269,7 +269,7 @@ describe("session", () => {
     await Promise.all([pending, overlapping]);
     expect(metadata.getModifiedAt).toHaveBeenCalledTimes(2);
     expect(loadCache).toHaveBeenCalledOnce();
-    expect(tracks.setConnection.mock.calls.at(-1)![0]).toBe(client);
+    expect(tracks.setPlaybackConnection.mock.calls.at(-1)![0]).toBe(client);
     expect(playback.refreshQueue).toHaveBeenCalledTimes(2);
     expect(await session.connect(input)).toBe(false);
     expect(validate).not.toHaveBeenCalled();
@@ -278,7 +278,7 @@ describe("session", () => {
   it("disconnects immediately, aborts the client, and preserves every offline data field", async () => {
     const { session, auth, selection, metadata, tracks, covers, playback, storage } =
       await connected();
-    const client = tracks.setConnection.mock.calls.at(-1)![0];
+    const client = tracks.setPlaybackConnection.mock.calls.at(-1)![0];
     const fields = [
       "artists",
       "albums",
@@ -317,7 +317,7 @@ describe("session", () => {
     ]).toEqual(queueState);
     expect(playback.setConnection).toHaveBeenLastCalledWith(undefined);
     expect(covers.setConnection).toHaveBeenLastCalledWith(undefined);
-    expect(tracks.setConnection).toHaveBeenLastCalledWith(undefined);
+    expect(tracks.setPlaybackConnection).toHaveBeenLastCalledWith(undefined);
     expect(playback.suspendNetwork).toHaveBeenCalled();
     refresh.resolve();
     await pending;
@@ -436,7 +436,9 @@ describe("session", () => {
       expect(auth.load()).toBeNull();
       expect(selection.cache).toBeUndefined();
       expect(saveLibrary).not.toHaveBeenCalled();
-      expect(tracks.setConnection.mock.calls.every(([client]) => client === undefined)).toBe(true);
+      expect(
+        tracks.setPlaybackConnection.mock.calls.every(([client]) => client === undefined),
+      ).toBe(true);
     },
   );
 
@@ -512,7 +514,7 @@ describe("session", () => {
       session.disconnect();
       const previous = selection.cache;
       vi.mocked(network.accept).mockClear();
-      tracks.setConnection.mockClear();
+      tracks.setPlaybackConnection.mockClear();
       const fail = () => {
         throw new Error("Commit failed");
       };
@@ -543,7 +545,9 @@ describe("session", () => {
       expect(getAccountKey(auth.loadAccount()!)).toBe(previous!.key);
       expect(storage.getItem("navidrome-offline-mode")).toBe("true");
       expect(network.accept).not.toHaveBeenCalled();
-      expect(tracks.setConnection.mock.calls.every(([value]) => value === undefined)).toBe(true);
+      expect(tracks.setPlaybackConnection.mock.calls.every(([value]) => value === undefined)).toBe(
+        true,
+      );
     },
   );
 
@@ -808,15 +812,75 @@ describe("session", () => {
     expect(previous.queueDirty).toBe(false);
   });
 
+  it("keeps three active and three queued downloads across both offline toggles", async () => {
+    installDisk();
+    const { session, trackEngine, metadata, playback } = await connected();
+    const first = deferred();
+    const release = deferred();
+    const signals: AbortSignal[] = [];
+    const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const signal = init!.signal!;
+      signals.push(signal);
+      await (signals.length === 1 ? first.promise : release.promise);
+      signal.throwIfAborted();
+      return new Response("audio");
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const work = Array.from({ length: 6 }, (_, i) => trackEngine.download(`file-${i}`));
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+    expect(trackEngine.downloadCount).toBe(6);
+    await session.setOfflineMode(true);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+    expect(trackEngine.downloadCount).toBe(6);
+    first.resolve();
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(4));
+    expect(session.offlineMode).toBe(true);
+    expect(trackEngine.downloadCount).toBe(5);
+    await session.setOfflineMode(false);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+    expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
+    expect(playback.refreshQueue).toHaveBeenCalledOnce();
+    release.resolve();
+    await Promise.all(work);
+    expect(fetcher).toHaveBeenCalledTimes(6);
+    expect(trackEngine.downloadCount).toBe(0);
+  });
+
+  it("closes download access when the session is destroyed", async () => {
+    const { session, network } = setup(true);
+    const open = vi.spyOn(network, "open");
+    session.start();
+    await vi.waitFor(() => expect(session.status).toBe("connected"));
+    const connection = open.mock.results[0].value;
+    session.destroy();
+    expect(connection.signal.aborted).toBe(true);
+  });
+
+  it("retains download access on offline startup without browsing sync or restoring cleared credentials", async () => {
+    const { session, storage, network, metadata, auth } = setup(true);
+    storage.setItem("navidrome-offline-mode", "true");
+    const open = vi.spyOn(network, "open");
+    session.start();
+    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+    const connection = open.mock.results[0].value;
+    session.disconnect();
+    expect(connection.signal.aborted).toBe(true);
+    expect(auth.load()).toBeNull();
+    await session.setOfflineMode(false);
+    expect(open).toHaveBeenCalledOnce();
+    expect(session.auth).toBeNull();
+  });
+
   it("keeps credentials for voluntary offline mode and resumes with a fresh cancellable client", async () => {
     const { session, tracks, metadata, auth, playback, loadCache } = await connected();
-    const client = tracks.setConnection.mock.calls.at(-1)![0];
+    const client = tracks.setPlaybackConnection.mock.calls.at(-1)![0];
     await session.setOfflineMode(true);
     expect(client!.signal.aborted).toBe(true);
     expect(auth.load()).not.toBeNull();
     expect(session.auth).not.toBeNull();
     await session.setOfflineMode(false);
-    expect(tracks.setConnection.mock.calls.at(-1)![0]).not.toBe(client);
+    expect(tracks.setPlaybackConnection.mock.calls.at(-1)![0]).not.toBe(client);
     expect(loadCache).toHaveBeenCalledOnce();
     expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
     expect(metadata.readLibrary).not.toHaveBeenCalled();
@@ -854,7 +918,7 @@ it.each(["byte close", "reconciliation"])(
     loadCache.mockRestore();
     saveLibrary.mockRestore();
     tracks.activate.mockRestore();
-    tracks.setConnection.mockRestore();
+    tracks.setPlaybackConnection.mockRestore();
     const disk = installDisk();
     expect(await session.connect(input)).toBe(true);
     const original = selection.cache!;
