@@ -197,6 +197,68 @@ describe("TrackEngine using Cache", () => {
     },
   );
 
+  it("downloads a normalized single by its server ID and restores its source offline", async () => {
+    install();
+    const network = new Network();
+    const connection = network.accept(network.prepare(auth));
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("search3.view")) {
+        return new Response(
+          JSON.stringify({
+            "subsonic-response": {
+              status: "ok",
+              searchResult3: {
+                song:
+                  url.searchParams.get("songOffset") === "0"
+                    ? [
+                        {
+                          id: "single",
+                          title: "Standalone",
+                          displayArtist: "Solo",
+                          contentType: "audio/mpeg",
+                        },
+                      ]
+                    : [],
+              },
+            },
+          }),
+        );
+      }
+      expect(url.pathname).toMatch(/stream.view$/);
+      expect(url.searchParams.get("id")).toBe("single");
+      return new Response("audio bytes", { headers: { "Content-Type": "audio/mpeg" } });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { cache, engine, selection } = setup();
+    await cache.replaceLibrary({
+      ...(await connection.metadata.readLibrary(connection.signal)),
+      savedAt: 1,
+      lastModified: null,
+    });
+    engine.setDownloadConnection(connection.audio);
+    await engine.download("single", { format: "mp3" });
+    expect(expectCompletedDownload(cache, downloadKey("single", "mp3")).track).toMatchObject({
+      id: "single",
+      title: "Standalone",
+      artist: "Solo",
+      album: "Singles",
+    });
+    await cache.flush();
+    const restored = new Cache(cache.key);
+    await restored.load();
+    selection.cache = restored;
+    engine.activate();
+    network.setMode("offline");
+    engine.setDownloadConnection(undefined);
+    engine.setPlaybackConnection(undefined);
+    const requestCount = fetcher.mock.calls.length;
+    const source = await engine.getSource({ id: "single" });
+    expect(source).toMatchObject({ cached: true, url: "blob:track-1" });
+    expect(fetcher).toHaveBeenCalledTimes(requestCount);
+    source.release();
+  });
+
   it("exposes a safe setup error without an account", async () => {
     install();
     const { engine, selection } = setup();
