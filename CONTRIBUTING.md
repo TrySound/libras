@@ -125,6 +125,8 @@ For playback/synchronization changes, check refresh, disconnect/reload, offline 
 
 ### Installation, offline use, and updates
 
+Player Settings contains browser installation and manual iPhone instructions; the demo does not. See the [installation audit and remaining device checklist](docs/installation-audit.md) for measured eligibility, deployment boundaries, and acceptance limits. Installation is separate from service-worker updates and does not guarantee background downloads or permanent storage.
+
 Service workers are disabled during development. Use a production preview:
 
 ```sh

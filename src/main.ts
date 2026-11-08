@@ -1,8 +1,6 @@
-import { mount } from "svelte";
-import App from "./app.svelte";
-import WebappUpdater from "./webapp-updater.svelte";
-import { Network } from "./network.svelte";
-import { AuthStore } from "./auth";
+import { mount, unmount } from "svelte";
+import Webapp from "./webapp.svelte";
+import { InstallController } from "./install.svelte";
 import "./edgerunner.css";
 
 const target = document.getElementById("app");
@@ -10,6 +8,9 @@ const target = document.getElementById("app");
 if (!target) {
   throw new Error("App target was not found.");
 }
+
+// Capture eligibility before polyfills can yield; Settings routes do not own this lifetime.
+const installation = new InstallController();
 
 async function start(target: HTMLElement) {
   if (!("closedBy" in HTMLDialogElement.prototype)) {
@@ -22,14 +23,11 @@ async function start(target: HTMLElement) {
     await import("@virtualstate/navigation/polyfill");
   }
 
-  mount(App, {
-    target,
-    props: {
-      network: new Network(),
-      auth: new AuthStore(),
-      updaterComponent: WebappUpdater,
-    },
-  });
+  const app = mount(Webapp, { target, props: { installation } });
+  if (import.meta.hot) import.meta.hot.dispose(() => void unmount(app));
 }
 
-void start(target);
+void start(target).catch((error: unknown) => {
+  installation.destroy();
+  throw error;
+});

@@ -104,7 +104,12 @@ it.each([
 });
 
 it("renders demo credits as an HTML card inside Settings, not above the app", async () => {
+  const listen = vi.spyOn(window, "addEventListener");
   render();
+  expect(
+    listen.mock.calls.some(([type]) => type === "beforeinstallprompt" || type === "appinstalled"),
+  ).toBe(false);
+  expect(document.getElementById("install-title")).toBeNull();
   await vi.waitFor(() =>
     expect(document.querySelector("[aria-labelledby=settings-heading]")).not.toBeNull(),
   );
