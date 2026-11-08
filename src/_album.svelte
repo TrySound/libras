@@ -139,7 +139,7 @@
       </div>
     </div>
     <div class="stack-lg scroll-runway view-slide-left">
-      <h2 class="heading-lg uppercase">{offlineMode ? "Downloaded tracks" : "Tracks"}</h2>
+      <h2 class="heading-lg uppercase">Tracks</h2>
       <div class="stack-sm">
         {#each visibleTracks as track, index (track.id)}
           {@const downloadStatus = trackEngine.getStatus(track.id)}

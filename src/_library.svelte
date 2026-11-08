@@ -97,9 +97,7 @@
         </div>
       {/if}
       <header class="row-md row-justify">
-        <h2 class="heading-lg uppercase">
-          {offlineMode ? "Downloaded artists" : "Artists"}
-        </h2>
+        <h2 class="heading-lg uppercase">Artists</h2>
         <span class="metadata text-subtle">{visibleArtists.length} artists</span>
       </header>
       {#if visibleArtists.length > 0}

@@ -225,7 +225,9 @@
     >
       <Icon name="download" color={isCurrentPage("/downloads") ? "var(--accent)" : undefined} />
       Downloads
-      {#if trackEngine.downloadCount}<span class="caption">{trackEngine.downloadCount}</span>{/if}
+      {#if trackEngine.downloadCount}<span class="caption text-subtle"
+          >{trackEngine.downloadCount}</span
+        >{/if}
     </a>
     <a
       class="menu-item"

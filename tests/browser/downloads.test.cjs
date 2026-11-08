@@ -97,7 +97,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
         true,
       );
       assert.equal(
-        await page.getByRole("button", { name: "Cancel all", exact: true }).isDisabled(),
+        await page.getByRole("button", { name: "Cancel downloads", exact: true }).isDisabled(),
         true,
       );
     });
@@ -193,42 +193,45 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       },
     );
 
-    await t.test("Cancel all retires real active and queued intent across reload", async () => {
-      await page.getByRole("button", { name: "Cancel all", exact: true }).click();
-      await page.getByRole("heading", { name: "No downloads yet", exact: true }).waitFor();
-      assert.equal(streams, 3);
-      release();
-      await page.reload();
-      await page.getByRole("heading", { name: "No downloads yet", exact: true }).waitFor();
-      assert.equal(streams, 3, "canceled queued files must not resume on reopen");
-      assert.equal(
-        await page.getByRole("button", { name: "Cancel all", exact: true }).isDisabled(),
-        true,
-      );
-      assert.equal(
-        await page.getByRole("button", { name: "Retry all", exact: true }).isDisabled(),
-        true,
-      );
-      // Start a new explicit batch; subsequent counts exclude the three canceled requests.
-      streams = 0;
-      gate = new Promise((resolve) => {
-        release = resolve;
-      });
-      await page.setViewportSize({ width: 1280, height: 900 });
-      await navigate(`/library/artist/${artist.id}`);
-      await page.getByRole("button", { name: `Actions for ${artist.name}`, exact: true }).click();
-      await page
-        .locator("#artist-detail-menu-popover")
-        .getByRole("button", { name: "Download", exact: true })
-        .click();
-      await page.locator('.app-sidebar a[href="?/downloads"]').click();
-      await page.waitForFunction(
-        () =>
-          document.querySelectorAll(
-            '[aria-labelledby=downloads-heading] [aria-label="Downloading"]',
-          ).length === 3,
-      );
-    });
+    await t.test(
+      "Cancel downloads retires real active and queued intent across reload",
+      async () => {
+        await page.getByRole("button", { name: "Cancel downloads", exact: true }).click();
+        await page.getByRole("heading", { name: "No downloads yet", exact: true }).waitFor();
+        assert.equal(streams, 3);
+        release();
+        await page.reload();
+        await page.getByRole("heading", { name: "No downloads yet", exact: true }).waitFor();
+        assert.equal(streams, 3, "canceled queued files must not resume on reopen");
+        assert.equal(
+          await page.getByRole("button", { name: "Cancel downloads", exact: true }).isDisabled(),
+          true,
+        );
+        assert.equal(
+          await page.getByRole("button", { name: "Retry all", exact: true }).isDisabled(),
+          true,
+        );
+        // Start a new explicit batch; subsequent counts exclude the three canceled requests.
+        streams = 0;
+        gate = new Promise((resolve) => {
+          release = resolve;
+        });
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await navigate(`/library/artist/${artist.id}`);
+        await page.getByRole("button", { name: `Actions for ${artist.name}`, exact: true }).click();
+        await page
+          .locator("#artist-detail-menu-popover")
+          .getByRole("button", { name: "Download", exact: true })
+          .click();
+        await page.locator('.app-sidebar a[href="?/downloads"]').click();
+        await page.waitForFunction(
+          () =>
+            document.querySelectorAll(
+              '[aria-labelledby=downloads-heading] [aria-label="Downloading"]',
+            ).length === 3,
+        );
+      },
+    );
 
     release();
     await t.test(

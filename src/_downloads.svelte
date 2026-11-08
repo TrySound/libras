@@ -79,7 +79,7 @@
           data-variant="secondary"
           data-size="text"
           disabled={loading || canceling || !trackEngine.downloadCount}
-          onclick={cancelAll}>Cancel all</button
+          onclick={cancelAll}>Cancel downloads</button
         >
       </div>
     </header>
@@ -138,10 +138,6 @@
                       void trackEngine.download(entry.track.id, { format: entry.format });
                     }}>Retry</button
                   >
-                {:else if entry.status === "queued"}
-                  <p class="caption text-subtle">
-                    {trackEngine.waitingForConnection ? "Waiting for connection" : "Queued"} · {entry.format.toUpperCase()}
-                  </p>
                 {:else if entry.status === "downloaded"}
                   <p class="caption text-subtle">
                     Downloaded

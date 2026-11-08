@@ -62,6 +62,11 @@ export class Session {
     this.#options = options;
   }
 
+  #resumeDownloads() {
+    if (this.auth)
+      this.#options.tracks.setDownloadConnection(this.#options.network.openDownloads(this.auth));
+  }
+
   get libraryProgress() {
     return this.#libraryProgress;
   }
@@ -109,7 +114,7 @@ export class Session {
     this.status = this.error ? "error" : "disconnected";
   }
 
-  #detach() {
+  #detach(keepDownloads = false) {
     this.#authController?.abort();
     this.#authController = undefined;
     this.loadingAfterConnect = false;
@@ -119,6 +124,10 @@ export class Session {
     this.#refreshError = undefined;
     this.#options.network.setMode("offline");
     this.#setConnection(undefined);
+    if (!keepDownloads) {
+      this.#options.network.closeDownloads();
+      this.#options.tracks.setDownloadConnection(undefined);
+    }
     this.#options.playback.suspendNetwork();
     void this.#options.playback.flushQueue();
   }
@@ -129,7 +138,7 @@ export class Session {
     const { playback, covers, tracks } = this.#options;
     playback.setConnection(connection?.queue);
     covers.setConnection(connection?.artwork);
-    tracks.setConnection(connection?.audio);
+    tracks.setPlaybackConnection(connection?.audio);
     this.#options.playlists?.setConnection(connection?.playlists);
   }
 
@@ -183,6 +192,7 @@ export class Session {
   async #finishStartup(operationId: number) {
     await this.#restoration;
     if (!this.#isCurrentOperation(operationId)) return;
+    this.#resumeDownloads();
     if (!this.auth || this.offlineMode) {
       this.status = "disconnected";
       return;
@@ -266,11 +276,14 @@ export class Session {
     auth.saveAccount(connection.account);
     preferences.setItem(offlineModeStorageKey, "false");
     const active = network.accept(connection);
+    this.#options.network.closeDownloads();
+    this.#options.tracks.setDownloadConnection(undefined);
     this.#setConnection(undefined);
     this.#select(cache, connection.account);
     playback.activate();
     this.auth = credentials;
     this.#setConnection(active);
+    this.#resumeDownloads();
     this.localReady = true;
   }
 
@@ -429,7 +442,7 @@ export class Session {
     const operationId = this.#beginOperation();
     try {
       if (enabled) {
-        this.#detach();
+        this.#detach(true);
         this.status = "disconnected";
       } else {
         this.#options.network.setMode("online");

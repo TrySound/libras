@@ -808,6 +808,56 @@ describe("session", () => {
     expect(previous.queueDirty).toBe(false);
   });
 
+  it("keeps three active and three queued downloads across both offline toggles", async () => {
+    installDisk();
+    const { session, trackEngine, metadata, playback, network } = await connected();
+    const release = deferred();
+    const signals: AbortSignal[] = [];
+    const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const signal = init!.signal!;
+      signals.push(signal);
+      await release.promise;
+      signal.throwIfAborted();
+      return new Response("audio");
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const downloadConnection = network.openDownloads(session.auth!);
+    const work = Array.from({ length: 6 }, (_, i) => trackEngine.download(`file-${i}`));
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+    expect(trackEngine.downloadCount).toBe(6);
+    await session.setOfflineMode(true);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+    expect(downloadConnection.signal.aborted).toBe(false);
+    expect(trackEngine.downloadCount).toBe(6);
+    await session.setOfflineMode(false);
+    expect(network.openDownloads(session.auth!)).toBe(downloadConnection);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+    expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
+    expect(playback.refreshQueue).toHaveBeenCalledOnce();
+    release.resolve();
+    await Promise.all(work);
+    expect(fetcher).toHaveBeenCalledTimes(6);
+    expect(trackEngine.downloadCount).toBe(0);
+    session.disconnect();
+    expect(downloadConnection.signal.aborted).toBe(true);
+  });
+
+  it("retains download access on offline startup without browsing sync or restoring cleared credentials", async () => {
+    const { session, storage, network, metadata, auth } = setup(true);
+    storage.setItem("navidrome-offline-mode", "true");
+    const open = vi.spyOn(network, "openDownloads");
+    session.start();
+    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    expect(metadata.getModifiedAt).not.toHaveBeenCalled();
+    const connection = open.mock.results[0].value;
+    session.disconnect();
+    expect(connection.signal.aborted).toBe(true);
+    expect(auth.load()).toBeNull();
+    await session.setOfflineMode(false);
+    expect(open).toHaveBeenCalledOnce();
+    expect(session.auth).toBeNull();
+  });
+
   it("keeps credentials for voluntary offline mode and resumes with a fresh cancellable client", async () => {
     const { session, tracks, metadata, auth, playback, loadCache } = await connected();
     const client = tracks.setConnection.mock.calls.at(-1)![0];

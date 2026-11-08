@@ -763,7 +763,7 @@
     display: none;
   }
 
-  /* Native checkbox behavior; a fixed gold thumb slides between grid cells. */
+  /* Native checkbox behavior; color and checked position both convey state. */
   .switch {
     --press-scale: var(--press-scale-compact);
     box-shadow: var(--shadow-sm);
@@ -791,7 +791,7 @@
       block-size: 1.5rem;
       border-radius: 4px;
       corner-shape: var(--corner-shape);
-      background: var(--accent);
+      background: var(--error-text);
       translate: 0;
     }
 
@@ -799,6 +799,7 @@
       background: var(--primary-bg);
 
       &::before {
+        background: var(--accent);
         translate: calc(100% + var(--space-xs)) 0;
       }
     }

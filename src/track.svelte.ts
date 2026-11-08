@@ -47,6 +47,7 @@ interface DownloadJob {
 export class TrackEngine {
   #sourceReleases = new Set<() => void>();
   #connection?: AudioConnection;
+  #downloadConnection?: AudioConnection;
   #detachConnection?: () => void;
   #jobs = new Map<string, DownloadJob>();
   #operations = new Set<Promise<unknown>>();
@@ -106,9 +107,9 @@ export class TrackEngine {
   }
   get waitingForConnection() {
     return (
-      !this.#connection ||
-      this.#connection.signal.aborted ||
-      getAccountKey(this.#connection.account) !== this.#selection.cache?.key
+      !this.#downloadConnection ||
+      this.#downloadConnection.signal.aborted ||
+      getAccountKey(this.#downloadConnection.account) !== this.#selection.cache?.key
     );
   }
   #observe<T>(operation: Promise<T>) {
@@ -280,7 +281,7 @@ export class TrackEngine {
           job.status = "queued";
           return;
         }
-        const connection = this.#connectionFor(descriptor);
+        const connection = this.#downloadConnection!;
         const response = await connection.read(track.id, { format: descriptor.format, signal });
         if (cache !== this.#selection.cache) job.controller.abort();
         // Cache also releases unused responses, including cancellation before save.
@@ -512,22 +513,31 @@ export class TrackEngine {
     this.#cancelSourceRequest();
     for (const release of this.#sourceReleases) release();
   }
+  /** Convenience for consumers whose playback and download lifetimes are shared. */
   setConnection(connection?: AudioConnection) {
+    this.setPlaybackConnection(connection);
+    this.setDownloadConnection(connection);
+  }
+  setPlaybackConnection(connection?: AudioConnection) {
     if (this.#connection === connection || this.#destroyed) return;
     this.#cancelSourceRequest();
+    this.#connection = connection;
+  }
+  setDownloadConnection(connection?: AudioConnection) {
+    if (this.#downloadConnection === connection || this.#destroyed) return;
     // Attaching the first matching connection can resume offline queued promises.
     // Replacing/detaching a connection still retires its execution before reuse.
     if (
-      this.#connection ||
+      this.#downloadConnection ||
       !connection ||
       getAccountKey(connection.account) !== this.#selection.cache?.key
     )
       void this.interruptDownloads();
     this.#detachConnection?.();
-    this.#connection = connection;
+    this.#downloadConnection = connection;
     if (connection) {
       const interrupted = () => {
-        if (this.#connection === connection) {
+        if (this.#downloadConnection === connection) {
           void this.interruptDownloads();
         }
       };
