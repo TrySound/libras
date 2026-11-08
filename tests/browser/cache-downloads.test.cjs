@@ -52,7 +52,9 @@ test("Cache unified downloads reconcile native OPFS failure boundaries", async (
           const file = await reopen.readDownload(track.id, "mp3");
           return {
             rejected,
-            completed: reopen.completedDownloads.size,
+            completed: [...reopen.downloads.values()].filter(
+              (entry) => entry.status === "completed",
+            ).length,
             pending: reopen.downloads.get(key)?.status === "queued" ? "queued" : null,
             text: file ? await file.text() : null,
           };
@@ -129,7 +131,8 @@ test("Cache unified downloads reconcile native OPFS failure boundaries", async (
             await engine.restoreDownloads();
             const deadline = Date.now() + 10000;
             while (
-              (cache.completedDownloads.size !== 7 ||
+              ([...cache.downloads.values()].filter((entry) => entry.status === "completed")
+                .length !== 7 ||
                 [...cache.downloads.values()].some((entry) => entry.status === "queued")) &&
               Date.now() < deadline
             )
@@ -137,7 +140,9 @@ test("Cache unified downloads reconcile native OPFS failure boundaries", async (
             return {
               requests,
               peak,
-              completed: cache.completedDownloads.size,
+              completed: [...cache.downloads.values()].filter(
+                (entry) => entry.status === "completed",
+              ).length,
               pending: [...cache.downloads.values()].filter((entry) => entry.status === "queued")
                 .length,
             };
@@ -250,7 +255,8 @@ test("document destruction before byte close never promotes native OPFS partial 
       const cache = new Cache(key);
       await cache.load();
       return {
-        completed: cache.completedDownloads.size,
+        completed: [...cache.downloads.values()].filter((entry) => entry.status === "completed")
+          .length,
         pending: [...cache.downloads.values()].filter((entry) => entry.status === "queued").length,
         file: await cache.readDownload("partial", "mp3"),
       };

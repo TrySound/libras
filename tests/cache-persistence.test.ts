@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Cache } from "../src/cache.svelte";
 import { flushSync } from "svelte";
 import { observeCache } from "./cache-reactivity.test.svelte";
-import { installDisk } from "./cache-test-helpers";
+import { completedDownloadCount, installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example", username: "listener" };
@@ -142,7 +142,7 @@ describe("general checkpoints", () => {
     expect(restored.savedAt).toBe(10);
     expect(restored.queue.position).toBe(10);
     expect(restored.images.size).toBe(1);
-    expect(restored.completedDownloads.size).toBe(1);
+    expect(completedDownloadCount(restored)).toBe(1);
   });
 
   it("captures the latest state when a queued flush starts and acknowledges only its revision", async () => {
@@ -185,7 +185,7 @@ describe("general checkpoints", () => {
     });
     expect(disk.state.writes).toBe(writes);
     expect(cache.savedAt).toBe(1);
-    expect(cache.completedDownloads.size).toBe(1);
+    expect(completedDownloadCount(cache)).toBe(1);
     // A successful resource read must not hide the checkpoint error.
     await cache.readImage("cover");
     expect(cache.error).toBeDefined();

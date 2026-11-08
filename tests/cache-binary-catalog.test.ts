@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Cache, downloadKey } from "../src/cache.svelte";
 import { flushSync } from "svelte";
 import { observeCache } from "./cache-reactivity.test.svelte";
-import { installDisk } from "./cache-test-helpers";
+import { completedDownloadCount, expectCompletedDownload, installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example", username: "listener" };
@@ -13,7 +13,7 @@ const account = { host: "https://music.example", username: "listener" };
 function domain(name: "images" | "downloads", cache: Cache) {
   return {
     flush: () => cache.flush(),
-    records: () => (name === "images" ? cache.images : cache.completedDownloads),
+    records: () => (name === "images" ? cache.images : cache.downloads),
     key: (id: string) => (name === "images" ? id : downloadKey(id, "mp3")),
     read: async (id: string) =>
       name === "images"
@@ -67,7 +67,7 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
         expect(keyed).toHaveBeenCalledOnce();
         expect(listed).toHaveBeenCalledTimes(2);
         expect(sized).toHaveBeenCalledTimes(2);
-        const fileName = records.get(store.key("kept"))!.fileName;
+        const fileName = cache.images.get("kept")!.fileName;
         disk.blobs.delete([...disk.blobs.keys()].find((path) => path.endsWith(fileName))!);
         await store.read("kept");
         flushSync();
@@ -204,20 +204,33 @@ describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (na
 
   it("repairs only a missing reference, retaining unrelated records and bytes", async () => {
     const disk = installDisk();
-    const store = domain(name, new Cache(getAccountKey(account)));
+    const cache = new Cache(getAccountKey(account));
+    const store = domain(name, cache);
     await store.save("missing", "first");
     await store.save("kept", "second");
-    const missing = store.records().get(store.key("missing"))!.fileName;
+    const missing =
+      name === "images"
+        ? cache.images.get("missing")!.fileName
+        : expectCompletedDownload(cache, store.key("missing")).fileName;
     const path = [...disk.blobs.keys()].find((path) => path.endsWith(`/${missing}`))!;
     disk.blobs.delete(path);
     expect(await store.read("missing")).toBeNull();
-    expect([...store.records().keys()]).toEqual([store.key("kept")]);
+    const keys = name === "images" ? ["kept"] : [store.key("kept"), store.key("missing")];
+    expect([...store.records().keys()]).toEqual(keys);
+    if (name === "downloads") {
+      expect(cache.downloads.get(store.key("missing"))?.status).toBe("queued");
+      expectCompletedDownload(cache, store.key("kept"));
+    }
     expect(await (await store.read("kept"))!.text()).toBe("second");
     expect(disk.blobs.size).toBe(1);
     await store.flush();
-    const cache = new Cache(getAccountKey(account));
-    await cache.load();
-    expect([...domain(name, cache).records().keys()]).toEqual([store.key("kept")]);
+    const restored = new Cache(getAccountKey(account));
+    await restored.load();
+    expect([...domain(name, restored).records().keys()]).toEqual(keys);
+    if (name === "downloads") {
+      expect(restored.downloads.get(store.key("missing"))?.status).toBe("queued");
+      expectCompletedDownload(restored, store.key("kept"));
+    }
   });
 
   it("does not tie checkpoints to a completed caller's cancellation signal", async () => {
@@ -310,8 +323,8 @@ it("keeps image operations independent of an active audio transfer", async () =>
   const images = domain("images", cache);
   await images.save("cover", "image");
   expect(await (await images.read("cover"))!.text()).toBe("image");
-  expect(cache.completedDownloads.size).toBe(0);
+  expect(completedDownloadCount(cache)).toBe(0);
   source.close();
   expect(await (await audio).text()).toBe("audio");
-  expect(cache.completedDownloads.size).toBe(1);
+  expect(completedDownloadCount(cache)).toBe(1);
 });

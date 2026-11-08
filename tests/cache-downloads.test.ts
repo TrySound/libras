@@ -2,7 +2,7 @@ import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
 import { Cache, downloadKey } from "../src/cache.svelte";
-import { installDisk } from "./cache-test-helpers";
+import { completedDownloadCount, expectCompletedDownload, installDisk } from "./cache-test-helpers";
 import { observeCache } from "./cache-reactivity.test.svelte";
 import { deferred } from "./session-test-helpers";
 
@@ -51,7 +51,7 @@ describe("download cache foundation", () => {
     const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(restored.error).toBeUndefined();
-    expect(restored.completedDownloads.get(key)).toEqual(oldRecord);
+    expect(expectCompletedDownload(restored, key)).toEqual(oldRecord);
     expect(restored.queue).toEqual(queue);
     expect(disk.state.writes).toBe(writes);
     expect(catalog(disk)).toEqual(originalCatalog);
@@ -74,7 +74,7 @@ describe("download cache foundation", () => {
     const final = new Cache(getAccountKey(account));
     await final.load();
     expect(final.queue).toEqual(queue);
-    expect(final.completedDownloads.get(key)?.fileName).toBe(oldRecord.fileName);
+    expect(expectCompletedDownload(final, key).fileName).toBe(oldRecord.fileName);
     expect(await (await final.readDownload(track.id, "mp3"))!.text()).toBe("original audio");
     expect(await (await final.readDownload("next", "mp3"))!.text()).toBe("new audio");
   });
@@ -94,7 +94,7 @@ describe("download cache foundation", () => {
       const restored = new Cache(getAccountKey(account));
       await expect(restored.load()).rejects.toBeInstanceOf(AggregateError);
       expect(restored.error).toBeDefined();
-      expect(restored.completedDownloads.size).toBe(0);
+      expect(completedDownloadCount(restored)).toBe(0);
       expect(disk.blobs.size).toBe(1);
     },
   );
@@ -105,14 +105,14 @@ describe("download cache foundation", () => {
     expect(disk.getDirectory).not.toHaveBeenCalled();
     const file = await save(cache);
     expect(await file.text()).toBe("audio");
-    expect(cache.completedDownloads.get(key)).toMatchObject({
+    expect(expectCompletedDownload(cache, key)).toMatchObject({
       track,
       format: "mp3",
       contentType: "audio/mpeg",
       size: 5,
     });
     await cache.flush();
-    expect(catalog(disk)).toEqual([...cache.completedDownloads.values()]);
+    expect(catalog(disk)).toEqual([...cache.downloads.values()]);
     expect(catalog(disk)[0]).not.toHaveProperty("key");
     expect(disk.blobs.size).toBe(1);
     const reads: string[] = [];
@@ -122,7 +122,7 @@ describe("download cache foundation", () => {
     const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect(restored.artists.size).toBe(0);
-    expect(restored.completedDownloads).toEqual(cache.completedDownloads);
+    expect(restored.downloads).toEqual(cache.downloads);
     expect(reads.filter((name) => name.endsWith(".audio"))).toHaveLength(1);
     const bytes = vi.spyOn(File.prototype, "arrayBuffer");
     expect(await restored.readDownload(track.id, "mp3")).toBeInstanceOf(File);
@@ -135,7 +135,7 @@ describe("download cache foundation", () => {
     const cache = new Cache(getAccountKey(account));
     const source = stream();
     const seen: number[] = [];
-    const stop = observeCache(() => seen.push(cache.completedDownloads.size));
+    const stop = observeCache(() => seen.push(completedDownloadCount(cache)));
     flushSync();
     const gate = deferred();
     const closing = deferred();
@@ -178,7 +178,7 @@ describe("download cache foundation", () => {
         source.controller.error(new Error("Truncated stream"));
       }
       await expect(pending).rejects.toThrow();
-      expect(cache.completedDownloads.size).toBe(0);
+      expect(completedDownloadCount(cache)).toBe(0);
       expect(cache.error).toBeDefined();
       expect(disk.blobs.size).toBe(0);
       expect([...disk.files.keys()].some((name) => name.endsWith(".audio"))).toBe(false);
@@ -203,7 +203,7 @@ describe("download cache foundation", () => {
     abort.abort();
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(source.cancel).toHaveBeenCalledOnce();
-    expect(cache.completedDownloads.size).toBe(0);
+    expect(completedDownloadCount(cache)).toBe(0);
     expect(cache.error).toBeUndefined();
     expect(disk.blobs.size).toBe(0);
     expect([...disk.files.keys()].every((name) => name.endsWith("downloads.json"))).toBe(true);
@@ -232,7 +232,7 @@ describe("download cache foundation", () => {
     expect(await results[1].text()).toBe("winner");
     expect(unused.cancel).toHaveBeenCalledOnce();
     expect(disk.blobs.size).toBe(1);
-    expect(second.completedDownloads).toEqual(first.completedDownloads);
+    expect(expectCompletedDownload(second, key)).toMatchObject({ track, size: 6 });
   });
 
   it("cancels a lock waiter and releases its unused response before the winner finishes", async () => {
@@ -283,7 +283,7 @@ describe("download cache foundation", () => {
     two.controller.enqueue(new TextEncoder().encode("raw"));
     two.controller.close();
     await Promise.all(pending);
-    expect(cache.completedDownloads.size).toBe(2);
+    expect(completedDownloadCount(cache)).toBe(2);
     expect(await (await cache.readDownload(track.id, "raw"))!.text()).toBe("raw");
   });
 
@@ -316,17 +316,17 @@ describe("download cache foundation", () => {
       const cache = new Cache(getAccountKey(account));
       await save(cache);
       await cache.saveDownload(track, "raw", "audio/flac", new Response("original"), signal());
-      const fileName = cache.completedDownloads.get(key)!.fileName;
+      const fileName = expectCompletedDownload(cache, key).fileName;
       const binary = [...disk.blobs.keys()].find((name) => name.endsWith(fileName))!;
       if (kind === "missing") disk.blobs.delete(binary);
       else disk.blobs.set(binary, new Blob(["x"]));
       expect(await cache.readDownload(track.id, "mp3")).toBeNull();
-      expect(cache.completedDownloads.size).toBe(1);
+      expect(completedDownloadCount(cache)).toBe(1);
       await cache.flush();
       expect(catalog(disk)).toHaveLength(2);
       expect(disk.blobs.has(binary)).toBe(false);
       await save(cache, "replacement");
-      expect(cache.completedDownloads.get(key)!.fileName).not.toBe(fileName);
+      expect(expectCompletedDownload(cache, key).fileName).not.toBe(fileName);
       expect(disk.blobs.size).toBe(2);
     },
   );
@@ -336,14 +336,14 @@ describe("download cache foundation", () => {
     const cache = new Cache(getAccountKey(account));
     await save(cache);
     await cache.flush();
-    const original = cache.completedDownloads;
+    const original = expectCompletedDownload(cache, key);
     disk.state.beforeRead = async (name) => {
       if (name.endsWith(".audio")) throw new DOMException("Denied", "NotAllowedError");
     };
     await expect(cache.readDownload(track.id, "mp3")).rejects.toMatchObject({
       name: "DownloadError",
     });
-    expect(cache.completedDownloads).toBe(original);
+    expect(expectCompletedDownload(cache, key)).toEqual(original);
     const abort = new AbortController();
     disk.state.beforeRead = async (name) => {
       if (name.endsWith(".audio")) abort.abort();
@@ -351,7 +351,7 @@ describe("download cache foundation", () => {
     await expect(cache.readDownload(track.id, "mp3", abort.signal)).rejects.toMatchObject({
       name: "AbortError",
     });
-    expect(cache.completedDownloads).toBe(original);
+    expect(expectCompletedDownload(cache, key)).toEqual(original);
     expect(catalog(disk)).toHaveLength(1);
   });
 
@@ -361,7 +361,7 @@ describe("download cache foundation", () => {
     await save(first, "first");
     const second = new Cache(getAccountKey({ ...account, username: "other" }));
     await second.load();
-    expect(second.completedDownloads.size).toBe(0);
+    expect(completedDownloadCount(second)).toBe(0);
     expect(await second.readDownload(track.id, "mp3")).toBeNull();
     await save(second, "other");
     expect(await (await first.readDownload(track.id, "mp3"))!.text()).toBe("first");
@@ -411,7 +411,7 @@ describe("download cache foundation", () => {
     disk.files.set(path(disk).replace("downloads.json", "library.json"), "broken JSON");
     const cache = new Cache(getAccountKey(account));
     await expect(cache.load()).rejects.toMatchObject({ errors: [expect.any(Error)] });
-    expect(cache.completedDownloads.size).toBe(1);
+    expect(completedDownloadCount(cache)).toBe(1);
     expect(await (await cache.readDownload(track.id, "mp3"))!.text()).toBe("audio");
   });
 
@@ -435,12 +435,12 @@ describe("download cache foundation", () => {
       const abort = new AbortController();
       const loading = cache.load(abort.signal);
       await reading.promise;
-      expect(cache.completedDownloads.size).toBe(0);
+      expect(completedDownloadCount(cache)).toBe(0);
       if (cancel) {
         abort.abort();
         gate.resolve();
         await expect(loading).rejects.toMatchObject({ name: "AbortError" });
-        expect(cache.completedDownloads.size).toBe(0);
+        expect(completedDownloadCount(cache)).toBe(0);
       } else {
         const saving = cache.saveDownload(
           track,
@@ -451,7 +451,7 @@ describe("download cache foundation", () => {
         );
         gate.resolve();
         await Promise.all([loading, saving]);
-        expect(cache.completedDownloads.size).toBe(2);
+        expect(completedDownloadCount(cache)).toBe(2);
         await cache.flush();
         expect(catalog(disk)).toHaveLength(2);
       }
@@ -468,7 +468,7 @@ describe("download cache foundation", () => {
     source.controller.enqueue(new TextEncoder().encode("audio"));
     source.controller.close();
     await pending;
-    expect(cache.completedDownloads.get(key)!.track.title).toBe("Track");
+    expect(expectCompletedDownload(cache, key).track.title).toBe("Track");
   });
 });
 
@@ -521,7 +521,7 @@ describe("durable download intent", () => {
       const restored = new Cache(getAccountKey(account));
       await restored.load();
       if (stage === "bytes") {
-        expect(restored.completedDownloads.size).toBe(0);
+        expect(completedDownloadCount(restored)).toBe(0);
         expect(restored.downloads.get(key)?.status).toBe("queued");
         expect(await restored.readDownload(track.id, "mp3")).toBeNull();
       } else {
@@ -600,7 +600,7 @@ it("does not write partial legacy fallback after a transient migration failure",
     signal(),
   );
   legacy(disk);
-  const missing = seed.completedDownloads.get(key)!;
+  const missing = expectCompletedDownload(seed, key);
   disk.blobs.delete([...disk.blobs.keys()].find((name) => name.endsWith(missing.fileName))!);
   const before = new Map(disk.files);
   disk.state.beforeClose = async (name) => {

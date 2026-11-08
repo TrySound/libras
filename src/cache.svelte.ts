@@ -96,7 +96,6 @@ const downloadStoreSchema = v.strictObject({
   records: v.array(downloadEntrySchema),
 });
 export type DownloadEntry = Immutable<v.InferOutput<typeof downloadEntrySchema>>;
-type CompletedDownload = Extract<DownloadEntry, { status: "completed" }>;
 /** Account-local identity, also distinguishing original files from MP3 transcodes. */
 export function downloadKey(trackId: string, format: DownloadFormat) {
   return JSON.stringify([trackId, format]);
@@ -1065,18 +1064,6 @@ export class Cache {
 
   get downloads(): ReadonlyMap<string, DownloadEntry> {
     return this.#downloads;
-  }
-
-  /** A derived completed-only view for saved-file consumers, never a second store. */
-  #completedDownloads = $derived(
-    new Map(
-      [...this.#downloads].filter(
-        (entry): entry is [string, CompletedDownload] => entry[1].status === "completed",
-      ),
-    ),
-  );
-  get completedDownloads(): ReadonlyMap<string, CompletedDownload> {
-    return this.#completedDownloads;
   }
 
   /** Reconciliation failures do not prevent read-only use of committed bytes or format fallback. */

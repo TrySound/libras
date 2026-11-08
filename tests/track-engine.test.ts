@@ -4,7 +4,7 @@ import { Network } from "../src/network.svelte";
 import { TrackEngine } from "../src/track.svelte";
 import { Cache, downloadKey } from "../src/cache.svelte";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
-import { installDisk } from "./cache-test-helpers";
+import { completedDownloadCount, expectCompletedDownload, installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
@@ -187,7 +187,7 @@ describe("TrackEngine using Cache", () => {
         },
       });
       await pending;
-      expect(cache.completedDownloads.get(downloadKey(track.id, "raw"))?.track.title).toBe(
+      expect(expectCompletedDownload(cache, downloadKey(track.id, "raw")).track.title).toBe(
         "Library track",
       );
     },
@@ -219,10 +219,10 @@ describe("TrackEngine using Cache", () => {
     await cache.load();
     const { engine, selection } = setup({ cache });
     expect(cache.tracks.size).toBe(0);
-    const record = cache.completedDownloads.get(downloadKey(track.id, "mp3"))!;
+    const record = expectCompletedDownload(cache, downloadKey(track.id, "mp3"));
     expect(record).not.toHaveProperty("key");
     expect(record).not.toHaveProperty("host");
-    expect([...selection.cache!.completedDownloads.values()][0].track).toBe(record.track);
+    expect(expectCompletedDownload(selection.cache!, downloadKey(track.id, "mp3"))).toEqual(record);
     disk.getDirectory.mockClear();
     expect(engine.getStatus(track.id)).toBe("downloaded");
     expect(engine.downloadJobs).toEqual([]);
@@ -337,13 +337,13 @@ describe("TrackEngine using Cache", () => {
     expect(cache.downloads.has(downloadKey(track.id, "mp3"))).toBe(false);
     expect(engine.getStatus(track.id)).toBe("queued");
     expect(engine.downloadCount).toBe(1);
-    expect(selection.cache!.completedDownloads.size).toBe(0);
+    expect(completedDownloadCount(selection.cache!)).toBe(0);
     response.resolve(new Response("audio"));
     await pending;
     expect(engine.getStatus(track.id)).toBe("downloaded");
     expect(engine.downloadJobs).toEqual([]);
-    expect([...selection.cache!.completedDownloads.keys()][0]).toBe(downloadKey(track.id, "mp3"));
-    expect(cache.completedDownloads.size).toBe(1);
+    expectCompletedDownload(selection.cache!, downloadKey(track.id, "mp3"));
+    expect(completedDownloadCount(cache)).toBe(1);
     expect(disk.blobs.size).toBe(1);
     const json = [...disk.files.values()].join();
     for (const secret of ["token", "salt", "blob:", "downloading", "queued", "getStream"])
@@ -379,7 +379,7 @@ describe("TrackEngine using Cache", () => {
       "queued",
       "last",
     ]);
-    expect(cache.completedDownloads.size).toBe(3);
+    expect(completedDownloadCount(cache)).toBe(3);
   });
 
   it.each(["HTTP", "binary"])(
@@ -407,7 +407,7 @@ describe("TrackEngine using Cache", () => {
       expect(engine.getStatus("good")).toBe("downloaded");
       expect(disk.blobs.size).toBe(1);
       expect(await (await engine.download("bad", { format: "mp3" })).text()).toBe("good");
-      await vi.waitFor(() => expect(cache.completedDownloads.size).toBe(2));
+      await vi.waitFor(() => expect(completedDownloadCount(cache)).toBe(2));
     },
   );
 
@@ -530,7 +530,7 @@ describe("TrackEngine using Cache", () => {
     response.resolve(new Response("mp3"));
     await pending;
     expect(engine.getStatus(track.id)).toBe("downloaded");
-    expect(cache.completedDownloads.size).toBe(2);
+    expect(completedDownloadCount(cache)).toBe(2);
   });
 
   it.each(["detach", "destroy", "activate"])(
@@ -552,7 +552,7 @@ describe("TrackEngine using Cache", () => {
       else engine.activate();
       expect((await results).map((result) => result.status)).toEqual(["rejected", "rejected"]);
       expect(engine.downloadCount).toBe(2);
-      expect(cache.completedDownloads.size).toBe(0);
+      expect(completedDownloadCount(cache)).toBe(0);
       expect(disk.blobs.size).toBe(0);
     },
   );
@@ -583,7 +583,7 @@ describe("TrackEngine using Cache", () => {
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     expect(fetcher).toHaveBeenCalledOnce();
     expect(disk.blobs.size).toBe(0);
-    expect(cache.completedDownloads.size).toBe(0);
+    expect(completedDownloadCount(cache)).toBe(0);
     expect(engine.downloadCount).toBe(2);
   });
 
@@ -616,8 +616,8 @@ describe("TrackEngine using Cache", () => {
       expect(engine.downloadJobs).toHaveLength(1);
       next.resolve(new Response("new"));
       await retry;
-      expect(cache.completedDownloads.size).toBe(0);
-      expect(selection.cache.completedDownloads.size).toBe(1);
+      expect(completedDownloadCount(cache)).toBe(0);
+      expect(completedDownloadCount(selection.cache)).toBe(1);
       expect(disk.blobs.size).toBe(1);
     },
   );
@@ -650,7 +650,7 @@ describe("TrackEngine using Cache", () => {
       gate.resolve();
       await rejected;
       expect(URL.createObjectURL).not.toHaveBeenCalled();
-      expect(cache.completedDownloads.size).toBe(1);
+      expect(completedDownloadCount(cache)).toBe(1);
     },
   );
 
@@ -662,7 +662,7 @@ describe("TrackEngine using Cache", () => {
     engine.activate();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:track-1");
     expect(engine.getStatus(track.id)).toBe("idle");
-    expect(selection.cache!.completedDownloads.size).toBe(0);
+    expect(completedDownloadCount(selection.cache!)).toBe(0);
     await expect(engine.getSource(track)).rejects.toThrow("Connect");
   });
 
@@ -683,7 +683,7 @@ describe("TrackEngine using Cache", () => {
       if (stage === "beforeWrite")
         await expect(save.mock.results[0].value).rejects.toMatchObject({ name: "AbortError" });
       else await expect(save.mock.results[0].value).resolves.toBeInstanceOf(File);
-      expect(cache.completedDownloads.size).toBe(stage === "afterClose" ? 1 : 0);
+      expect(completedDownloadCount(cache)).toBe(stage === "afterClose" ? 1 : 0);
       expect(disk.blobs.size).toBe(stage === "afterClose" ? 1 : 0);
     },
   );
@@ -705,7 +705,7 @@ describe("TrackEngine using Cache", () => {
     await first.cache.flush();
     const restored = new Cache(getAccountKey(account));
     await restored.load();
-    expect(restored.completedDownloads.size).toBe(2);
+    expect(completedDownloadCount(restored)).toBe(2);
   });
 
   it.each([0, -1, 1.5])("rejects invalid download concurrency %s", (concurrency) => {
@@ -756,13 +756,13 @@ describe("durable download scheduling", () => {
     const next = setup({ cache: restored, concurrency: 1 });
     fetcher.mockImplementation(async () => new Response("audio"));
     next.engine.setConnection(connection());
-    await vi.waitFor(() => expect(restored.completedDownloads.size).toBe(2));
+    await vi.waitFor(() => expect(completedDownloadCount(restored)).toBe(2));
     expect(next.engine.getStatus("bad")).toBe("failed");
     await next.engine.restoreDownloads();
     expect(next.engine.getStatus("bad")).toBe("failed");
     expect(fetcher.mock.calls).toHaveLength(3);
     next.engine.downloadMany(["bad", "bad"]);
-    await vi.waitFor(() => expect(restored.completedDownloads.size).toBe(3));
+    await vi.waitFor(() => expect(completedDownloadCount(restored)).toBe(3));
     expect(fetcher.mock.calls).toHaveLength(4);
   });
 
@@ -794,14 +794,14 @@ describe("durable download scheduling", () => {
     expect(acknowledged).toBe(false);
     release.resolve();
     await cancel;
-    expect(cache.completedDownloads.size).toBe(1);
+    expect(completedDownloadCount(cache)).toBe(1);
     expect([...cache.downloads.values()].map((item) => item.status)).toEqual([
       "failed",
       "completed",
     ]);
     const reopened = new Cache(cache.key);
     await reopened.load();
-    expect(reopened.completedDownloads.size).toBe(1);
+    expect(completedDownloadCount(reopened)).toBe(1);
     expect(reopened.downloads.has(downloadKey("queued", "mp3"))).toBe(false);
     expect(engine.downloadCount).toBe(0);
   });
@@ -869,9 +869,9 @@ it("bulk Download retries only selected failed formats without duplicating work 
   expect(fetcher).not.toHaveBeenCalled();
   engine.downloadMany(["selected", track.id, "selected"]);
   engine.downloadMany(["selected", track.id]);
-  await vi.waitFor(() => expect(cache.completedDownloads.size).toBe(3));
-  expect(cache.completedDownloads.has(downloadKey("selected", "raw"))).toBe(true);
-  expect(cache.completedDownloads.has(downloadKey("selected", "mp3"))).toBe(true);
+  await vi.waitFor(() => expect(completedDownloadCount(cache)).toBe(3));
+  expectCompletedDownload(cache, downloadKey("selected", "raw"));
+  expectCompletedDownload(cache, downloadKey("selected", "mp3"));
   expect(cache.downloads.get(downloadKey("other", "mp3"))?.status).toBe("failed");
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
@@ -929,7 +929,7 @@ describe("reviewed download failure boundaries", () => {
     const legacy = JSON.parse(disk.files.get(catalogPath)!).records.map(
       ({ status, ...record }: { status: string }) => record,
     );
-    const raw = seeded.completedDownloads.get(downloadKey(track.id, "raw"))!;
+    const raw = expectCompletedDownload(seeded, downloadKey(track.id, "raw"));
     disk.blobs.delete([...disk.blobs.keys()].find((name) => name.endsWith(raw.fileName))!);
     disk.files.set(catalogPath, "[]");
     disk.state.beforeClose = async (name) => {
@@ -1003,7 +1003,7 @@ describe("reviewed download failure boundaries", () => {
       expect(current.engine.getStatus("recoverable")).toBe("failed");
       expect(fetcher).toHaveBeenCalledOnce();
       await current.engine.download("recoverable", { format: "mp3" });
-      expect(current.cache.completedDownloads.get(key)?.fileName).toBe(attempt?.fileName);
+      expect(expectCompletedDownload(current.cache, key).fileName).toBe(attempt?.fileName);
       expect(current.engine.getStatus("recoverable")).toBe("downloaded");
       expect(fetcher).toHaveBeenCalledOnce();
     },
@@ -1035,7 +1035,7 @@ describe("reviewed download failure boundaries", () => {
     expect(fetcher).toHaveBeenCalledOnce();
     release.resolve();
     await restoration;
-    expect(cache.completedDownloads.size).toBe(1);
+    expect(completedDownloadCount(cache)).toBe(1);
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
@@ -1067,7 +1067,7 @@ describe("reviewed download failure boundaries", () => {
     engine.setConnection(connection(other));
     release.resolve();
     await cancel;
-    await vi.waitFor(() => expect(next.completedDownloads.size).toBe(1));
+    await vi.waitFor(() => expect(completedDownloadCount(next)).toBe(1));
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });
@@ -1113,6 +1113,6 @@ it("generalized exact-format Download retries both failed formats at the FIFO ta
   expect(await (await mp3).text()).toBe("retried audio");
   expect(fetcher.mock.calls).toHaveLength(3);
   for (const format of ["raw", "mp3"] as const) {
-    expect(cache.completedDownloads.get(downloadKey(track.id, format))?.track).toEqual(track);
+    expect(expectCompletedDownload(cache, downloadKey(track.id, format)).track).toEqual(track);
   }
 });

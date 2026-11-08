@@ -8,7 +8,7 @@ import { Covers } from "../src/covers.svelte";
 import { TrackEngine } from "../src/track.svelte";
 import { getAccountKey } from "../src/auth";
 import { Network } from "../src/network.svelte";
-import { installDisk } from "./cache-test-helpers";
+import { expectCompletedDownload, installDisk } from "./cache-test-helpers";
 import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
@@ -169,7 +169,7 @@ it("preserves a saved track name verbatim without adding badges", async () => {
   expect(target.querySelector(".badge, .track-badges")).toBeNull();
   const restored = new Cache(getAccountKey(account));
   await restored.load();
-  expect(restored.completedDownloads.get(downloadKey("preview", "raw"))?.track.title).toBe(
+  expect(expectCompletedDownload(restored, downloadKey("preview", "raw")).track.title).toBe(
     "A preview — Preview [Explicit]",
   );
 });

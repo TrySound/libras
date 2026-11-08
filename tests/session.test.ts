@@ -3,7 +3,7 @@ import { getAccountKey } from "../src/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Cache, downloadKey } from "../src/cache.svelte";
 import { DownloadError } from "../src/download-error";
-import { installDisk } from "./cache-test-helpers";
+import { completedDownloadCount, installDisk } from "./cache-test-helpers";
 import { NetworkTransportError } from "../src/network.svelte";
 import { createSession, credentials, deferred } from "./session-test-helpers";
 
@@ -784,7 +784,7 @@ describe("session", () => {
     disk.state.beforeClose = async () => {};
     const restored = new Cache(previous.key);
     await restored.load();
-    expect(restored.completedDownloads.size).toBe(1);
+    expect(completedDownloadCount(restored)).toBe(1);
     expect(await (await restored.readDownload("track", "mp3"))?.text()).toBe("audio");
   });
 
@@ -917,7 +917,7 @@ it.each(["byte close", "reconciliation"])(
     session.disconnect();
     expect(await session.connect(input)).toBe(true);
     expect(selection.cache).not.toBe(original);
-    expect(selection.cache?.completedDownloads.size).toBe(1);
+    expect(completedDownloadCount(selection.cache!)).toBe(1);
     session.disconnect();
     await selection.cache!.enqueueDownload(
       { id: "new-a", title: "New A", artist: "Artist", album: "Album" },
@@ -927,6 +927,6 @@ it.each(["byte close", "reconciliation"])(
     const reopened = new Cache(original.key);
     await reopened.load();
     expect(reopened.downloads.has(downloadKey("new-a", "mp3"))).toBe(true);
-    expect(reopened.completedDownloads.size).toBe(1);
+    expect(completedDownloadCount(reopened)).toBe(1);
   },
 );
