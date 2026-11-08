@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Network } from "../src/network.svelte";
+import { Cache } from "../src/cache.svelte";
+import { getAccountKey } from "../src/auth";
+import { createSearchIndex, searchLibrary } from "../src/_search.svelte";
+import { installMetadataStorage } from "./library-test-helpers";
 
 const account = { host: "https://music.example.com", username: "listener" };
 const auth = {
@@ -67,6 +71,219 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("network library", () => {
+  it.each([false, true])(
+    "retains singles in a mixed/singles-only catalog (only=%s)",
+    async (only) => {
+      vi.stubGlobal(
+        "fetch",
+        serveLibrary({
+          artists: [{ id: "artist", name: "Artist", coverArt: "artist-art" }],
+          albums: only ? [] : undefined,
+          tracks: [
+            ...(!only ? [{ id: "song", title: "Album song", albumId: "album" }] : []),
+            {
+              id: "single",
+              title: "Standalone",
+              artists: [{ id: "artist", name: "Artist" }],
+              displayArtist: "Artist solo",
+              coverArt: "single-art",
+              track: 3,
+              discNumber: 2,
+              duration: 123,
+              contentType: "audio/flac",
+              genres: [{ name: "Jazz" }, { name: "Jazz" }],
+            },
+            {
+              id: "fallback",
+              title: "Fallback",
+              albumId: "",
+              artists: [{ id: "artist", name: "Artist" }],
+              displayArtist: "Artist solo",
+            },
+            { id: "display", title: "Display only", displayArtist: "Guest & friends" },
+            { id: "unknown", title: "Unknown" },
+          ],
+        }),
+      );
+      const connection = createConnection();
+      const library = await connection.readLibrary(connection.signal);
+      expect(library.tracks.map((track) => track.id)).toEqual([
+        ...(!only ? ["song"] : []),
+        "single",
+        "fallback",
+        "display",
+        "unknown",
+      ]);
+      const single = library.tracks.find((track) => track.id === "single")!;
+      const fallback = library.tracks.find((track) => track.id === "fallback")!;
+      expect(single).toMatchObject({
+        id: "single",
+        title: "Standalone",
+        artistIds: ["artist"],
+        displayArtist: "Artist solo",
+        artworkId: "single-art",
+        number: 3,
+        disc: 2,
+        duration: 123,
+        mimeType: "audio/flac",
+        genres: ["Jazz", "Jazz"],
+      });
+      expect(single.albumId).toMatch(/^local:singles:/);
+      expect(fallback).toMatchObject({ albumId: single.albumId, artworkId: "artist-art" });
+      expect(library.albums.find((album) => album.id === single.albumId)).toMatchObject({
+        title: "Singles",
+        artistIds: ["artist"],
+        displayArtist: "Artist solo",
+        artworkId: "artist-art",
+      });
+      expect(library.tracks.find((track) => track.id === "display")).toMatchObject({
+        artistIds: ["local:artist:Guest%20%26%20friends"],
+        displayArtist: "Guest & friends",
+      });
+      expect(library.tracks.find((track) => track.id === "unknown")).toMatchObject({
+        artistIds: ["local:artist:Unknown%20artist"],
+        displayArtist: "Unknown artist",
+      });
+      expect(await connection.readLibrary(connection.signal)).toEqual(library);
+      connection.abort();
+    },
+  );
+
+  it("collects a single on a later song page after artists and albums finish", async () => {
+    const songOffsets: number[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const params = new URL(String(input)).searchParams;
+        const offset = Number(params.get("songOffset"));
+        songOffsets.push(offset);
+        return response({
+          searchResult3: {
+            artist: [],
+            album: params.get("albumOffset") === "0" ? [{ id: "album", name: "Album" }] : [],
+            song:
+              offset < 3
+                ? [
+                    {
+                      id: offset === 2 ? "single" : `song-${offset}`,
+                      title: `Song ${offset}`,
+                      albumId: offset === 2 ? undefined : "album",
+                      displayArtist: "Solo",
+                    },
+                  ]
+                : [],
+          },
+        });
+      }),
+    );
+    const connection = createConnection();
+    const library = await connection.readLibrary(connection.signal);
+    expect(songOffsets).toEqual([0, 1, 2, 3]);
+    expect(library.albums).toHaveLength(2);
+    expect(library.tracks.map((track) => track.id)).toEqual(["song-0", "song-1", "single"]);
+    expect(library.tracks[2].albumId).toMatch(/^local:singles:/);
+    connection.abort();
+  });
+
+  it.each(["missing", " ", "local:singles:missing"])(
+    "rejects a nonempty dangling album %j even alongside singles",
+    async (albumId) => {
+      vi.stubGlobal(
+        "fetch",
+        serveLibrary({
+          tracks: [
+            { id: "single", title: "Single" },
+            { id: "bad", title: "Bad", albumId },
+          ],
+        }),
+      );
+      const connection = createConnection();
+      await expect(connection.readLibrary(connection.signal)).rejects.toThrow(
+        "without a matching album",
+      );
+      connection.abort();
+    },
+  );
+
+  it("does not merge local collections with colliding server album IDs", async () => {
+    const data = {
+      artists: [],
+      albums: [] as { id: string; name: string }[],
+      tracks: [{ id: "single", title: "Single", displayArtist: "Solo" }],
+    };
+    vi.stubGlobal("fetch", serveLibrary(data));
+    const connection = createConnection();
+    const first = await connection.readLibrary(connection.signal);
+    const id = first.albums[0].id;
+    data.albums.push({ id, name: "Real server album" });
+    const next = await connection.readLibrary(connection.signal);
+    expect(next.albums).toHaveLength(2);
+    expect(next.albums.find((album) => album.id === id)?.title).toBe("Real server album");
+    expect(next.tracks[0].albumId).not.toBe(id);
+    expect(next.tracks[0].id).toBe("single");
+    connection.abort();
+  });
+
+  it("persists searchable singles offline, removes stale groups on refresh, and keeps queue/account IDs", async () => {
+    installMetadataStorage();
+    const data = {
+      albums: [],
+      tracks: [{ id: "single", title: "Standalone", displayArtist: "Solo", coverArt: "cover" }],
+    };
+    vi.stubGlobal("fetch", serveLibrary(data));
+    const connection = createConnection();
+    const cache = new Cache(getAccountKey(account));
+    await cache.load();
+    await cache.replaceLibrary({
+      ...(await connection.readLibrary(connection.signal)),
+      savedAt: 1,
+      lastModified: null,
+    });
+    const albumId = cache.tracks.get("single")!.albumId;
+    const queue = { tracks: ["single", "missing", "single"], index: 2, position: 12 };
+    cache.setQueue(queue);
+    await cache.flush();
+    const restored = new Cache(getAccountKey(account));
+    await restored.load();
+    expect(restored.queue).toEqual(queue);
+    expect(restored.albumTracks.get(albumId)?.map((track) => track.id)).toEqual(["single"]);
+    expect(restored.artistAlbums.get("local:artist:Solo")?.map((album) => album.id)).toEqual([
+      albumId,
+    ]);
+    const index = createSearchIndex(
+      restored.artists,
+      restored.albums,
+      restored.tracks,
+      (id) => id === "single",
+    );
+    expect(searchLibrary(index, "Standalone").groups[2].records[0]).toMatchObject({
+      id: "single",
+      artworkId: "cover",
+      artist: "Solo",
+      album: "Singles",
+    });
+    const other = new Cache(getAccountKey({ ...account, username: "other" }));
+    await other.load();
+    expect(other.tracks.size).toBe(0);
+    expect(other.queue.tracks).toEqual([]);
+    data.tracks = [];
+    await restored.replaceLibrary({
+      ...(await connection.readLibrary(connection.signal)),
+      savedAt: 2,
+      lastModified: null,
+    });
+    expect(restored.tracks.size).toBe(0);
+    expect(restored.albums.size).toBe(0);
+    expect(restored.artistAlbums.size).toBe(0);
+    expect(restored.queue).toEqual(queue);
+    await restored.flush();
+    const removed = new Cache(getAccountKey(account));
+    await removed.load();
+    expect(removed.tracks.size).toBe(0);
+    expect(removed.queue).toEqual(queue);
+    connection.abort();
+  });
+
   it.each([
     {
       artist: "artist-art",

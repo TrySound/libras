@@ -208,7 +208,8 @@ export type ArtworkConnection = ReturnType<typeof artworkAccess>;
 function normalizeLibrary(
   sourceArtists: readonly Artist[],
   sourceAlbums: readonly RemoteAlbum[],
-  tracksByAlbum: ReadonlyMap<string, readonly RemoteTrack[]>,
+  sourceTracksByAlbum: ReadonlyMap<string, readonly RemoteTrack[]>,
+  singles: readonly RemoteTrack[],
 ): Library {
   const artists = new Map<string, Artist>();
   const byName = new Map<string, Artist>();
@@ -236,9 +237,37 @@ function normalizeLibrary(
     for (const artist of credits) referencedArtistIds.add(artist.id);
     return credits;
   };
+  // Local collections keep album-based browsing, downloads and offline indexes
+  // intact. Their IDs are never sent to the server; song IDs remain untouched.
+  // Group by ordered credits, not artwork, so each song keeps its own image.
+  const singlesAlbums = new Map<string, RemoteAlbum>();
+  const singlesTracks = new Map<string, RemoteTrack[]>();
+  const tracksByAlbum = new Map(sourceTracksByAlbum);
+  const remoteAlbumIds = new Set(sourceAlbums.map((album) => album.id));
+  for (const track of singles) {
+    const credits = artistsFor(track);
+    const key = JSON.stringify([credits.map((artist) => artist.id), track.displayArtist ?? ""]);
+    let collection = singlesAlbums.get(key);
+    if (!collection) {
+      let id = `local:singles:${encodeURIComponent(key)}`;
+      while (remoteAlbumIds.has(id)) id += ":";
+      collection = {
+        id,
+        title: "Singles",
+        artists: credits,
+        displayArtist: track.displayArtist,
+        genres: [],
+      };
+      singlesAlbums.set(key, collection);
+      const tracks: RemoteTrack[] = [];
+      singlesTracks.set(collection.id, tracks);
+      tracksByAlbum.set(collection.id, tracks);
+    }
+    singlesTracks.get(collection.id)!.push(track);
+  }
   const albums: Album[] = [];
   const tracks: Track[] = [];
-  for (const source of sourceAlbums) {
+  for (const source of [...sourceAlbums, ...singlesAlbums.values()]) {
     const owners = artistsFor(source);
     const owner = owners[0];
     // Resolve inheritance while building fresh records, avoiding another traversal
@@ -381,15 +410,26 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicApi, request
           onProgress?.({ albums: albums.size, tracks: tracks.size });
         }
         const tracksByAlbum = new Map<string, RemoteTrack[]>();
+        const singles: RemoteTrack[] = [];
         for (const track of tracks.values()) {
-          if (!track.albumId || !albums.has(track.albumId))
+          // Missing/empty linkage is intentional; a nonempty dangling ID is not.
+          if (!track.albumId) {
+            singles.push(track);
+            continue;
+          }
+          if (!albums.has(track.albumId))
             throw new Error("The server returned a track without a matching album.");
           const albumTracks = tracksByAlbum.get(track.albumId) ?? [];
           albumTracks.push(track);
           tracksByAlbum.set(track.albumId, albumTracks);
         }
         signal.throwIfAborted();
-        return normalizeLibrary([...artists.values()], [...albums.values()], tracksByAlbum);
+        return normalizeLibrary(
+          [...artists.values()],
+          [...albums.values()],
+          tracksByAlbum,
+          singles,
+        );
       } finally {
         controller.abort();
       }

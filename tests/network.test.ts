@@ -473,7 +473,10 @@ describe("Network connection lifecycle", () => {
             ? {}
             : {
                 searchResult3: {
-                  song: kind === "orphan track" && calls > 1 ? [] : [{ id: "song", title: "Song" }],
+                  song:
+                    kind === "orphan track" && calls > 1
+                      ? []
+                      : [{ id: "song", title: "Song", albumId: "missing-album" }],
                 },
               };
         return new Response(JSON.stringify({ "subsonic-response": { status: "ok", ...result } }));
