@@ -1089,7 +1089,7 @@
 
   .album-playing {
     position: absolute;
-    inset: var(--border-width);
+    inset: 0;
     display: grid;
     place-items: center;
     border-radius: var(--radius-sm);
