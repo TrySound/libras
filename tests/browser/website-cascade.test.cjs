@@ -88,7 +88,7 @@ test("landing layout, images, and keyboard focus work without JavaScript", async
       assert.ok(button.height >= 44, "CTA retains a usable target size");
       if (width < 480) {
         const connect = await page
-          .getByRole("link", { name: "Connect your server", exact: true })
+          .getByRole("link", { name: "Install", exact: true })
           .first()
           .boundingBox();
         assert.ok(Math.abs(connect.width - button.width) < 1, "mobile actions have equal widths");
@@ -117,6 +117,14 @@ test("landing layout, images, and keyboard focus work without JavaScript", async
           .evaluate((element) => element.currentSrc.includes("library-mobile")),
         width < 640,
       );
+      const launchLines = await page
+        .locator('header a[data-variant="primary"]')
+        .evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return range.getClientRects().length;
+        });
+      assert.equal(launchLines, 1, "Launch stays on one line without clipping");
       await assertContained();
     }
     await page.setViewportSize({ width: 375, height: 900 });
@@ -181,6 +189,86 @@ test("landing layout, images, and keyboard focus work without JavaScript", async
   }
 });
 
+test("landing shares one install offer and replaces focused controls in place", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const index of [0, 1]) {
+      const page = await browser.newPage({ reducedMotion: "reduce" });
+      await page.addInitScript(() =>
+        addEventListener("beforeinstallprompt", (event) => {
+          if (event.isTrusted) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }),
+      );
+      await page.goto(base);
+      const liveRegion = page.locator('[role="status"]');
+      assert.equal(await liveRegion.count(), 1);
+      assert.equal(await liveRegion.textContent(), "");
+      // Keep the empty live region rendered before its first update. Computed styles
+      // catch accidental hiding; they do not prove real screen-reader announcements.
+      assert.equal(
+        await liveRegion.evaluate((element) => {
+          for (let ancestor = element; ancestor; ancestor = ancestor.parentElement) {
+            const style = getComputedStyle(ancestor);
+            if (style.display === "none" || style.visibility !== "visible") return false;
+          }
+          return true;
+        }),
+        true,
+      );
+      await page.locator("a[data-install]").nth(index).focus();
+      await page.evaluate(() => {
+        window.promptCalls = 0;
+        const userChoice = new Promise((resolve) => {
+          window.finishInstall = resolve;
+        });
+        dispatchEvent(
+          Object.assign(new Event("beforeinstallprompt", { cancelable: true }), {
+            userChoice,
+            prompt: () => {
+              window.promptCalls++;
+              return Promise.resolve();
+            },
+          }),
+        );
+      });
+      assert.equal(
+        await page
+          .locator("button[data-install]")
+          .nth(index)
+          .evaluate((element) => element === document.activeElement),
+        true,
+      );
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(
+        () =>
+          document.querySelector('[role="status"]').textContent === "Opening installation prompt…",
+      );
+      await page.evaluate(() =>
+        document.querySelectorAll("button[data-install]").forEach((button) => button.click()),
+      );
+      assert.equal(await page.evaluate(() => window.promptCalls), 1);
+      await page.evaluate(() => window.finishInstall({ outcome: "dismissed" }));
+      await page.locator("a[data-install]").nth(index).waitFor();
+      assert.equal(
+        await page
+          .locator("a[data-install]")
+          .nth(index)
+          .evaluate((element) => element === document.activeElement),
+        true,
+      );
+      assert.equal(await page.locator('[role="status"]').textContent(), "Installation dismissed.");
+      assert.equal(await page.locator('[role="status"]').count(), 1);
+      assert.equal(await page.locator(".site-install-help a").count(), 2);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
 test("static website links to the full-width standalone demo", async () => {
   const browser = await chromium.launch({ headless: true });
   let page = await browser.newPage({
@@ -192,7 +280,11 @@ test("static website links to the full-width standalone demo", async () => {
   page.on("pageerror", (error) => errors.push(error.message));
   try {
     await page.goto(base);
-    assert.equal(await page.locator("script").count(), 0);
+    assert.equal(await page.locator('script[type="module"]').count(), 1);
+    assert.match(
+      await page.locator('script[type="module"]').getAttribute("src"),
+      /landing-install/,
+    );
     const landing = page;
     const popup = page.waitForEvent("popup");
     await page.getByRole("link", { name: "Try live demo", exact: true }).first().click();
@@ -233,7 +325,7 @@ test("static website links to the full-width standalone demo", async () => {
   }
 });
 
-test("landing keeps home in-tab and opens apps and external destinations in new tabs", async () => {
+test("landing keeps home and installation help in-tab and other destinations in new tabs", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   try {
@@ -243,19 +335,34 @@ test("landing keeps home in-tab and opens apps and external destinations in new 
       .evaluateAll((links) => links.map((link) => ({ href: link.href, target: link.target })));
     assert.ok(destinations.length >= 10);
     assert.equal(destinations[0].target, "", "home stays in the current tab");
-    assert.ok(destinations.slice(1).every((link) => link.target === "_blank"));
+    assert.ok(
+      destinations
+        .slice(1)
+        .every(
+          (link) =>
+            link.target ===
+            (link.href.endsWith("/webapp/?/settings#install-title") ? "" : "_blank"),
+        ),
+    );
     await page.locator("header .brand").click();
     await page.waitForURL(base);
     assert.equal(page.context().pages().length, 1);
     await page
       .context()
       .route("**/*", (route) =>
-        route.request().isNavigationRequest()
+        route.request().isNavigationRequest() && route.request().url() !== base
           ? route.fulfill({ contentType: "text/html", body: "<title>Destination</title>" })
           : route.continue(),
       );
     for (const [index, destination] of destinations.entries()) {
       if (index === 0) continue;
+      if (destination.target === "") {
+        await page.locator('a:not([href^="#"])').nth(index).click();
+        await page.waitForURL(destination.href);
+        assert.equal(page.context().pages().length, 1);
+        await page.goto(base);
+        continue;
+      }
       const popup = page.waitForEvent("popup");
       await page.locator('a:not([href^="#"])').nth(index).click();
       const opened = await popup;

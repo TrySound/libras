@@ -1,0 +1,366 @@
+{
+  "results": [
+    {
+      "kind": "genuine built root before player",
+      "browser": "156.0.8078.4",
+      "url": "http://127.0.0.1:5197/",
+      "secure": true,
+      "offers": [
+        {
+          "trusted": true,
+          "url": "http://127.0.0.1:5197/",
+          "platforms": [
+            "web"
+          ]
+        }
+      ],
+      "manifest": {
+        "url": "http://127.0.0.1:5197/webapp/manifest.webmanifest",
+        "errors": [],
+        "data": "{\"name\":\"Libras\",\"short_name\":\"Libras\",\"description\":\"Your music library, online and offline.\",\"start_url\":\"/webapp/\",\"display\":\"standalone\",\"background_color\":\"#130000\",\"theme_color\":\"#2f0000\",\"lang\":\"en\",\"scope\":\"/webapp/\",\"id\":\"/webapp/\",\"icons\":[{\"src\":\"/webapp/icons/icon-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"},{\"src\":\"/webapp/icons/icon-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any\"},{\"src\":\"/webapp/icons/icon-maskable-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"maskable\"}]}\n",
+        "parsed": {
+          "scope": "http://127.0.0.1:5197/webapp/"
+        },
+        "manifest": {
+          "backgroundColor": "rgba(19,0,0,1)",
+          "description": "Your music library, online and offline.",
+          "display": "kStandalone",
+          "icons": [
+            {
+              "url": "http://127.0.0.1:5197/webapp/icons/icon-192.png",
+              "sizes": "192x192",
+              "type": "image/png"
+            },
+            {
+              "url": "http://127.0.0.1:5197/webapp/icons/icon-512.png",
+              "sizes": "512x512",
+              "type": "image/png"
+            },
+            {
+              "url": "http://127.0.0.1:5197/webapp/icons/icon-maskable-512.png",
+              "sizes": "512x512",
+              "type": "image/png"
+            }
+          ],
+          "id": "http://127.0.0.1:5197/webapp/",
+          "name": "Libras",
+          "orientation": "DEFAULT",
+          "preferRelatedApplications": false,
+          "scope": "http://127.0.0.1:5197/webapp/",
+          "startUrl": "http://127.0.0.1:5197/webapp/",
+          "themeColor": "rgba(47,0,0,1)"
+        }
+      },
+      "controller": null,
+      "registrations": [],
+      "eligibility": {
+        "installabilityErrors": []
+      },
+      "icons": [
+        {
+          "src": "/webapp/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png",
+          "purpose": "any",
+          "status": 200,
+          "width": 192,
+          "height": 192
+        },
+        {
+          "src": "/webapp/icons/icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "purpose": "any",
+          "status": 200,
+          "width": 512,
+          "height": 512
+        },
+        {
+          "src": "/webapp/icons/icon-maskable-512.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "purpose": "maskable",
+          "status": 200,
+          "width": 512,
+          "height": 512
+        }
+      ]
+    },
+    {
+      "kind": "layout",
+      "name": "eligible-desktop",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 1201.296875,
+        "right": 1280,
+        "width": 78.703125
+      },
+      "viewport": 1440
+    },
+    {
+      "kind": "layout",
+      "name": "eligible-320",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 221.296875,
+        "right": 300,
+        "width": 78.703125
+      },
+      "viewport": 320
+    },
+    {
+      "kind": "layout",
+      "name": "eligible-phone",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 291.296875,
+        "right": 370,
+        "width": 78.703125
+      },
+      "viewport": 390
+    },
+    {
+      "kind": "layout",
+      "name": "eligible-tablet",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 658.5625,
+        "right": 737.265625,
+        "width": 78.703125
+      },
+      "viewport": 768
+    },
+    {
+      "kind": "layout",
+      "name": "eligible-enlarged",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 224.609375,
+        "right": 350,
+        "width": 125.390625
+      },
+      "viewport": 390
+    },
+    {
+      "kind": "demo exclusion",
+      "url": "http://127.0.0.1:5197/demo/?/settings",
+      "secure": true,
+      "offers": [],
+      "manifest": null,
+      "controller": null,
+      "registrations": []
+    },
+    {
+      "kind": "player worker",
+      "url": "http://127.0.0.1:5197/webapp/?/settings#install-title",
+      "secure": true,
+      "offers": [
+        {
+          "trusted": true,
+          "url": "http://127.0.0.1:5197/webapp/?/settings#install-title",
+          "platforms": [
+            "web"
+          ]
+        }
+      ],
+      "manifest": "http://127.0.0.1:5197/webapp/manifest.webmanifest",
+      "controller": "http://127.0.0.1:5197/webapp/sw.js",
+      "registrations": [
+        {
+          "scope": "http://127.0.0.1:5197/webapp/",
+          "active": "http://127.0.0.1:5197/webapp/sw.js"
+        }
+      ]
+    },
+    {
+      "kind": "layout",
+      "name": "nojs-320",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 221.296875,
+        "right": 300,
+        "width": 78.703125
+      },
+      "viewport": 320
+    },
+    {
+      "kind": "layout",
+      "name": "nojs-desktop",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 1201.296875,
+        "right": 1280,
+        "width": 78.703125
+      },
+      "viewport": 1440
+    },
+    {
+      "kind": "layout",
+      "name": "nojs-tablet",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 658.5625,
+        "right": 737.265625,
+        "width": 78.703125
+      },
+      "viewport": 768
+    },
+    {
+      "kind": "layout",
+      "name": "nojs-enlarged",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 224.609375,
+        "right": 350,
+        "width": 125.390625
+      },
+      "viewport": 390
+    },
+    {
+      "kind": "nojs anchor destination",
+      "cta": 0,
+      "url": "http://127.0.0.1:5197/webapp/?/settings#install-title"
+    },
+    {
+      "kind": "fallback startup fragment",
+      "cta": 0,
+      "url": "http://127.0.0.1:5197/webapp/?/settings#install-title",
+      "heading": {
+        "x": 42,
+        "y": 354,
+        "width": 296,
+        "height": 26
+      }
+    },
+    {
+      "kind": "nojs anchor destination",
+      "cta": 1,
+      "url": "http://127.0.0.1:5197/webapp/?/settings#install-title"
+    },
+    {
+      "kind": "fallback startup fragment",
+      "cta": 1,
+      "url": "http://127.0.0.1:5197/webapp/?/settings#install-title",
+      "heading": {
+        "x": 42,
+        "y": 354,
+        "width": 296,
+        "height": 26
+      }
+    },
+    {
+      "kind": "synthetic outcome only",
+      "outcome": "dismissed",
+      "cta": 0,
+      "status": "Installation dismissed.",
+      "focusReplacement": true,
+      "oneUse": true
+    },
+    {
+      "kind": "layout",
+      "name": "dismissed-320",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 221.296875,
+        "right": 300,
+        "width": 78.703125
+      },
+      "viewport": 320
+    },
+    {
+      "kind": "layout",
+      "name": "dismissed-enlarged",
+      "clipped": [],
+      "launchLines": 1,
+      "launch": {
+        "left": 224.609375,
+        "right": 350,
+        "width": 125.390625
+      },
+      "viewport": 390
+    },
+    {
+      "kind": "synthetic outcome only",
+      "outcome": "dismissed",
+      "cta": 1,
+      "status": "Installation dismissed.",
+      "focusReplacement": true,
+      "oneUse": true
+    },
+    {
+      "kind": "synthetic outcome only",
+      "outcome": "accepted",
+      "cta": 0,
+      "status": "Installation accepted in your browser.",
+      "focusReplacement": true,
+      "oneUse": true
+    },
+    {
+      "kind": "synthetic outcome only",
+      "outcome": "accepted",
+      "cta": 1,
+      "status": "Installation accepted in your browser.",
+      "focusReplacement": true,
+      "oneUse": true
+    },
+    {
+      "kind": "synthetic outcome only",
+      "outcome": "failed",
+      "cta": 0,
+      "status": "The installation prompt couldn’t be opened.",
+      "focusReplacement": true,
+      "oneUse": true
+    },
+    {
+      "kind": "synthetic outcome only",
+      "outcome": "failed",
+      "cta": 1,
+      "status": "The installation prompt couldn’t be opened.",
+      "focusReplacement": true,
+      "oneUse": true
+    },
+    {
+      "kind": "synthetic outcome only",
+      "outcome": "installed",
+      "cta": 0,
+      "status": "Your browser reported that Libras was installed.",
+      "focusReplacement": true,
+      "oneUse": true
+    },
+    {
+      "kind": "synthetic outcome only",
+      "outcome": "installed",
+      "cta": 1,
+      "status": "Your browser reported that Libras was installed.",
+      "focusReplacement": true,
+      "oneUse": true
+    },
+    {
+      "kind": "synthetic outcome only",
+      "outcome": "standalone",
+      "cta": 0,
+      "status": "Running as an app.",
+      "focusReplacement": true,
+      "oneUse": true
+    },
+    {
+      "kind": "synthetic outcome only",
+      "outcome": "standalone",
+      "cta": 1,
+      "status": "Running as an app.",
+      "focusReplacement": true,
+      "oneUse": true
+    }
+  ],
+  "issues": []
+}

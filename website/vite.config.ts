@@ -7,6 +7,10 @@ export default defineConfig({
   base: process.env.DEMO_BASE_PATH ?? "/",
   build: {
     rolldownOptions: {
+      output: {
+        entryFileNames: (chunk) =>
+          chunk.name === "website" ? "assets/landing-install-[hash].js" : "assets/[name]-[hash].js",
+      },
       input: {
         website: fileURLToPath(new URL("./index.html", import.meta.url)),
         demo: fileURLToPath(new URL("./demo/index.html", import.meta.url)),

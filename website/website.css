@@ -87,6 +87,9 @@
     margin-inline-start: auto;
     flex-wrap: wrap;
   }
+  .site-topbar-links a {
+    white-space: nowrap;
+  }
   .site-hero {
     display: flex;
     flex-direction: column;
@@ -156,6 +159,18 @@
     justify-content: center;
     gap: 1rem;
     max-inline-size: 100%;
+  }
+  .site-install-actions {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-sm);
+    max-inline-size: 100%;
+  }
+  .site-install-help {
+    display: grid;
+    gap: var(--space-sm);
+    max-inline-size: 52ch;
+    text-align: center;
   }
   .site-preview {
     display: block;

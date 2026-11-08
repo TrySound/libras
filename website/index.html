@@ -23,6 +23,8 @@
       content="Libras is a free, open-source music player for your Navidrome server that lets you stream your library or download music for offline listening."
     />
     <link rel="canonical" href="https://libras-music.app/" />
+    <link rel="manifest" href="/webapp/manifest.webmanifest" />
+    <script type="module" src="/landing-install.ts"></script>
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Libras" />
     <meta property="og:url" content="https://libras-music.app/" />
@@ -84,7 +86,7 @@
           href="/webapp/"
           target="_blank"
           rel="noopener"
-          >Open player</a
+          >Launch</a
         >
       </nav>
     </header>
@@ -98,25 +100,36 @@
           A music player for your Navidrome server that lets you stream your library or download
           music for offline listening.
         </p>
-        <div class="site-actions">
-          <a
-            class="button"
-            data-size="large-text"
-            data-variant="primary"
-            href="/webapp/"
-            target="_blank"
-            rel="noopener"
-            >Connect your server</a
-          >
-          <a
-            class="button"
-            data-size="large-text"
-            data-variant="secondary"
-            href="%BASE_URL%demo/"
-            target="_blank"
-            rel="noopener"
-            >Try live demo</a
-          >
+        <div class="site-install-actions">
+          <div class="site-actions">
+            <a
+              class="button"
+              data-install
+              data-size="large-text"
+              data-variant="primary"
+              href="/webapp/?/settings#install-title"
+              >Install</a
+            >
+            <a
+              class="button"
+              data-size="large-text"
+              data-variant="secondary"
+              href="%BASE_URL%demo/"
+              target="_blank"
+              rel="noopener"
+              >Try live demo</a
+            >
+          </div>
+          <div class="site-install-help caption text-secondary">
+            <p class="caption">
+              Opens browser installation when available; otherwise opens player installation
+              instructions.
+            </p>
+            <a class="text-link" href="/webapp/?/settings#install-title"
+              >Player installation instructions</a
+            >
+            <p class="caption" data-install-status role="status"></p>
+          </div>
         </div>
       </section>
 
@@ -259,25 +272,36 @@
 
       <section class="site-final-cta site-container stack-lg" aria-labelledby="cta-title">
         <h2 class="heading-lg container-md text-subtle" id="cta-title">Start listening now.</h2>
-        <div class="site-actions">
-          <a
-            class="button"
-            data-size="large-text"
-            data-variant="primary"
-            href="/webapp/"
-            target="_blank"
-            rel="noopener"
-            >Connect your server</a
-          >
-          <a
-            class="button"
-            data-size="large-text"
-            data-variant="secondary"
-            href="%BASE_URL%demo/"
-            target="_blank"
-            rel="noopener"
-            >Try live demo</a
-          >
+        <div class="site-install-actions">
+          <div class="site-actions">
+            <a
+              class="button"
+              data-install
+              data-size="large-text"
+              data-variant="primary"
+              href="/webapp/?/settings#install-title"
+              >Install</a
+            >
+            <a
+              class="button"
+              data-size="large-text"
+              data-variant="secondary"
+              href="%BASE_URL%demo/"
+              target="_blank"
+              rel="noopener"
+              >Try live demo</a
+            >
+          </div>
+          <div class="site-install-help caption text-secondary">
+            <p class="caption">
+              Opens browser installation when available; otherwise opens player installation
+              instructions.
+            </p>
+            <a class="text-link" href="/webapp/?/settings#install-title"
+              >Player installation instructions</a
+            >
+            <p class="caption" data-install-status></p>
+          </div>
         </div>
       </section>
     </main>

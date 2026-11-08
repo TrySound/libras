@@ -80,7 +80,7 @@ Library normalization uses structured `artists`, `displayArtist`, and `genres`, 
 
 ## Testing
 
-Use unit/component tests for state and behavior. Static HTML tests cover destinations, metadata, content, and script-free delivery; don't parse CSS with regexes or enforce exact class counts or scope spelling. Browser tests cover computed styles, overflow, focus, native overlays, and responsive behavior.
+Use unit/component tests for state and behavior. Static HTML tests cover destinations, metadata, content, and the narrow landing installation-entry/player-manifest exception; don't parse CSS with regexes or enforce exact class counts or scope spelling. Browser tests cover computed styles, overflow, focus, native overlays, and responsive behavior.
 
 ### Optional browser suites
 
@@ -102,7 +102,7 @@ Select suites for the behavior being changed:
 | `library.test.cjs`, `search.test.cjs`     | Browsing, actions, responsive layouts, and native dismissal                                                                             |
 | `downloads.test.cjs`, `settings.test.cjs` | Actual app/OPFS behavior with intercepted Subsonic requests                                                                             |
 | `atmosphere.test.cjs`                     | Document/dialog scroll timelines; self-contained, no server required                                                                    |
-| `website-cascade.test.cjs`                | Script-free landing layout, keyboard/FAQ behavior, and standalone demo journeys                                                         |
+| `website-cascade.test.cjs`                | No-JavaScript landing layout, keyboard behavior, and standalone demo journeys                                                         |
 | `design-improvements.test.cjs`            | Compact details, full-height player, queue anchors, confirmation, gradients, popover timing, titles, and demo guidance (website server) |
 
 `cache-downloads.test.cjs` exercises native OPFS recovery by importing the owning modules. Run it against the app **dev** server; Downloads, Settings, and navigation checks can run against production preview.
@@ -125,7 +125,7 @@ For playback/synchronization changes, check refresh, disconnect/reload, offline 
 
 ### Installation, offline use, and updates
 
-Player Settings contains browser installation and manual iPhone instructions; the demo does not. See the [installation audit and remaining device checklist](docs/installation-audit.md) for measured eligibility, deployment boundaries, and acceptance limits. Installation is separate from service-worker updates and does not guarantee background downloads or permanent storage.
+Landing Install progressively invokes a retained browser offer or navigates to player Settings instructions. Its approved minimal install entry and exact player-manifest reference are the only exceptions to the former script-free/no-manifest landing policy; no root worker or scope expansion is allowed. Player Settings contains browser installation and manual iPhone instructions; the demo does not. See the [installation audit and remaining device checklist](docs/installation-audit.md) for measured eligibility, deployment boundaries, and acceptance limits. Installation is separate from service-worker updates and does not guarantee background downloads or permanent storage.
 
 Service workers are disabled during development. Use a production preview:
 

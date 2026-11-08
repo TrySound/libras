@@ -17,14 +17,27 @@ it("serves landing content and destinations without executing JavaScript", () =>
   expect(page.querySelector("h1")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
     "Connect your music library and listen anywhere.",
   );
-  expect(page.querySelector("script")).toBeNull();
+  expect(
+    [...page.querySelectorAll("script")].map((script) => [script.type, script.getAttribute("src")]),
+  ).toEqual([["module", "/landing-install.ts"]]);
+  expect(page.querySelector('link[rel="manifest"]')?.getAttribute("href")).toBe(
+    "/webapp/manifest.webmanifest",
+  );
   expect(page.querySelector('link[rel="stylesheet"]')).not.toBeNull();
   expect(link("Try live demo")?.getAttribute("href")).toBe("/demo/");
-  expect(link("Connect your server")?.getAttribute("href")).toBe("/webapp/");
+  expect(page.querySelectorAll("a[data-install]")).toHaveLength(2);
+  for (const control of page.querySelectorAll("a[data-install]")) {
+    expect(control.textContent?.trim()).toBe("Install");
+    expect(control.getAttribute("href")).toBe("/webapp/?/settings#install-title");
+  }
+  expect(page.querySelectorAll('[role="status"]')).toHaveLength(1);
+  expect(page.querySelectorAll(".site-install-help a")).toHaveLength(2);
   expect(link("View on GitHub")?.getAttribute("href")).toBe("https://github.com/TrySound/libras");
   for (const anchor of links) {
     const opensAppOrWebsite =
-      anchor.getAttribute("href") !== "/" && !anchor.getAttribute("href")?.startsWith("#");
+      anchor.getAttribute("href") !== "/" &&
+      !anchor.getAttribute("href")?.startsWith("#") &&
+      anchor.getAttribute("href") !== "/webapp/?/settings#install-title";
     expect(anchor.getAttribute("target")).toBe(opensAppOrWebsite ? "_blank" : null);
     if (opensAppOrWebsite) expect(anchor.getAttribute("rel")).toBe("noopener");
   }
@@ -81,8 +94,9 @@ it("art-directs the early preview and closes with product actions and open-sourc
   expect(sections.at(-1)?.querySelector("h2")?.textContent).toBe("Start listening now.");
   const closing = sections.at(-1)!;
   expect([...closing.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toEqual([
-    "/webapp/",
+    "/webapp/?/settings#install-title",
     "/demo/",
+    "/webapp/?/settings#install-title",
   ]);
   expect(closing.querySelector('[aria-describedby="demo-description"]')).toBeNull();
   expect(closing.textContent).not.toContain("Explore a sample library");
@@ -111,14 +125,10 @@ it("keeps home in the same tab and opens apps and external links separately", ()
   expect(page.querySelectorAll('header nav a.button[data-size="text"]')).toHaveLength(2);
   expect(page.querySelectorAll('main .button[data-size="large-text"]')).toHaveLength(6);
   expect(page.querySelector("header nav a[data-variant='primary']")?.textContent?.trim()).toBe(
-    "Open player",
+    "Launch",
   );
   const links = [...page.querySelectorAll("header a")];
-  expect(links.map((link) => link.textContent?.trim())).toEqual([
-    "Libras",
-    "GitHub",
-    "Open player",
-  ]);
+  expect(links.map((link) => link.textContent?.trim())).toEqual(["Libras", "GitHub", "Launch"]);
   expect(links.map((link) => link.getAttribute("href"))).toEqual([
     "/",
     "https://github.com/TrySound/libras",

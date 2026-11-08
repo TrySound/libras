@@ -20,7 +20,11 @@ function verify() {
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "libras-pages-"));
-  await put("index.html", "<!doctype html><title>Libras</title>");
+  await put(
+    "index.html",
+    '<!doctype html><link rel="manifest" href="/webapp/manifest.webmanifest"><script type="module" crossorigin src="/assets/landing-install-fixture.js"></script>',
+  );
+  await put("assets/landing-install-fixture.js", "// landing install enhancement");
   await put(
     "demo/index.html",
     '<!doctype html><script type="module" src="/assets/demo.js"></script>',
@@ -45,6 +49,38 @@ it("rejects leftover legacy catalog exports", async () => {
   expect(result.status).toBe(1);
   expect(result.stderr).toContain("Legacy static catalog must not be published");
 });
+
+it.each([
+  '<link rel="manifest" href="/manifest.webmanifest">',
+  '<link rel="manifest" href="/webapp/manifest.webmanifest"><link rel="manifest" href="/other.webmanifest">',
+])("rejects unapproved landing manifest declarations", async (html) => {
+  await put("index.html", html);
+  expect(verify().stderr).toContain("Landing must reference only the player manifest");
+});
+
+it.each([
+  '<script type="module" src="/assets/demo.js"></script>',
+  "<script>alert(1)</script>",
+  '<script type="module" crossorigin src="/assets/landing-install-fixture.js"></script><script src="/unclosed.js">',
+  '<script type="module" crossorigin src="/assets/landing-install-missing.js"></script>',
+  '<script type="module" crossorigin src="/assets/landing-install-fixture.js"></script><script src="/extra.js"></script>',
+])("rejects unapproved landing scripts", async (script) => {
+  await put("index.html", '<link rel="manifest" href="/webapp/manifest.webmanifest">' + script);
+  expect(verify().stderr).toContain("Landing must load only its approved installation entry");
+});
+
+it.each(["manifest", "alternate manifest"])("rejects a demo %s link", async (rel) => {
+  await put("demo/index.html", `<link rel="${rel}" href="/webapp/manifest.webmanifest">`);
+  expect(verify().stderr).toContain("Demo HTML must not declare a PWA manifest");
+});
+
+it.each(["sw.js", "manifest.webmanifest", "workbox-root.js"])(
+  "rejects root PWA artifact %s",
+  async (path) => {
+    await put(path, "unexpected root PWA artifact");
+    expect(verify().status).toBe(1);
+  },
+);
 
 it("still rejects a demo service worker", async () => {
   await put("demo/sw.js", "// unexpected service worker");

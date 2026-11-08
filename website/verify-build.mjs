@@ -43,13 +43,33 @@ async function verify(root) {
     }
   }
   const read = (path) => readFile(join(root, path), "utf8");
-  for (const path of ["index.html", "demo/index.html"]) {
-    if ((await read(path)).includes('rel="manifest"')) {
-      throw new ArtifactError("Website and demo HTML must not declare a PWA manifest.");
-    }
+  const landing = await read("index.html");
+  const manifests = (html) =>
+    [...html.matchAll(/<link\b[^>]*>/gi)]
+      .map(([tag]) => tag)
+      .filter((tag) => /\brel\s*=\s*["'][^"']*\bmanifest\b[^"']*["']/i.test(tag));
+  const landingManifests = manifests(landing);
+  if (
+    landingManifests.length !== 1 ||
+    !/\bhref="\/webapp\/manifest\.webmanifest"/.test(landingManifests[0])
+  ) {
+    throw new ArtifactError("Landing must reference only the player manifest.");
   }
-  if ((await read("index.html")).includes('<script type="module"')) {
-    throw new ArtifactError("Landing page must not load the demo application.");
+  if (manifests(await read("demo/index.html")).length) {
+    throw new ArtifactError("Demo HTML must not declare a PWA manifest.");
+  }
+  // The sole approved landing entry is the tiny install enhancement, never the demo/app.
+  const scripts = [...landing.matchAll(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi)].map(
+    ([tag]) => tag,
+  );
+  const entry =
+    [...landing.matchAll(/<script\b/gi)].length === 1 &&
+    scripts.length === 1 &&
+    /^<script type="module" crossorigin src="(\/assets\/landing-install-[\w-]+\.js)"><\/script>$/.exec(
+      scripts[0],
+    );
+  if (!entry || !files.has(entry[1].slice(1))) {
+    throw new ArtifactError("Landing must load only its approved installation entry.");
   }
   const manifest = JSON.parse(await read("webapp/manifest.webmanifest"));
   if ([manifest.id, manifest.start_url, manifest.scope].some((path) => path !== "/webapp/")) {
