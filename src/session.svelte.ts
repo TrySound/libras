@@ -62,9 +62,11 @@ export class Session {
     this.#options = options;
   }
 
-  #resumeDownloads() {
+  #openDownloadAccess() {
     if (this.auth)
-      this.#options.tracks.setDownloadConnection(this.#options.network.openDownloads(this.auth));
+      this.#options.tracks.setDownloadConnection(
+        this.#options.network.openDownloadAccess(this.auth),
+      );
   }
 
   get libraryProgress() {
@@ -114,7 +116,8 @@ export class Session {
     this.status = this.error ? "error" : "disconnected";
   }
 
-  #detach(keepDownloads = false) {
+  /** Detach browsing and playback; requested downloads have a separate lifetime. */
+  #detach() {
     this.#authController?.abort();
     this.#authController = undefined;
     this.loadingAfterConnect = false;
@@ -124,10 +127,6 @@ export class Session {
     this.#refreshError = undefined;
     this.#options.network.setMode("offline");
     this.#setConnection(undefined);
-    if (!keepDownloads) {
-      this.#options.network.closeDownloads();
-      this.#options.tracks.setDownloadConnection(undefined);
-    }
     this.#options.playback.suspendNetwork();
     void this.#options.playback.flushQueue();
   }
@@ -192,7 +191,7 @@ export class Session {
   async #finishStartup(operationId: number) {
     await this.#restoration;
     if (!this.#isCurrentOperation(operationId)) return;
-    this.#resumeDownloads();
+    this.#openDownloadAccess();
     if (!this.auth || this.offlineMode) {
       this.status = "disconnected";
       return;
@@ -281,7 +280,7 @@ export class Session {
     playback.activate();
     this.auth = credentials;
     this.#setConnection(active);
-    this.#resumeDownloads();
+    this.#openDownloadAccess();
     this.localReady = true;
   }
 
@@ -337,6 +336,8 @@ export class Session {
     const operationId = this.#beginOperation();
     this.auth = null;
     this.#detach();
+    this.#options.network.closeDownloadAccess();
+    this.#options.tracks.setDownloadConnection(undefined);
     this.status = "disconnected";
     try {
       this.#options.auth.clear();
@@ -440,7 +441,7 @@ export class Session {
     const operationId = this.#beginOperation();
     try {
       if (enabled) {
-        this.#detach(true);
+        this.#detach();
         this.status = "disconnected";
       } else {
         this.#options.network.setMode("online");
@@ -461,5 +462,7 @@ export class Session {
     this.#loadController?.abort();
     this.#loadController = undefined;
     this.#detach();
+    this.#options.network.closeDownloadAccess();
+    this.#options.tracks.setDownloadConnection(undefined);
   }
 }

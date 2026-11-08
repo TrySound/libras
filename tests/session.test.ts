@@ -815,7 +815,7 @@ describe("session", () => {
   it("keeps three active and three queued downloads across both offline toggles", async () => {
     installDisk();
     const fixture = setup(true);
-    const open = vi.spyOn(fixture.network, "openDownloads");
+    const open = vi.spyOn(fixture.network, "openDownloadAccess");
     const { session, trackEngine, metadata, playback } = fixture;
     session.start();
     await vi.waitFor(() => expect(session.status).toBe("connected"));
@@ -855,10 +855,20 @@ describe("session", () => {
     expect(downloadConnection.signal.aborted).toBe(true);
   });
 
+  it("closes download access when the session is destroyed", async () => {
+    const { session, network } = setup(true);
+    const open = vi.spyOn(network, "openDownloadAccess");
+    session.start();
+    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    const connection = open.mock.results[0].value;
+    session.destroy();
+    expect(connection.signal.aborted).toBe(true);
+  });
+
   it("retains download access on offline startup without browsing sync or restoring cleared credentials", async () => {
     const { session, storage, network, metadata, auth } = setup(true);
     storage.setItem("navidrome-offline-mode", "true");
-    const open = vi.spyOn(network, "openDownloads");
+    const open = vi.spyOn(network, "openDownloadAccess");
     session.start();
     await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
     expect(metadata.getModifiedAt).not.toHaveBeenCalled();

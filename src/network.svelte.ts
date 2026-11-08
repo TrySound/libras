@@ -548,18 +548,18 @@ export class Network {
   }
 
   /** Requested downloads have their own cancellation domain, never browsing/sync access. */
-  openDownloads(auth: Auth): AudioConnection {
+  openDownloadAccess(auth: Auth): AudioConnection {
     if (!v.safeParse(authSchema, auth).success)
       throw new Error("The Subsonic authentication is invalid.");
     const client = this.#createClient({ host: auth.host, credentials: auth.credentials }, {});
     const account = Object.freeze({ host: auth.host, username: auth.username });
     const audio = audioAccess(account, client, (run) => this.#request(client, run));
-    this.closeDownloads();
+    this.closeDownloadAccess();
     this.#downloads = client;
     return audio;
   }
 
-  closeDownloads() {
+  closeDownloadAccess() {
     this.#downloads?.abort();
     this.#downloads = undefined;
   }
