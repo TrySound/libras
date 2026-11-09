@@ -329,11 +329,6 @@
   z-index: 2;
 }
 
-::view-transition-old(.artwork),
-::view-transition-new(.artwork) {
-  animation-timing-function: var(--motion-ease);
-}
-
 ::view-transition-old(root) {
   animation-timing-function: var(--motion-ease);
   animation-duration: var(--motion-duration-exit);
@@ -1274,11 +1269,6 @@
     min-height: var(--topbar-min-height);
     padding: var(--space-sm) var(--content-padding-inline);
     padding-block-start: max(var(--space-sm), env(safe-area-inset-top));
-
-    /* Keep changing route content from tinting the persistent app header. */
-    &.app-header {
-      background-color: var(--palette-maroon-shade-7);
-    }
   }
 
   .sidebar {
