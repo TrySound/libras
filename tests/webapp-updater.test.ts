@@ -214,6 +214,32 @@ describe("native webapp updater", () => {
     expect(h.reload).not.toHaveBeenCalled();
   });
 
+  it("baselines a successful first claim only after activation, including failed first-install retries", async () => {
+    const h = await setup({ firstInstall: true });
+    for (let i = 0; i < 3; i++) {
+      const failed = h.discover();
+      h.registration.installing = null;
+      h.change(failed, "redundant");
+      expect(h.status().hasUpdate).toBe(false);
+    }
+    const first = h.discover();
+    h.registration.installing = null;
+    h.registration.waiting = first;
+    h.change(first, "installed");
+    expect(h.status().hasUpdate).toBe(false);
+    h.registration.waiting = null;
+    h.registration.active = first;
+    h.change(first, "activating");
+    h.claim(first);
+    expect(h.status().hasUpdate).toBe(false);
+    h.change(first, "activated");
+    expect(h.status().hasUpdate).toBe(false);
+    const next = h.ready();
+    expect(h.status().hasUpdate).toBe(true);
+    expect(h.reload).not.toHaveBeenCalled();
+    expect(next.postMessage).not.toHaveBeenCalled();
+  });
+
   it("does not offer an installation that becomes redundant before precaching completes", async () => {
     const h = await setup();
     const next = h.discover();
@@ -333,79 +359,77 @@ describe("native webapp updater", () => {
     expect(h.status()).toMatchObject({ busy: false, hasUpdate: false });
   });
 
-  it("does not transfer approval when a replacement starts installing", async () => {
+  it("applies installed replacement C under B's approval without another click", async () => {
     const h = await setup();
     const b = h.ready();
     await h.update();
     const c = h.discover();
-    // Installation C supersedes B; the browser can announce C before B becomes redundant.
-    expect(h.status().busy).toBe(false);
+    // C can be announced before B becomes redundant; neither event revokes approval.
+    expect(h.status().busy).toBe(true);
+    expect(c.postMessage).not.toHaveBeenCalled();
+    h.change(b, "redundant");
     h.registration.waiting = c;
     h.registration.installing = null;
-    h.change(b, "redundant");
     h.change(c, "installed");
-    expect(h.status().hasUpdate).toBe(true);
-    expect(c.postMessage).not.toHaveBeenCalled();
-    expect(h.reload).not.toHaveBeenCalled();
+    expect(h.status().busy).toBe(true);
+    expect(b.postMessage).toHaveBeenCalledOnce();
+    expect(c.postMessage).toHaveBeenCalledExactlyOnceWith({ type: "SKIP_WAITING" });
+    h.registration.dispatchEvent(new Event("updatefound"));
     await h.update();
     expect(c.postMessage).toHaveBeenCalledOnce();
+    expect(h.reload).not.toHaveBeenCalled();
     h.activate(c);
     expect(h.reload).toHaveBeenCalledOnce();
   });
 
   it.each([false, true])(
-    "keeps a truthful lost-update notice while replacement C installs (C succeeds: %s)",
+    "keeps the attempt busy while C installs, ending only on outcome/deadline (C succeeds: %s)",
     async (succeeds) => {
       const h = await setup();
       const b = h.ready();
       await h.update();
       h.registration.waiting = null;
       const c = h.discover();
-      const lost = {
-        busy: false,
-        hasUpdate: false,
-        failed: true,
-        message: "This update is no longer available. You can keep using the app.",
-      };
-      expect(h.status()).toEqual(lost);
+      expect(h.status()).toMatchObject({ busy: true, failed: false });
       h.change(b, "redundant");
+      expect(h.status().busy).toBe(true);
       h.registration.installing = null;
       if (succeeds) {
         h.registration.waiting = c;
         h.change(c, "installed");
-        expect(h.status()).toMatchObject({ busy: false, hasUpdate: true, failed: false });
-        expect(c.postMessage).not.toHaveBeenCalled();
-        expect(h.reload).not.toHaveBeenCalled();
-        await h.update();
         expect(c.postMessage).toHaveBeenCalledOnce();
+        expect(h.reload).not.toHaveBeenCalled();
         h.activate(c);
         expect(h.reload).toHaveBeenCalledOnce();
       } else {
         h.change(c, "redundant");
+        expect(h.status()).toEqual({
+          busy: false,
+          hasUpdate: false,
+          failed: true,
+          message: "This update is no longer available. You can keep using the app.",
+        });
         await vi.advanceTimersByTimeAsync(15_000);
-        flushSync();
-        expect(h.status()).toEqual(lost);
         expect(c.postMessage).not.toHaveBeenCalled();
         expect(h.reload).not.toHaveBeenCalled();
       }
     },
   );
 
-  it("requires fresh approval for an already-installed replacement", async () => {
+  it("messages an already-installed replacement within the same attempt", async () => {
     const h = await setup();
     const b = h.ready();
     await h.update();
     const c = worker("installed");
     h.registration.waiting = c;
     h.change(b, "redundant");
-    expect(h.status()).toMatchObject({ hasUpdate: true, busy: false });
-    expect(h.status().message).toContain("newer update");
-    expect(c.postMessage).not.toHaveBeenCalled();
-    await h.update();
+    expect(h.status()).toMatchObject({ hasUpdate: true, busy: true });
     expect(c.postMessage).toHaveBeenCalledOnce();
+    h.activate(c);
+    expect(h.reload).toHaveBeenCalledOnce();
   });
 
-  it("does not transfer approval to an already-activated replacement", async () => {
+  it("reloads a completed replacement within the same attempt", async () => {
     const h = await setup();
     const b = h.ready();
     await h.update();
@@ -415,11 +439,146 @@ describe("native webapp updater", () => {
     h.registration.active = c;
     h.change(b, "redundant");
     h.claim(c);
-    expect(h.status()).toMatchObject({ busy: false, hasUpdate: true });
+    expect(h.status()).toMatchObject({ busy: true, hasUpdate: true });
+    expect(h.reload).toHaveBeenCalledOnce();
+    expect(c.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("replacement installation cannot extend the original deadline or retain expired approval", async () => {
+    const h = await setup();
+    const b = h.ready();
+    await h.update();
+    await vi.advanceTimersByTimeAsync(10_000);
+    h.registration.waiting = null;
+    const c = h.discover();
+    h.change(b, "redundant");
+    await vi.advanceTimersByTimeAsync(4_999);
+    flushSync();
+    expect(h.status().busy).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    flushSync();
+    expect(h.status()).toEqual({
+      hasUpdate: false,
+      busy: false,
+      failed: true,
+      message: "The update is taking too long. You can keep using the app.",
+    });
+    h.registration.installing = null;
+    h.registration.waiting = c;
+    h.change(c, "installed");
+    expect(h.status()).toMatchObject({ hasUpdate: true, busy: false, failed: false });
+    expect(c.postMessage).not.toHaveBeenCalled();
     expect(h.reload).not.toHaveBeenCalled();
+    await h.update();
+    expect(c.postMessage).toHaveBeenCalledOnce();
+    h.activate(c);
+    expect(h.reload).toHaveBeenCalledOnce();
+  });
+
+  it("failed replacement leaves a waiting update bounded by the original deadline", async () => {
+    const h = await setup();
+    const b = h.ready();
+    await h.update();
+    await vi.advanceTimersByTimeAsync(10_000);
+    const c = h.discover();
+    await vi.advanceTimersByTimeAsync(2_000);
+    h.registration.installing = null;
+    h.change(c, "redundant");
+    expect(h.status().busy).toBe(true);
+    await vi.advanceTimersByTimeAsync(3_000);
+    flushSync();
+    expect(h.status()).toMatchObject({ hasUpdate: true, busy: false });
+    expect(h.status().message).toContain("taking too long");
+    expect(b.postMessage).toHaveBeenCalledOnce();
+    h.activate(b);
+    expect(h.reload).not.toHaveBeenCalled();
+    expect(h.status()).toMatchObject({ hasUpdate: true, failed: false });
+  });
+
+  it.each([false, true])(
+    "does not reload an earlier completed update while C is pending (C claims during activation: %s)",
+    async (claim) => {
+      const h = await setup();
+      h.activate(h.ready());
+      const c = h.ready();
+      await h.update();
+      expect(c.postMessage).toHaveBeenCalledOnce();
+      expect(h.reload).not.toHaveBeenCalled();
+      h.registration.waiting = null;
+      h.registration.active = c;
+      h.change(c, "activating");
+      if (claim) h.claim(c);
+      expect(h.reload).not.toHaveBeenCalled();
+      h.change(c, "activated");
+      expect(h.reload).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("can use an already-completed update while a newer download is installing", async () => {
+    const h = await setup();
+    h.activate(h.ready());
+    const c = h.discover();
     await h.update();
     expect(h.reload).toHaveBeenCalledOnce();
     expect(c.postMessage).not.toHaveBeenCalled();
+    expect(h.registration.update).not.toHaveBeenCalled();
+  });
+
+  it("does not label post-timeout activation as a lost update or keep a false retry action", async () => {
+    const h = await setup();
+    const b = h.ready();
+    await h.update();
+    await vi.advanceTimersByTimeAsync(15_000);
+    h.registration.waiting = null;
+    h.registration.active = b;
+    h.change(b, "activating");
+    expect(h.status()).toMatchObject({ hasUpdate: false, busy: false });
+    expect(h.status().message).not.toContain("no longer available");
+    h.change(b, "activated");
+    expect(h.status()).toMatchObject({ hasUpdate: true, failed: false });
+    expect(h.reload).not.toHaveBeenCalled();
+  });
+
+  it("keeps observing an activating current worker after expiry but requires fresh consent", async () => {
+    const h = await setup();
+    const b = h.ready();
+    await h.update();
+    h.registration.waiting = null;
+    h.registration.active = b;
+    h.change(b, "activating");
+    h.claim(b);
+    await vi.advanceTimersByTimeAsync(15_000);
+    flushSync();
+    expect(h.status()).toMatchObject({ busy: false, hasUpdate: false });
+    expect(h.status().message).toBe("The update is taking too long. You can keep using the app.");
+    h.change(b, "activated");
+    expect(h.status()).toMatchObject({ hasUpdate: true, failed: false });
+    expect(h.reload).not.toHaveBeenCalled();
+    await h.update();
+    expect(h.reload).toHaveBeenCalledOnce();
+  });
+
+  it("prunes obsolete listeners through repeated long-lived discovery and on destruction", async () => {
+    const h = await setup();
+    let previous = h.initial!;
+    let remove = vi.spyOn(previous, "removeEventListener");
+    for (let i = 0; i < 12; i++) {
+      const next = worker("installing");
+      const add = vi.spyOn(next, "addEventListener");
+      h.discover(next);
+      h.registration.installing = null;
+      h.registration.waiting = next;
+      h.change(next, "installed");
+      h.activate(next);
+      expect(remove).toHaveBeenCalledExactlyOnceWith("statechange", expect.any(Function));
+      expect(add).toHaveBeenCalledExactlyOnceWith("statechange", expect.any(Function));
+      previous = next;
+      remove = vi.spyOn(previous, "removeEventListener");
+    }
+    expect(h.reload).not.toHaveBeenCalled();
+    await h.destroy();
+    expect(remove).toHaveBeenCalledExactlyOnceWith("statechange", expect.any(Function));
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("ignores state events from an obsolete unapproved worker", async () => {
@@ -443,7 +602,22 @@ describe("native webapp updater", () => {
     expect(h.status()).toMatchObject({ busy: false, hasUpdate: true });
     expect(h.status().message).toContain("taking too long");
     h.activate(b, claim);
+    expect(h.status()).toMatchObject({ hasUpdate: true, failed: false });
+    expect(h.status().message).toContain("A new version of Libras is available.");
     expect(h.reload).not.toHaveBeenCalled();
+    await h.update();
+    expect(h.reload).toHaveBeenCalledOnce();
+  });
+
+  it("revokes approval by the deadline even before an overdue timer callback runs", async () => {
+    const h = await setup();
+    const b = h.ready();
+    await h.update();
+    // Model resuming a suspended page with an event queued ahead of its timer.
+    vi.setSystemTime(Date.now() + 15_001);
+    h.activate(b);
+    expect(h.reload).not.toHaveBeenCalled();
+    expect(h.status()).toMatchObject({ hasUpdate: true, busy: false });
     await h.update();
     expect(h.reload).toHaveBeenCalledOnce();
   });
@@ -471,9 +645,16 @@ describe("native webapp updater", () => {
     await vi.advanceTimersByTimeAsync(15_000);
     flushSync();
     expect(h.status()).toMatchObject({ busy: false, hasUpdate: false, failed: true });
-    expect(h.status().message).toContain("no longer available");
-    h.activate(b);
-    expect(h.status().hasUpdate).toBe(true);
+    expect(h.status().message).toBe("The update is taking too long. You can keep using the app.");
+    // Detached workers are deliberately not retained after expiry. A synthetic
+    // reappearance without an observed event is reconciled on visibility, even offline.
+    h.activate(b, false);
+    expect(h.status().hasUpdate).toBe(false);
+    h.navigator.onLine = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    expect(h.status()).toMatchObject({ hasUpdate: true, failed: false });
+    expect(h.registration.update).not.toHaveBeenCalled();
     expect(h.reload).not.toHaveBeenCalled();
   });
 
@@ -518,6 +699,21 @@ describe("native webapp updater", () => {
     const h = await setup({ registration: Promise.reject(new Error("secret URL")) });
     expect(h.status()).toMatchObject({ hasUpdate: false, failed: true });
     expect(h.status().message).toBe("Offline app setup failed. You can keep using the app online.");
+  });
+
+  it("does not offer an action after setup fails even if the controller changed while pending", async () => {
+    let reject!: (reason: Error) => void;
+    const pending = new Promise<ServiceWorkerRegistration>((_resolve, fail) => {
+      reject = fail;
+    });
+    const h = await setup({ registration: pending });
+    h.claim(worker("activated"));
+    reject(new Error("registration failed"));
+    await settle();
+    expect(h.status()).toMatchObject({ hasUpdate: false, busy: false, failed: true });
+    expect(h.status().message).toContain("Offline app setup failed");
+    await h.update();
+    expect(h.reload).not.toHaveBeenCalled();
   });
 
   it("checks only when visible and online, silently reconciling rejected checks", async () => {

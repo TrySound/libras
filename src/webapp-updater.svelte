@@ -5,13 +5,14 @@
     | { status: "idle" }
     | { status: "ready" }
     | { status: "updating" }
-    | { status: "error"; message: string; retry: boolean };
+    // Retry kind preserves recovery copy until actionable availability changes.
+    | { status: "error"; message: string; retry: false | "waiting" | "reload" };
 
   let state = $state<UpdaterState>({ status: "idle" });
   let apply = () => {};
   const busy = $derived(state.status === "updating");
   const hasUpdate = $derived(
-    state.status === "ready" || busy || (state.status === "error" && state.retry),
+    state.status === "ready" || busy || (state.status === "error" && !!state.retry),
   );
   const message = $derived(
     state.status === "error"
@@ -29,31 +30,25 @@
     const serviceWorker = navigator.serviceWorker;
     const lifetime = new AbortController();
     let registration: ServiceWorkerRegistration | undefined;
-    // A hard-refreshed document may have an active worker but no controller.
-    // Neither that worker nor the initial installation is an update for this page.
-    const initialController = serviceWorker.controller;
-    let initialActive: ServiceWorker | null = null;
-    let initialInstall: ServiceWorker | null = null;
-    let late: ServiceWorker | null = null;
+    // Never adopt a replacement for a known mount-time controller. For an
+    // uncontrolled document, conservatively baseline the first successful active worker.
+    let baseline = serviceWorker.controller;
     const observed = new Set<ServiceWorker>();
     type Attempt = {
-      worker: ServiceWorker | null;
-      previousActive: ServiceWorker | null;
+      deadline: number;
+      messaged?: ServiceWorker;
       reloaded: boolean;
       timer?: ReturnType<typeof setTimeout>;
     };
     let attempt: Attempt | undefined;
-    const isBaseline = (worker: ServiceWorker) =>
-      worker === initialController || worker === initialActive || worker === initialInstall;
+    const active = () => registration?.active ?? serviceWorker.controller;
     const waiting = () => {
       const worker = registration?.waiting;
-      return worker?.state === "installed" && !isBaseline(worker) ? worker : null;
+      return baseline && worker?.state === "installed" && worker !== baseline ? worker : null;
     };
-    const activated = () =>
-      [registration?.active, serviceWorker.controller].find(
-        (worker) => worker?.state === "activated" && !isBaseline(worker),
-      );
-    const available = () => !!(waiting() || activated());
+    const activated = () => active()?.state === "activated" && active() !== baseline;
+    const available = () =>
+      waiting() ? ("waiting" as const) : activated() ? ("reload" as const) : false;
     const notice = (message: string) => {
       state = { status: "error", message, retry: available() };
     };
@@ -61,30 +56,26 @@
       if (attempt) clearTimeout(attempt.timer);
       attempt = undefined;
     };
-    const reload = (current: Attempt) => {
-      if (attempt !== current || current.reloaded) return;
-      current.reloaded = true;
-      // Retain the watchdog until navigation actually destroys this document.
-      location.reload();
+    const expire = () => {
+      endAttempt();
+      // Reconcile current slots without approval: late completion requires a click.
+      reconcile();
+      notice(
+        waiting()
+          ? "The update is taking too long. Try Update Libras again. Reloading interrupts playback."
+          : activated()
+            ? "The app did not reload. Select Update Libras again. This interrupts playback."
+            : "The update is taking too long. You can keep using the app.",
+      );
     };
     const reconcile = () => {
       if (lifetime.signal.aborted || !registration) return;
-      if (initialInstall?.state === "activated") initialActive ??= initialInstall;
-      if (initialInstall?.state === "redundant" && !initialActive && !initialController) {
-        // A failed first installation must not turn its successor into an update.
-        initialInstall = registration.installing ?? registration.waiting;
-        if (initialInstall?.state === "redundant") initialInstall = null;
-      }
-      const relevant = new Set(
-        [
-          registration.installing,
-          registration.waiting,
-          registration.active,
-          serviceWorker.controller,
-          attempt?.worker,
-          late,
-        ].filter((worker): worker is ServiceWorker => !!worker),
-      );
+      const relevant = [
+        registration.installing,
+        registration.waiting,
+        registration.active,
+        serviceWorker.controller,
+      ].filter((worker): worker is ServiceWorker => !!worker);
       for (const worker of relevant) {
         if (!observed.has(worker)) {
           observed.add(worker);
@@ -92,93 +83,54 @@
         }
       }
       for (const worker of observed) {
-        if (!relevant.has(worker)) {
+        if (!relevant.includes(worker)) {
           worker.removeEventListener("statechange", reconcile);
           observed.delete(worker);
         }
       }
-      const lateActivation = late?.state === "activated" && registration.active === late;
-      if (late?.state === "redundant" || late?.state === "activated") late = null;
+      if (!baseline && active()?.state === "activated") baseline = active();
       const current = attempt;
-      if (current?.worker) {
-        const approved = current.worker;
-        const replacement =
-          [registration.installing, registration.waiting].some(
-            (worker) => worker && worker !== approved && worker.state !== "redundant",
-          ) ||
-          (registration.active &&
-            registration.active !== approved &&
-            registration.active !== current.previousActive &&
-            registration.active.state !== "redundant");
-        const present = [
-          registration.installing,
-          registration.waiting,
-          registration.active,
-          serviceWorker.controller,
-        ].includes(approved);
-        if (approved.state === "redundant" || replacement || !present) {
-          late = approved.state !== "redundant" && approved.state !== "activated" ? approved : null;
-          endAttempt();
-          notice(
-            available()
-              ? "A newer update is available. Select Update Libras again to reload. This interrupts playback."
-              : "This update is no longer available. You can keep using the app.",
-          );
-          return;
+      if (!current) {
+        const retry = available();
+        if (retry) {
+          if (state.status !== "error" || state.retry !== retry) state = { status: "ready" };
+        } else if (state.status === "ready" || (state.status === "error" && state.retry)) {
+          if (registration.installing || active()?.state === "activating") {
+            // Progress without approval is not proof that the update was lost.
+            state = { status: "idle" };
+          } else notice("This update is no longer available. You can keep using the app.");
         }
-        if (approved.state === "activated") reload(current);
         return;
       }
-      if (current) return;
-      if (available()) {
-        if (lateActivation) {
-          notice(
-            "A new version is ready. Select Update Libras to reload. This interrupts playback.",
-          );
-        } else if (state.status !== "error" || !state.retry) {
-          // Preserve actionable recovery explanations until availability changes.
-          state = { status: "ready" };
-        }
-      } else if (state.status === "ready" || (state.status === "error" && state.retry)) {
-        notice("This update is no longer available. You can keep using the app.");
+      // A suspended page can receive lifecycle events before its overdue timer runs.
+      if (Date.now() >= current.deadline) {
+        expire();
+        return;
       }
-    };
-    apply = () => {
-      if (lifetime.signal.aborted || attempt) return;
-      reconcile();
-      if (!available()) return;
-      const current: Attempt = {
-        worker: waiting(),
-        previousActive: registration?.active ?? null,
-        reloaded: false,
-      };
-      attempt = current;
-      state = { status: "updating" };
-      current.timer = setTimeout(() => {
-        if (attempt !== current || lifetime.signal.aborted) return;
-        late = current.worker;
-        endAttempt();
-        // Reconcile without approval: late completion must never reload this tab.
-        reconcile();
-        notice(
-          waiting()
-            ? "The update is taking too long. Try Update Libras again. Reloading interrupts playback."
-            : activated()
-              ? "The app did not reload. Select Update Libras again. This interrupts playback."
-              : "The update could not be completed and is no longer available. You can keep using the app.",
-        );
-      }, 15_000);
+      if (current.reloaded) return; // Watchdog remains until navigation destroys this page.
       try {
-        if (current.worker) {
-          // Consent belongs to this worker identity, not the stable sw.js URL.
-          current.worker.postMessage({ type: "SKIP_WAITING" });
-          reconcile();
-        } else reload(current);
+        const next = waiting();
+        if (next) {
+          // Identity only deduplicates messages; approval covers installed replacements
+          // throughout this one fixed attempt, without extending its deadline.
+          if (current.messaged !== next) {
+            current.messaged = next;
+            next.postMessage({ type: "SKIP_WAITING" });
+            reconcile();
+          }
+        } else if (active()?.state === "activating") {
+          // controllerchange may precede completed activation.
+        } else if (activated()) {
+          // A completed update is usable even if a still newer download is installing.
+          current.reloaded = true;
+          location.reload();
+        } else if (!registration.installing || registration.installing.state === "redundant") {
+          endAttempt();
+          notice("This update is no longer available. You can keep using the app.");
+        }
       } catch {
         if (attempt !== current) return;
-        late = current.worker;
         endAttempt();
-        reconcile();
         notice(
           available()
             ? "The update could not be applied. Try Update Libras again. Reloading interrupts playback."
@@ -186,8 +138,23 @@
         );
       }
     };
+    apply = () => {
+      if (lifetime.signal.aborted || attempt) return;
+      reconcile();
+      if (!available()) return;
+      const current: Attempt = { deadline: Date.now() + 15_000, reloaded: false };
+      attempt = current;
+      state = { status: "updating" };
+      current.timer = setTimeout(() => {
+        if (attempt !== current || lifetime.signal.aborted) return;
+        expire();
+      }, 15_000);
+      reconcile();
+    };
     const check = async () => {
-      if (document.visibilityState !== "visible" || !navigator.onLine || !registration) return;
+      if (document.visibilityState !== "visible") return;
+      reconcile();
+      if (!navigator.onLine || !registration) return;
       try {
         await registration.update();
       } catch {
@@ -204,24 +171,15 @@
         });
         if (lifetime.signal.aborted) return;
         registration = value;
-        // Registration can resolve after another tab replaces our controller.
-        // Only an initially uncontrolled page needs the returned active baseline.
-        initialActive = initialController ?? value.active;
-        if (!initialActive && !initialController)
-          initialInstall = value.installing ?? value.waiting;
-        value.addEventListener(
-          "updatefound",
-          () => {
-            if (!initialActive && !initialController && !initialInstall)
-              initialInstall = value.installing;
-            reconcile();
-          },
-          { signal: lifetime.signal },
-        );
+        value.addEventListener("updatefound", reconcile, { signal: lifetime.signal });
         reconcile();
       } catch {
         if (!lifetime.signal.aborted) {
-          notice("Offline app setup failed. You can keep using the app online.");
+          state = {
+            status: "error",
+            retry: false,
+            message: "Offline app setup failed. You can keep using the app online.",
+          };
         }
       }
     };
