@@ -13,6 +13,60 @@ const src =
     '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="600" height="600" fill="#b36030"/><circle cx="300" cy="300" r="230" fill="#1d4548"/><path d="M0 0L600 600M600 0L0 600" stroke="#ffc584" stroke-width="60"/></svg>',
   );
 for (const [engine, type] of Object.entries({ chromium, webkit })) {
+  test(`${engine}: artwork movement is 400ms without changing page or hover timings`, async () => {
+    const browser = await type.launch({ headless: true });
+    try {
+      const page = await browser.newPage({ reducedMotion: "no-preference" });
+      await page.setContent(`<style>${css}</style><div class="app-root">
+        <span class="artwork tile-artwork" style="view-transition-name:cover"><img alt=""></span>
+        <div class="view-slide-up" style="view-transition-name:up">Up</div>
+        <div class="view-slide-left" style="view-transition-name:left">Left</div>
+        <div class="view-shell" style="view-transition-name:shell">Shell</div>
+      </div>`);
+      const timings = await page.evaluate(async () => {
+        const transition = document.startViewTransition(() => {
+          document.querySelector(".artwork").style.width = "100px";
+        });
+        await transition.ready;
+        const timing = (pseudo) => {
+          const style = getComputedStyle(document.documentElement, pseudo);
+          return {
+            duration: style.animationDuration,
+            delay: style.animationDelay,
+            easing: style.animationTimingFunction,
+          };
+        };
+        const result = {
+          artwork: timing("::view-transition-group(cover)"),
+          rootOld: timing("::view-transition-old(root)"),
+          rootNew: timing("::view-transition-new(root)"),
+          upOld: timing("::view-transition-old(up)"),
+          upNew: timing("::view-transition-new(up)"),
+          leftOld: timing("::view-transition-old(left)"),
+          leftNew: timing("::view-transition-new(left)"),
+          shell: getComputedStyle(document.documentElement, "::view-transition-group(shell)")
+            .animationName,
+          hover: getComputedStyle(document.querySelector(".tile-artwork img")).transitionDuration,
+        };
+        transition.skipTransition();
+        await transition.finished;
+        return result;
+      });
+      assert.deepEqual(timings.artwork, { duration: "0.4s", delay: "0s", easing: "linear" });
+      assert.equal(timings.rootOld.duration, "0.12s");
+      assert.equal(timings.rootOld.delay, "0s");
+      assert.equal(timings.rootNew.duration, "0.2s");
+      assert.equal(timings.rootNew.delay, "0.12s");
+      for (const key of ["upOld", "leftOld"])
+        assert.deepEqual(timings[key], { duration: "0.12s", delay: "0s", easing: "linear" });
+      for (const key of ["upNew", "leftNew"])
+        assert.deepEqual(timings[key], { duration: "0.2s", delay: "0.12s", easing: "linear" });
+      assert.equal(timings.shell, "none");
+      assert.equal(timings.hover, "0.4s");
+    } finally {
+      await browser.close();
+    }
+  });
   for (const width of [1280, 390]) {
     test(
       `${engine} ${width}: stationary cropped artwork and bounded warm capture time`,

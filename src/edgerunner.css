@@ -320,9 +320,9 @@
   z-index: var(--layer-header);
 }
 
-/* Move the cover during the exit phase, before the incoming page fades in. */
+/* Move shared artwork independently of the page's exit/entry timing. */
 ::view-transition-group(.artwork) {
-  animation-duration: var(--motion-duration-exit);
+  animation-duration: 400ms;
   animation-timing-function: linear;
   z-index: 2;
 }
