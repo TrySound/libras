@@ -8,8 +8,8 @@ import { deferred } from "./session-test-helpers";
 
 const account = { host: "https://music.example", username: "listener" };
 
-// Exercise the shared implementation through both configurations, not an exported
-// test-only catalog API. Their document formats and record identities stay distinct.
+// Exercise shared binary storage behavior through public Cache APIs.
+// Images and downloads retain distinct domain policies, formats, and identities.
 function domain(name: "images" | "downloads", cache: Cache) {
   return {
     flush: () => cache.flush(),
@@ -38,7 +38,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe.each(["images", "downloads"] as const)("shared binary catalog: %s", (name) => {
+describe.each(["images", "downloads"] as const)("shared binary storage behavior: %s", (name) => {
   if (name === "images")
     it("updates live views reactively without invalidating unrelated existing keys", async () => {
       const disk = installDisk();

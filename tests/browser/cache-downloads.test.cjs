@@ -9,7 +9,7 @@ test("Cache unified downloads reconcile native OPFS failure boundaries", async (
   const page = await browser.newPage();
   try {
     await page.goto(base);
-    for (const stage of ["bytes", "catalog"]) {
+    for (const stage of ["bytes", "catalog", "catalog-after", "abort-byte", "abort-metadata"]) {
       await t.test(stage, async () => {
         const result = await page.evaluate(async (stage) => {
           const { Cache, downloadKey } = await import("/src/cache.svelte.ts");
@@ -18,6 +18,7 @@ test("Cache unified downloads reconcile native OPFS failure boundaries", async (
           const key = downloadKey(track.id, "mp3");
           const original = FileSystemFileHandle.prototype.createWritable;
           let bytesClosed = false;
+          const abort = new AbortController();
           FileSystemFileHandle.prototype.createWritable = async function (...args) {
             const writable = await original.apply(this, args);
             const close = writable.close.bind(writable);
@@ -28,7 +29,14 @@ test("Cache unified downloads reconcile native OPFS failure boundaries", async (
                 (stage === "catalog" && bytesClosed && name === "downloads.json")
               )
                 throw new DOMException("Injected boundary interruption", "UnknownError");
+              if (
+                (stage === "abort-byte" && name.endsWith(".audio")) ||
+                (stage === "abort-metadata" && bytesClosed && name === "downloads.json")
+              )
+                abort.abort();
               await close();
+              if (stage === "catalog-after" && bytesClosed && name === "downloads.json")
+                throw new DOMException("Injected after commit", "UnknownError");
               if (name.endsWith(".audio")) bytesClosed = true;
             };
             return writable;
@@ -40,7 +48,7 @@ test("Cache unified downloads reconcile native OPFS failure boundaries", async (
               "mp3",
               "audio/mpeg",
               new Response("native audio bytes"),
-              new AbortController().signal,
+              abort.signal,
             );
           } catch {
             rejected = true;
@@ -59,21 +67,21 @@ test("Cache unified downloads reconcile native OPFS failure boundaries", async (
             text: file ? await file.text() : null,
           };
         }, stage);
-        assert.equal(result.rejected, true);
-        if (stage === "bytes")
+        if (stage === "bytes" || stage === "catalog") {
           assert.deepEqual(result, {
             rejected: true,
             completed: 0,
             pending: "queued",
             text: null,
           });
-        else
+        } else {
           assert.deepEqual(result, {
-            rejected: true,
+            rejected: false,
             completed: 1,
             pending: null,
             text: "native audio bytes",
           });
+        }
       });
     }
     await t.test(
@@ -209,61 +217,74 @@ test("Cache unified downloads reconcile native OPFS failure boundaries", async (
   }
 });
 
-test("document destruction before byte close never promotes native OPFS partial bytes", async () => {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
-  let page = await context.newPage();
-  try {
-    await page.goto(base);
-    const key = await page.evaluate(async () => {
-      const { Cache } = await import("/src/cache.svelte.ts");
-      const key = `destroyed-page-${crypto.randomUUID()}`;
-      const cache = new Cache(key);
-      const original = FileSystemFileHandle.prototype.createWritable;
-      let reached;
-      const closing = new Promise((resolve) => {
-        reached = resolve;
-      });
-      FileSystemFileHandle.prototype.createWritable = async function (...args) {
-        const writable = await original.apply(this, args);
-        if (this.name.endsWith(".audio"))
-          writable.close = async () => {
-            reached();
-            await new Promise(() => {});
-          };
-        return writable;
-      };
-      void cache
-        .saveDownload(
-          { id: "partial", title: "Partial", artist: "Artist", album: "Album" },
-          "mp3",
-          "audio/mpeg",
-          new Response("unclosed audio"),
-          new AbortController().signal,
-        )
-        .catch(() => {});
-      await closing;
-      return key;
-    });
-    await page.close();
-    page = await context.newPage();
-    await page.goto(base);
-    const result = await page.evaluate(async (key) => {
-      const { Cache } = await import("/src/cache.svelte.ts");
-      const cache = new Cache(key);
-      await cache.load();
-      return {
-        completed: [...cache.downloads.values()].filter((entry) => entry.status === "completed")
-          .length,
-        pending: [...cache.downloads.values()].filter((entry) => entry.status === "queued").length,
-        file: await cache.readDownload("partial", "mp3"),
-      };
-    }, key);
-    assert.deepEqual(result, { completed: 0, pending: 1, file: null });
-  } finally {
-    await browser.close();
-  }
-});
+for (const boundary of ["byte", "metadata"]) {
+  test(`document destruction before ${boundary} close never adopts native OPFS bytes`, async () => {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    let page = await context.newPage();
+    try {
+      await page.goto(base);
+      const key = await page.evaluate(async (boundary) => {
+        const { Cache } = await import("/src/cache.svelte.ts");
+        const key = `destroyed-page-${crypto.randomUUID()}`;
+        const cache = new Cache(key);
+        const original = FileSystemFileHandle.prototype.createWritable;
+        let reached;
+        let bytesClosed = false;
+        const closing = new Promise((resolve) => {
+          reached = resolve;
+        });
+        FileSystemFileHandle.prototype.createWritable = async function (...args) {
+          const writable = await original.apply(this, args);
+          const close = writable.close.bind(writable);
+          if (this.name.endsWith(".audio"))
+            writable.close = async () => {
+              await close();
+              bytesClosed = true;
+            };
+          if (
+            (boundary === "byte" && this.name.endsWith(".audio")) ||
+            (boundary === "metadata" && bytesClosed && this.name === "downloads.json")
+          )
+            writable.close = async () => {
+              reached();
+              await new Promise(() => {});
+            };
+          return writable;
+        };
+        void cache
+          .saveDownload(
+            { id: "partial", title: "Partial", artist: "Artist", album: "Album" },
+            "mp3",
+            "audio/mpeg",
+            new Response("unclosed audio"),
+            new AbortController().signal,
+          )
+          .catch(() => {});
+        await closing;
+        return key;
+      }, boundary);
+      await page.close();
+      page = await context.newPage();
+      await page.goto(base);
+      const result = await page.evaluate(async (key) => {
+        const { Cache } = await import("/src/cache.svelte.ts");
+        const cache = new Cache(key);
+        await cache.load();
+        return {
+          completed: [...cache.downloads.values()].filter((entry) => entry.status === "completed")
+            .length,
+          pending: [...cache.downloads.values()].filter((entry) => entry.status === "queued")
+            .length,
+          file: await cache.readDownload("partial", "mp3"),
+        };
+      }, key);
+      assert.deepEqual(result, { completed: 0, pending: 1, file: null });
+    } finally {
+      await browser.close();
+    }
+  });
+}
 
 test("native OPFS completed-only migration close preserves input and reopens canonical state", async () => {
   const browser = await chromium.launch({ headless: true });

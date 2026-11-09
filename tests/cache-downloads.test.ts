@@ -1,4 +1,5 @@
 import { getAccountKey } from "../src/auth";
+import { downloadFailureDiagnostic } from "../src/download-error";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
 import { Cache, downloadKey } from "../src/cache.svelte";
@@ -472,6 +473,113 @@ describe("download cache foundation", () => {
   });
 });
 
+describe("fresh binary commit boundaries", () => {
+  it("retains completed state when returning the committed file fails", async () => {
+    const disk = installDisk();
+    const cache = new Cache(getAccountKey(account));
+    disk.state.beforeRead = async (name) => {
+      if (name.endsWith(".audio")) {
+        expect(catalog(disk)[0].status).toBe("completed");
+        throw new Error("getFile denied after commit");
+      }
+    };
+    await expect(save(cache)).rejects.toMatchObject({ name: "DownloadError" });
+    const completed = expectCompletedDownload(cache, key);
+    expect(catalog(disk)).toEqual([completed]);
+    expect(disk.blobs.size).toBe(1);
+    const bytes = new Map(disk.blobs);
+    await cache.failDownload(key);
+    expect(cache.downloads.get(key)).toBe(completed);
+    expect(catalog(disk)).toEqual([completed]);
+    expect(disk.blobs).toEqual(bytes);
+    disk.state.beforeRead = async () => {};
+    const reopened = new Cache(cache.key);
+    await reopened.load();
+    expect(await (await reopened.readDownload(track.id, "mp3"))?.text()).toBe("audio");
+  });
+
+  it("keeps a canonically completed file when metadata close commits then throws", async () => {
+    const disk = installDisk();
+    const cache = new Cache(getAccountKey(account));
+    let closed = false;
+    disk.state.afterClose = (name) => {
+      if (name.endsWith(".audio")) closed = true;
+      if (closed && name.endsWith("downloads.json")) throw new Error("after commit");
+    };
+    expect(await (await save(cache)).text()).toBe("audio");
+    await cache.failDownload(key);
+    expect(cache.downloads.get(key)?.status).toBe("completed");
+    expect(disk.blobs.size).toBe(1);
+    disk.state.afterClose = () => {};
+    const reopened = new Cache(cache.key);
+    await reopened.load();
+    expect(await (await reopened.readDownload(track.id, "mp3"))?.text()).toBe("audio");
+  });
+
+  it("preserves possibly registered bytes when commit verification is unreadable", async () => {
+    const disk = installDisk();
+    const cache = new Cache(getAccountKey(account));
+    let closed = false;
+    disk.state.afterClose = (name) => {
+      if (name.endsWith(".audio")) closed = true;
+      if (closed && name.endsWith("downloads.json")) {
+        disk.state.beforeRead = async () => {
+          throw new Error("denied");
+        };
+        throw new Error("after commit");
+      }
+    };
+    await expect(save(cache)).rejects.toThrow();
+    expect(disk.blobs.size).toBe(1);
+    expect(cache.downloadStorageBlocked).toBe(true);
+    await expect(cache.failDownload(key)).rejects.toThrow();
+    expect(catalog(disk)[0].status).toBe("completed");
+    disk.state.beforeRead = async () => {};
+    disk.state.afterClose = () => {};
+    const reopened = new Cache(cache.key);
+    await reopened.load();
+    expect(await (await reopened.readDownload(track.id, "mp3"))?.text()).toBe("audio");
+  });
+
+  it.each(["byte", "metadata"])(
+    "commits despite cancellation during %s close",
+    async (boundary) => {
+      const disk = installDisk();
+      const cache = new Cache(getAccountKey(account));
+      const abort = new AbortController();
+      let closed = false;
+      disk.state.afterClose = (name) => {
+        if (name.endsWith(".audio")) closed = true;
+      };
+      disk.state.beforeClose = async (name) => {
+        if (
+          (boundary === "byte" && name.endsWith(".audio")) ||
+          (boundary === "metadata" && closed && name.endsWith("downloads.json"))
+        )
+          abort.abort();
+      };
+      expect(await (await save(cache, "audio", abort.signal)).text()).toBe("audio");
+      expect(cache.downloads.get(key)?.status).toBe("completed");
+    },
+  );
+
+  it("rejects a known HTTP length mismatch before close", async () => {
+    const disk = installDisk();
+    const cache = new Cache(getAccountKey(account));
+    await expect(
+      cache.saveDownload(
+        track,
+        "mp3",
+        "audio/mpeg",
+        new Response("audio", { headers: { "content-length": "99" } }),
+        signal(),
+      ),
+    ).rejects.toThrow();
+    expect(disk.blobs.size).toBe(0);
+    expect(cache.downloads.get(key)?.status).toBe("queued");
+  });
+});
+
 describe("durable download intent", () => {
   it("acknowledges ordered whitelisted intent only after its canonical close", async () => {
     const disk = installDisk();
@@ -502,34 +610,29 @@ describe("durable download intent", () => {
     expect([...disk.files.values()].join()).not.toMatch(/secret|credentials|url/);
   });
 
-  it.each(["bytes", "catalog"])(
-    "reconciles interruption at %s without adopting partial bytes or refetching complete bytes",
-    async (stage) => {
-      const disk = installDisk();
-      const cache = new Cache(getAccountKey(account));
-      let prepared = false;
-      disk.state.beforeClose = async (name) => {
-        if (name.endsWith(".audio")) {
-          prepared = true;
-          if (stage === "bytes") throw new Error("interrupted close");
-        }
-        if (prepared && stage === "catalog" && name.endsWith("/downloads.json"))
-          throw new Error("interrupted catalog");
-      };
-      await expect(save(cache)).rejects.toThrow();
-      disk.state.beforeClose = async () => {};
-      const restored = new Cache(getAccountKey(account));
-      await restored.load();
-      if (stage === "bytes") {
-        expect(completedDownloadCount(restored)).toBe(0);
-        expect(restored.downloads.get(key)?.status).toBe("queued");
-        expect(await restored.readDownload(track.id, "mp3")).toBeNull();
-      } else {
-        expect(await (await restored.readDownload(track.id, "mp3"))?.text()).toBe("audio");
-        expect(restored.downloads.get(key)?.status).toBe("completed");
+  it.each(["bytes", "catalog"])("restarts from scratch after interruption at %s", async (stage) => {
+    const disk = installDisk();
+    const cache = new Cache(getAccountKey(account));
+    let prepared = false;
+    disk.state.beforeClose = async (name) => {
+      if (name.endsWith(".audio")) {
+        prepared = true;
+        if (stage === "bytes") throw new Error("interrupted close");
       }
-    },
-  );
+      if (prepared && stage === "catalog" && name.endsWith("/downloads.json"))
+        throw new Error("interrupted catalog");
+    };
+    await expect(save(cache)).rejects.toThrow();
+    disk.state.beforeClose = async () => {};
+    const restored = new Cache(getAccountKey(account));
+    await restored.load();
+    expect(completedDownloadCount(restored)).toBe(0);
+    expect(restored.downloads.get(key)?.status).toBe("queued");
+    expect(await restored.readDownload(track.id, "mp3")).toBeNull();
+    expect(disk.blobs.size).toBe(0);
+    expect(await (await save(restored, "fresh bytes")).text()).toBe("fresh bytes");
+    expect(catalog(disk)[0]).not.toHaveProperty("attempt");
+  });
 
   it("converts missing completed-only metadata to intent before durable catalog eviction", async () => {
     const disk = installDisk();
@@ -562,6 +665,130 @@ it("places explicit Retry at the durable FIFO tail", async () => {
   await restored.load();
   expect([...restored.downloads.keys()]).toEqual([downloadKey("waiting", "raw"), key]);
 });
+
+it.each([
+  ["version", {}],
+  ["unknown envelope field", {}],
+  ["duplicate identity", { track }],
+  ["invalid format", { format: "ogg" }],
+  ["invalid content type", { contentType: "" }],
+  ["invalid status", { status: "active" }],
+  ["invalid diagnostic", { status: "failed", diagnostic: "arbitrary error" }],
+  ["invalid track ID", { track: { ...track, id: "" } }],
+  ["invalid track title", { track: { ...track, title: 42 } }],
+  ["unknown track field", { track: { ...track, extra: true } }],
+])("preserves unreadable download stores (%s)", async (kind, extra) => {
+  const disk = installDisk();
+  const seed = new Cache(getAccountKey(account));
+  await save(seed);
+  const completed = catalog(disk)[0];
+  const pending = {
+    track: { ...track, id: "old" },
+    format: "mp3",
+    contentType: "audio/mpeg",
+    status: "queued",
+    ...extra,
+  };
+  const original = JSON.stringify({
+    version: kind === "version" ? 3 : 2,
+    records: [completed, pending],
+    ...(kind === "unknown envelope field" ? { extra: true } : {}),
+  });
+  disk.files.set(path(disk), original);
+  const blobs = new Map(disk.blobs);
+  const cache = new Cache(seed.key);
+  await expect(cache.load()).rejects.toThrow();
+  await expect(cache.enqueueDownload(track, "raw", "audio/flac")).rejects.toThrow();
+  expect(disk.files.get(path(disk))).toBe(original);
+  expect(disk.blobs).toEqual(blobs);
+  expect(cache.downloadStorageBlocked).toBe(true);
+});
+
+it.each([false, true])(
+  "strips unknown job fields without rewriting on load (denied=%s)",
+  async (denied) => {
+    const disk = installDisk();
+    const seed = new Cache(getAccountKey(account));
+    await save(seed);
+    await seed.saveDownload(track, "raw", "audio/flac", new Response("raw"), signal());
+    const completed = catalog(disk);
+    const oldFile = `${crypto.randomUUID()}.audio`;
+    const attemptPath = [...disk.blobs.keys()][0].replace(/[^/]+$/, oldFile);
+    disk.blobs.set(attemptPath, new Blob(["complete old bytes"]));
+    const attempts = [
+      { fileName: oldFile, size: 18, downloadedAt: 1 },
+      { fileName: completed[0].fileName, size: 0, progress: true },
+      { fileName: "../outside.audio" },
+      null,
+      "malformed",
+      { unrelated: [true] },
+    ];
+    const pending = attempts.map((attempt, index) => ({
+      track: { ...track, id: `old-${index}`, title: `Old ${index}` },
+      format: index % 2 ? ("raw" as const) : ("mp3" as const),
+      contentType: index % 2 ? "audio/flac" : "audio/mpeg",
+      status: index % 2 ? ("failed" as const) : ("queued" as const),
+      ...(index % 2 ? { diagnostic: downloadFailureDiagnostic } : {}),
+      attempt,
+      unused: { progress: 99 },
+    }));
+    const stripped = pending.map(({ attempt: _attempt, unused: _unused, ...entry }) => entry);
+    const expected = [...completed, ...stripped];
+    const original = JSON.stringify({ version: 2, records: [...completed, ...pending] });
+    disk.files.set(path(disk), original);
+    const blobs = new Map(disk.blobs);
+    const writes = disk.state.writes;
+    const reads: string[] = [];
+    disk.state.beforeRead = async (name) => {
+      reads.push(name);
+    };
+    if (denied)
+      disk.state.beforeClose = async () => {
+        throw new Error("metadata writes denied");
+      };
+    const cache = new Cache(seed.key);
+    await cache.load();
+    expect([...cache.downloads.values()]).toEqual(expected);
+    expect(cache.downloadStorageBlocked).toBe(false);
+    expect(await (await cache.readDownload(track.id, "raw"))?.text()).toBe("raw");
+    expect(await cache.readDownload("old-0", "mp3")).toBeNull();
+    expect(reads.filter((name) => name.endsWith(".audio"))).toEqual(
+      reads.filter((name) =>
+        completed.some((entry: { fileName: string }) => name.endsWith(entry.fileName)),
+      ),
+    );
+    expect(disk.state.writes).toBe(writes);
+    expect(disk.files.get(path(disk))).toBe(original);
+    expect(disk.blobs).toEqual(blobs);
+    if (denied) {
+      await expect(
+        cache.enqueueDownload({ ...track, id: "new" }, "mp3", "audio/mpeg"),
+      ).rejects.toThrow();
+      expect(disk.files.get(path(disk))).toBe(original);
+      disk.state.beforeClose = async () => {};
+    }
+    await cache.enqueueDownload({ ...track, id: "new" }, "mp3", "audio/mpeg");
+    expect(catalog(disk)).toEqual([
+      ...expected,
+      {
+        track: { ...track, id: "new" },
+        format: "mp3",
+        contentType: "audio/mpeg",
+        status: "queued",
+      },
+    ]);
+    expect(disk.blobs).toEqual(blobs); // Ignored attempt bytes are never reclaimed.
+    await cache.saveDownload(
+      pending[0].track,
+      "mp3",
+      "audio/mpeg",
+      new Response("fresh"),
+      signal(),
+    );
+    expect(expectCompletedDownload(cache, downloadKey("old-0", "mp3")).fileName).not.toBe(oldFile);
+    expect(disk.blobs.get(attemptPath)).toBe(blobs.get(attemptPath));
+  },
+);
 
 /** Restore the representation used by released completed-only installs. */
 function legacy(disk: ReturnType<typeof installDisk>, cache: Cache) {
