@@ -782,6 +782,7 @@
     corner-shape: var(--corner-shape);
     background: var(--secondary-bg);
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
     translate: 0;
     scale: 1;
 
@@ -1209,6 +1210,7 @@
 
     &:where(button, a) {
       cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
     }
 
     &[aria-current] {
@@ -1521,6 +1523,7 @@
   }
 
   .link-target {
+    -webkit-tap-highlight-color: transparent;
     position: absolute;
     inset: 0;
     cursor: pointer;
