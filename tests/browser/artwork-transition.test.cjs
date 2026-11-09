@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const { readFileSync, writeFileSync } = require("node:fs");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
+const sine = "cubic-bezier(0.445, 0.05, 0.55, 0.95)";
 const css = readFileSync(
   new URL("../../src/edgerunner.css", `file://${__filename}`),
   "utf8",
@@ -13,7 +14,7 @@ const src =
     '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="600" height="600" fill="#b36030"/><circle cx="300" cy="300" r="230" fill="#1d4548"/><path d="M0 0L600 600M600 0L0 600" stroke="#ffc584" stroke-width="60"/></svg>',
   );
 for (const [engine, type] of Object.entries({ chromium, webkit })) {
-  test(`${engine}: artwork movement is 400ms without changing page or hover timings`, async () => {
+  test(`${engine}: artwork movement uses sine easing at 240ms with unchanged page and hover durations`, async () => {
     const browser = await type.launch({ headless: true });
     try {
       const page = await browser.newPage({ reducedMotion: "no-preference" });
@@ -38,6 +39,8 @@ for (const [engine, type] of Object.entries({ chromium, webkit })) {
         };
         const result = {
           artwork: timing("::view-transition-group(cover)"),
+          artworkOld: timing("::view-transition-old(cover)"),
+          artworkNew: timing("::view-transition-new(cover)"),
           rootOld: timing("::view-transition-old(root)"),
           rootNew: timing("::view-transition-new(root)"),
           upOld: timing("::view-transition-old(up)"),
@@ -47,22 +50,29 @@ for (const [engine, type] of Object.entries({ chromium, webkit })) {
           shell: getComputedStyle(document.documentElement, "::view-transition-group(shell)")
             .animationName,
           hover: getComputedStyle(document.querySelector(".tile-artwork img")).transitionDuration,
+          hoverEase: getComputedStyle(document.querySelector(".tile-artwork img"))
+            .transitionTimingFunction,
         };
         transition.skipTransition();
         await transition.finished;
         return result;
       });
-      assert.deepEqual(timings.artwork, { duration: "0.4s", delay: "0s", easing: "linear" });
+      assert.deepEqual(timings.artwork, { duration: "0.24s", delay: "0s", easing: sine });
+      for (const key of ["artworkOld", "artworkNew"])
+        assert.deepEqual(timings[key], { duration: "0.24s", delay: "0s", easing: sine });
+      assert.equal(timings.rootOld.easing, sine);
+      assert.equal(timings.rootNew.easing, sine);
       assert.equal(timings.rootOld.duration, "0.12s");
       assert.equal(timings.rootOld.delay, "0s");
       assert.equal(timings.rootNew.duration, "0.2s");
       assert.equal(timings.rootNew.delay, "0.12s");
       for (const key of ["upOld", "leftOld"])
-        assert.deepEqual(timings[key], { duration: "0.12s", delay: "0s", easing: "linear" });
+        assert.deepEqual(timings[key], { duration: "0.12s", delay: "0s", easing: sine });
       for (const key of ["upNew", "leftNew"])
-        assert.deepEqual(timings[key], { duration: "0.2s", delay: "0.12s", easing: "linear" });
+        assert.deepEqual(timings[key], { duration: "0.2s", delay: "0.12s", easing: sine });
       assert.equal(timings.shell, "none");
       assert.equal(timings.hover, "0.4s");
+      assert.equal(timings.hoverEase, sine);
     } finally {
       await browser.close();
     }
