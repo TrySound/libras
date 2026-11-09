@@ -667,37 +667,32 @@ it("places explicit Retry at the durable FIFO tail", async () => {
 });
 
 it.each([
-  "version",
-  "unsafe attempt",
-  "unknown attempt field",
-  "invalid size",
-  "duplicate identity",
-  "shared filename",
-])("preserves unreadable compatibility stores (%s)", async (kind) => {
+  ["version", {}],
+  ["unknown envelope field", {}],
+  ["duplicate identity", { track }],
+  ["invalid format", { format: "ogg" }],
+  ["invalid content type", { contentType: "" }],
+  ["invalid status", { status: "active" }],
+  ["invalid diagnostic", { status: "failed", diagnostic: "arbitrary error" }],
+  ["invalid track ID", { track: { ...track, id: "" } }],
+  ["invalid track title", { track: { ...track, title: 42 } }],
+  ["unknown track field", { track: { ...track, extra: true } }],
+])("preserves unreadable download stores (%s)", async (kind, extra) => {
   const disk = installDisk();
   const seed = new Cache(getAccountKey(account));
   await save(seed);
   const completed = catalog(disk)[0];
   const pending = {
-    track: { ...track, id: kind === "duplicate identity" ? track.id : "old" },
+    track: { ...track, id: "old" },
     format: "mp3",
     contentType: "audio/mpeg",
     status: "queued",
-    attempt: {
-      fileName:
-        kind === "unsafe attempt"
-          ? "../outside.audio"
-          : kind === "shared filename"
-            ? completed.fileName
-            : `${crypto.randomUUID()}.audio`,
-      size: kind === "invalid size" ? 0 : 5,
-      downloadedAt: 1,
-      ...(kind === "unknown attempt field" ? { progress: 1 } : {}),
-    },
+    ...extra,
   };
   const original = JSON.stringify({
     version: kind === "version" ? 3 : 2,
     records: [completed, pending],
+    ...(kind === "unknown envelope field" ? { extra: true } : {}),
   });
   disk.files.set(path(disk), original);
   const blobs = new Map(disk.blobs);
@@ -709,65 +704,91 @@ it.each([
   expect(cache.downloadStorageBlocked).toBe(true);
 });
 
-it.each([false, true])("normalizes old attempts without adoption (denied=%s)", async (denied) => {
-  const disk = installDisk();
-  const seed = new Cache(getAccountKey(account));
-  await save(seed);
-  await seed.saveDownload(track, "raw", "audio/flac", new Response("raw"), signal());
-  const completed = catalog(disk);
-  const oldFile = `${crypto.randomUUID()}.audio`;
-  const attemptPath = [...disk.blobs.keys()][0].replace(/[^/]+$/, oldFile);
-  disk.blobs.set(attemptPath, new Blob(["complete old bytes"]));
-  const pending = ["queued", "failed"].map((status, index) => ({
-    track: { ...track, id: `old-${index}` },
-    format: index ? "raw" : "mp3",
-    contentType: index ? "audio/flac" : "audio/mpeg",
-    status,
-    ...(index ? { diagnostic: downloadFailureDiagnostic } : {}),
-    attempt: {
-      fileName: index ? `${crypto.randomUUID()}.audio` : oldFile,
-      size: 18,
-      downloadedAt: 1,
-    },
-  }));
-  const original = JSON.stringify({ version: 2, records: [...completed, ...pending] });
-  disk.files.set(path(disk), original);
-  const blobs = new Map(disk.blobs);
-  if (denied)
-    disk.state.beforeClose = async () => {
-      throw new Error("denied conversion");
+it.each([false, true])(
+  "strips unknown job fields without rewriting on load (denied=%s)",
+  async (denied) => {
+    const disk = installDisk();
+    const seed = new Cache(getAccountKey(account));
+    await save(seed);
+    await seed.saveDownload(track, "raw", "audio/flac", new Response("raw"), signal());
+    const completed = catalog(disk);
+    const oldFile = `${crypto.randomUUID()}.audio`;
+    const attemptPath = [...disk.blobs.keys()][0].replace(/[^/]+$/, oldFile);
+    disk.blobs.set(attemptPath, new Blob(["complete old bytes"]));
+    const attempts = [
+      { fileName: oldFile, size: 18, downloadedAt: 1 },
+      { fileName: completed[0].fileName, size: 0, progress: true },
+      { fileName: "../outside.audio" },
+      null,
+      "malformed",
+      { unrelated: [true] },
+    ];
+    const pending = attempts.map((attempt, index) => ({
+      track: { ...track, id: `old-${index}`, title: `Old ${index}` },
+      format: index % 2 ? ("raw" as const) : ("mp3" as const),
+      contentType: index % 2 ? "audio/flac" : "audio/mpeg",
+      status: index % 2 ? ("failed" as const) : ("queued" as const),
+      ...(index % 2 ? { diagnostic: downloadFailureDiagnostic } : {}),
+      attempt,
+      unused: { progress: 99 },
+    }));
+    const stripped = pending.map(({ attempt: _attempt, unused: _unused, ...entry }) => entry);
+    const expected = [...completed, ...stripped];
+    const original = JSON.stringify({ version: 2, records: [...completed, ...pending] });
+    disk.files.set(path(disk), original);
+    const blobs = new Map(disk.blobs);
+    const writes = disk.state.writes;
+    const reads: string[] = [];
+    disk.state.beforeRead = async (name) => {
+      reads.push(name);
     };
-  const cache = new Cache(seed.key);
-  if (denied) {
-    await expect(cache.load()).rejects.toThrow();
+    if (denied)
+      disk.state.beforeClose = async () => {
+        throw new Error("metadata writes denied");
+      };
+    const cache = new Cache(seed.key);
+    await cache.load();
+    expect([...cache.downloads.values()]).toEqual(expected);
+    expect(cache.downloadStorageBlocked).toBe(false);
     expect(await (await cache.readDownload(track.id, "raw"))?.text()).toBe("raw");
-    await expect(
-      cache.enqueueDownload({ ...track, id: "new" }, "mp3", "audio/mpeg"),
-    ).rejects.toThrow();
+    expect(await cache.readDownload("old-0", "mp3")).toBeNull();
+    expect(reads.filter((name) => name.endsWith(".audio"))).toEqual(
+      reads.filter((name) =>
+        completed.some((entry: { fileName: string }) => name.endsWith(entry.fileName)),
+      ),
+    );
+    expect(disk.state.writes).toBe(writes);
     expect(disk.files.get(path(disk))).toBe(original);
-    disk.state.beforeClose = async () => {};
-  }
-  await cache.load();
-  expect([...cache.downloads.keys()]).toEqual([
-    key,
-    downloadKey(track.id, "raw"),
-    downloadKey("old-0", "mp3"),
-    downloadKey("old-1", "raw"),
-  ]);
-  expect(cache.downloads.get(downloadKey("old-0", "mp3"))?.status).toBe("queued");
-  expect(cache.downloads.get(downloadKey("old-1", "raw"))?.status).toBe("failed");
-  expect(catalog(disk)).toEqual([
-    ...completed,
-    ...pending.map(({ attempt: _attempt, ...entry }) => entry),
-  ]);
-  expect(JSON.stringify(catalog(disk))).not.toContain("attempt");
-  const writes = disk.state.writes;
-  await new Cache(seed.key).load();
-  expect(disk.state.writes).toBe(writes);
-  expect(disk.blobs).toEqual(blobs); // Legacy orphans are intentionally not reclaimed.
-  await cache.saveDownload(pending[0].track, "mp3", "audio/mpeg", new Response("fresh"), signal());
-  expect(expectCompletedDownload(cache, downloadKey("old-0", "mp3")).fileName).not.toBe(oldFile);
-});
+    expect(disk.blobs).toEqual(blobs);
+    if (denied) {
+      await expect(
+        cache.enqueueDownload({ ...track, id: "new" }, "mp3", "audio/mpeg"),
+      ).rejects.toThrow();
+      expect(disk.files.get(path(disk))).toBe(original);
+      disk.state.beforeClose = async () => {};
+    }
+    await cache.enqueueDownload({ ...track, id: "new" }, "mp3", "audio/mpeg");
+    expect(catalog(disk)).toEqual([
+      ...expected,
+      {
+        track: { ...track, id: "new" },
+        format: "mp3",
+        contentType: "audio/mpeg",
+        status: "queued",
+      },
+    ]);
+    expect(disk.blobs).toEqual(blobs); // Ignored attempt bytes are never reclaimed.
+    await cache.saveDownload(
+      pending[0].track,
+      "mp3",
+      "audio/mpeg",
+      new Response("fresh"),
+      signal(),
+    );
+    expect(expectCompletedDownload(cache, downloadKey("old-0", "mp3")).fileName).not.toBe(oldFile);
+    expect(disk.blobs.get(attemptPath)).toBe(blobs.get(attemptPath));
+  },
+);
 
 /** Restore the representation used by released completed-only installs. */
 function legacy(disk: ReturnType<typeof installDisk>, cache: Cache) {

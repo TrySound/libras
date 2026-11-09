@@ -72,7 +72,7 @@ const cachedDownloadSchema = v.strictObject({
 });
 type CachedDownload = v.InferOutput<typeof cachedDownloadSchema>;
 const downloadsSchema = v.array(cachedDownloadSchema);
-const queuedDownloadSchema = v.strictObject({
+const queuedDownloadSchema = v.object({
   track: cachedDownloadSchema.entries.track,
   format: downloadFormat,
   contentType: cachedDownloadSchema.entries.contentType,
@@ -84,20 +84,9 @@ const completedDownloadSchema = v.strictObject({
   status: v.literal("completed"),
 });
 const downloadEntrySchema = v.variant("status", [queuedDownloadSchema, completedDownloadSchema]);
-// Only compatibility input accepts attempts; runtime state never owns interrupted bytes.
-const oldQueuedDownloadSchema = v.strictObject({
-  ...queuedDownloadSchema.entries,
-  attempt: v.optional(
-    v.strictObject({
-      fileName: cachedDownloadSchema.entries.fileName,
-      size: v.nullable(cachedDownloadSchema.entries.size),
-      downloadedAt: timestamp,
-    }),
-  ),
-});
 const downloadStoreSchema = v.strictObject({
   version: v.literal(2),
-  records: v.array(v.variant("status", [oldQueuedDownloadSchema, completedDownloadSchema])),
+  records: v.array(downloadEntrySchema),
 });
 export type DownloadEntry = Immutable<v.InferOutput<typeof downloadEntrySchema>>;
 /** Account-local identity, also distinguishing original files from MP3 transcodes. */
@@ -539,9 +528,7 @@ function parseDownloads(value: unknown): Immutable<v.InferOutput<typeof download
 function validateDownloadEntries(records: v.InferOutput<typeof downloadStoreSchema>["records"]) {
   unique(records, (item) => downloadKey(item.track.id, item.format));
   unique(
-    records.flatMap((item) =>
-      item.status === "completed" ? [item.fileName] : item.attempt ? [item.attempt.fileName] : [],
-    ),
+    records.flatMap((item) => (item.status === "completed" ? [item.fileName] : [])),
     (name) => name,
   );
 }
@@ -799,7 +786,7 @@ export class Cache {
     this.#downloadError = undefined;
   }
 
-  /** Legacy arrays/attempt fields normalize atomically; a denied conversion stays read-only.
+  /** Legacy arrays migrate atomically; a denied conversion stays read-only.
    * Unknown documents block writes. Unshipped split-store files are never consulted. */
   async #loadDownloads(signal?: AbortSignal, reconcile = false) {
     if (this.#downloadsLoaded && (!reconcile || this.#downloadsReady)) return;
@@ -818,14 +805,7 @@ export class Cache {
             };
           const parsed = v.parse(downloadStoreSchema, value);
           validateDownloadEntries(parsed.records);
-          return {
-            legacy: parsed.records.some((item) => item.status !== "completed" && "attempt" in item),
-            records: parsed.records.map((item): DownloadEntry => {
-              if (item.status === "completed") return item;
-              const { attempt: _attempt, ...entry } = item;
-              return entry;
-            }),
-          };
+          return { legacy: false, records: parsed.records };
         });
         signal?.throwIfAborted();
         migrate = stored?.legacy ?? false;
