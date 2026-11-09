@@ -1,6 +1,6 @@
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
-import { VitePWA } from "vite-plugin-pwa";
+import { VitePWA } from "@unplugin-pwa/vite";
 import { inlineSvgSprite } from "./build/inline-svg-sprite.ts";
 
 const base = process.env.BASE_PATH ?? "/";
@@ -35,7 +35,7 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
+      generateSW: {
         globPatterns: [
           "index.html",
           "assets/*.{js,css,svg,woff2}",

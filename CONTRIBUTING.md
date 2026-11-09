@@ -125,6 +125,8 @@ For playback/synchronization changes, check refresh, disconnect/reload, offline 
 
 ### Installation, offline use, and updates
 
+The app uses `@unplugin-pwa/vite` with `generateSW` to build a classic `sw.js`. Keep `magicast` (required by `generateSW`), `@unplugin-pwa/core` (client types), and the scoped `@vite-pwa/workbox-window` and `@vite-pwa/workbox-swkit` packages as direct dev dependencies for pnpm's strict dependency resolution. Registration is owned by `WebappUpdater` through `virtual:pwa-register`; automatic registration injection stays disabled. The website/demo build does not use the plugin.
+
 Service workers are disabled during development. Use a production preview:
 
 ```sh
