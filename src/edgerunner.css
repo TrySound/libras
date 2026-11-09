@@ -322,6 +322,21 @@
   z-index: var(--layer-header);
 }
 
+/* A static group alone still paints both translucent shell snapshots. */
+::view-transition-old(.shell),
+::view-transition-new(.shell) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(.shell) {
+  opacity: 0;
+}
+
+::view-transition-new(.shell) {
+  opacity: 1;
+}
+
 /* Move shared artwork independently of the page's exit/entry timing. */
 ::view-transition-group(.artwork) {
   animation-duration: 240ms;
@@ -1285,6 +1300,11 @@
     min-height: var(--topbar-min-height);
     padding: var(--space-sm) var(--content-padding-inline);
     padding-block-start: max(var(--space-sm), env(safe-area-inset-top));
+
+    /* Keep changing route content from tinting the persistent app header. */
+    &.app-header {
+      background-color: var(--palette-maroon-shade-7);
+    }
   }
 
   .sidebar {
