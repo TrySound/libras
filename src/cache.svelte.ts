@@ -502,118 +502,9 @@ class ImageStore {
   }
 }
 
-function unique<T>(records: readonly T[], key: (record: T) => string) {
-  if (new Set(records.map(key)).size !== records.length)
-    throw new Error("Duplicate cache references.");
-}
-function parseLibrary(value: unknown): Immutable<LibrarySnapshot> {
-  const record = v.parse(librarySchema, value);
-  for (const records of [record.artists, record.albums, record.tracks])
-    unique<{ id: string }>(records, (item) => item.id);
-  return record;
-}
-function parseImages(value: unknown): Immutable<v.InferOutput<typeof imagesSchema>> {
-  const catalog = v.parse(imagesSchema, value);
-  unique(catalog, (image) => image.id);
-  unique(catalog, (image) => image.fileName);
-  return catalog;
-}
-function parseDownloads(value: unknown): Immutable<v.InferOutput<typeof downloadsSchema>> {
-  const catalog = v.parse(downloadsSchema, value);
-  unique(catalog, (item) => downloadKey(item.track.id, item.format));
-  unique(catalog, (item) => item.fileName);
-  return catalog;
-}
-
-function validateDownloadEntries(records: v.InferOutput<typeof downloadStoreSchema>["records"]) {
-  unique(records, (item) => downloadKey(item.track.id, item.format));
-  unique(
-    records.flatMap((item) => (item.status === "completed" ? [item.fileName] : [])),
-    (name) => name,
-  );
-}
-
-function entityMap<T extends { readonly id: string }>(
-  records: readonly T[],
-): ReadonlyMap<string, T> {
-  return new Map(records.map((record) => [record.id, record]));
-}
-
-function groupBy<T>(
-  records: Iterable<T>,
-  keys: (record: T) => readonly string[],
-  compare: (a: T, b: T) => number,
-) {
-  const groups = new Map<string, T[]>();
-  for (const record of records) {
-    for (const id of new Set(keys(record))) {
-      const group = groups.get(id) ?? [];
-      group.push(record);
-      groups.set(id, group);
-    }
-  }
-  for (const group of groups.values()) group.sort(compare);
-  return groups as ReadonlyMap<string, readonly T[]>;
-}
-
-function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
-  let artistsList = (snapshot?.artists ?? []).toSorted((a, b) => a.name.localeCompare(b.name));
-  if (import.meta.env.VITE_STRESS_ARTISTS === "1") {
-    artistsList = artistsList.flatMap((artist) =>
-      Array.from({ length: 100 }, (_, index) =>
-        index === 0
-          ? artist
-          : { ...artist, id: `${artist.id}--stress-${index}`, name: `${artist.name} (${index})` },
-      ),
-    );
-  }
-  const artists = entityMap(artistsList);
-  const albums = entityMap(snapshot?.albums ?? []);
-  const tracks = entityMap(snapshot?.tracks ?? []);
-  const albumTracks = groupBy(
-    tracks.values(),
-    (track) => [track.albumId],
-    (a, b) =>
-      (a.disc ?? 1) - (b.disc ?? 1) ||
-      (a.number ?? Infinity) - (b.number ?? Infinity) ||
-      a.title.localeCompare(b.title),
-  );
-  // Track-only contributors should also be able to browse their appearances.
-  // groupBy deduplicates credits without changing the album's stored artists.
-  const artistAlbums = groupBy(
-    albums.values(),
-    (album) => [
-      ...album.artistIds,
-      ...(albumTracks.get(album.id) ?? []).flatMap((track) => track.artistIds),
-    ],
-    (a, b) => (a.year ?? Infinity) - (b.year ?? Infinity) || a.title.localeCompare(b.title),
-  );
-  return {
-    savedAt: snapshot?.savedAt,
-    lastModified: snapshot?.lastModified,
-    artists,
-    albums,
-    tracks,
-    artistAlbums,
-    albumTracks,
-  };
-}
-
-/**
- * Key-scoped local data owner, or an empty unscoped UI fallback.
- * Construction performs no I/O.
- * Consumers never mutate collections or records. Library and download maps are snapshots;
- * image catalogs are read-only live reactive views with immutable records.
- * Mutations publish in memory; checkpoints acknowledge only the revision committed.
- * OPFS is read once per document, not reconciled with other cache instances.
- */
-export class Cache {
-  readonly key: string | undefined;
-  readonly #library: CheckpointStore<ReturnType<typeof prepareLibrary>>;
+/** Explicit durable download jobs and their registered bytes, scoped to one disk. */
+class DownloadStore {
   readonly #disk: Disk | undefined;
-  readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
-  readonly #playlists: CheckpointStore<Immutable<CachedPlaylists>>;
-  readonly #images: ImageStore;
   #downloads = $state.raw<ReadonlyMap<string, DownloadEntry>>(new Map());
   #downloadError = $state.raw<unknown>();
   #downloadSerial = serial();
@@ -621,36 +512,8 @@ export class Cache {
   #downloadsBlocked = false;
   #downloadsReady = false;
 
-  /** Omitting the key creates an empty, non-persisting UI fallback.
-   * Keys are opaque identities; hashing and storage addressing stay internal. */
-  constructor(key?: string) {
-    this.key = key;
-    this.#disk = key === undefined ? undefined : new Disk(hash(key));
-    this.#library = new CheckpointStore(this.#disk, {
-      document: "library",
-      initial: prepareLibrary(null),
-      parse: (value) => prepareLibrary(parseLibrary(value)),
-      serialize: (value) => ({
-        savedAt: value.savedAt,
-        lastModified: value.lastModified,
-        artists: [...value.artists.values()],
-        albums: [...value.albums.values()],
-        tracks: [...value.tracks.values()],
-      }),
-    });
-    this.#queue = new CheckpointStore<Immutable<CachedQueue>>(this.#disk, {
-      document: "queue",
-      initial: { tracks: [], index: -1, position: 0 },
-      parse: (value) => v.parse(queueSchema, value),
-      serialize: (value) => value,
-    });
-    this.#playlists = new CheckpointStore<Immutable<CachedPlaylists>>(this.#disk, {
-      document: "playlists",
-      initial: { listedAt: null, summaries: [], details: [] },
-      parse: (value) => v.parse(playlistsSchema, value),
-      serialize: (value) => value,
-    });
-    this.#images = new ImageStore(this.#disk);
+  constructor(disk: Disk | undefined) {
+    this.#disk = disk;
   }
 
   #requireDisk() {
@@ -658,112 +521,15 @@ export class Cache {
     return this.#disk;
   }
 
-  get artists() {
-    return this.#library.value.artists;
-  }
-  get albums() {
-    return this.#library.value.albums;
-  }
-  get tracks() {
-    return this.#library.value.tracks;
-  }
-  get artistAlbums() {
-    return this.#library.value.artistAlbums;
-  }
-  get albumTracks() {
-    return this.#library.value.albumTracks;
-  }
-  get images() {
-    return this.#images.records;
-  }
-
-  get lastModified() {
-    return this.#library.value.lastModified;
-  }
-  get savedAt() {
-    return this.#library.value.savedAt;
-  }
-
-  /** Restore independent local domains, reporting failures after all finish. */
-  async load(signal?: AbortSignal): Promise<void> {
-    signal?.throwIfAborted();
-    if (!this.#disk) return;
-    const results = await Promise.allSettled([
-      this.#library.load(signal),
-      this.#queue.load(signal),
-      this.#playlists.load(signal),
-      this.#images.load(signal),
-      this.loadDownloads(signal),
-    ]);
-    signal?.throwIfAborted();
-    const errors = results.flatMap((result) =>
-      result.status === "rejected" ? [result.reason] : [],
-    );
-    if (errors.length) throw new AggregateError(errors, "Could not restore cache.");
-  }
-
-  get playlists() {
-    return this.#playlists.value;
-  }
-
-  /** Server-confirmed state is published immediately; durability is an independent checkpoint. */
-  setPlaylists(value: Immutable<CachedPlaylists>) {
-    this.#requireDisk();
-    this.#playlists.set(structuredClone(value));
-  }
-
-  get queue() {
-    return this.#queue.value;
-  }
-  get queueRevision() {
-    return this.#queue.revision;
-  }
-  get queueDirty() {
-    return this.#queue.dirty;
-  }
-
-  /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
-  setQueue(queue: Immutable<CachedQueue>, options: { checkpoint?: boolean } = {}): number {
-    this.#requireDisk();
-    const tracks = this.queue.tracks;
-    return this.#queue.set(
-      { ...queue, tracks: queue.tracks === tracks ? tracks : [...queue.tracks] },
-      options.checkpoint ?? false,
-    );
-  }
-
-  /** Checkpoint independent documents, waiting for every attempt before reporting failure. */
-  async flush(): Promise<void> {
-    const results = await Promise.allSettled([
-      this.#library.flush(),
-      this.#queue.flush(),
-      this.#playlists.flush(),
-      this.#images.store.flush(),
-      this.#downloadOperation(() => this.#downloadSerial(async () => {})),
-    ]);
-    const errors = results.flatMap((result) =>
-      result.status === "rejected" ? [result.reason] : [],
-    );
-    if (errors.length) throw new AggregateError(errors, "Could not save cache.");
-  }
-
-  #error = $derived.by(() => {
-    const errors = [
-      this.#library.error,
-      this.#queue.error,
-      this.#playlists.error,
-      this.#images.error,
-      this.#downloadError,
-    ].filter((error) => error !== undefined);
-    return errors.length ? new AggregateError(errors, "Cache failed.") : undefined;
-  });
-
   get error() {
-    return this.#error;
+    return this.#downloadError;
   }
-  get reportingError() {
-    return withoutDownloadErrors(this.error);
+
+  /** Metadata-queue barrier only: neither hydrates nor joins active byte transfers. */
+  flush() {
+    return this.#downloadOperation(() => this.#downloadSerial(async () => {}));
   }
+
   get downloadStorageBlocked() {
     return this.#downloadsBlocked;
   }
@@ -967,75 +733,6 @@ export class Cache {
     );
   }
 
-  get dirty() {
-    return (
-      this.#library.dirty || this.#queue.dirty || this.#playlists.dirty || this.#images.store.dirty
-    );
-  }
-
-  /** Load bytes on demand. Missing/incomplete files invalidate only their matching record. */
-  readImage(id: string, signal?: AbortSignal) {
-    return this.#images.operation(async () => {
-      const opened = await this.#images.read(id, signal);
-      if (!opened) return null;
-      const { file, record } = opened;
-      return { blob: new Blob([await file.arrayBuffer()], { type: record.type }), record };
-    }, signal);
-  }
-
-  /**
-   * Close bytes, then publish the record in memory. A competing local replacement wins if
-   * it changed the record observed at call time. Return our blob and record;
-   * callers can readImage() after an undefined result to use the competing winner.
-   */
-  saveImage(id: string, image: CachedImage, signal?: AbortSignal) {
-    return this.#images.operation(async () => {
-      this.#requireDisk();
-      await this.#images.store.load(signal);
-      signal?.throwIfAborted();
-      const record: Immutable<ImageRecord> = {
-        id,
-        fileName: `${crypto.randomUUID()}.image`,
-        type: image.type,
-        size: image.blob.size,
-        cachedAt: Date.now(),
-        cacheControl: image.cacheControl,
-        expires: image.expires,
-        freshUntil: image.freshUntil,
-        etag: image.etag,
-        lastModified: image.lastModified,
-      };
-      const blob = new Blob([image.blob], { type: record.type });
-      const expected = this.images.get(id)?.fileName;
-      return this.#images.write(record, blob, expected, signal);
-    }, signal);
-  }
-
-  /** Mark all artwork stale while retaining its bytes and validators for offline use. */
-  invalidateImages(signal?: AbortSignal) {
-    return this.#images.operation(
-      () => this.#images.updateMetadata({ freshUntil: 0 }, signal),
-      signal,
-    );
-  }
-
-  /** A 304 changes freshness/validators, not the file or its URL. */
-  updateImage(id: string, expected: string, metadata: ImageMetadata, signal?: AbortSignal) {
-    return this.#images.operation(
-      () =>
-        this.#images.updateRecord(id, expected, (record) => ({ ...record, ...metadata }), signal),
-      signal,
-    );
-  }
-
-  /** Evict only the observed version, preserving any competing replacement. */
-  evictImage(id: string, expected: string, signal?: AbortSignal) {
-    return this.#images.operation(
-      () => this.#images.updateRecord(id, expected, () => undefined, signal),
-      signal,
-    );
-  }
-
   get downloads(): ReadonlyMap<string, DownloadEntry> {
     return this.#downloads;
   }
@@ -1175,6 +872,381 @@ export class Cache {
     } finally {
       if (response.body && !response.bodyUsed) await response.body.cancel().catch(() => {});
     }
+  }
+}
+
+function unique<T>(records: readonly T[], key: (record: T) => string) {
+  if (new Set(records.map(key)).size !== records.length)
+    throw new Error("Duplicate cache references.");
+}
+function parseLibrary(value: unknown): Immutable<LibrarySnapshot> {
+  const record = v.parse(librarySchema, value);
+  for (const records of [record.artists, record.albums, record.tracks])
+    unique<{ id: string }>(records, (item) => item.id);
+  return record;
+}
+function parseImages(value: unknown): Immutable<v.InferOutput<typeof imagesSchema>> {
+  const catalog = v.parse(imagesSchema, value);
+  unique(catalog, (image) => image.id);
+  unique(catalog, (image) => image.fileName);
+  return catalog;
+}
+function parseDownloads(value: unknown): Immutable<v.InferOutput<typeof downloadsSchema>> {
+  const catalog = v.parse(downloadsSchema, value);
+  unique(catalog, (item) => downloadKey(item.track.id, item.format));
+  unique(catalog, (item) => item.fileName);
+  return catalog;
+}
+
+function validateDownloadEntries(records: v.InferOutput<typeof downloadStoreSchema>["records"]) {
+  unique(records, (item) => downloadKey(item.track.id, item.format));
+  unique(
+    records.flatMap((item) => (item.status === "completed" ? [item.fileName] : [])),
+    (name) => name,
+  );
+}
+
+function entityMap<T extends { readonly id: string }>(
+  records: readonly T[],
+): ReadonlyMap<string, T> {
+  return new Map(records.map((record) => [record.id, record]));
+}
+
+function groupBy<T>(
+  records: Iterable<T>,
+  keys: (record: T) => readonly string[],
+  compare: (a: T, b: T) => number,
+) {
+  const groups = new Map<string, T[]>();
+  for (const record of records) {
+    for (const id of new Set(keys(record))) {
+      const group = groups.get(id) ?? [];
+      group.push(record);
+      groups.set(id, group);
+    }
+  }
+  for (const group of groups.values()) group.sort(compare);
+  return groups as ReadonlyMap<string, readonly T[]>;
+}
+
+function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
+  let artistsList = (snapshot?.artists ?? []).toSorted((a, b) => a.name.localeCompare(b.name));
+  if (import.meta.env.VITE_STRESS_ARTISTS === "1") {
+    artistsList = artistsList.flatMap((artist) =>
+      Array.from({ length: 100 }, (_, index) =>
+        index === 0
+          ? artist
+          : { ...artist, id: `${artist.id}--stress-${index}`, name: `${artist.name} (${index})` },
+      ),
+    );
+  }
+  const artists = entityMap(artistsList);
+  const albums = entityMap(snapshot?.albums ?? []);
+  const tracks = entityMap(snapshot?.tracks ?? []);
+  const albumTracks = groupBy(
+    tracks.values(),
+    (track) => [track.albumId],
+    (a, b) =>
+      (a.disc ?? 1) - (b.disc ?? 1) ||
+      (a.number ?? Infinity) - (b.number ?? Infinity) ||
+      a.title.localeCompare(b.title),
+  );
+  // Track-only contributors should also be able to browse their appearances.
+  // groupBy deduplicates credits without changing the album's stored artists.
+  const artistAlbums = groupBy(
+    albums.values(),
+    (album) => [
+      ...album.artistIds,
+      ...(albumTracks.get(album.id) ?? []).flatMap((track) => track.artistIds),
+    ],
+    (a, b) => (a.year ?? Infinity) - (b.year ?? Infinity) || a.title.localeCompare(b.title),
+  );
+  return {
+    savedAt: snapshot?.savedAt,
+    lastModified: snapshot?.lastModified,
+    artists,
+    albums,
+    tracks,
+    artistAlbums,
+    albumTracks,
+  };
+}
+
+/**
+ * Key-scoped local data owner, or an empty unscoped UI fallback.
+ * Construction performs no I/O.
+ * Consumers never mutate collections or records. Library and download maps are snapshots;
+ * image catalogs are read-only live reactive views with immutable records.
+ * Mutations publish in memory; checkpoints acknowledge only the revision committed.
+ * OPFS is read once per document, not reconciled with other cache instances.
+ */
+export class Cache {
+  readonly key: string | undefined;
+  readonly #library: CheckpointStore<ReturnType<typeof prepareLibrary>>;
+  readonly #disk: Disk | undefined;
+  readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
+  readonly #playlists: CheckpointStore<Immutable<CachedPlaylists>>;
+  readonly #images: ImageStore;
+  readonly #downloads: DownloadStore;
+
+  /** Omitting the key creates an empty, non-persisting UI fallback.
+   * Keys are opaque identities; hashing and storage addressing stay internal. */
+  constructor(key?: string) {
+    this.key = key;
+    this.#disk = key === undefined ? undefined : new Disk(hash(key));
+    this.#library = new CheckpointStore(this.#disk, {
+      document: "library",
+      initial: prepareLibrary(null),
+      parse: (value) => prepareLibrary(parseLibrary(value)),
+      serialize: (value) => ({
+        savedAt: value.savedAt,
+        lastModified: value.lastModified,
+        artists: [...value.artists.values()],
+        albums: [...value.albums.values()],
+        tracks: [...value.tracks.values()],
+      }),
+    });
+    this.#queue = new CheckpointStore<Immutable<CachedQueue>>(this.#disk, {
+      document: "queue",
+      initial: { tracks: [], index: -1, position: 0 },
+      parse: (value) => v.parse(queueSchema, value),
+      serialize: (value) => value,
+    });
+    this.#playlists = new CheckpointStore<Immutable<CachedPlaylists>>(this.#disk, {
+      document: "playlists",
+      initial: { listedAt: null, summaries: [], details: [] },
+      parse: (value) => v.parse(playlistsSchema, value),
+      serialize: (value) => value,
+    });
+    this.#images = new ImageStore(this.#disk);
+    this.#downloads = new DownloadStore(this.#disk);
+  }
+
+  #requireDisk() {
+    if (!this.#disk) throw new Error("No cache storage configured.");
+    return this.#disk;
+  }
+
+  get artists() {
+    return this.#library.value.artists;
+  }
+  get albums() {
+    return this.#library.value.albums;
+  }
+  get tracks() {
+    return this.#library.value.tracks;
+  }
+  get artistAlbums() {
+    return this.#library.value.artistAlbums;
+  }
+  get albumTracks() {
+    return this.#library.value.albumTracks;
+  }
+  get images() {
+    return this.#images.records;
+  }
+
+  get lastModified() {
+    return this.#library.value.lastModified;
+  }
+  get savedAt() {
+    return this.#library.value.savedAt;
+  }
+
+  /** Restore independent local domains, reporting failures after all finish. */
+  async load(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    if (!this.#disk) return;
+    const results = await Promise.allSettled([
+      this.#library.load(signal),
+      this.#queue.load(signal),
+      this.#playlists.load(signal),
+      this.#images.load(signal),
+      this.loadDownloads(signal),
+    ]);
+    signal?.throwIfAborted();
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length) throw new AggregateError(errors, "Could not restore cache.");
+  }
+
+  get playlists() {
+    return this.#playlists.value;
+  }
+
+  /** Server-confirmed state is published immediately; durability is an independent checkpoint. */
+  setPlaylists(value: Immutable<CachedPlaylists>) {
+    this.#requireDisk();
+    this.#playlists.set(structuredClone(value));
+  }
+
+  get queue() {
+    return this.#queue.value;
+  }
+  get queueRevision() {
+    return this.#queue.revision;
+  }
+  get queueDirty() {
+    return this.#queue.dirty;
+  }
+
+  /** Publish a copied queue immediately; disk checkpoints never rewrite the library. */
+  setQueue(queue: Immutable<CachedQueue>, options: { checkpoint?: boolean } = {}): number {
+    this.#requireDisk();
+    const tracks = this.queue.tracks;
+    return this.#queue.set(
+      { ...queue, tracks: queue.tracks === tracks ? tracks : [...queue.tracks] },
+      options.checkpoint ?? false,
+    );
+  }
+
+  /** Checkpoint independent documents, waiting for every attempt before reporting failure. */
+  async flush(): Promise<void> {
+    const results = await Promise.allSettled([
+      this.#library.flush(),
+      this.#queue.flush(),
+      this.#playlists.flush(),
+      this.#images.store.flush(),
+      this.#downloads.flush(),
+    ]);
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length) throw new AggregateError(errors, "Could not save cache.");
+  }
+
+  #error = $derived.by(() => {
+    const errors = [
+      this.#library.error,
+      this.#queue.error,
+      this.#playlists.error,
+      this.#images.error,
+      this.#downloads.error,
+    ].filter((error) => error !== undefined);
+    return errors.length ? new AggregateError(errors, "Cache failed.") : undefined;
+  });
+
+  get error() {
+    return this.#error;
+  }
+  get reportingError() {
+    return withoutDownloadErrors(this.error);
+  }
+  get downloadStorageBlocked() {
+    return this.#downloads.downloadStorageBlocked;
+  }
+
+  enqueueDownload(
+    track: Immutable<CachedDownload["track"]>,
+    format: DownloadFormat,
+    contentType: string,
+    retry = false,
+  ) {
+    return this.#downloads.enqueueDownload(track, format, contentType, retry);
+  }
+
+  failDownload(key: string, known?: Pick<DownloadEntry, "track" | "format" | "contentType">) {
+    return this.#downloads.failDownload(key, known);
+  }
+
+  cancelPendingDownloads() {
+    return this.#downloads.cancelPendingDownloads();
+  }
+
+  loadDownloads(signal?: AbortSignal) {
+    return this.#downloads.loadDownloads(signal);
+  }
+
+  get dirty() {
+    return (
+      this.#library.dirty || this.#queue.dirty || this.#playlists.dirty || this.#images.store.dirty
+    );
+  }
+
+  /** Load bytes on demand. Missing/incomplete files invalidate only their matching record. */
+  readImage(id: string, signal?: AbortSignal) {
+    return this.#images.operation(async () => {
+      const opened = await this.#images.read(id, signal);
+      if (!opened) return null;
+      const { file, record } = opened;
+      return { blob: new Blob([await file.arrayBuffer()], { type: record.type }), record };
+    }, signal);
+  }
+
+  /**
+   * Close bytes, then publish the record in memory. A competing local replacement wins if
+   * it changed the record observed at call time. Return our blob and record;
+   * callers can readImage() after an undefined result to use the competing winner.
+   */
+  saveImage(id: string, image: CachedImage, signal?: AbortSignal) {
+    return this.#images.operation(async () => {
+      this.#requireDisk();
+      await this.#images.store.load(signal);
+      signal?.throwIfAborted();
+      const record: Immutable<ImageRecord> = {
+        id,
+        fileName: `${crypto.randomUUID()}.image`,
+        type: image.type,
+        size: image.blob.size,
+        cachedAt: Date.now(),
+        cacheControl: image.cacheControl,
+        expires: image.expires,
+        freshUntil: image.freshUntil,
+        etag: image.etag,
+        lastModified: image.lastModified,
+      };
+      const blob = new Blob([image.blob], { type: record.type });
+      const expected = this.images.get(id)?.fileName;
+      return this.#images.write(record, blob, expected, signal);
+    }, signal);
+  }
+
+  /** Mark all artwork stale while retaining its bytes and validators for offline use. */
+  invalidateImages(signal?: AbortSignal) {
+    return this.#images.operation(
+      () => this.#images.updateMetadata({ freshUntil: 0 }, signal),
+      signal,
+    );
+  }
+
+  /** A 304 changes freshness/validators, not the file or its URL. */
+  updateImage(id: string, expected: string, metadata: ImageMetadata, signal?: AbortSignal) {
+    return this.#images.operation(
+      () =>
+        this.#images.updateRecord(id, expected, (record) => ({ ...record, ...metadata }), signal),
+      signal,
+    );
+  }
+
+  /** Evict only the observed version, preserving any competing replacement. */
+  evictImage(id: string, expected: string, signal?: AbortSignal) {
+    return this.#images.operation(
+      () => this.#images.updateRecord(id, expected, () => undefined, signal),
+      signal,
+    );
+  }
+
+  get downloads(): ReadonlyMap<string, DownloadEntry> {
+    return this.#downloads.downloads;
+  }
+
+  readDownload(
+    trackId: string,
+    format: DownloadFormat,
+    signal?: AbortSignal,
+  ): Promise<File | null> {
+    return this.#downloads.readDownload(trackId, format, signal);
+  }
+
+  saveDownload(
+    track: Immutable<CachedDownload["track"]>,
+    format: DownloadFormat,
+    contentType: string,
+    response: Response,
+    signal: AbortSignal,
+  ): Promise<File> {
+    return this.#downloads.saveDownload(track, format, contentType, response, signal);
   }
 
   async replaceLibrary(snapshot: Immutable<LibrarySnapshot>, signal?: AbortSignal): Promise<void> {
