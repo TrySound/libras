@@ -1082,6 +1082,10 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
+      @media (prefers-reduced-motion: no-preference) {
+        scale: var(--artwork-scale, 1);
+        transition: scale 400ms var(--motion-ease);
+      }
     }
 
     &:has(> img:not([hidden])) > .artwork-placeholder {
@@ -1522,8 +1526,8 @@
         translate: 0 var(--press-offset);
         scale: var(--press-scale);
       }
-      &:has(> .link-target:where(:hover, :focus-visible, :active)) > .tile-artwork > img {
-        scale: 1.04;
+      &:has(> .link-target:where(:hover, :focus-visible, :active)) > .tile-artwork {
+        --artwork-scale: 1.04;
       }
     }
   }
@@ -1559,9 +1563,6 @@
     }
     @media (prefers-reduced-motion: no-preference) {
       transition: background-color var(--motion-duration-feedback) var(--motion-ease);
-      > img {
-        transition: scale 400ms var(--motion-ease);
-      }
     }
   }
 
@@ -2007,6 +2008,7 @@
 
 .app-stage {
   --atmosphere-viewport-height: 100dvh;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   min-block-size: 100dvh;
@@ -2051,6 +2053,19 @@
 }
 
 @container navigation (width <= 50rem) {
+  .app-stage {
+    --app-header-height: calc(62px + max(0px, env(safe-area-inset-top) - var(--space-sm)));
+    padding-block-start: var(--app-header-height);
+  }
+
+  .app-stage > .app-header {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline: 0;
+    block-size: var(--app-header-height);
+    flex-wrap: nowrap;
+  }
+
   .app-stage > .app-sidebar {
     display: none;
   }
