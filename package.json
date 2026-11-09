@@ -37,10 +37,8 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.0",
-    "@unplugin-pwa/core": "0.0.4",
     "@unplugin-pwa/vite": "0.0.4",
     "@vite-pwa/workbox-swkit": "8.0.14",
-    "@vite-pwa/workbox-window": "8.0.14",
     "happy-dom": "20.14.0",
     "magicast": "^0.5.0",
     "nano-staged": "1.0.2",
