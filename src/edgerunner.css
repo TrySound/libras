@@ -322,21 +322,6 @@
   z-index: var(--layer-header);
 }
 
-/* A static group alone still paints both translucent shell snapshots. */
-::view-transition-old(.shell),
-::view-transition-new(.shell) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-
-::view-transition-old(.shell) {
-  opacity: 0;
-}
-
-::view-transition-new(.shell) {
-  opacity: 1;
-}
-
 /* Move shared artwork independently of the page's exit/entry timing. */
 ::view-transition-group(.artwork) {
   animation-duration: 240ms;
@@ -1044,17 +1029,6 @@
       opacity: 0.4;
       cursor: not-allowed;
     }
-  }
-}
-
-/* The document capture flag is outside the component scope. */
-:root[data-route-transition] :is(.app-root, .design-reference) .tile {
-  translate: none;
-  scale: none;
-  transition: none;
-  > .tile-artwork > img {
-    scale: 1;
-    transition: none;
   }
 }
 

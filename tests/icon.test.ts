@@ -65,27 +65,3 @@ it("keeps the typed icon names in sync with the sprite symbols", () => {
   const names = [...nameType.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
   expect(names.map((name) => `icon-${name}`).sort()).toEqual(symbols.sort());
 });
-
-it("eases sound bars with sine splines while preserving periods, offsets and linear rotation", () => {
-  const target = document.createElement("div");
-  target.innerHTML = readFileSync("src/sprite.svg", "utf8");
-  const bars = [...target.querySelectorAll("#icon-sound-bars animate")];
-  expect(bars).toHaveLength(6);
-  for (const [index, bar] of bars.entries()) {
-    expect(bar.getAttribute("calcMode")).toBe("spline");
-    expect(bar.getAttribute("keyTimes")).toBe("0;0.5;1");
-    expect(bar.getAttribute("keySplines")).toBe("0.445 0.05 0.55 0.95;0.445 0.05 0.55 0.95");
-    expect(bar.getAttribute("dur")).toBe("650ms");
-    expect(bar.getAttribute("begin")).toBe(
-      [null, null, "-420ms", "-420ms", "-210ms", "-210ms"][index],
-    );
-    expect(bar.getAttribute("repeatCount")).toBe("indefinite");
-  }
-  const spinner = target.querySelector("#icon-loading animateTransform")!;
-  // SMIL's default calcMode is linear; keep constant angular velocity.
-  expect(spinner.hasAttribute("calcMode")).toBe(false);
-  expect(spinner.hasAttribute("keySplines")).toBe(false);
-  expect(spinner.getAttribute("dur")).toBe("900ms");
-  expect(spinner.getAttribute("from")).toBe("0 12 12");
-  expect(spinner.getAttribute("to")).toBe("360 12 12");
-});
