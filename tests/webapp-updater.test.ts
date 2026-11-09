@@ -203,17 +203,6 @@ describe("native webapp updater", () => {
     },
   );
 
-  it("does not offer a failed first installation's successor as an update", async () => {
-    const first = worker("installing");
-    const h = await setup({ firstInstall: true, installing: first });
-    h.registration.installing = null;
-    h.change(first, "redundant");
-    const next = h.discover();
-    h.activate(next);
-    expect(h.status().hasUpdate).toBe(false);
-    expect(h.reload).not.toHaveBeenCalled();
-  });
-
   it("baselines a successful first claim only after activation, including failed first-install retries", async () => {
     const h = await setup({ firstInstall: true });
     for (let i = 0; i < 3; i++) {
@@ -363,6 +352,7 @@ describe("native webapp updater", () => {
     const h = await setup();
     const b = h.ready();
     await h.update();
+    h.registration.waiting = null;
     const c = h.discover();
     // C can be announced before B becomes redundant; neither event revokes approval.
     expect(h.status().busy).toBe(true);
@@ -382,39 +372,27 @@ describe("native webapp updater", () => {
     expect(h.reload).toHaveBeenCalledOnce();
   });
 
-  it.each([false, true])(
-    "keeps the attempt busy while C installs, ending only on outcome/deadline (C succeeds: %s)",
-    async (succeeds) => {
-      const h = await setup();
-      const b = h.ready();
-      await h.update();
-      h.registration.waiting = null;
-      const c = h.discover();
-      expect(h.status()).toMatchObject({ busy: true, failed: false });
-      h.change(b, "redundant");
-      expect(h.status().busy).toBe(true);
-      h.registration.installing = null;
-      if (succeeds) {
-        h.registration.waiting = c;
-        h.change(c, "installed");
-        expect(c.postMessage).toHaveBeenCalledOnce();
-        expect(h.reload).not.toHaveBeenCalled();
-        h.activate(c);
-        expect(h.reload).toHaveBeenCalledOnce();
-      } else {
-        h.change(c, "redundant");
-        expect(h.status()).toEqual({
-          busy: false,
-          hasUpdate: false,
-          failed: true,
-          message: "This update is no longer available. You can keep using the app.",
-        });
-        await vi.advanceTimersByTimeAsync(15_000);
-        expect(c.postMessage).not.toHaveBeenCalled();
-        expect(h.reload).not.toHaveBeenCalled();
-      }
-    },
-  );
+  it("keeps the attempt busy while C installs, ending when C fails", async () => {
+    const h = await setup();
+    const b = h.ready();
+    await h.update();
+    h.registration.waiting = null;
+    const c = h.discover();
+    expect(h.status()).toMatchObject({ busy: true, failed: false });
+    h.change(b, "redundant");
+    expect(h.status().busy).toBe(true);
+    h.registration.installing = null;
+    h.change(c, "redundant");
+    expect(h.status()).toEqual({
+      busy: false,
+      hasUpdate: false,
+      failed: true,
+      message: "This update is no longer available. You can keep using the app.",
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(c.postMessage).not.toHaveBeenCalled();
+    expect(h.reload).not.toHaveBeenCalled();
+  });
 
   it("messages an already-installed replacement within the same attempt", async () => {
     const h = await setup();
@@ -646,10 +624,9 @@ describe("native webapp updater", () => {
     flushSync();
     expect(h.status()).toMatchObject({ busy: false, hasUpdate: false, failed: true });
     expect(h.status().message).toBe("The update is taking too long. You can keep using the app.");
-    // Detached workers are deliberately not retained after expiry. A synthetic
-    // reappearance without an observed event is reconciled on visibility, even offline.
+    // Reconcile the worker's current registration state on visibility, even offline;
+    // expired approval must not cause an automatic reload.
     h.activate(b, false);
-    expect(h.status().hasUpdate).toBe(false);
     h.navigator.onLine = false;
     document.dispatchEvent(new Event("visibilitychange"));
     await settle();

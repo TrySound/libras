@@ -143,7 +143,7 @@ NODE_PATH=/path/to/external/node_modules PWA_OLD_DIST=/tmp/libras-pwa-old/dist \
 git worktree remove /tmp/libras-pwa-old
 ```
 
-The old document is identified by its actual entry script, not a retrofitted marker. Chromium may claim a CDP-bypassed page; that uncontrolled-page attempt then explicitly skips, leaving those orderings unit-covered. Repeated discovery does not reproduce Workbox's elapsed-time heuristic or establish the original incident's cause. Physical Safari/installed standalone behavior and live hosting headers still require separate validation.
+The old document is identified by its actual entry script, not a retrofitted marker. Uncontrolled-page orderings remain unit-only coverage. Repeated discovery does not reproduce Workbox's elapsed-time heuristic or establish the original incident's cause. Physical Safari/installed standalone behavior and live hosting headers still require separate validation.
 
 For playback/synchronization changes, check refresh, disconnect/reload, offline playback, failed reconnects, duplicate queue entries, and account switches with overlapping track IDs. Include cancellation during in-flight work.
 

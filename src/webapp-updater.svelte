@@ -116,7 +116,6 @@
           if (current.messaged !== next) {
             current.messaged = next;
             next.postMessage({ type: "SKIP_WAITING" });
-            reconcile();
           }
         } else if (active()?.state === "activating") {
           // controllerchange may precede completed activation.

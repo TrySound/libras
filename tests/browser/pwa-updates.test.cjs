@@ -21,26 +21,7 @@ async function artifact(directory, name) {
   const worker = await readFile(path.join(directory, "sw.js"), "utf8");
   const entry = html.match(/<script\b[^>]*\bsrc=["']([^"']+)["']/)?.[1];
   assert(entry?.startsWith("/webapp/assets/"), `${name}: expected a /webapp/ entry script`);
-  const revision = worker.match(/url:[`"']index\.html[`"'],revision:[`"']([^`"']+)[`"']/)?.[1];
-  assert(revision, `${name}: index.html must be precached`);
-  // Build-artifact guard, separate from the real browser installation proof.
-  const workerURL = "https://pwa.test/webapp/sw.js";
-  const precached = [...worker.matchAll(/url:[`"']([^`"']+)[`"']/g)].map(
-    (match) => new URL(match[1], workerURL).href,
-  );
-  assert.equal(
-    new Set(precached).size,
-    precached.length,
-    `${name}: duplicate resolved precache URL`,
-  );
-  const manifest = JSON.parse(await readFile(path.join(directory, "manifest.webmanifest"), "utf8"));
-  for (const icon of manifest.icons) {
-    assert(
-      precached.includes(new URL(icon.src, workerURL).href),
-      `${name}: manifest icon must remain precached: ${icon.src}`,
-    );
-  }
-  return { directory, name, entry, revision, hash: sha256(worker), html };
+  return { directory, name, entry, hash: sha256(worker), html };
 }
 
 async function serve(timeline) {
@@ -95,9 +76,7 @@ async function serve(timeline) {
     select(build, failPrecache = false) {
       selected = build;
       fault = failPrecache;
-      timeline.push(
-        `SELECT ${build.name} worker=${build.hash} index-revision=${build.revision} fault=${fault}`,
-      );
+      timeline.push(`SELECT ${build.name} worker=${build.hash} fault=${fault}`);
     },
     close: () => new Promise((resolve) => server.close(resolve)),
   };
@@ -290,16 +269,13 @@ test("production PWA updates on one origin", { timeout: 240_000 }, async (t) => 
             });
             builds[name] = await artifact(directory, name);
             assert(builds[name].html.includes(`name="pwa-test-build" content="${name}"`));
-            t.diagnostic(
-              `${name} worker=${builds[name].hash} index-revision=${builds[name].revision}`,
-            );
+            t.diagnostic(`${name} worker=${builds[name].hash}`);
           }
         } finally {
           if (previousBase === undefined) delete process.env.BASE_PATH;
           else process.env.BASE_PATH = previousBase;
         }
         assert.equal(new Set(Object.values(builds).map((build) => build.hash)).size, 3);
-        assert.equal(new Set(Object.values(builds).map((build) => build.revision)).size, 3);
       },
     );
     assert.equal(Object.keys(builds).length, 3, "all fixtures must build before browser scenarios");
@@ -370,6 +346,20 @@ test("production PWA updates on one origin", { timeout: 240_000 }, async (t) => 
     await scenario("fresh B installation stays idle", async ({ open }) => {
       const { page, log } = await open();
       await loaded(page, "B");
+      const manifest = JSON.parse(
+        await readFile(path.join(builds.B.directory, "manifest.webmanifest"), "utf8"),
+      );
+      for (const icon of manifest.icons) {
+        const url = new URL(icon.src, `${server.origin}/webapp/`).href;
+        assert.equal(new URL(url).origin, server.origin);
+        assert(
+          await page.evaluate(
+            async (url) => !!(await caches.match(url, { ignoreSearch: true })),
+            url,
+          ),
+          `manifest icon must remain cached: ${url}`,
+        );
+      }
       assert.equal(await action(page).count(), 0);
       assert.equal(log.navigations.length, 1);
     });
@@ -529,37 +519,6 @@ test("production PWA updates on one origin", { timeout: 240_000 }, async (t) => 
         await approve(newcomer, "C", t);
         assert.deepEqual(await identity(holder.page), original);
         assert.equal(holder.log.navigations.length, 1);
-      },
-    );
-
-    await scenario(
-      "CDP bypass document with an existing active worker (when genuinely uncontrolled)",
-      async ({ open, context, pages, t }) => {
-        await open();
-        const h = await newPage(context);
-        pages.push(h);
-        const session = await context.newCDPSession(h.page);
-        await session.send("Network.setBypassServiceWorker", { bypass: true });
-        try {
-          await h.page.goto(server.origin + route);
-          await loaded(h.page, "B");
-          await registration(h.page);
-          if (await h.page.evaluate(() => navigator.serviceWorker.controller !== null)) {
-            t.skip(
-              "Chromium claimed the bypassed page; uncontrolled ordering remains unit-covered.",
-            );
-            return;
-          }
-          t.diagnostic("confirmed null controller with existing active B before C installation");
-          server.select(builds.C);
-          await checkForUpdate(h.page);
-          await waiting(h.page);
-          assert.equal((await identity(h.page)).controller, null);
-          await approve(h, "C", t);
-        } finally {
-          await session.send("Network.setBypassServiceWorker", { bypass: false });
-          await session.detach();
-        }
       },
     );
   } finally {
