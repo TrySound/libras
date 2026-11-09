@@ -125,7 +125,7 @@ For playback/synchronization changes, check refresh, disconnect/reload, offline 
 
 ### Installation, offline use, and updates
 
-The app uses `@unplugin-pwa/vite` with `generateSW` to build a classic `sw.js`. Keep `magicast` (required by `generateSW`) and `@vite-pwa/workbox-swkit` as direct dev dependencies for pnpm's strict dependency resolution. `WebappUpdater` owns native registration and lifecycle observation; automatic registration injection stays disabled. Updates require this tab's approval for the exact waiting worker, or explicit reload approval after another tab activates an update. The 15-second navigation watchdog ends expired approval; late activation never reloads automatically. The website/demo build does not use the plugin or updater.
+The app uses `@unplugin-pwa/vite` with `generateSW` to build a classic `sw.js`. Keep `magicast` (required by `generateSW`) and `@vite-pwa/workbox-swkit` as direct dev dependencies for pnpm's strict dependency resolution. `WebappUpdater` owns native registration and lifecycle observation; automatic registration injection stays disabled. Updates require this tab's approval for the exact waiting worker, or explicit reload approval after another tab activates an update. The 15-second navigation watchdog ends expired approval; late activation never reloads automatically. The website/demo build does not use the plugin or updater. Manifest icons are precached by the explicit `icons/*.png` glob; keep `includeManifestIcons: false` to avoid duplicate URLs with conflicting binary revisions.
 
 Service workers are disabled during development. Use a production preview:
 

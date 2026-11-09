@@ -14,6 +14,8 @@ export default defineConfig({
     VitePWA({
       registerType: "prompt",
       injectRegister: false,
+      // The icons glob below owns precaching; manifest injection duplicates binary revisions.
+      includeManifestIcons: false,
       manifest: {
         id: base,
         name: "Libras",
