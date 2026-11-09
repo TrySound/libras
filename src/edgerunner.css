@@ -1554,7 +1554,13 @@
     /* The tile owns the readiness fade; don't multiply it with an image fade. */
     opacity: 1;
     position: absolute;
-    inset: 0;
+    /* Share the tile's border box so native inner corner geometry matches. */
+    inset: calc(-1 * var(--border-width));
+    inline-size: auto;
+    block-size: auto;
+    aspect-ratio: auto;
+    border: var(--border-width) solid transparent;
+    background-clip: padding-box;
     /* Named snapshots must carry their own crop, not rely on the tile ancestor. */
     border-radius: inherit;
     corner-shape: inherit;
