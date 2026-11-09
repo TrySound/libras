@@ -78,6 +78,15 @@ const queuedDownloadSchema = v.strictObject({
   contentType: cachedDownloadSchema.entries.contentType,
   status: v.picklist(["queued", "failed"]),
   diagnostic: v.optional(v.literal(downloadFailureDiagnostic)),
+});
+const completedDownloadSchema = v.strictObject({
+  ...cachedDownloadSchema.entries,
+  status: v.literal("completed"),
+});
+const downloadEntrySchema = v.variant("status", [queuedDownloadSchema, completedDownloadSchema]);
+// Only compatibility input accepts attempts; runtime state never owns interrupted bytes.
+const oldQueuedDownloadSchema = v.strictObject({
+  ...queuedDownloadSchema.entries,
   attempt: v.optional(
     v.strictObject({
       fileName: cachedDownloadSchema.entries.fileName,
@@ -86,14 +95,9 @@ const queuedDownloadSchema = v.strictObject({
     }),
   ),
 });
-const completedDownloadSchema = v.strictObject({
-  ...cachedDownloadSchema.entries,
-  status: v.literal("completed"),
-});
-const downloadEntrySchema = v.variant("status", [queuedDownloadSchema, completedDownloadSchema]);
 const downloadStoreSchema = v.strictObject({
   version: v.literal(2),
-  records: v.array(downloadEntrySchema),
+  records: v.array(v.variant("status", [oldQueuedDownloadSchema, completedDownloadSchema])),
 });
 export type DownloadEntry = Immutable<v.InferOutput<typeof downloadEntrySchema>>;
 /** Account-local identity, also distinguishing original files from MP3 transcodes. */
@@ -150,6 +154,46 @@ class Disk {
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
       if (error instanceof DOMException && error.name === "NotFoundError") return null;
+      throw error;
+    }
+  }
+
+  async removeBinary(fileName: string) {
+    await (await this.files()).removeEntry(fileName).catch(() => {});
+  }
+
+  /** Concrete byte I/O only. Successful close is the cancellation boundary. */
+  async writeBinary(
+    fileName: string,
+    source: ReadableStream<Uint8Array>,
+    options: { signal?: AbortSignal; expectedSize?: number; nonempty?: boolean } = {},
+  ) {
+    const { signal, expectedSize, nonempty } = options;
+    signal?.throwIfAborted();
+    const directory = await this.files();
+    let writable: FileSystemWritableFileStream | undefined;
+    try {
+      signal?.throwIfAborted();
+      const handle = await directory.getFileHandle(fileName, { create: true });
+      writable = await handle.createWritable();
+      let size = 0;
+      const measured = source.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            size += chunk.byteLength;
+            controller.enqueue(chunk);
+          },
+        }),
+      );
+      await measured.pipeTo(writable, { signal, preventClose: true });
+      signal?.throwIfAborted();
+      if ((nonempty && !size) || (expectedSize !== undefined && size !== expectedSize))
+        throw new Error("Invalid binary size.");
+      await writable.close();
+      return { handle, size };
+    } catch (error) {
+      await writable?.abort().catch(() => {});
+      await directory.removeEntry(fileName).catch(() => {});
       throw error;
     }
   }
@@ -331,29 +375,19 @@ interface BinaryRecord {
   readonly size: number;
 }
 
-interface CatalogOptions<R> {
-  document: DocumentName;
-  parse: (value: unknown) => readonly R[];
-  key: (record: R) => string;
-}
-
-/** Bytes stream directly to disk; records share the ordinary checkpoint path. */
-class BinaryCatalog<R extends BinaryRecord> {
-  readonly store: CheckpointStore<SvelteMap<string, R>>;
+/** Image records use reactive checkpoints; obsolete bytes retire only after acknowledgement. */
+class ImageStore {
+  readonly store: CheckpointStore<SvelteMap<string, Immutable<ImageRecord>>>;
   #error = $state.raw<unknown>();
   #serial = serial();
   // Only filenames, not old catalogs or binary data, survive until a checkpoint.
   #obsolete = new Map<string, number>();
 
-  constructor(
-    readonly disk: Disk | undefined,
-    readonly options: CatalogOptions<R>,
-  ) {
-    this.store = new CheckpointStore<SvelteMap<string, R>>(disk, {
-      document: options.document,
-      initial: new SvelteMap<string, R>(),
-      parse: (value) =>
-        new SvelteMap(options.parse(value).map((record) => [options.key(record), record])),
+  constructor(readonly disk: Disk | undefined) {
+    this.store = new CheckpointStore<SvelteMap<string, Immutable<ImageRecord>>>(disk, {
+      document: "images",
+      initial: new SvelteMap(),
+      parse: (value) => new SvelteMap(parseImages(value).map((record) => [record.id, record])),
       // Capture membership synchronously before disk I/O yields. Records themselves
       // are immutable, so subsequent edits cannot change an in-flight checkpoint.
       serialize: (records) => [...records.values()],
@@ -373,7 +407,7 @@ class BinaryCatalog<R extends BinaryRecord> {
   get error() {
     return this.store.error ?? this.#error;
   }
-  get records(): ReadonlyMap<string, R> {
+  get records(): ReadonlyMap<string, Immutable<ImageRecord>> {
     return this.store.value;
   }
 
@@ -396,7 +430,7 @@ class BinaryCatalog<R extends BinaryRecord> {
     await this.operation(() => this.store.load(signal), signal);
   }
 
-  #replace(key: string, next?: R) {
+  #replace(key: string, next?: Immutable<ImageRecord>) {
     const previous = this.records.get(key);
     const records = this.store.value;
     if (next) records.set(key, next);
@@ -426,7 +460,7 @@ class BinaryCatalog<R extends BinaryRecord> {
   updateRecord(
     key: string,
     expected: string,
-    change: (record: R) => R | undefined,
+    change: (record: Immutable<ImageRecord>) => Immutable<ImageRecord> | undefined,
     signal?: AbortSignal,
   ) {
     return this.#serial(async () => {
@@ -439,7 +473,7 @@ class BinaryCatalog<R extends BinaryRecord> {
   }
 
   /** Update catalog metadata in one publication without changing file ownership. */
-  updateMetadata(metadata: Partial<R>, signal?: AbortSignal) {
+  updateMetadata(metadata: ImageMetadata, signal?: AbortSignal) {
     return this.#serial(async () => {
       signal?.throwIfAborted();
       await this.store.load(signal);
@@ -451,41 +485,30 @@ class BinaryCatalog<R extends BinaryRecord> {
     });
   }
 
-  /** Stream independently; serialize only in-memory catalog publication.
-   * Preparing the result may open the file, but blob-backed callers need not. */
-  async write<T>(
-    fileName: string,
-    source: ReadableStream<Uint8Array>,
-    prepare: (handle: FileSystemFileHandle) => Promise<{ record: R; value: T }>,
+  /** Stream independently, then serialize image publication without reopening bytes. */
+  async write(
+    record: Immutable<ImageRecord>,
+    blob: Blob,
     expected: string | undefined,
     signal?: AbortSignal,
-  ): Promise<T | undefined> {
-    signal?.throwIfAborted();
+  ) {
     await this.store.load(signal);
-    const directory = await this.disk?.files();
-    if (!directory) throw new Error("No cache storage configured.");
-    let writable: FileSystemWritableFileStream | undefined;
-    let committed = false;
+    if (!this.disk) throw new Error("No cache storage configured.");
+    await this.disk.writeBinary(record.fileName, blob.stream(), {
+      signal,
+      expectedSize: record.size,
+    });
+    let published = false;
     try {
-      signal?.throwIfAborted();
-      const handle = await directory.getFileHandle(fileName, { create: true });
-      writable = await handle.createWritable();
-      await source.pipeTo(writable, { signal });
-      signal?.throwIfAborted();
-      const { record, value } = await prepare(handle);
-      const key = this.options.key(record);
       await this.#serial(async () => {
         signal?.throwIfAborted();
-        if (this.records.get(key)?.fileName !== expected) return;
-        this.#replace(key, record);
-        committed = true;
+        if (this.records.get(record.id)?.fileName !== expected) return;
+        this.#replace(record.id, record);
+        published = true;
       });
-      return committed ? value : undefined;
+      return published ? { blob, record } : undefined;
     } finally {
-      if (!committed) {
-        await writable?.abort().catch(() => {});
-        await directory.removeEntry(fileName).catch(() => {});
-      }
+      if (!published) await this.disk.removeBinary(record.fileName).catch(() => {});
     }
   }
 }
@@ -513,7 +536,7 @@ function parseDownloads(value: unknown): Immutable<v.InferOutput<typeof download
   return catalog;
 }
 
-function validateDownloadEntries(records: readonly DownloadEntry[]) {
+function validateDownloadEntries(records: v.InferOutput<typeof downloadStoreSchema>["records"]) {
   unique(records, (item) => downloadKey(item.track.id, item.format));
   unique(
     records.flatMap((item) =>
@@ -603,7 +626,7 @@ export class Cache {
   readonly #disk: Disk | undefined;
   readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
   readonly #playlists: CheckpointStore<Immutable<CachedPlaylists>>;
-  readonly #images: BinaryCatalog<Immutable<ImageRecord>>;
+  readonly #images: ImageStore;
   #downloads = $state.raw<ReadonlyMap<string, DownloadEntry>>(new Map());
   #downloadError = $state.raw<unknown>();
   #downloadSerial = serial();
@@ -640,11 +663,7 @@ export class Cache {
       parse: (value) => v.parse(playlistsSchema, value),
       serialize: (value) => value,
     });
-    this.#images = new BinaryCatalog(this.#disk, {
-      document: "images",
-      parse: parseImages,
-      key: (image) => image.id,
-    });
+    this.#images = new ImageStore(this.#disk);
   }
 
   #requireDisk() {
@@ -780,7 +799,7 @@ export class Cache {
     this.#downloadError = undefined;
   }
 
-  /** The shipped completed-only array migrates atomically; its fallback stays read-only.
+  /** Legacy arrays/attempt fields normalize atomically; a denied conversion stays read-only.
    * Unknown documents block writes. Unshipped split-store files are never consulted. */
   async #loadDownloads(signal?: AbortSignal, reconcile = false) {
     if (this.#downloadsLoaded && (!reconcile || this.#downloadsReady)) return;
@@ -799,7 +818,14 @@ export class Cache {
             };
           const parsed = v.parse(downloadStoreSchema, value);
           validateDownloadEntries(parsed.records);
-          return { legacy: false, records: parsed.records };
+          return {
+            legacy: parsed.records.some((item) => item.status !== "completed" && "attempt" in item),
+            records: parsed.records.map((item): DownloadEntry => {
+              if (item.status === "completed") return item;
+              const { attempt: _attempt, ...entry } = item;
+              return entry;
+            }),
+          };
         });
         signal?.throwIfAborted();
         migrate = stored?.legacy ?? false;
@@ -843,23 +869,6 @@ export class Cache {
             status: "queued",
           });
         }
-      } else if (
-        entry.status === "queued" &&
-        entry.attempt?.size &&
-        (await this.#requireDisk().openBinary(
-          { ...entry.attempt, size: entry.attempt.size },
-          signal,
-        ))
-      ) {
-        next ??= new Map(records);
-        next.set(key, {
-          track: entry.track,
-          format: entry.format,
-          contentType: entry.contentType,
-          ...entry.attempt,
-          size: entry.attempt.size,
-          status: "completed",
-        });
       }
     }
     signal?.throwIfAborted();
@@ -896,9 +905,6 @@ export class Cache {
           format,
           contentType: existing?.contentType ?? contentType,
           status: "queued",
-          ...(existing?.status === "failed" && existing.attempt
-            ? { attempt: existing.attempt }
-            : {}),
         });
         const records = new Map(this.downloads);
         if (retry) records.delete(key);
@@ -962,19 +968,13 @@ export class Cache {
     return this.#downloadOperation(() =>
       this.#downloadSerial(async () => {
         await this.#loadDownloads();
-        const pending = [...this.downloads.values()].filter((item) => item.status === "queued");
         const records = new Map([...this.downloads].filter(([, item]) => item.status !== "queued"));
         await this.#writeDownloads(records);
-        const directory = await this.#requireDisk().files();
-        for (const item of pending) {
-          if (item.status === "queued" && item.attempt)
-            await directory.removeEntry(item.attempt.fileName).catch(() => {});
-        }
       }),
     );
   }
 
-  /** Named-file metadata only: never buffer audio to validate recovery. */
+  /** Validate only registered completed files, without buffering audio. */
   loadDownloads(signal?: AbortSignal) {
     if (!this.#disk) return Promise.resolve();
     return this.#downloadOperation(
@@ -1027,13 +1027,7 @@ export class Cache {
       };
       const blob = new Blob([image.blob], { type: record.type });
       const expected = this.images.get(id)?.fileName;
-      return this.#images.write(
-        record.fileName,
-        blob.stream(),
-        async () => ({ record, value: { blob, record } }),
-        expected,
-        signal,
-      );
+      return this.#images.write(record, blob, expected, signal);
     }, signal);
   }
 
@@ -1112,8 +1106,7 @@ export class Cache {
     }
   }
 
-  /** Reservation -> measured exhausted size -> atomic byte close -> single completed publication.
-   * Closed bytes remain owned by queued state if the final commit fails. */
+  /** Durable intent -> fresh bytes -> close -> completed publication. Never adopt orphan bytes. */
   async saveDownload(
     track: Immutable<CachedDownload["track"]>,
     format: DownloadFormat,
@@ -1137,82 +1130,62 @@ export class Cache {
         if (cached) return cached;
         const intent = await this.enqueueDownload(safeTrack, format, contentType);
         if (intent?.status === "failed") throw new DownloadError();
-        const attempt = {
-          fileName: `${crypto.randomUUID()}.audio`,
-          size: null as number | null,
-          downloadedAt: Date.now(),
-        };
-        const prepare = () =>
-          this.#downloadSerial(async () => {
-            signal.throwIfAborted();
-            const records = new Map(this.downloads);
-            const current = records.get(key);
-            if (!current || current.status !== "queued") throw new DownloadError();
-            records.set(key, { ...current, attempt: { ...attempt } });
+        if (!response.body) throw new DownloadError();
+        const fileName = `${crypto.randomUUID()}.audio`;
+        // CORS may hide encoding headers; Fetch itself enforces HTTP framing.
+        const length = response.headers.get("content-length");
+        const expectedSize =
+          response.type !== "cors" && !response.headers.get("content-encoding") && length !== null
+            ? Number(length)
+            : undefined;
+        const { handle, size } = await disk.writeBinary(fileName, response.body, {
+          signal,
+          expectedSize,
+          nonempty: true,
+        });
+        // Successful byte close wins cancellation. Callers join this publication.
+        await this.#downloadSerial(async () => {
+          const records = new Map(this.downloads);
+          records.set(key, {
+            track: safeTrack,
+            format,
+            contentType,
+            fileName,
+            size,
+            downloadedAt: Date.now(),
+            status: "completed",
+          });
+          try {
             await this.#writeDownloads(records);
-            if (current.attempt && current.attempt.fileName !== attempt.fileName) {
-              const directory = await disk.files();
-              await directory.removeEntry(current.attempt.fileName).catch(() => {});
+          } catch (error) {
+            // A close can commit and then report an error. Verify only canonical
+            // registered records; never infer completion from unregistered bytes.
+            let canonical;
+            try {
+              canonical = await disk.read("downloads", (value) => {
+                const parsed = v.parse(downloadStoreSchema, value);
+                validateDownloadEntries(parsed.records);
+                return parsed.records;
+              });
+            } catch {
+              this.#downloadsBlocked = true;
+              throw error; // Unknown outcome: preserve potentially referenced bytes.
             }
-          });
-        await prepare();
-        const directory = await disk.files();
-        signal.throwIfAborted();
-        const handle = await directory.getFileHandle(attempt.fileName, { create: true });
-        let writable: FileSystemWritableFileStream | undefined;
-        let closed = false;
-        try {
-          if (!response.body) throw new DownloadError();
-          writable = await handle.createWritable();
-          let size = 0;
-          const measured = response.body.pipeThrough(
-            new TransformStream<Uint8Array, Uint8Array>({
-              transform(chunk, controller) {
-                size += chunk.byteLength;
-                controller.enqueue(chunk);
-              },
-            }),
-          );
-          await measured.pipeTo(writable, { signal, preventClose: true });
-          signal.throwIfAborted();
-          if (!size) throw new DownloadError();
-          // Cross-origin encoding headers may be hidden. Fetch enforces HTTP
-          // framing; only check the exposed length when encoding is knowable.
-          const length = response.headers.get("content-length");
-          if (
-            response.type !== "cors" &&
-            !response.headers.get("content-encoding") &&
-            length !== null &&
-            Number(length) !== size
-          )
-            throw new DownloadError();
-          attempt.size = size;
-          await prepare();
-          signal.throwIfAborted();
-          await writable.close();
-          closed = true;
-          this.#downloadsReady = false;
-          // Once close has succeeded, finish completed publication even during teardown.
-          // Explicit cancel joins this boundary before acknowledging cancellation.
-          await this.#downloadSerial(async () => {
-            const records = new Map(this.downloads);
-            records.set(key, {
-              track: safeTrack,
-              format,
-              contentType,
-              ...attempt,
-              size,
-              status: "completed",
-            });
-            await this.#writeDownloads(records);
-          });
-          return await handle.getFile();
-        } finally {
-          if (!closed) {
-            await writable?.abort().catch(() => {});
-            await directory.removeEntry(attempt.fileName).catch(() => {});
+            const committed = canonical?.find(
+              (item) => item.status === "completed" && item.fileName === fileName,
+            );
+            if (committed?.status === "completed") {
+              const confirmed = new Map(this.downloads);
+              confirmed.set(downloadKey(committed.track.id, committed.format), committed);
+              this.#downloads = confirmed;
+              this.#downloadError = undefined;
+            } else {
+              await disk.removeBinary(fileName).catch(() => {});
+              throw error;
+            }
           }
-        }
+        });
+        return await handle.getFile();
       });
     } catch (error) {
       if (signal.aborted) throw signal.reason;

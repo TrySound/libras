@@ -788,8 +788,9 @@ describe("session", () => {
     disk.state.beforeClose = async () => {};
     const restored = new Cache(previous.key);
     await restored.load();
-    expect(completedDownloadCount(restored)).toBe(1);
-    expect(await (await restored.readDownload("track", "mp3"))?.text()).toBe("audio");
+    expect(completedDownloadCount(restored)).toBe(0);
+    expect(restored.downloads.get(downloadKey("track", "mp3"))?.status).toBe("queued");
+    expect(await restored.readDownload("track", "mp3")).toBeNull();
   });
 
   it("keeps the old cache writable when acceptance fails after flushing", async () => {
@@ -926,23 +927,13 @@ it.each(["byte close", "reconciliation"])(
     const release = deferred();
     let restoration: Promise<void> | undefined;
     if (boundary === "reconciliation") {
-      let bytesClosed = false;
-      disk.state.afterClose = (name) => {
-        if (name.endsWith(".audio")) bytesClosed = true;
-      };
-      disk.state.beforeClose = async (name) => {
-        if (bytesClosed && name.endsWith("downloads.json")) throw new Error("completion full");
-      };
-      await expect(
-        original.saveDownload(
-          { id: "saved", title: "Saved", artist: "Artist", album: "Album" },
-          "mp3",
-          "audio/mpeg",
-          new Response("saved bytes"),
-          new AbortController().signal,
-        ),
-      ).rejects.toThrow();
-      disk.state.beforeClose = async () => {};
+      await original.saveDownload(
+        { id: "saved", title: "Saved", artist: "Artist", album: "Album" },
+        "mp3",
+        "audio/mpeg",
+        new Response("saved bytes"),
+        new AbortController().signal,
+      );
       let gated = false;
       disk.state.beforeRead = async (name) => {
         if (!gated && name.endsWith(".audio")) {

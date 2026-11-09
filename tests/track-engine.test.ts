@@ -1092,7 +1092,7 @@ describe("reviewed download failure boundaries", () => {
   });
 
   it.each([false, true])(
-    "Retry recovers measured bytes after catalog failure without fetch (reopen=%s)",
+    "Retry fetches fresh bytes after catalog failure (reopen=%s)",
     async (reopen) => {
       const disk = install();
       const first = setup({ online: true });
@@ -1111,8 +1111,8 @@ describe("reviewed download failure boundaries", () => {
       await expect(first.engine.download("recoverable")).rejects.toThrow();
       const key = downloadKey("recoverable", "mp3");
       const entry = first.cache.downloads.get(key);
-      const attempt = entry && "attempt" in entry ? entry.attempt : undefined;
-      expect(attempt?.size).toBe(14);
+      expect(entry).not.toHaveProperty("attempt");
+      expect(disk.blobs.size).toBe(0);
       expect(first.engine.getStatus("recoverable")).toBe("failed");
       disk.state.beforeClose = async () => {};
       const current = reopen ? setup({ cache: new Cache(first.cache.key), online: true }) : first;
@@ -1120,9 +1120,9 @@ describe("reviewed download failure boundaries", () => {
       expect(current.engine.getStatus("recoverable")).toBe("failed");
       expect(fetcher).toHaveBeenCalledOnce();
       await current.engine.download("recoverable", { format: "mp3" });
-      expect(expectCompletedDownload(current.cache, key).fileName).toBe(attempt?.fileName);
+      expect(expectCompletedDownload(current.cache, key).size).toBe(14);
       expect(current.engine.getStatus("recoverable")).toBe("downloaded");
-      expect(fetcher).toHaveBeenCalledOnce();
+      expect(fetcher).toHaveBeenCalledTimes(2);
     },
   );
 
