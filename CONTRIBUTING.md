@@ -94,16 +94,17 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
 
 Select suites for the behavior being changed:
 
-| Suite in `tests/browser/`                 | Coverage                                                                                                                                |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `edgerunner.test.cjs`                     | Shared styles, fonts, native controls, overlays, and reduced motion                                                                     |
-| `navigation.test.cjs`                     | Document scrolling, shell, playback, query routes, anchors, and optional offline navigation                                             |
-| `startup.test.cjs`                        | Initial Settings route, reloads, and subsequent animated navigation                                                                     |
-| `library.test.cjs`, `search.test.cjs`     | Browsing, actions, responsive layouts, and native dismissal                                                                             |
-| `downloads.test.cjs`, `settings.test.cjs` | Actual app/OPFS behavior with intercepted Subsonic requests                                                                             |
-| `atmosphere.test.cjs`                     | Document/dialog scroll timelines; self-contained, no server required                                                                    |
-| `website-cascade.test.cjs`                | Script-free landing layout, keyboard/FAQ behavior, and standalone demo journeys                                                         |
-| `design-improvements.test.cjs`            | Compact details, full-height player, queue anchors, confirmation, gradients, popover timing, titles, and demo guidance (website server) |
+| Suite in `tests/browser/`                 | Coverage                                                                                                                                                              |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `edgerunner.test.cjs`                     | Shared styles, fonts, native controls, overlays, and reduced motion                                                                                                   |
+| `navigation.test.cjs`                     | Document scrolling, shell, playback, query routes, anchors, and optional offline navigation                                                                           |
+| `startup.test.cjs`                        | Initial Settings route, reloads, and subsequent animated navigation                                                                                                   |
+| `pwa-updates.test.cjs`                    | Self-hosted production builds: real worker installation, per-tab consent, repeated discovery, offline application, failed precache, and optional old-plugin migration |
+| `library.test.cjs`, `search.test.cjs`     | Browsing, actions, responsive layouts, and native dismissal                                                                                                           |
+| `downloads.test.cjs`, `settings.test.cjs` | Actual app/OPFS behavior with intercepted Subsonic requests                                                                                                           |
+| `atmosphere.test.cjs`                     | Document/dialog scroll timelines; self-contained, no server required                                                                                                  |
+| `website-cascade.test.cjs`                | Script-free landing layout, keyboard/FAQ behavior, and standalone demo journeys                                                                                       |
+| `design-improvements.test.cjs`            | Compact details, full-height player, queue anchors, confirmation, gradients, popover timing, titles, and demo guidance (website server)                               |
 
 `cache-downloads.test.cjs` exercises native OPFS close/publication boundaries and restart-from-scratch behavior by importing the owning modules. Run it against the app **dev** server; Downloads, Settings, and navigation checks can run against production preview.
 
@@ -121,9 +122,34 @@ Set `TEST_OFFLINE=1` when running `navigation.test.cjs` against a production pre
 
 For subpath deployments, include the base path in `PREVIEW_URL`. Browser suites are not part of `pnpm test`: DOM emulation cannot validate CSS layout or native overlays. Review both the running app/demo and the styleguide, including long labels, enlarged text, and reduced motion.
 
+#### Production worker update regression suite
+
+This suite owns its server and temporary `/webapp/` production builds; no preview server or prebuild is needed:
+
+```sh
+NODE_PATH=/path/to/external/node_modules node --test tests/browser/pwa-updates.test.cjs
+```
+
+It uses real generated workers, pre-hash fixture-only document markers, and native events/UI approval. It checks fresh installation, two-tab consent, C/D discovery in an unreloaded B document, offline application, failed-precache recovery, and preexisting waiting updates without clearing storage between versions. Temporary builds, contexts, browser, and server are cleaned up; root/website outputs are untouched. Logs include document tokens, preserved URLs, worker hashes, and native transitions.
+
+Old-plugin migration is explicitly skipped unless `PWA_OLD_DIST` points to an untouched production artifact built at `/webapp/`. To reproduce the original baseline without changing this checkout:
+
+```sh
+git worktree add --detach /tmp/libras-pwa-old e474a828b40a0548ceda111ee0e8632630367dda
+(cd /tmp/libras-pwa-old && pnpm install --frozen-lockfile && BASE_PATH=/webapp/ pnpm build)
+NODE_PATH=/path/to/external/node_modules PWA_OLD_DIST=/tmp/libras-pwa-old/dist \
+  node --test tests/browser/pwa-updates.test.cjs
+# Remove the caller-owned worktree when finished:
+git worktree remove /tmp/libras-pwa-old
+```
+
+The old document is identified by its actual entry script, not a retrofitted marker. Uncontrolled-page orderings remain unit-only coverage. Repeated discovery does not reproduce Workbox's elapsed-time heuristic or establish the original incident's cause. Physical Safari/installed standalone behavior and live hosting headers still require separate validation.
+
 For playback/synchronization changes, check refresh, disconnect/reload, offline playback, failed reconnects, duplicate queue entries, and account switches with overlapping track IDs. Include cancellation during in-flight work.
 
 ### Installation, offline use, and updates
+
+The app uses `@unplugin-pwa/vite` with `generateSW` to build a classic `sw.js`. Keep `magicast` (required by `generateSW`) and `@vite-pwa/workbox-swkit` as direct dev dependencies for pnpm's strict dependency resolution. `WebappUpdater` owns native registration and lifecycle observation; automatic registration injection stays disabled. Update Libras approves applying the latest fully installed update available during one fixed 15-second attempt, then reloading this tab after completed activation. Installed replacements do not need another click or extend that deadline; a still-newer download need not finish if an activated update is already usable. Activation stays manual, other tabs never reload without approval, and no network check is required to apply an installed update offline. The navigation watchdog revokes approval on expiry; late completion shows the ordinary ready action and needs a fresh click. Initially uncontrolled documents conservatively baseline their first successful active worker; reconciliation observes current registration slots/controller, not detached workers. The website/demo build does not use the plugin or updater. Manifest icons are precached by the explicit `icons/*.png` glob; keep `includeManifestIcons: false` to avoid duplicate URLs with conflicting binary revisions.
 
 Service workers are disabled during development. Use a production preview:
 

@@ -6,7 +6,6 @@ import WebappUpdater from "../src/webapp-updater.svelte";
 import { Network } from "../src/network.svelte";
 import { AuthStore } from "../src/auth";
 import { SubsonicError } from "../src/subsonic-client";
-import { registerSW } from "virtual:pwa-register";
 import { installNavigation, navigationEvent } from "./router-test-helpers";
 import { createSession, credentials, deferred, snapshot } from "./session-test-helpers";
 
@@ -24,11 +23,40 @@ vi.mock("../src/session.svelte", async (importOriginal) => {
   };
 });
 
-vi.mock("virtual:pwa-register", () => ({ registerSW: vi.fn(() => async () => {}) }));
+const pwaWorker = () =>
+  Object.assign(new EventTarget(), { state: "installed", postMessage: vi.fn() });
+let pwa: ReturnType<typeof setupPwa>;
+function setupPwa() {
+  const active = Object.assign(new EventTarget(), { state: "activated" });
+  const registration = Object.assign(new EventTarget(), {
+    active,
+    waiting: null as ReturnType<typeof pwaWorker> | null,
+    installing: null,
+    update: vi.fn(async () => {}),
+  });
+  const register = vi.fn(async () => registration);
+  vi.stubGlobal("navigator", {
+    serviceWorker: Object.assign(new EventTarget(), { controller: active, register }),
+    onLine: true,
+  });
+  return {
+    register,
+    ready() {
+      const next = pwaWorker();
+      registration.waiting = next;
+      registration.dispatchEvent(new Event("updatefound"));
+      flushSync();
+      return next.postMessage;
+    },
+  };
+}
 
 // Start these tests on the settings route; router behavior is tested separately.
 beforeEach(() => {
   installNavigation("/settings", mocks.navigate);
+  vi.stubEnv("DEV", false);
+  vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
+  pwa = setupPwa();
 });
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -38,7 +66,7 @@ afterEach(async () => {
   document.body.innerHTML = "";
   mocks.session = undefined;
   mocks.navigate.mockClear();
-  vi.mocked(registerSW).mockClear();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -71,6 +99,8 @@ async function setup(
       updaterComponent: pwa ? WebappUpdater : undefined,
     },
   });
+  flushSync();
+  await Promise.resolve();
   flushSync();
   mocks.navigate.mockClear();
   cleanups.push(async () => {
@@ -254,7 +284,7 @@ describe("app settings", () => {
 
   it("does not register a service worker without an updater component", async () => {
     await setup(false, false);
-    expect(registerSW).not.toHaveBeenCalled();
+    expect(pwa.register).not.toHaveBeenCalled();
   });
 
   it("uses shared cards, labeled native fields, and a native switch", async () => {
@@ -356,19 +386,13 @@ describe("app settings", () => {
   it.each([".app-sidebar", "#navigation-dialog"])(
     "offers updates directly in %s and synchronizes both navigation copies",
     async (selector) => {
-      const apply = vi.fn(async () => {});
-      vi.mocked(registerSW).mockReturnValueOnce(apply);
       const { target } = await setup();
       expect(target.querySelector('[aria-label="App update"]')).toBeNull();
       expect(target.querySelector(".separator")).toBeNull();
       const menu = target.querySelector<HTMLButtonElement>('.app-header [aria-label="Open menu"]')!;
       expect(menu.getAttribute("data-variant")).toBeNull();
       expect(target.querySelector("#navigation-update-hint")).toBeNull();
-      const callbacks = vi.mocked(registerSW).mock.calls.at(-1)![0]!;
-      callbacks.onRegisteredSW?.("/sw.js", {
-        waiting: Object.assign(new EventTarget(), { state: "installed" }),
-      } as unknown as ServiceWorkerRegistration);
-      flushSync();
+      const apply = pwa.ready();
       const notices = target.querySelectorAll('[aria-label="App update"]');
       expect(notices).toHaveLength(2);
       expect(menu.getAttribute("data-variant")).toBe("secondary");
@@ -420,18 +444,11 @@ describe("app settings", () => {
   );
 
   it("shows update failures below the retry action and clears them when retrying", async () => {
-    const apply = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("Update failed. Please retry."))
-      .mockResolvedValue(undefined);
-    vi.mocked(registerSW).mockReturnValueOnce(apply);
     const { target } = await setup();
-    vi.mocked(registerSW)
-      .mock.calls.at(-1)![0]!
-      .onRegisteredSW?.("/sw.js", {
-        waiting: Object.assign(new EventTarget(), { state: "installed" }),
-      } as unknown as ServiceWorkerRegistration);
-    flushSync();
+    const apply = pwa.ready();
+    apply.mockImplementationOnce(() => {
+      throw new DOMException("Cannot send");
+    });
     target
       .querySelector<HTMLButtonElement>('.app-sidebar [aria-label="App update"] button')!
       .click();
@@ -439,7 +456,7 @@ describe("app settings", () => {
       for (const owner of [".app-sidebar", "#navigation-dialog"]) {
         const notice = target.querySelector(`${owner} [aria-label="App update"]`)!;
         expect(notice.querySelector("button + .caption.text-subtle")?.textContent).toBe(
-          "Update failed. Please retry.",
+          "The update could not be applied. Try Update Libras again. Reloading interrupts playback.",
         );
         expect(notice.querySelector("button")?.hasAttribute("title")).toBe(false);
         expect(notice.querySelector("button")?.getAttribute("aria-disabled")).toBe("false");
@@ -457,9 +474,9 @@ describe("app settings", () => {
   });
 
   it("shows offline setup failures in navigation without an update action", async () => {
+    pwa.register.mockRejectedValueOnce(new Error("Failed"));
     const { target, button } = await setup();
-    vi.mocked(registerSW).mock.calls.at(-1)![0]!.onRegisterError?.(new Error("Failed"));
-    flushSync();
+    await tick();
     for (const owner of [".app-sidebar", "#navigation-dialog"]) {
       expect(target.querySelector(`${owner} [aria-label="App update"]`)?.textContent).toContain(
         "Offline app setup failed",
