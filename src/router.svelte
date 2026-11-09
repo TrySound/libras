@@ -80,6 +80,8 @@
       document.getElementById(id)?.scrollIntoView();
     });
 
+    let activeTransition: ViewTransition | undefined;
+    let captureOwner = 0;
     const handleNavigation = (event: NavigateEvent) => {
       const current = new URL(window.location.href);
       const destination = new URL(event.destination.url);
@@ -109,9 +111,18 @@
             return;
           }
 
-          // Commit click-triggered transition names before capturing the outgoing view.
+          // Claim the flag before skip can resolve the previous owner's finished promise.
+          const owner = ++captureOwner;
+          activeTransition?.skipTransition();
+          // Stop hover/press motion and commit click-triggered names before capture.
+          document.documentElement.dataset.routeTransition = "";
           await tick();
-          if (event.signal.aborted) return;
+          if (owner !== captureOwner) return;
+          if (event.signal.aborted) {
+            activeTransition = undefined;
+            delete document.documentElement.dataset.routeTransition;
+            return;
+          }
 
           const transition = document.startViewTransition(async () => {
             await update();
@@ -119,15 +130,30 @@
             // Capture destination artwork at its final scroll position, including Back.
             event.scroll();
           });
+          activeTransition = transition;
+          const abort = () => transition.skipTransition();
+          event.signal.addEventListener("abort", abort, { once: true });
+          const cleanup = () => {
+            event.signal.removeEventListener("abort", abort);
+            if (owner !== captureOwner) return;
+            activeTransition = undefined;
+            delete document.documentElement.dataset.routeTransition;
+          };
           // Skipped/overlapping transitions must not turn into unhandled rejections.
           void transition.ready.catch(() => {});
-          void transition.finished.catch(() => {});
+          void transition.finished.then(cleanup, cleanup);
           await transition.updateCallbackDone;
         },
       });
     };
     window.navigation.addEventListener("navigate", handleNavigation);
-    return () => window.navigation.removeEventListener("navigate", handleNavigation);
+    return () => {
+      window.navigation.removeEventListener("navigate", handleNavigation);
+      ++captureOwner;
+      activeTransition?.skipTransition();
+      activeTransition = undefined;
+      delete document.documentElement.dataset.routeTransition;
+    };
   });
 </script>
 

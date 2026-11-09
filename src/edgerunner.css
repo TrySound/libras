@@ -1021,6 +1021,17 @@
   }
 }
 
+/* The document capture flag is outside the component scope. */
+:root[data-route-transition] :is(.app-root, .design-reference) .tile {
+  translate: none;
+  scale: none;
+  transition: none;
+  > .tile-artwork > img {
+    scale: 1;
+    transition: none;
+  }
+}
+
 @scope (.app-root, .design-reference) {
   /* Foreground artwork shares surfaces, crop, geometry and missing-cover state. */
   .artwork {
@@ -1516,7 +1527,7 @@
         translate: 0 var(--press-offset);
         scale: var(--press-scale);
       }
-      &:has(> .link-target:where(:hover, :focus-visible, :active)) > .tile-artwork {
+      &:has(> .link-target:where(:hover, :focus-visible, :active)) > .tile-artwork > img {
         scale: 1.04;
       }
     }
@@ -1539,14 +1550,17 @@
     opacity: 1;
     position: absolute;
     inset: 0;
-    scale: 1;
+    /* Named snapshots must carry their own crop, not rely on the tile ancestor. */
+    border-radius: inherit;
+    corner-shape: inherit;
     > .artwork-placeholder {
       display: none;
     }
     @media (prefers-reduced-motion: no-preference) {
-      transition:
-        scale 400ms,
-        background-color var(--motion-duration-feedback);
+      transition: background-color var(--motion-duration-feedback);
+      > img {
+        transition: scale 400ms;
+      }
     }
   }
 
@@ -1930,7 +1944,9 @@
     object-position: 65% top;
     opacity: 0.1;
     scale: 1.06;
-    filter: var(--atmosphere-filter, blur(0)) blur(6px);
+    /* SVG turbulence/displacement forces expensive content-height rasterization
+     * during WebKit view-transition capture. Keep the soft tint without it. */
+    filter: blur(6px);
     mask-mode: alpha;
     mask-image: radial-gradient(
       ellipse at 85% 15%,
