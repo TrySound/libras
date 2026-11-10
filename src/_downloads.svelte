@@ -21,6 +21,33 @@
     [...cache.downloads.values()].filter((entry) => entry.status === "failed"),
   );
 
+  const unfinished = $derived(trackEngine.downloadCount + failed.length);
+  const counts = $derived.by(() => {
+    const jobs = trackEngine.downloadJobs;
+    const active = new Set(
+      jobs.filter((job) => job.status === "downloading").map((job) => job.track.id),
+    );
+    const queued = new Set(
+      jobs.filter((job) => !active.has(job.track.id)).map((job) => job.track.id),
+    );
+    const downloaded = new Set(
+      [...cache.downloads.values()]
+        .filter((entry) => entry.status === "completed")
+        .map((entry) => entry.track.id),
+    );
+    const failures = new Set(
+      failed
+        .filter((entry) => !active.has(entry.track.id) && !queued.has(entry.track.id))
+        .map((entry) => entry.track.id),
+    );
+    return {
+      downloading: active.size,
+      queued: queued.size,
+      downloaded: downloaded.size,
+      failed: failures.size,
+    };
+  });
+
   function retryAll() {
     if (loading || canceling || !failed.length) return;
     const entries = [...failed];
@@ -29,7 +56,7 @@
   }
 
   async function cancelAll() {
-    if (loading || canceling || !trackEngine.downloadCount) return;
+    if (loading || canceling || !unfinished) return;
     try {
       await trackEngine.cancelDownloads();
     } catch {
@@ -66,6 +93,22 @@
     <header class="stack-sm">
       <h1 class="heading-lg uppercase" id="downloads-heading">Downloads</h1>
       <p class="body text-secondary">Tracks available for offline listening.</p>
+      <div class="row-md row-wrap" role="group" aria-label="Track download counts">
+        {#if loading}
+          <span class="caption text-secondary">Loading downloads…</span>
+        {:else}
+          <span class="caption text-secondary">Downloading {counts.downloading}</span>
+          <span class="caption text-secondary">Queued {counts.queued}</span>
+          <span class="caption text-secondary">Downloaded {counts.downloaded}</span>
+          <span class="caption text-secondary">Failed {counts.failed}</span>
+        {/if}
+      </div>
+      {#if !loading}
+        <p class="caption text-secondary">
+          Counts are per track; downloaded tracks may have another format pending.
+        </p>
+        <p class="caption text-secondary">Failed downloads retry automatically when you return.</p>
+      {/if}
       <div class="row-sm row-wrap">
         <button
           class="button"
@@ -78,8 +121,8 @@
           class="button"
           data-variant="secondary"
           data-size="text"
-          disabled={loading || canceling || !trackEngine.downloadCount}
-          onclick={cancelAll}>Cancel downloads</button
+          disabled={loading || canceling || !unfinished}
+          onclick={cancelAll}>{canceling ? "Canceling…" : "Cancel downloads"}</button
         >
       </div>
     </header>
@@ -125,7 +168,7 @@
                 <p class="label">{entry.track.title}</p>
                 <p class="caption text-secondary">{entry.track.artist} · {entry.track.album}</p>
                 {#if entry.status === "failed"}
-                  <p class="caption text-secondary" aria-live="polite">
+                  <p class="caption text-secondary">
                     {entry.format === "mp3" ? "MP3" : entry.contentType} · {entry.diagnostic}
                   </p>
                   <button

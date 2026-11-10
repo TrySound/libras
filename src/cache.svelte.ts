@@ -709,12 +709,14 @@ class DownloadStore {
     );
   }
 
-  /** Caller freezes, aborts and joins workers before removing only queued entries. */
+  /** Caller freezes, aborts and joins workers before removing all unfinished intent. */
   cancelPendingDownloads() {
     return this.#downloadOperation(() =>
       this.#downloadSerial(async () => {
         await this.#loadDownloads();
-        const records = new Map([...this.downloads].filter(([, item]) => item.status !== "queued"));
+        const records = new Map(
+          [...this.downloads].filter(([, item]) => item.status === "completed"),
+        );
         await this.#writeDownloads(records);
       }),
     );

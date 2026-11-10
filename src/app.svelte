@@ -109,6 +109,7 @@
   onMount(() => installLongPress());
   onMount(() => installSwipeToDismiss());
   onMount(() => playback.attach(player!));
+  onMount(() => trackEngine.installDownloadLifecycle());
 
   onDestroy(() => {
     session.destroy();

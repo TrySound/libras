@@ -869,7 +869,7 @@ describe("durable download scheduling", () => {
     expect(fetcher.mock.calls).toHaveLength(4);
   });
 
-  it("joins close before confirmed cancellation, preserves committed files and failures, and never restarts canceled intent", async () => {
+  it("joins close before confirmed cancellation, preserves committed files, and retires all unfinished intent", async () => {
     const disk = install();
     const { engine, cache } = setup({ online: true, concurrency: 1 });
     vi.stubGlobal(
@@ -898,10 +898,7 @@ describe("durable download scheduling", () => {
     release.resolve();
     await cancel;
     expect(completedDownloadCount(cache)).toBe(1);
-    expect([...cache.downloads.values()].map((item) => item.status)).toEqual([
-      "failed",
-      "completed",
-    ]);
+    expect([...cache.downloads.values()].map((item) => item.status)).toEqual(["completed"]);
     const reopened = new Cache(cache.key);
     await reopened.load();
     expect(completedDownloadCount(reopened)).toBe(1);

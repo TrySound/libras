@@ -97,11 +97,16 @@ it("restores silently with a native heading and shows the empty state only once 
     "downloads-heading",
   );
   expect(target.querySelector("h1")?.textContent).toBe("Downloads");
+  expect(target.querySelector('[aria-label="Track download counts"]')?.textContent).toMatch(
+    /Downloading 0.*Queued 0.*Downloaded 0.*Failed 0/s,
+  );
   expect(target.textContent).toContain("No downloads yet");
   expect(target.querySelector('a[href="?/library"]')?.textContent).toBe("Open library");
   set({ loading: true });
   expect(target.textContent).not.toContain("No downloads yet");
   expect(target.textContent).not.toContain("Restoring local library");
+  expect(target.textContent).toContain("Loading downloads…");
+  expect(target.textContent).not.toContain("Downloading 0");
   expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
   set({ loading: false });
   expect(target.querySelector('[role="status"]')).toBeNull();
@@ -146,6 +151,58 @@ it("preserves active-job precedence and newest-first saved files, including orph
   expect(cache.tracks.size).toBe(0);
   expect(ensure).not.toHaveBeenCalled();
   expect(rows.every((row) => row.querySelector("button, a, [tabindex]") === null)).toBe(true);
+});
+
+it("counts unique tracks across formats with active and queued precedence and overlapping availability", async () => {
+  const { target, cache, set } = setup();
+  await save(cache, "both", 1000, "raw");
+  await save(cache, "both", 1000, "mp3");
+  for (const id of ["both", "waiting", "failed"]) {
+    await cache.enqueueDownload(
+      { id, title: id, artist: "Artist", album: "Album" },
+      "raw",
+      "audio/flac",
+      true,
+    );
+    // Use independent failed formats on waiting and failed tracks.
+    if (id !== "both") await cache.failDownload(downloadKey(id, "raw"));
+  }
+  await cache.enqueueDownload(
+    { id: "failed", title: "failed", artist: "Artist", album: "Album" },
+    "mp3",
+    "audio/mpeg",
+  );
+  await cache.failDownload(downloadKey("failed", "mp3"));
+  set({
+    jobs: [
+      job(cache, "both", "downloading"),
+      { ...job(cache, "both", "queued"), key: downloadKey("both", "raw"), format: "raw" },
+      job(cache, "waiting", "queued"),
+    ],
+  });
+  const summary = target.querySelector('[aria-label="Track download counts"]')!;
+  expect(summary.textContent).toMatch(/Downloading 1.*Queued 1.*Downloaded 1.*Failed 1/s);
+  expect(summary.querySelector("[aria-live]")).toBeNull();
+  set({ jobs: [] });
+  expect(summary.textContent).toMatch(/Downloading 0.*Queued 0.*Downloaded 1.*Failed 2/s);
+});
+
+it("enables cancellation for failures alone", async () => {
+  const { target, cache, trackEngine } = setup(true);
+  await cache.enqueueDownload(
+    { id: "failed", title: "Failed", artist: "Artist", album: "Album" },
+    "mp3",
+    "audio/mpeg",
+  );
+  await cache.failDownload(downloadKey("failed", "mp3"));
+  flushSync();
+  const button = [...target.querySelectorAll("button")].find(
+    (button) => button.textContent === "Cancel downloads",
+  )!;
+  expect(trackEngine.downloadCount).toBe(0);
+  expect(button.disabled).toBe(false);
+  button.click();
+  await vi.waitFor(() => expect(cache.downloads.size).toBe(0));
 });
 
 it("preserves a saved track name verbatim without adding badges", async () => {
@@ -348,6 +405,6 @@ it("Cancel downloads guards busy controls and preserves saved and failed files w
   await vi.waitFor(() => expect(trackEngine.downloadCount).toBe(0));
   flushSync();
   expect(cancelAll.disabled).toBe(true);
-  expect(retryAll.disabled).toBe(false);
-  expect(cache.downloads.size).toBe(2);
+  expect(retryAll.disabled).toBe(true);
+  expect(cache.downloads.size).toBe(1);
 });
