@@ -59,110 +59,6 @@ export class TrackEngine {
   #mediaProbe = document.createElement("audio");
   #sourceController = new AbortController();
   #version = $state(0);
-  #lifecycleInstalled = false;
-  #removeLifecycle?: () => void;
-  #recoveryTimer?: ReturnType<typeof setTimeout>;
-  #recoveryGeneration = 0;
-  #lastRecovery = -Infinity;
-  #recovering = false;
-  #recoveryPending = false;
-
-  #canExecute() {
-    return (
-      !this.#lifecycleInstalled ||
-      (document.visibilityState !== "hidden" && navigator.onLine !== false)
-    );
-  }
-
-  /** App-scoped signals; retries are event-driven, never scheduled by job failure. */
-  installDownloadLifecycle() {
-    if (this.#lifecycleInstalled || this.#destroyed) return () => {};
-    this.#lifecycleInstalled = true;
-    const changed = () => {
-      if (!this.#canExecute()) {
-        this.#invalidateRecovery();
-        void this.interruptDownloads();
-      } else this.#requestRecovery();
-    };
-    document.addEventListener("visibilitychange", changed);
-    window.addEventListener("pageshow", changed);
-    window.addEventListener("online", changed);
-    window.addEventListener("offline", changed);
-    this.#removeLifecycle = () => {
-      document.removeEventListener("visibilitychange", changed);
-      window.removeEventListener("pageshow", changed);
-      window.removeEventListener("online", changed);
-      window.removeEventListener("offline", changed);
-      this.#invalidateRecovery();
-    };
-    changed();
-    return () => this.#removeLifecycle?.();
-  }
-
-  #invalidateRecovery() {
-    this.#recoveryGeneration++;
-    clearTimeout(this.#recoveryTimer);
-    this.#recoveryTimer = undefined;
-    this.#recoveryPending = false;
-  }
-
-  #requestRecovery() {
-    if (
-      !this.#lifecycleInstalled ||
-      this.#destroyed ||
-      this.#canceling ||
-      !this.#canExecute() ||
-      this.waitingForConnection
-    )
-      return;
-    this.#recoveryPending = true;
-    if (this.#recoveryTimer !== undefined || this.#recovering) return;
-    this.#recoveryTimer = setTimeout(
-      () => {
-        this.#recoveryTimer = undefined;
-        void this.#recoverDownloads();
-      },
-      Math.max(0, this.#lastRecovery + 5000 - Date.now()),
-    );
-  }
-
-  async #recoverDownloads() {
-    if (
-      !this.#recoveryPending ||
-      this.#destroyed ||
-      this.#canceling ||
-      !this.#canExecute() ||
-      this.waitingForConnection
-    )
-      return;
-    this.#recoveryPending = false;
-    this.#recovering = true;
-    this.#lastRecovery = Date.now();
-    const generation = this.#recoveryGeneration;
-    const cache = this.#selection.cache!;
-    const current = () =>
-      generation === this.#recoveryGeneration &&
-      cache === this.#selection.cache &&
-      !this.#destroyed &&
-      !this.#canceling &&
-      this.#canExecute() &&
-      !this.waitingForConnection;
-    try {
-      await this.#settling;
-      if (!current()) return;
-      await cache.loadDownloads();
-      if (!current()) return;
-      const failed = [...cache.downloads.values()].filter((entry) => entry.status === "failed");
-      await this.restoreDownloads();
-      if (!current()) return;
-      for (const entry of failed) void this.download(entry.track.id, { format: entry.format });
-    } catch {
-      // Unreadable storage remains intact; only a later external signal retries.
-    } finally {
-      this.#recovering = false;
-      if (this.#recoveryPending) this.#requestRecovery();
-    }
-  }
 
   constructor(options: TrackEngineOptions) {
     this.#selection = options.selection;
@@ -173,8 +69,6 @@ export class TrackEngine {
 
   /** Session selected a cache. Activation performs no hydration or persistence. */
   activate() {
-    this.#invalidateRecovery();
-    this.#lastRecovery = -Infinity;
     this.#releaseSources();
     return this.interruptDownloads();
   }
@@ -221,7 +115,7 @@ export class TrackEngine {
     void operation.finally(() => this.#operations.delete(operation)).catch(() => {});
     return operation;
   }
-  /** Session calls after independent hydration; reconnect also resumes only pending intent. */
+  /** Session hydration and connection attachment restore queued and failed intent. */
   async restoreDownloads() {
     const cache = this.#selection.cache;
     const lifetime = this.#lifetime;
@@ -243,13 +137,18 @@ export class TrackEngine {
         this.#canceling
       )
         return;
-      for (const [key, intent] of cache.downloads) {
+      const entries = [...cache.downloads];
+      for (const [key, intent] of entries) {
         if (intent.status === "queued" && !this.#jobs.has(key))
           this.#addJob(
             intent.track,
             { key, cacheKey: cache.key!, format: intent.format, contentType: intent.contentType },
             true,
           );
+      }
+      for (const [key, intent] of entries) {
+        if (intent.status === "failed" && !this.#jobs.has(key))
+          void this.download(intent.track.id, { format: intent.format });
       }
       this.#drain();
     } catch {
@@ -278,7 +177,6 @@ export class TrackEngine {
     if (this.#canceling) throw new DownloadError();
     const cache = this.#selection.cache;
     this.#canceling = true;
-    this.#invalidateRecovery();
     try {
       await this.interruptDownloads();
       await cache?.cancelPendingDownloads();
@@ -286,9 +184,6 @@ export class TrackEngine {
       this.#canceling = false;
       this.#version++;
       void this.restoreDownloads();
-      // A newly selected account may have connected while cancellation froze recovery.
-      // Do not retry the canceled account's failures if durable withdrawal failed.
-      if (this.#selection.cache !== cache) this.#requestRecovery();
     }
   }
   get cancelingDownloads() {
@@ -335,7 +230,7 @@ export class TrackEngine {
   }
 
   #drain() {
-    if (this.#destroyed || this.#canceling || this.#settling || !this.#canExecute()) return;
+    if (this.#destroyed || this.#canceling || this.#settling) return;
     const jobs = [...this.#jobs.values()];
     let active = jobs.filter((job) => job.status === "downloading").length;
     for (const job of jobs.filter((job) => job.status === "queued" && job.ready)) {
@@ -647,10 +542,7 @@ export class TrackEngine {
       connection.signal.addEventListener("abort", interrupted, { once: true });
       this.#detachConnection = () => connection.signal.removeEventListener("abort", interrupted);
     }
-    if (connection) {
-      void this.restoreDownloads();
-      this.#requestRecovery();
-    }
+    if (connection) void this.restoreDownloads();
     // Retain the active cached object URL across disconnects.
     this.#version++;
   }
@@ -663,7 +555,6 @@ export class TrackEngine {
   }
   destroy() {
     this.#destroyed = true;
-    this.#removeLifecycle?.();
     this.#detachConnection?.();
     this.#releaseSources();
     void this.interruptDownloads();

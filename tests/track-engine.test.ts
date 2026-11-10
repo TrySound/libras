@@ -844,28 +844,25 @@ describe("durable download scheduling", () => {
     expect(restored.downloads.size).toBe(0);
   });
 
-  it("restores pending work without retrying failures until explicit bulk Download", async () => {
+  it("restores queued and failed work on reopen without fetching completed files again", async () => {
     install();
     const first = setup({ online: true, concurrency: 1 });
     const fetcher = vi.fn(async () => new Response("bad", { status: 500 }));
     vi.stubGlobal("fetch", fetcher);
     await expect(first.engine.download("bad")).rejects.toThrow();
+    await seed(first.cache);
     first.engine.setDownloadConnection(undefined);
     first.engine.downloadMany(["first", "second"]);
-    await vi.waitFor(() => expect(first.cache.downloads.size).toBe(3));
+    await vi.waitFor(() => expect(first.cache.downloads.size).toBe(4));
     first.engine.destroy();
     const restored = new Cache(first.cache.key);
     await restored.load();
     const next = setup({ cache: restored, concurrency: 1 });
     fetcher.mockImplementation(async () => new Response("audio"));
     next.engine.setDownloadConnection(connection());
-    await vi.waitFor(() => expect(completedDownloadCount(restored)).toBe(2));
-    expect(next.engine.getStatus("bad")).toBe("failed");
+    await vi.waitFor(() => expect(completedDownloadCount(restored)).toBe(4));
+    expect(next.engine.getStatus("bad")).toBe("downloaded");
     await next.engine.restoreDownloads();
-    expect(next.engine.getStatus("bad")).toBe("failed");
-    expect(fetcher.mock.calls).toHaveLength(3);
-    next.engine.downloadMany(["bad", "bad"]);
-    await vi.waitFor(() => expect(completedDownloadCount(restored)).toBe(3));
     expect(fetcher.mock.calls).toHaveLength(4);
   });
 
@@ -952,7 +949,8 @@ it("counts raw and MP3 as independent files and treats untrusted AbortError reje
 
 it("bulk Download retries only selected failed formats without duplicating work or saved files", async () => {
   install();
-  const { engine, cache } = setup();
+  const { engine, cache } = setup({ online: true });
+  await engine.restoreDownloads();
   await seed(cache);
   for (const [id, format] of [
     ["selected", "raw"],
@@ -964,8 +962,6 @@ it("bulk Download retries only selected failed formats without duplicating work 
   }
   const fetcher = vi.fn(async () => new Response("audio"));
   vi.stubGlobal("fetch", fetcher);
-  engine.setDownloadConnection(connection());
-  await engine.restoreDownloads();
   expect(fetcher).not.toHaveBeenCalled();
   engine.downloadMany(["selected", track.id, "selected"]);
   engine.downloadMany(["selected", track.id]);
@@ -1077,12 +1073,13 @@ describe("reviewed download failure boundaries", () => {
     };
     await expect(engine.download("bad", { format: "mp3" })).rejects.toThrow();
     expect(cache.downloads.get(downloadKey("bad", "mp3"))).toBe(failed);
-    disk.state.beforeClose = async () => {};
     engine.setDownloadConnection(undefined);
     engine.setDownloadConnection(connection());
     await engine.restoreDownloads();
+    await expect(engine.download("bad", { format: "mp3" })).rejects.toThrow();
     expect(engine.getStatus("bad")).toBe("failed");
     expect(fetcher).toHaveBeenCalledOnce();
+    disk.state.beforeClose = async () => {};
     const reopened = new Cache(cache.key);
     await reopened.load();
     expect(reopened.downloads.get(downloadKey("bad", "mp3"))?.status).toBe("failed");
@@ -1114,9 +1111,7 @@ describe("reviewed download failure boundaries", () => {
       disk.state.beforeClose = async () => {};
       const current = reopen ? setup({ cache: new Cache(first.cache.key), online: true }) : first;
       await current.engine.restoreDownloads();
-      expect(current.engine.getStatus("recoverable")).toBe("failed");
-      expect(fetcher).toHaveBeenCalledOnce();
-      await current.engine.download("recoverable", { format: "mp3" });
+      await vi.waitFor(() => expect(current.engine.getStatus("recoverable")).toBe("downloaded"));
       expect(expectCompletedDownload(current.cache, key).size).toBe(14);
       expect(current.engine.getStatus("recoverable")).toBe("downloaded");
       expect(fetcher).toHaveBeenCalledTimes(2);
@@ -1176,6 +1171,7 @@ describe("reviewed download failure boundaries", () => {
     };
     const next = new Cache(getAccountKey(other));
     await next.enqueueDownload({ ...track, id: "b" }, "mp3", "audio/mpeg");
+    await next.failDownload(downloadKey("b", "mp3"));
     selection.cache = next;
     engine.activate();
     engine.setDownloadConnection(connection(other));
@@ -1184,6 +1180,48 @@ describe("reviewed download failure boundaries", () => {
     await vi.waitFor(() => expect(completedDownloadCount(next)).toBe(1));
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+});
+
+it("snapshots failed formats once per restore, preserves metadata and FIFO order, and deduplicates pending restores", async () => {
+  install();
+  const { engine, cache } = setup({ concurrency: 1 });
+  for (const format of ["raw", "mp3"] as const) {
+    await cache.enqueueDownload(track, format, format === "raw" ? "audio/flac" : "audio/mpeg");
+    await cache.failDownload(downloadKey(track.id, format));
+  }
+  for (const id of ["older", "waiting"])
+    await cache.enqueueDownload({ ...track, id }, "mp3", "audio/mpeg");
+  const pending = deferred<Response>();
+  const fetcher = vi
+    .fn(async (_url: RequestInfo | URL) => new Response("bad", { status: 500 }))
+    .mockImplementationOnce(() => pending.promise);
+  vi.stubGlobal("fetch", fetcher);
+  const enqueue = vi.spyOn(cache, "enqueueDownload");
+  engine.setDownloadConnection(connection());
+  await engine.restoreDownloads();
+  const raw = engine.download(track.id, { format: "raw" });
+  await engine.restoreDownloads();
+  expect(engine.download(track.id, { format: "raw" })).toBe(raw);
+  expect(
+    enqueue.mock.calls.map(([saved, format, contentType]) => ({ saved, format, contentType })),
+  ).toEqual([
+    { saved: track, format: "raw", contentType: "audio/flac" },
+    { saved: track, format: "mp3", contentType: "audio/mpeg" },
+  ]);
+  pending.resolve(new Response("audio"));
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(4));
+  await expect(raw).rejects.toThrow();
+  await vi.waitFor(() => expect(engine.downloadCount).toBe(0));
+  expect(fetcher.mock.calls.map(([url]) => new URL(String(url)).searchParams.get("id"))).toEqual([
+    "older",
+    "waiting",
+    track.id,
+    track.id,
+  ]);
+  expect(engine.getStatus(track.id)).toBe("failed");
+  await turn();
+  await turn();
+  expect(fetcher).toHaveBeenCalledTimes(4);
 });
 
 it("generalized exact-format Download retries both failed formats at the FIFO tail with shared completion promises", async () => {

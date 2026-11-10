@@ -98,15 +98,17 @@ it("restores silently with a native heading and shows the empty state only once 
   );
   expect(target.querySelector("h1")?.textContent).toBe("Downloads");
   expect(target.querySelector('[aria-label="Track download counts"]')?.textContent).toMatch(
-    /Downloading 0.*Queued 0.*Downloaded 0.*Failed 0/s,
+    /Pending 0.*Downloaded 0/s,
   );
   expect(target.textContent).toContain("No downloads yet");
   expect(target.querySelector('a[href="?/library"]')?.textContent).toBe("Open library");
   set({ loading: true });
   expect(target.textContent).not.toContain("No downloads yet");
   expect(target.textContent).not.toContain("Restoring local library");
-  expect(target.textContent).toContain("Loading downloads…");
-  expect(target.textContent).not.toContain("Downloading 0");
+  expect(target.textContent).not.toContain("Loading downloads");
+  expect(target.querySelector('[aria-label="Track download counts"]')?.textContent).toMatch(
+    /Pending 0.*Downloaded 0/s,
+  );
   expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
   set({ loading: false });
   expect(target.querySelector('[role="status"]')).toBeNull();
@@ -153,7 +155,7 @@ it("preserves active-job precedence and newest-first saved files, including orph
   expect(rows.every((row) => row.querySelector("button, a, [tabindex]") === null)).toBe(true);
 });
 
-it("counts unique tracks across formats with active and queued precedence and overlapping availability", async () => {
+it("counts unique pending tracks across jobs, durable intent and formats with overlapping availability", async () => {
   const { target, cache, set } = setup();
   await save(cache, "both", 1000, "raw");
   await save(cache, "both", 1000, "mp3");
@@ -181,10 +183,19 @@ it("counts unique tracks across formats with active and queued precedence and ov
     ],
   });
   const summary = target.querySelector('[aria-label="Track download counts"]')!;
-  expect(summary.textContent).toMatch(/Downloading 1.*Queued 1.*Downloaded 1.*Failed 1/s);
+  expect(summary.textContent).toMatch(/Pending 3.*Downloaded 1/s);
   expect(summary.querySelector("[aria-live]")).toBeNull();
   set({ jobs: [] });
-  expect(summary.textContent).toMatch(/Downloading 0.*Queued 0.*Downloaded 1.*Failed 2/s);
+  expect(summary.textContent).toMatch(/Pending 2.*Downloaded 1/s);
+  await cache.enqueueDownload(
+    { id: "durable", title: "Durable", artist: "Artist", album: "Album" },
+    "mp3",
+    "audio/mpeg",
+  );
+  set({ loading: true });
+  expect(summary.textContent).toMatch(/Pending 3.*Downloaded 1/s);
+  expect(summary.textContent).not.toContain("Loading");
+  expect(summary.querySelector(".loader-bar")).toBeNull();
 });
 
 it("enables cancellation for failures alone", async () => {

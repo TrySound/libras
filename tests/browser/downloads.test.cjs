@@ -87,6 +87,10 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
         "Downloads",
       );
       assert.equal(await page.getByRole("heading", { name: "No downloads yet" }).isVisible(), true);
+      assert.match(
+        await page.getByRole("group", { name: "Track download counts" }).textContent(),
+        /Pending 0.*Downloaded 0/s,
+      );
       assert.equal(
         await page.locator('[aria-labelledby=downloads-heading] a[href="?/library"]').isVisible(),
         true,
@@ -130,6 +134,10 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
             document.querySelectorAll(
               '[aria-labelledby=downloads-heading] [aria-label="Downloading"]',
             ).length === 3,
+        );
+        assert.match(
+          await page.getByRole("group", { name: "Track download counts" }).textContent(),
+          /Pending 6.*Downloaded 0/s,
         );
         const rows = page.locator('[aria-labelledby=downloads-heading] [role="listitem"]');
         assert.equal(await rows.locator('[role="img"][aria-label="Downloading"]').count(), 3);
@@ -309,7 +317,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
         await page.waitForFunction(() =>
           document
             .querySelector('[aria-label="Track download counts"]')
-            ?.textContent.includes("Failed 1"),
+            ?.textContent.includes("Pending 1"),
         );
         assert.equal(streams, 7);
         assert.equal(

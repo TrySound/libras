@@ -23,29 +23,18 @@
 
   const unfinished = $derived(trackEngine.downloadCount + failed.length);
   const counts = $derived.by(() => {
-    const jobs = trackEngine.downloadJobs;
-    const active = new Set(
-      jobs.filter((job) => job.status === "downloading").map((job) => job.track.id),
-    );
-    const queued = new Set(
-      jobs.filter((job) => !active.has(job.track.id)).map((job) => job.track.id),
-    );
+    const pending = new Set([
+      ...trackEngine.downloadJobs.map((job) => job.track.id),
+      ...[...cache.downloads.values()]
+        .filter((entry) => entry.status !== "completed")
+        .map((entry) => entry.track.id),
+    ]);
     const downloaded = new Set(
       [...cache.downloads.values()]
         .filter((entry) => entry.status === "completed")
         .map((entry) => entry.track.id),
     );
-    const failures = new Set(
-      failed
-        .filter((entry) => !active.has(entry.track.id) && !queued.has(entry.track.id))
-        .map((entry) => entry.track.id),
-    );
-    return {
-      downloading: active.size,
-      queued: queued.size,
-      downloaded: downloaded.size,
-      failed: failures.size,
-    };
+    return { pending: pending.size, downloaded: downloaded.size };
   });
 
   function retryAll() {
@@ -94,21 +83,9 @@
       <h1 class="heading-lg uppercase" id="downloads-heading">Downloads</h1>
       <p class="body text-secondary">Tracks available for offline listening.</p>
       <div class="row-md row-wrap" role="group" aria-label="Track download counts">
-        {#if loading}
-          <span class="caption text-secondary">Loading downloads…</span>
-        {:else}
-          <span class="caption text-secondary">Downloading {counts.downloading}</span>
-          <span class="caption text-secondary">Queued {counts.queued}</span>
-          <span class="caption text-secondary">Downloaded {counts.downloaded}</span>
-          <span class="caption text-secondary">Failed {counts.failed}</span>
-        {/if}
+        <span class="caption text-secondary">Pending {counts.pending}</span>
+        <span class="caption text-secondary">Downloaded {counts.downloaded}</span>
       </div>
-      {#if !loading}
-        <p class="caption text-secondary">
-          Counts are per track; downloaded tracks may have another format pending.
-        </p>
-        <p class="caption text-secondary">Failed downloads retry automatically when you return.</p>
-      {/if}
       <div class="row-sm row-wrap">
         <button
           class="button"
