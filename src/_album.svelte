@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import FavouriteButton from "./ui/favourite-button.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -90,6 +91,7 @@
   {#if libraryAvailable && artist && album}
     <div class="detail-panel view-slide-up">
       <Artwork {covers} id={album.artworkId} size="cover" loading="eager" />
+      <FavouriteButton target={{ kind: "albums", id: album.id }} />
       <div class="stack-sm">
         <div class="row-md row-justify">
           <div class="stack-xs">
@@ -273,6 +275,7 @@
 </div>
 
 {#snippet actions(target: string, isPopover: boolean)}
+  {#if menuTrack}<FavouriteButton target={{ kind: "tracks", id: menuTrack.id }} />{/if}
   <div class="stack-lg">
     <header class="row-md row-justify">
       <div class="row-md">

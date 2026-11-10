@@ -1,6 +1,8 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
-  import { onDestroy, onMount, untrack, type Snippet } from "svelte";
+  import Home from "./_home.svelte";
+  import { Favourites } from "./favourites.svelte";
+  import { onDestroy, onMount, untrack, setContext, type Snippet } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import { Playlists } from "./playlists.svelte";
@@ -60,6 +62,8 @@
   const hasPreviousTrack = $derived(cache.queue.index > 0);
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
+  const favourites = new Favourites(selection);
+  setContext("favourites", favourites);
   const trackEngine = new TrackEngine({ selection });
   let player = $state<ReturnType<typeof AudioPlayer>>();
   const playback: Playback = new Playback({
@@ -78,6 +82,7 @@
         tracks: trackEngine,
         playback,
         playlists,
+        favourites,
         preferences: auth.storage,
       }),
   );
@@ -114,6 +119,7 @@
     session.destroy();
     playback.destroy();
     playlists.destroy();
+    favourites.destroy();
     covers.destroy();
     trackEngine.destroy();
   });
@@ -155,6 +161,26 @@
   <Downloads {cache} {covers} {trackEngine} {loading} {appName} />
 {/snippet}
 
+{#snippet homeRoute()}
+  <Atmosphere />
+  <Home {cache} {covers} {trackEngine} {session} {playback} {favourites} {appName} />
+{/snippet}
+{#snippet favouritesRoute(params: RouteParams)}
+  <Atmosphere />
+  <Home
+    {cache}
+    {covers}
+    {trackEngine}
+    {session}
+    {playback}
+    {favourites}
+    {appName}
+    kind={params.kind === "artists" || params.kind === "albums" || params.kind === "tracks"
+      ? params.kind
+      : undefined}
+  />
+{/snippet}
+
 {#snippet libraryRoute()}
   <Atmosphere />
   <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
@@ -194,7 +220,7 @@
 {#snippet brand()}
   <a
     class="button-quiet row-sm"
-    href="?/library"
+    href="?/"
     aria-label="Libras home"
     onclick={() => navigationDrawer?.close()}
   >
@@ -207,12 +233,19 @@
   <nav class="stack-sm" aria-label="Main navigation">
     <a
       class="menu-item"
+      href="?/"
+      aria-current={isCurrentPage("/") ? "page" : undefined}
+      onclick={() => navigationDrawer?.close()}
+      ><Icon name="home" color={isCurrentPage("/") ? "var(--accent)" : undefined} />Home</a
+    >
+    <a
+      class="menu-item"
       href="?/library"
       aria-current={isCurrentPage("/library") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
       <Icon name="disc" color={isCurrentPage("/library") ? "var(--accent)" : undefined} />
-      Your library
+      Artists
     </a>
     <a
       class="menu-item"
@@ -327,6 +360,8 @@
         {#if initialized}
           <Router
             routes={[
+              { pattern: "/", render: homeRoute },
+              { pattern: "/favourites/:kind", render: favouritesRoute },
               { pattern: "/library", render: libraryRoute },
               { pattern: "/search", render: searchRoute },
               { pattern: "/library/album/:albumId", render: albumRoute },

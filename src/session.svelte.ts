@@ -8,6 +8,7 @@ import {
   type NetworkConnection,
 } from "./network.svelte";
 import type { Playback } from "./playback.svelte";
+import type { Favourites } from "./favourites.svelte";
 import type { Playlists } from "./playlists.svelte";
 import type { Account, ConnectionStatus } from "./schema";
 import type { TrackEngine } from "./track.svelte";
@@ -24,6 +25,7 @@ interface SessionOptions {
   tracks: TrackEngine;
   playback: Playback;
   playlists?: Playlists;
+  favourites?: Favourites;
   preferences: Storage;
 }
 
@@ -70,6 +72,8 @@ export class Session {
     const connection = this.#options.network.open(this.auth, controller.signal);
     this.#downloadController = controller;
     this.#options.tracks.setDownloadConnection(connection.audio);
+    this.#options.favourites?.setConnection(connection.favourites);
+    if (this.offlineMode) void this.#options.favourites?.refresh().catch(() => {});
   }
 
   get libraryProgress() {
@@ -259,14 +263,14 @@ export class Session {
     signal.throwIfAborted();
     do {
       try {
-        await previous.flush();
+        await previous.flush({ retiring: true });
       } catch (error) {
         const unrelated = withoutDownloadErrors(error);
         if (unrelated !== undefined) throw unrelated;
         break;
       }
       signal.throwIfAborted();
-    } while (previous.dirty);
+    } while (previous.pendingWrites);
   }
 
   /** No awaits: credentials, selection and engine connections commit in one turn.
@@ -342,6 +346,7 @@ export class Session {
     this.#downloadController?.abort();
     this.#downloadController = undefined;
     this.#options.tracks.setDownloadConnection(undefined);
+    this.#options.favourites?.setConnection(undefined);
     this.status = "disconnected";
     try {
       this.#options.auth.clear();
@@ -361,7 +366,11 @@ export class Session {
   }
 
   async refresh() {
-    if (!this.auth || this.offlineMode || this.busy || this.#destroyed) return;
+    if (!this.auth || this.busy || this.#destroyed) return;
+    if (this.offlineMode) {
+      await this.#options.favourites?.refresh().catch(() => {});
+      return;
+    }
     this.error = "";
     await this.#refresh(true);
   }
@@ -404,6 +413,8 @@ export class Session {
     this.#libraryProgress = undefined;
     this.#refreshError = undefined;
     return (this.#refreshPending = (async () => {
+      // Independent of index freshness and even a stalled/failed library scan.
+      void this.#options.favourites?.refresh().catch(() => {});
       try {
         try {
           await this.#refreshLibrary(force, operationId);
@@ -419,6 +430,7 @@ export class Session {
         if (this.#isCurrentOperation(operationId)) this.#refreshError = error;
       }
       if (!this.#isCurrentOperation(operationId)) return;
+      // Favourites owns its loading/error lifetime and must not gate other sync.
       try {
         await this.#options.playlists?.refresh();
       } catch (error) {
@@ -469,5 +481,6 @@ export class Session {
     this.#downloadController?.abort();
     this.#downloadController = undefined;
     this.#options.tracks.setDownloadConnection(undefined);
+    this.#options.favourites?.setConnection(undefined);
   }
 }

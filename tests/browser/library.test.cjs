@@ -50,6 +50,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     if (method === "ping")
       fields = { version: "1.16.1", type: "test", serverVersion: "1", openSubsonic: true };
     else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
+    else if (method === "getStarred2") fields = { starred2: {} };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
     else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
     else if (method === "search3")
@@ -71,6 +72,8 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     await page.getByLabel("Username", { exact: true }).fill("listener");
     await page.getByLabel("Password", { exact: true }).fill("fictional-password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page.getByRole("heading", { name: "Welcome Home", exact: true }).waitFor();
+    await page.goto(`${base}?/library`);
     const first = page.locator(".tile").first();
     await first.waitFor();
     assert.equal(await page.locator(".tile").count(), 48);

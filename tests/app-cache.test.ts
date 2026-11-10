@@ -106,6 +106,38 @@ it.each([false, true])(
   },
 );
 
+it.each(["/", ""])(
+  "renders bounded Home previews at entry %s and exposes complete destinations",
+  async (route) => {
+    installDisk();
+    const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
+    cache.setFavourites({
+      fetchedAt: 1,
+      artists: ["z", "a", "b"].map((id) => ({ id, title: id })),
+      albums: ["z", "a", "b"].map((id) => ({ id, title: id })),
+      tracks: ["z", "a", "b"].map((id) => ({ id, title: id })),
+    });
+    mocks.cache = cache;
+    installNavigation(route || "/", mocks.navigate);
+    window.history.replaceState(null, "", route ? `?${route}` : window.location.pathname);
+    const target = document.createElement("main");
+    document.body.append(target);
+    const component = mount(App, { target });
+    cleanups.push(() => unmount(component));
+    flushSync();
+    expect(target.querySelector(".home h1")?.textContent).toBe("Welcome Home");
+    for (const kind of ["artists", "albums", "tracks"]) {
+      const grid = target.querySelector(`[data-favourites=${kind}]`)!;
+      expect(grid.querySelectorAll("article")).toHaveLength(1);
+      expect(grid.querySelector("h3")?.textContent).toBe("a");
+      expect(grid.querySelector(`a[href='?/favourites/${kind}']`)?.textContent).toBe(
+        `All favourite ${kind}`,
+      );
+    }
+    expect(target.textContent).toContain("Unavailable in your library");
+  },
+);
+
 it("shows compact track credits, durations, and padded numbers in albums and queues", async () => {
   installDisk();
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
@@ -348,7 +380,7 @@ it("uses the empty fallback when visiting Library without an account and when se
     "Libras",
   );
   for (const link of target.querySelectorAll('a[aria-label="Libras home"]')) {
-    expect(link.getAttribute("href")).toBe("?/library");
+    expect(link.getAttribute("href")).toBe("?/");
     expect(link.getAttribute("aria-label")).toBe("Libras home");
   }
   expect(
@@ -357,7 +389,8 @@ it("uses the empty fallback when visiting Library without an account and when se
       link.getAttribute("href"),
     ]),
   ).toEqual([
-    ["Your library", "?/library"],
+    ["Home", "?/"],
+    ["Artists", "?/library"],
     ["Search", "?/search"],
     ["Downloads", "?/downloads"],
     ["Settings", "?/settings"],
@@ -692,7 +725,7 @@ it.each([
   expect(target.querySelectorAll("#player-dialog .atmosphere-frame")).toHaveLength(1);
   expect(target.querySelectorAll("#player-dialog .atmosphere-lines")).toHaveLength(1);
   const links = topbar.querySelectorAll("a");
-  expect([...links].map((link) => link.getAttribute("href"))).toEqual(["?/library", "?/search"]);
+  expect([...links].map((link) => link.getAttribute("href"))).toEqual(["?/", "?/search"]);
   for (const nav of target.querySelectorAll('nav[aria-label="Main navigation"]')) {
     expect(nav.querySelector('[aria-current="page"]')?.getAttribute("href")).toBe(
       route.startsWith("/library") ? "?/library" : `?${route}`,

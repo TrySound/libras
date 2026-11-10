@@ -122,6 +122,7 @@
 </script>
 
 <script lang="ts">
+  import FavouriteButton from "./ui/favourite-button.svelte";
   import Icon from "./icon.svelte";
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
@@ -450,6 +451,19 @@
 </div>
 
 {#snippet actions(target: string, isPopover: boolean)}
+  {#if menuItem}
+    <FavouriteButton
+      target={{
+        kind:
+          menuItem.group === "Artists"
+            ? "artists"
+            : menuItem.group === "Albums"
+              ? "albums"
+              : "tracks",
+        id: menuItem.id,
+      }}
+    />
+  {/if}
   <div class="stack-lg">
     <header class="row-md row-justify">
       <div class="row-md">

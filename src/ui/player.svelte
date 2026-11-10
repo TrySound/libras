@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FavouriteButton from "./favourite-button.svelte";
   import Icon from "../icon.svelte";
   import Artwork from "./artwork.svelte";
   import Atmosphere from "./atmosphere.svelte";
@@ -181,6 +182,7 @@
               {/if}
             {/if}
           </div>
+          {#if track}<FavouriteButton target={{ kind: "tracks", id: track.id }} />{/if}
           <div class="stack-md">
             <div>
               <input
