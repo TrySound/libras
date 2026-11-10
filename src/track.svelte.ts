@@ -330,19 +330,28 @@ export class TrackEngine {
   /** Explicit bulk Download retries selected failed files in their original formats,
    * while skipping saved files and deduplicating active/queued work. */
   downloadMany(trackIds: Iterable<string>) {
+    if (this.#destroyed || this.#canceling || !this.#selection.cache) {
+      return;
+    }
+    const jobs: DownloadJob[] = [];
     for (const id of new Set(trackIds)) {
       let retried = false;
       for (const format of ["raw", "mp3"] as const) {
-        if (this.#selection.cache?.downloads.get(downloadKey(id, format))?.status === "failed") {
-          void this.download(id, { format });
+        if (this.#selection.cache.downloads.get(downloadKey(id, format))?.status === "failed") {
+          this.#queueDownload(id, { format }, jobs);
           retried = true;
         }
       }
-      if (!retried && this.getStatus(id) === "idle") void this.download(id);
+      if (!retried && this.getStatus(id) === "idle") {
+        this.#queueDownload(id, {}, jobs);
+      }
+    }
+    if (jobs.length) {
+      this.#enqueueJobs(jobs);
     }
   }
 
-  #queueDownload(trackId: string, options: DownloadOptions) {
+  #queueDownload(trackId: string, options: DownloadOptions, batch?: DownloadJob[]) {
     const selected = this.#selection.cache;
     const record = selected?.tracks.get(trackId);
     const known = options.format
@@ -366,10 +375,11 @@ export class TrackEngine {
       intent?.track ?? track,
       intent ? { ...descriptor, contentType: intent.contentType } : descriptor,
       false,
+      batch,
     );
   }
 
-  #addJob(track: DownloadTrack, descriptor: Descriptor, ready: boolean) {
+  #addJob(track: DownloadTrack, descriptor: Descriptor, ready: boolean, batch?: DownloadJob[]) {
     const cache = this.#selection.cache!;
     const { promise, resolve, reject } = Promise.withResolvers<File>();
     void promise.catch(() => {});
@@ -388,46 +398,71 @@ export class TrackEngine {
     };
     this.#jobs.set(descriptor.key, job);
     this.#version++;
-    if (ready) this.#drain();
-    else {
-      void this.#observe(
-        (async () => {
-          try {
-            const intent = await cache.enqueueDownload(
+    if (ready) {
+      this.#drain();
+    } else if (batch) {
+      batch.push(job);
+    } else {
+      this.#enqueueJobs([job], true);
+    }
+    return promise;
+  }
+
+  #enqueueJobs(jobs: DownloadJob[], reportFailure = false) {
+    const cache = jobs[0].cache;
+    void this.#observe(
+      (async () => {
+        try {
+          const entries = await cache.enqueueDownloads(
+            jobs.map(({ track, descriptor }) => ({
               track,
-              descriptor.format,
-              descriptor.contentType,
-              true,
-            );
-            controller.signal.throwIfAborted();
-            if (intent?.status === "failed") throw new DownloadError();
-            if (intent) {
-              job.track = intent.track;
-              descriptor.contentType = intent.contentType;
-            }
-            job.ready = true;
-            this.#drain();
-          } catch (error) {
-            if (this.#jobs.get(descriptor.key) === job) this.#jobs.delete(descriptor.key);
+              format: descriptor.format,
+              contentType: descriptor.contentType,
+            })),
+            true,
+          );
+          for (const [index, job] of jobs.entries()) {
             if (
-              !controller.signal.aborted &&
-              cache.downloads.get(descriptor.key)?.status !== "failed"
+              job.signal.aborted ||
+              job.cache !== this.#selection.cache ||
+              this.#jobs.get(job.descriptor.key) !== job
+            ) {
+              if (this.#jobs.get(job.descriptor.key) === job) {
+                this.#jobs.delete(job.descriptor.key);
+              }
+              job.controller.abort();
+              job.reject(job.signal.reason);
+              continue;
+            }
+            job.track = entries[index].track;
+            job.descriptor.contentType = entries[index].contentType;
+            job.ready = true;
+          }
+        } catch (error) {
+          for (const job of jobs) {
+            if (this.#jobs.get(job.descriptor.key) === job) {
+              this.#jobs.delete(job.descriptor.key);
+            }
+            // Bulk rejection keeps the prior catalog intact, without per-track writes.
+            if (
+              reportFailure &&
+              !job.signal.aborted &&
+              cache.downloads.get(job.descriptor.key)?.status !== "failed"
             ) {
               await cache
-                .failDownload(descriptor.key, {
-                  track,
-                  format: descriptor.format,
-                  contentType: descriptor.contentType,
+                .failDownload(job.descriptor.key, {
+                  track: job.track,
+                  format: job.descriptor.format,
+                  contentType: job.descriptor.contentType,
                 })
                 .catch(() => {});
             }
-            reject(error);
-            this.#version++;
+            job.reject(error);
           }
-        })(),
-      );
-    }
-    return promise;
+        }
+        this.#drain();
+      })(),
+    );
   }
 
   async #cached(cache: Cache, track: SourceTrack, descriptor: Descriptor, signal: AbortSignal) {

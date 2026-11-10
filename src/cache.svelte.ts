@@ -633,31 +633,57 @@ class DownloadStore {
     contentType: string,
     retry = false,
   ) {
-    const safeTrack = {
-      id: track.id,
-      title: track.title,
-      artist: track.artist,
-      album: track.album,
-      contentType: track.contentType,
-    };
+    return this.enqueueDownloads([{ track, format, contentType }], retry).then(
+      (entries) => entries[0]!,
+    );
+  }
+
+  enqueueDownloads(
+    requests: readonly Immutable<Pick<DownloadEntry, "track" | "format" | "contentType">>[],
+    retry = false,
+  ) {
+    const selected = requests.map(({ track, format, contentType }) => ({
+      track: {
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        contentType: track.contentType,
+      },
+      format,
+      contentType,
+    }));
     return this.#downloadOperation(() =>
       this.#downloadSerial(async () => {
         await this.#loadDownloads();
-        const key = downloadKey(track.id, format);
-        const existing = this.downloads.get(key);
-        if (existing && (!retry || existing.status !== "failed")) return existing;
-        const entry = v.parse(queuedDownloadSchema, {
-          track: existing?.track ?? safeTrack,
-          format,
-          contentType: existing?.contentType ?? contentType,
-          status: "queued",
-        });
         const records = new Map(this.downloads);
-        if (retry) records.delete(key);
-        records.set(key, entry);
-        await this.#writeDownloads(records);
-        this.#downloadsReady = false;
-        return entry;
+        const entries: DownloadEntry[] = [];
+        let changed = false;
+        for (const { track, format, contentType } of selected) {
+          const key = downloadKey(track.id, format);
+          const existing = records.get(key);
+          if (existing && (!retry || existing.status !== "failed")) {
+            entries.push(existing);
+            continue;
+          }
+          const entry = v.parse(queuedDownloadSchema, {
+            track: existing?.track ?? track,
+            format,
+            contentType: existing?.contentType ?? contentType,
+            status: "queued",
+          });
+          if (retry) {
+            records.delete(key);
+          }
+          records.set(key, entry);
+          entries.push(entry);
+          changed = true;
+        }
+        if (changed) {
+          await this.#writeDownloads(records);
+          this.#downloadsReady = false;
+        }
+        return entries;
       }),
     );
   }
@@ -1146,6 +1172,13 @@ export class Cache {
     retry = false,
   ) {
     return this.#downloads.enqueueDownload(track, format, contentType, retry);
+  }
+
+  enqueueDownloads(
+    requests: readonly Immutable<Pick<DownloadEntry, "track" | "format" | "contentType">>[],
+    retry = false,
+  ) {
+    return this.#downloads.enqueueDownloads(requests, retry);
   }
 
   failDownload(key: string, known?: Pick<DownloadEntry, "track" | "format" | "contentType">) {

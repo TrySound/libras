@@ -811,9 +811,7 @@ it("reuses one library menu for the long-pressed artist", async () => {
     savedAt: 1,
   });
   mocks.cache = cache;
-  const download = vi
-    .spyOn(TrackEngine.prototype, "download")
-    .mockResolvedValue(new File([], "audio"));
+  const download = vi.spyOn(TrackEngine.prototype, "downloadMany").mockImplementation(() => {});
   const target = document.createElement("main");
   document.body.append(target);
   const component = mount(App, { target });
@@ -834,7 +832,7 @@ it("reuses one library menu for the long-pressed artist", async () => {
       (button) => button.textContent?.trim() === "Download",
     )!;
     button.click();
-    expect(download).toHaveBeenLastCalledWith(id);
+    expect(download).toHaveBeenLastCalledWith([id]);
     expect(menu.open).toBe(false);
     expect(target.querySelectorAll("dialog.bottom-sheet")).toHaveLength(1);
   }
@@ -1193,9 +1191,7 @@ it.each([
       genres: [],
     })),
   });
-  const download = vi
-    .spyOn(TrackEngine.prototype, "download")
-    .mockResolvedValue(new File([], "audio"));
+  const download = vi.spyOn(TrackEngine.prototype, "downloadMany").mockImplementation(() => {});
   mocks.cache = cache;
   window.history.replaceState(
     null,
@@ -1214,8 +1210,8 @@ it.each([
   );
   expect(button).toBeDefined();
   button!.click();
-  await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(ids.length));
-  expect(download.mock.calls.map(([trackId]) => trackId)).toEqual(ids);
+  await vi.waitFor(() => expect(download).toHaveBeenCalledOnce());
+  expect(download).toHaveBeenCalledWith(ids);
 });
 
 it.each([

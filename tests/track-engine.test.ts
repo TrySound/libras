@@ -93,12 +93,10 @@ describe("TrackEngine using Cache", () => {
     const active = engine.download("active");
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
     const queued = engine.download("queued");
-    const download = vi.spyOn(engine, "download");
     const read = vi.spyOn(cache, "readDownload");
     const ids = ["saved-raw", "active", "new-a", "queued", "new-a", "saved-mp3", "new-b"];
     engine.downloadMany(ids);
     engine.downloadMany(ids);
-    expect(download.mock.calls.map(([id]) => id)).toEqual(["new-a", "new-b"]);
     expect(engine.downloadJobs.map((job) => job.track.id)).toEqual([
       "active",
       "queued",
@@ -818,8 +816,8 @@ describe("TrackEngine using Cache", () => {
 });
 
 describe("durable download scheduling", () => {
-  it("counts six distinct files with three active, three queued, deduplicated batches and independent formats", async () => {
-    install("probably");
+  it("commits all 200 bulk intents once before fetching, deduplicates and restores the entire selection", async () => {
+    const disk = install("probably");
     const { engine, cache } = setup({ online: true });
     const releases: (() => void)[] = [];
     vi.stubGlobal(
@@ -829,12 +827,34 @@ describe("durable download scheduling", () => {
           new Promise<Response>((resolve) => releases.push(() => resolve(new Response("audio")))),
       ),
     );
-    engine.downloadMany(["a", "b", "c", "d", "e", "f", "a"]);
-    engine.downloadMany(["a", "b", "c", "d", "e", "f"]);
-    await vi.waitFor(() => expect(cache.downloads.size).toBe(6));
+    await engine.restoreDownloads();
+    const closing = deferred();
+    const releaseClose = deferred();
+    let closes = 0;
+    disk.state.beforeClose = async (name) => {
+      if (name.endsWith("downloads.json")) {
+        closes++;
+        closing.resolve();
+        await releaseClose.promise;
+      }
+    };
+    const ids = Array.from({ length: 200 }, (_, index) => `track-${index}`);
+    engine.downloadMany([...ids, ids[0]]);
+    engine.downloadMany(ids);
+    const duplicate = engine.download(ids[0]);
+    expect(engine.download(ids[0])).toBe(duplicate);
+    expect(engine.downloadCount).toBe(200);
+    await closing.promise;
+    expect(releases).toHaveLength(0);
+    expect(cache.downloads.size).toBe(0);
+    releaseClose.resolve();
+    await vi.waitFor(() => expect(releases).toHaveLength(3));
+    const fresh = new Cache(cache.key);
+    await fresh.load();
+    expect([...fresh.downloads.values()].map((entry) => entry.track.id)).toEqual(ids);
+    expect(closes).toBe(1);
     expect(engine.downloadJobs.filter((job) => job.status === "downloading")).toHaveLength(3);
-    expect(engine.downloadJobs.filter((job) => job.status === "queued")).toHaveLength(3);
-    expect(engine.downloadCount).toBe(6);
+    expect(engine.downloadJobs.filter((job) => job.status === "queued")).toHaveLength(197);
     const cancel = engine.cancelDownloads();
     for (const release of releases) release();
     await cancel;
@@ -843,6 +863,48 @@ describe("durable download scheduling", () => {
     await restored.load();
     expect(restored.downloads.size).toBe(0);
   });
+
+  it.each(["cancel", "reject"])(
+    "joins or rejects the bulk enqueue close safely (%s)",
+    async (action) => {
+      const disk = install();
+      const { engine, cache } = setup({ online: true });
+      await seed(cache);
+      const before = new Map(disk.files);
+      const closing = deferred();
+      const release = deferred();
+      let closes = 0;
+      disk.state.beforeClose = async (name) => {
+        if (name.endsWith("downloads.json")) {
+          closes++;
+          closing.resolve();
+          await release.promise;
+          if (action === "reject") {
+            throw new Error("full");
+          }
+        }
+      };
+      const fetcher = vi.fn();
+      vi.stubGlobal("fetch", fetcher);
+      engine.downloadMany(["one", "two"]);
+      await closing.promise;
+      const cancel = action === "cancel" ? engine.cancelDownloads() : undefined;
+      release.resolve();
+      await cancel;
+      await vi.waitFor(() => expect(engine.downloadCount).toBe(0));
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(cache.downloads.size).toBe(1);
+      if (action === "reject") {
+        expect(disk.files).toEqual(before);
+        expect(closes).toBe(1);
+        expect(cache.error).toBeDefined();
+      }
+      const fresh = new Cache(cache.key);
+      await fresh.load();
+      expect(completedDownloadCount(fresh)).toBe(1);
+      expect(fresh.downloads.size).toBe(1);
+    },
+  );
 
   it("restores queued and failed work on reopen without fetching completed files again", async () => {
     install();
