@@ -97,11 +97,18 @@ it("restores silently with a native heading and shows the empty state only once 
     "downloads-heading",
   );
   expect(target.querySelector("h1")?.textContent).toBe("Downloads");
+  expect(target.querySelector("header p")?.textContent).toMatch(
+    /0\s+tracks available for offline listening, 0\s+pending/,
+  );
   expect(target.textContent).toContain("No downloads yet");
   expect(target.querySelector('a[href="?/library"]')?.textContent).toBe("Open library");
   set({ loading: true });
   expect(target.textContent).not.toContain("No downloads yet");
   expect(target.textContent).not.toContain("Restoring local library");
+  expect(target.textContent).not.toContain("Loading downloads");
+  expect(target.querySelector("header p")?.textContent).toMatch(
+    /0\s+tracks available for offline listening, 0\s+pending/,
+  );
   expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
   set({ loading: false });
   expect(target.querySelector('[role="status"]')).toBeNull();
@@ -115,6 +122,9 @@ it("preserves active-job precedence and newest-first saved files, including orph
   await save(cache, "newer", 2000, "raw");
   await save(cache, "active", 3000);
   set({ jobs: [job(cache, "active", "downloading"), job(cache, "waiting", "queued")] });
+  expect(target.querySelector("header p")?.textContent).toMatch(
+    /3\s+tracks available for offline listening, 2\s+pending/,
+  );
   const rows = [...target.querySelectorAll('[role="listitem"]')];
   expect(rows.map((row) => row.querySelector(".label")?.textContent)).toEqual([
     "active title",
@@ -146,6 +156,25 @@ it("preserves active-job precedence and newest-first saved files, including orph
   expect(cache.tracks.size).toBe(0);
   expect(ensure).not.toHaveBeenCalled();
   expect(rows.every((row) => row.querySelector("button, a, [tabindex]") === null)).toBe(true);
+});
+
+it("counts unique pending tracks across jobs, durable intent and formats with overlapping availability", async () => {
+  const { target, cache, set } = setup();
+  await save(cache, "both", 1000, "raw");
+  await save(cache, "both", 1000, "mp3");
+  for (const id of ["failed", "queued"])
+    await cache.enqueueDownload(job(cache, id, "queued").track, "mp3", "audio/mpeg");
+  await cache.failDownload(downloadKey("failed", "mp3"));
+  set({
+    jobs: [
+      job(cache, "both", "downloading"),
+      { ...job(cache, "both", "queued"), key: downloadKey("both", "raw"), format: "raw" },
+    ],
+  });
+  const summary = target.querySelector("header p")!;
+  expect(summary.textContent).toMatch(/1\s+track available for offline listening, 3\s+pending/);
+  set({ jobs: [] });
+  expect(summary.textContent).toMatch(/1\s+track available for offline listening, 2\s+pending/);
 });
 
 it("preserves a saved track name verbatim without adding badges", async () => {
@@ -257,7 +286,7 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   expect(target.textContent).not.toContain("failed title");
 });
 
-it("Retry all snapshots only failed files in exact formats without waiting for transfers", async () => {
+it("Retry all submits failed track IDs as one batch without waiting for transfers", async () => {
   const { target, cache, trackEngine, set } = setup();
   await save(cache, "saved", 1000);
   for (const format of ["raw", "mp3"] as const) {
@@ -271,6 +300,7 @@ it("Retry all snapshots only failed files in exact formats without waiting for t
   set({ jobs: [job(cache, "active", "downloading"), job(cache, "queued", "queued")] });
   const pending = deferred<File>();
   const download = vi.spyOn(trackEngine, "download").mockReturnValue(pending.promise);
+  const downloadMany = vi.spyOn(trackEngine, "downloadMany").mockImplementation(() => {});
   const retryAll = [...target.querySelectorAll("button")].find(
     (button) => button.textContent === "Retry all",
   )!;
@@ -287,20 +317,17 @@ it("Retry all snapshots only failed files in exact formats without waiting for t
   set({ loading: false });
   rowRetry.click();
   expect(download).toHaveBeenLastCalledWith("failed", { format: "raw" });
-  download.mockClear();
   retryAll.click();
   flushSync();
-  expect(download.mock.calls).toEqual([
-    ["failed", { format: "raw" }],
-    ["failed", { format: "mp3" }],
-  ]);
+  expect(downloadMany).toHaveBeenCalledOnce();
+  expect(downloadMany).toHaveBeenCalledWith(new Set(["failed"]));
   expect(retryAll.disabled).toBe(false);
   expect(cancelAll.disabled).toBe(false);
   pending.resolve(new File(["audio"], "audio"));
   expect(target.querySelectorAll("time")).toHaveLength(1);
 });
 
-it("Cancel downloads guards busy controls and preserves saved and failed files when durable cancellation rejects", async () => {
+it("Cancel downloads guards busy controls, preserves intent on rejection, and removes unfinished files on success", async () => {
   const { target, cache, trackEngine, disk } = setup(true);
   await save(cache, "saved", 1000);
   await cache.enqueueDownload(
@@ -309,6 +336,13 @@ it("Cancel downloads guards busy controls and preserves saved and failed files w
     "audio/mpeg",
   );
   await cache.failDownload(downloadKey("failed", "mp3"));
+  flushSync();
+  expect(trackEngine.downloadCount).toBe(0);
+  expect(
+    [...target.querySelectorAll("button")].find(
+      (button) => button.textContent === "Cancel downloads",
+    )!.disabled,
+  ).toBe(false);
   void trackEngine.download("queued");
   await vi.waitFor(() =>
     expect(cache.downloads.get(downloadKey("queued", "mp3"))?.status).toBe("queued"),
@@ -348,6 +382,6 @@ it("Cancel downloads guards busy controls and preserves saved and failed files w
   await vi.waitFor(() => expect(trackEngine.downloadCount).toBe(0));
   flushSync();
   expect(cancelAll.disabled).toBe(true);
-  expect(retryAll.disabled).toBe(false);
-  expect(cache.downloads.size).toBe(2);
+  expect(retryAll.disabled).toBe(true);
+  expect(cache.downloads.size).toBe(1);
 });

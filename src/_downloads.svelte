@@ -21,15 +21,33 @@
     [...cache.downloads.values()].filter((entry) => entry.status === "failed"),
   );
 
+  const counts = $derived.by(() => {
+    const pending = new Set<string>();
+    const downloaded = new Set<string>();
+    for (const entry of cache.downloads.values()) {
+      if (entry.status === "completed") {
+        downloaded.add(entry.track.id);
+      } else {
+        pending.add(entry.track.id);
+      }
+    }
+    for (const job of trackEngine.downloadJobs) {
+      pending.add(job.track.id);
+    }
+    return { pending: pending.size, downloaded: downloaded.size };
+  });
+
   function retryAll() {
     if (loading || canceling || !failed.length) return;
-    const entries = [...failed];
-    for (const entry of entries)
-      void trackEngine.download(entry.track.id, { format: entry.format });
+    const ids = new Set<string>();
+    for (const entry of failed) {
+      ids.add(entry.track.id);
+    }
+    trackEngine.downloadMany(ids);
   }
 
   async function cancelAll() {
-    if (loading || canceling || !trackEngine.downloadCount) return;
+    if (loading || canceling || !counts.pending) return;
     try {
       await trackEngine.cancelDownloads();
     } catch {
@@ -65,7 +83,11 @@
   <div class="stack-lg scroll-runway">
     <header class="stack-sm">
       <h1 class="heading-lg uppercase" id="downloads-heading">Downloads</h1>
-      <p class="body text-secondary">Tracks available for offline listening.</p>
+      <p class="body text-secondary">
+        {counts.downloaded}
+        {counts.downloaded === 1 ? "track" : "tracks"} available for offline listening, {counts.pending}
+        pending
+      </p>
       <div class="row-sm row-wrap">
         <button
           class="button"
@@ -78,8 +100,8 @@
           class="button"
           data-variant="secondary"
           data-size="text"
-          disabled={loading || canceling || !trackEngine.downloadCount}
-          onclick={cancelAll}>Cancel downloads</button
+          disabled={loading || canceling || !counts.pending}
+          onclick={cancelAll}>{canceling ? "Canceling…" : "Cancel downloads"}</button
         >
       </div>
     </header>
@@ -125,7 +147,7 @@
                 <p class="label">{entry.track.title}</p>
                 <p class="caption text-secondary">{entry.track.artist} · {entry.track.album}</p>
                 {#if entry.status === "failed"}
-                  <p class="caption text-secondary" aria-live="polite">
+                  <p class="caption text-secondary">
                     {entry.format === "mp3" ? "MP3" : entry.contentType} · {entry.diagnostic}
                   </p>
                   <button

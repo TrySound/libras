@@ -594,20 +594,37 @@ describe("durable download intent", () => {
     };
     let acknowledged = false;
     const input = { ...track, url: "https://secret/?token=secret", credentials: "secret" };
-    const saving = cache.enqueueDownload(input, "mp3", "audio/mpeg").then(() => {
-      acknowledged = true;
-    });
+    const saving = cache
+      .enqueueDownloads([
+        { track: input, format: "mp3", contentType: "audio/mpeg" },
+        { track: { ...input, id: "next" }, format: "raw", contentType: "audio/flac" },
+      ])
+      .then(() => {
+        acknowledged = true;
+      });
+    input.title = "Changed after enqueue";
     await closing.promise;
     expect(acknowledged).toBe(false);
     expect(cache.downloads.size).toBe(0);
     release.resolve();
     await saving;
-    await cache.enqueueDownload({ ...track, id: "next" }, "raw", "audio/flac");
+    const writes = disk.state.writes;
     await cache.enqueueDownload(track, "mp3", "audio/mpeg");
+    expect(disk.state.writes).toBe(writes);
     const restored = new Cache(getAccountKey(account));
     await restored.load();
     expect([...restored.downloads.keys()]).toEqual([key, downloadKey("next", "raw")]);
+    expect(restored.downloads.get(key)?.track.title).toBe(track.title);
     expect([...disk.files.values()].join()).not.toMatch(/secret|credentials|url/);
+    const before = new Map(disk.files);
+    await expect(
+      cache.enqueueDownloads([
+        { track: { ...track, id: "valid" }, format: "mp3", contentType: "audio/mpeg" },
+        { track: { ...track, id: "invalid" }, format: "mp3", contentType: "" },
+      ]),
+    ).rejects.toThrow();
+    expect(disk.files).toEqual(before);
+    expect(cache.downloads.size).toBe(2);
   });
 
   it.each(["bytes", "catalog"])("restarts from scratch after interruption at %s", async (stage) => {

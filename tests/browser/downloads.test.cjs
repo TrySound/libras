@@ -292,14 +292,21 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     );
 
     await t.test(
-      "online reopen preserves failures until row Retry and Retry all explicitly retry",
+      "online reopen automatically retries failures once; row Retry and Retry all still work",
       async () => {
+        const automaticRetry = page.waitForResponse((response) => {
+          const url = new URL(response.url());
+          return (
+            /\/stream(?:\.view)?$/.test(url.pathname) && url.searchParams.get("id") === "track-6"
+          );
+        });
         await page.reload();
+        await automaticRetry;
         await page.getByRole("button", { name: /^Retry download of 6/ }).waitFor();
         await page.waitForFunction(
           () => document.querySelectorAll("[aria-labelledby=downloads-heading] time").length === 5,
         );
-        assert.equal(streams, 6);
+        assert.equal(streams, 7);
         assert.equal(
           await page.getByRole("button", { name: "Show errors", exact: true }).count(),
           0,
@@ -318,13 +325,13 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
             '[aria-labelledby=downloads-heading] [aria-label="Download failed"]',
           ),
         );
-        assert.equal(streams, 7);
+        assert.equal(streams, 8);
         retrySucceeds = true;
         await page.getByRole("button", { name: "Retry all", exact: true }).click();
         await page.waitForFunction(
           () => document.querySelectorAll("[aria-labelledby=downloads-heading] time").length === 6,
         );
-        assert.equal(streams, 8);
+        assert.equal(streams, 9);
         assert.equal(await page.getByRole("button", { name: /^Retry download of 6/ }).count(), 0);
       },
     );
@@ -341,7 +348,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       );
       assert.equal(await page.locator("[aria-labelledby=downloads-heading] time").count(), 6);
       assert.equal(await page.getByRole("heading", { name: "No downloads yet" }).count(), 0);
-      assert.equal(streams, 8);
+      assert.equal(streams, 9);
       assert.equal(await page.getByRole("button", { name: /^Retry download of 6/ }).count(), 0);
       assert.equal(await page.getByRole("button", { name: "Show errors", exact: true }).count(), 0);
     });
