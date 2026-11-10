@@ -1244,21 +1244,26 @@ describe("reviewed download failure boundaries", () => {
   });
 });
 
-it("retries a failed download on restore without a self-retry loop", async () => {
+it("retries failed formats in one restore batch without a self-retry loop", async () => {
   install();
   const { engine, cache } = setup();
-  await cache.enqueueDownload(track, "mp3", "audio/mpeg");
-  await cache.failDownload(downloadKey(track.id, "mp3"));
+  for (const format of ["raw", "mp3"] as const) {
+    await cache.enqueueDownload(track, format, "audio/mpeg");
+    await cache.failDownload(downloadKey(track.id, format));
+  }
+  const enqueue = vi.spyOn(cache, "enqueueDownloads");
   const fetcher = vi.fn(async () => new Response("bad", { status: 500 }));
   vi.stubGlobal("fetch", fetcher);
   engine.setDownloadConnection(connection());
   await vi.waitFor(() => {
-    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledTimes(2);
     expect(engine.getStatus(track.id)).toBe("failed");
   });
   await turn();
   expect(engine.getStatus(track.id)).toBe("failed");
-  expect(fetcher).toHaveBeenCalledOnce();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(enqueue).toHaveBeenCalledOnce();
+  expect(enqueue.mock.calls[0][0]).toHaveLength(2);
 });
 
 it("generalized exact-format Download retries both failed formats at the FIFO tail with shared completion promises", async () => {

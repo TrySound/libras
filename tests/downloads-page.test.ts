@@ -97,7 +97,7 @@ it("restores silently with a native heading and shows the empty state only once 
     "downloads-heading",
   );
   expect(target.querySelector("h1")?.textContent).toBe("Downloads");
-  expect(target.querySelector('[aria-label="Track download counts"]')?.textContent).toMatch(
+  expect(target.querySelector("header p")?.textContent).toMatch(
     /0\s+tracks available for offline listening, 0\s+pending/,
   );
   expect(target.textContent).toContain("No downloads yet");
@@ -106,7 +106,7 @@ it("restores silently with a native heading and shows the empty state only once 
   expect(target.textContent).not.toContain("No downloads yet");
   expect(target.textContent).not.toContain("Restoring local library");
   expect(target.textContent).not.toContain("Loading downloads");
-  expect(target.querySelector('[aria-label="Track download counts"]')?.textContent).toMatch(
+  expect(target.querySelector("header p")?.textContent).toMatch(
     /0\s+tracks available for offline listening, 0\s+pending/,
   );
   expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
@@ -122,7 +122,7 @@ it("preserves active-job precedence and newest-first saved files, including orph
   await save(cache, "newer", 2000, "raw");
   await save(cache, "active", 3000);
   set({ jobs: [job(cache, "active", "downloading"), job(cache, "waiting", "queued")] });
-  expect(target.querySelector('[aria-label="Track download counts"]')?.textContent).toMatch(
+  expect(target.querySelector("header p")?.textContent).toMatch(
     /3\s+tracks available for offline listening, 2\s+pending/,
   );
   const rows = [...target.querySelectorAll('[role="listitem"]')];
@@ -171,7 +171,7 @@ it("counts unique pending tracks across jobs, durable intent and formats with ov
       { ...job(cache, "both", "queued"), key: downloadKey("both", "raw"), format: "raw" },
     ],
   });
-  const summary = target.querySelector('[aria-label="Track download counts"]')!;
+  const summary = target.querySelector("header p")!;
   expect(summary.textContent).toMatch(/1\s+track available for offline listening, 3\s+pending/);
   set({ jobs: [] });
   expect(summary.textContent).toMatch(/1\s+track available for offline listening, 2\s+pending/);
@@ -286,7 +286,7 @@ it("reflects real engine transfer, queue, completion, and failure states", async
   expect(target.textContent).not.toContain("failed title");
 });
 
-it("Retry all snapshots only failed files in exact formats without waiting for transfers", async () => {
+it("Retry all submits failed track IDs as one batch without waiting for transfers", async () => {
   const { target, cache, trackEngine, set } = setup();
   await save(cache, "saved", 1000);
   for (const format of ["raw", "mp3"] as const) {
@@ -300,6 +300,7 @@ it("Retry all snapshots only failed files in exact formats without waiting for t
   set({ jobs: [job(cache, "active", "downloading"), job(cache, "queued", "queued")] });
   const pending = deferred<File>();
   const download = vi.spyOn(trackEngine, "download").mockReturnValue(pending.promise);
+  const downloadMany = vi.spyOn(trackEngine, "downloadMany").mockImplementation(() => {});
   const retryAll = [...target.querySelectorAll("button")].find(
     (button) => button.textContent === "Retry all",
   )!;
@@ -316,13 +317,10 @@ it("Retry all snapshots only failed files in exact formats without waiting for t
   set({ loading: false });
   rowRetry.click();
   expect(download).toHaveBeenLastCalledWith("failed", { format: "raw" });
-  download.mockClear();
   retryAll.click();
   flushSync();
-  expect(download.mock.calls).toEqual([
-    ["failed", { format: "raw" }],
-    ["failed", { format: "mp3" }],
-  ]);
+  expect(downloadMany).toHaveBeenCalledOnce();
+  expect(downloadMany).toHaveBeenCalledWith(new Set(["failed"]));
   expect(retryAll.disabled).toBe(false);
   expect(cancelAll.disabled).toBe(false);
   pending.resolve(new File(["audio"], "audio"));

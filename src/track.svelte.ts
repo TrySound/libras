@@ -138,18 +138,22 @@ export class TrackEngine {
       )
         return;
       const entries = [...cache.downloads];
+      const failed = new Set<string>();
       for (const [key, intent] of entries) {
-        if (intent.status === "queued" && !this.#jobs.has(key))
+        if (this.#jobs.has(key)) {
+          continue;
+        }
+        if (intent.status === "queued") {
           this.#addJob(
             intent.track,
             { key, cacheKey: cache.key!, format: intent.format, contentType: intent.contentType },
             true,
           );
+        } else if (intent.status === "failed") {
+          failed.add(intent.track.id);
+        }
       }
-      for (const [key, intent] of entries) {
-        if (intent.status === "failed" && !this.#jobs.has(key))
-          void this.download(intent.track.id, { format: intent.format });
-      }
+      this.downloadMany(failed);
       this.#drain();
     } catch {
       /* Unreadable download storage stays intact and blocks this domain only. */

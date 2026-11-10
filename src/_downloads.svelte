@@ -21,7 +21,6 @@
     [...cache.downloads.values()].filter((entry) => entry.status === "failed"),
   );
 
-  const unfinished = $derived(trackEngine.downloadCount + failed.length);
   const counts = $derived.by(() => {
     const pending = new Set<string>();
     const downloaded = new Set<string>();
@@ -40,13 +39,15 @@
 
   function retryAll() {
     if (loading || canceling || !failed.length) return;
-    const entries = [...failed];
-    for (const entry of entries)
-      void trackEngine.download(entry.track.id, { format: entry.format });
+    const ids = new Set<string>();
+    for (const entry of failed) {
+      ids.add(entry.track.id);
+    }
+    trackEngine.downloadMany(ids);
   }
 
   async function cancelAll() {
-    if (loading || canceling || !unfinished) return;
+    if (loading || canceling || !counts.pending) return;
     try {
       await trackEngine.cancelDownloads();
     } catch {
@@ -82,7 +83,7 @@
   <div class="stack-lg scroll-runway">
     <header class="stack-sm">
       <h1 class="heading-lg uppercase" id="downloads-heading">Downloads</h1>
-      <p class="body text-secondary" role="group" aria-label="Track download counts">
+      <p class="body text-secondary">
         {counts.downloaded}
         {counts.downloaded === 1 ? "track" : "tracks"} available for offline listening, {counts.pending}
         pending
@@ -99,7 +100,7 @@
           class="button"
           data-variant="secondary"
           data-size="text"
-          disabled={loading || canceling || !unfinished}
+          disabled={loading || canceling || !counts.pending}
           onclick={cancelAll}>{canceling ? "Canceling…" : "Cancel downloads"}</button
         >
       </div>
