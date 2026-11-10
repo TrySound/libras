@@ -232,8 +232,10 @@
   --motion-duration-feedback: 120ms;
   --motion-duration-enter: 200ms;
   --motion-duration-exit: 120ms;
-  --motion-ease-enter: ease-out;
-  --motion-ease-exit: ease-in;
+  /* Open Props --ease-sine-in-out; shared by all time-based UI feedback. */
+  --motion-ease: cubic-bezier(0.445, 0.05, 0.55, 0.95);
+  --motion-ease-enter: var(--motion-ease);
+  --motion-ease-exit: var(--motion-ease);
   --press-offset: 1px;
   --press-scale: 0.995;
   --press-scale-compact: 0.96;
@@ -320,18 +322,20 @@
   z-index: var(--layer-header);
 }
 
-/* Move the cover during the exit phase, before the incoming page fades in. */
+/* Move shared artwork independently of the page's exit/entry timing. */
 ::view-transition-group(.artwork) {
-  animation-duration: var(--motion-duration-exit);
-  animation-timing-function: linear;
+  animation-duration: 240ms;
+  animation-timing-function: var(--motion-ease);
   z-index: 2;
 }
 
 ::view-transition-old(root) {
+  animation-timing-function: var(--motion-ease);
   animation-duration: var(--motion-duration-exit);
 }
 
 ::view-transition-new(root) {
+  animation-timing-function: var(--motion-ease);
   animation-delay: var(--motion-duration-exit);
   animation-duration: var(--motion-duration-enter);
 }
@@ -346,16 +350,18 @@
 ::view-transition-old(.slide-up),
 ::view-transition-old(.slide-left) {
   animation-duration: var(--motion-duration-exit);
-  animation-timing-function: linear;
+  animation-timing-function: var(--motion-ease);
   animation-fill-mode: both;
 }
 
 ::view-transition-new(.slide-up) {
-  animation: slide-up var(--motion-duration-enter) linear var(--motion-duration-exit) both;
+  animation: slide-up var(--motion-duration-enter) var(--motion-ease) var(--motion-duration-exit)
+    both;
 }
 
 ::view-transition-new(.slide-left) {
-  animation: slide-left var(--motion-duration-enter) linear var(--motion-duration-exit) both;
+  animation: slide-left var(--motion-duration-enter) var(--motion-ease) var(--motion-duration-exit)
+    both;
 }
 
 @keyframes slide-up {
@@ -672,7 +678,7 @@
       }
 
       @media (prefers-reduced-motion: no-preference) {
-        animation: --edgerunner-loader-wave 1.5s ease-in-out infinite backwards;
+        animation: --edgerunner-loader-wave 1.5s var(--motion-ease) infinite backwards;
 
         &:nth-child(2) {
           animation-delay: 0.2s;
@@ -730,7 +736,7 @@
     }
 
     @media (prefers-reduced-motion: no-preference) {
-      transition: border-color var(--motion-duration-feedback);
+      transition: border-color var(--motion-duration-feedback) var(--motion-ease);
     }
 
     @media (hover: hover) {
@@ -822,9 +828,9 @@
 
     @media (prefers-reduced-motion: no-preference) {
       transition:
-        background-color var(--motion-duration-feedback),
-        translate var(--motion-duration-press),
-        scale var(--motion-duration-press);
+        background-color var(--motion-duration-feedback) var(--motion-ease),
+        translate var(--motion-duration-press) var(--motion-ease),
+        scale var(--motion-duration-press) var(--motion-ease);
 
       &:active:not(:disabled) {
         translate: 0 var(--press-offset);
@@ -832,7 +838,7 @@
       }
 
       &::before {
-        transition: translate var(--motion-duration-feedback);
+        transition: translate var(--motion-duration-feedback) var(--motion-ease);
       }
     }
   }
@@ -878,9 +884,9 @@
 
     @media (prefers-reduced-motion: no-preference) {
       transition:
-        color var(--motion-duration-feedback),
-        translate var(--motion-duration-press),
-        scale var(--motion-duration-press);
+        color var(--motion-duration-feedback) var(--motion-ease),
+        translate var(--motion-duration-press) var(--motion-ease),
+        scale var(--motion-duration-press) var(--motion-ease);
 
       &:active:not(:disabled, [aria-disabled="true"]) {
         translate: 0 var(--press-offset);
@@ -938,9 +944,9 @@
 
     @media (prefers-reduced-motion: no-preference) {
       transition:
-        background-color var(--motion-duration-feedback),
-        translate var(--motion-duration-press),
-        scale var(--motion-duration-press);
+        background-color var(--motion-duration-feedback) var(--motion-ease),
+        translate var(--motion-duration-press) var(--motion-ease),
+        scale var(--motion-duration-press) var(--motion-ease);
 
       &:active:not(:disabled) {
         translate: 0 var(--press-offset);
@@ -1043,7 +1049,7 @@
       opacity: 0;
     }
     @media (prefers-reduced-motion: no-preference) {
-      transition: opacity 180ms linear;
+      transition: opacity 180ms var(--motion-ease);
     }
 
     &[data-size="sm"] {
@@ -1076,6 +1082,10 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
+      @media (prefers-reduced-motion: no-preference) {
+        scale: var(--artwork-scale, 1);
+        transition: scale 400ms var(--motion-ease);
+      }
     }
 
     &:has(> img:not([hidden])) > .artwork-placeholder {
@@ -1239,10 +1249,10 @@
     }
     @media (prefers-reduced-motion: no-preference) {
       transition:
-        background-color var(--motion-duration-feedback),
-        border-color var(--motion-duration-feedback),
-        translate var(--motion-duration-press),
-        scale var(--motion-duration-press);
+        background-color var(--motion-duration-feedback) var(--motion-ease),
+        border-color var(--motion-duration-feedback) var(--motion-ease),
+        translate var(--motion-duration-press) var(--motion-ease),
+        scale var(--motion-duration-press) var(--motion-ease);
       &:where(button, a):active:not(:disabled) {
         translate: 0 var(--press-offset);
         scale: var(--press-scale);
@@ -1311,16 +1321,16 @@
       pointer-events: none;
       transition:
         translate var(--motion-duration-exit) var(--motion-ease-exit),
-        display var(--motion-duration-exit),
-        overlay var(--motion-duration-exit);
+        display var(--motion-duration-exit) var(--motion-ease),
+        overlay var(--motion-duration-exit) var(--motion-ease);
       transition-behavior: allow-discrete;
       &::backdrop {
         opacity: 0;
         pointer-events: none;
         transition:
           opacity var(--motion-duration-exit) var(--motion-ease-exit),
-          display var(--motion-duration-exit),
-          overlay var(--motion-duration-exit);
+          display var(--motion-duration-exit) var(--motion-ease),
+          overlay var(--motion-duration-exit) var(--motion-ease);
         transition-behavior: allow-discrete;
       }
       &[open] {
@@ -1508,16 +1518,16 @@
     }
     @media (prefers-reduced-motion: no-preference) {
       transition:
-        border-color var(--motion-duration-feedback),
-        translate var(--motion-duration-press),
-        scale var(--motion-duration-press),
-        opacity 180ms linear;
+        border-color var(--motion-duration-feedback) var(--motion-ease),
+        translate var(--motion-duration-press) var(--motion-ease),
+        scale var(--motion-duration-press) var(--motion-ease),
+        opacity 180ms var(--motion-ease);
       &:has(> .link-target:active) {
         translate: 0 var(--press-offset);
         scale: var(--press-scale);
       }
       &:has(> .link-target:where(:hover, :focus-visible, :active)) > .tile-artwork {
-        scale: 1.04;
+        --artwork-scale: 1.04;
       }
     }
   }
@@ -1538,15 +1548,21 @@
     /* The tile owns the readiness fade; don't multiply it with an image fade. */
     opacity: 1;
     position: absolute;
-    inset: 0;
-    scale: 1;
+    /* Share the tile's border box so native inner corner geometry matches. */
+    inset: calc(-1 * var(--border-width));
+    inline-size: auto;
+    block-size: auto;
+    aspect-ratio: auto;
+    border: var(--border-width) solid transparent;
+    background-clip: padding-box;
+    /* Named snapshots must carry their own crop, not rely on the tile ancestor. */
+    border-radius: inherit;
+    corner-shape: inherit;
     > .artwork-placeholder {
       display: none;
     }
     @media (prefers-reduced-motion: no-preference) {
-      transition:
-        scale 400ms,
-        background-color var(--motion-duration-feedback);
+      transition: background-color var(--motion-duration-feedback) var(--motion-ease);
     }
   }
 
@@ -1649,9 +1665,9 @@
       pointer-events: none;
       transition:
         opacity 80ms var(--motion-ease-exit),
-        translate 80ms,
-        display 80ms allow-discrete,
-        overlay 80ms allow-discrete;
+        translate 80ms var(--motion-ease),
+        display 80ms var(--motion-ease) allow-discrete,
+        overlay 80ms var(--motion-ease) allow-discrete;
       &:popover-open {
         opacity: 1;
         pointer-events: auto;
@@ -1844,8 +1860,8 @@
       pointer-events: none;
       transition:
         translate var(--motion-duration-exit) var(--motion-ease-exit),
-        display var(--motion-duration-exit),
-        overlay var(--motion-duration-exit);
+        display var(--motion-duration-exit) var(--motion-ease),
+        overlay var(--motion-duration-exit) var(--motion-ease);
       transition-behavior: allow-discrete;
 
       &::backdrop {
@@ -1930,7 +1946,9 @@
     object-position: 65% top;
     opacity: 0.1;
     scale: 1.06;
-    filter: var(--atmosphere-filter, blur(0)) blur(6px);
+    /* SVG turbulence/displacement forces expensive content-height rasterization
+     * during WebKit view-transition capture. Keep the soft tint without it. */
+    filter: blur(6px);
     mask-mode: alpha;
     mask-image: radial-gradient(
       ellipse at 85% 15%,
@@ -1990,6 +2008,7 @@
 
 .app-stage {
   --atmosphere-viewport-height: 100dvh;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   min-block-size: 100dvh;
@@ -2034,6 +2053,19 @@
 }
 
 @container navigation (width <= 50rem) {
+  .app-stage {
+    --app-header-height: calc(62px + max(0px, env(safe-area-inset-top) - var(--space-sm)));
+    padding-block-start: var(--app-header-height);
+  }
+
+  .app-stage > .app-header {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline: 0;
+    block-size: var(--app-header-height);
+    flex-wrap: nowrap;
+  }
+
   .app-stage > .app-sidebar {
     display: none;
   }
