@@ -23,17 +23,13 @@
 
   const unfinished = $derived(trackEngine.downloadCount + failed.length);
   const counts = $derived.by(() => {
-    const pending = new Set([
-      ...trackEngine.downloadJobs.map((job) => job.track.id),
-      ...[...cache.downloads.values()]
-        .filter((entry) => entry.status !== "completed")
-        .map((entry) => entry.track.id),
-    ]);
-    const downloaded = new Set(
-      [...cache.downloads.values()]
-        .filter((entry) => entry.status === "completed")
-        .map((entry) => entry.track.id),
-    );
+    const pending = new Set<string>();
+    const downloaded = new Set<string>();
+    for (const entry of cache.downloads.values()) {
+      if (entry.status === "completed") downloaded.add(entry.track.id);
+      else pending.add(entry.track.id);
+    }
+    for (const job of trackEngine.downloadJobs) pending.add(job.track.id);
     return { pending: pending.size, downloaded: downloaded.size };
   });
 
@@ -81,11 +77,11 @@
   <div class="stack-lg scroll-runway">
     <header class="stack-sm">
       <h1 class="heading-lg uppercase" id="downloads-heading">Downloads</h1>
-      <p class="body text-secondary">Tracks available for offline listening.</p>
-      <div class="row-md row-wrap" role="group" aria-label="Track download counts">
-        <span class="caption text-secondary">Pending {counts.pending}</span>
-        <span class="caption text-secondary">Downloaded {counts.downloaded}</span>
-      </div>
+      <p class="body text-secondary" role="group" aria-label="Track download counts">
+        {counts.downloaded}
+        {counts.downloaded === 1 ? "track" : "tracks"} available for offline listening, {counts.pending}
+        pending
+      </p>
       <div class="row-sm row-wrap">
         <button
           class="button"

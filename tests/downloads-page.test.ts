@@ -98,7 +98,7 @@ it("restores silently with a native heading and shows the empty state only once 
   );
   expect(target.querySelector("h1")?.textContent).toBe("Downloads");
   expect(target.querySelector('[aria-label="Track download counts"]')?.textContent).toMatch(
-    /Pending 0.*Downloaded 0/s,
+    /0\s+tracks available for offline listening, 0\s+pending/,
   );
   expect(target.textContent).toContain("No downloads yet");
   expect(target.querySelector('a[href="?/library"]')?.textContent).toBe("Open library");
@@ -107,7 +107,7 @@ it("restores silently with a native heading and shows the empty state only once 
   expect(target.textContent).not.toContain("Restoring local library");
   expect(target.textContent).not.toContain("Loading downloads");
   expect(target.querySelector('[aria-label="Track download counts"]')?.textContent).toMatch(
-    /Pending 0.*Downloaded 0/s,
+    /0\s+tracks available for offline listening, 0\s+pending/,
   );
   expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
   set({ loading: false });
@@ -122,6 +122,9 @@ it("preserves active-job precedence and newest-first saved files, including orph
   await save(cache, "newer", 2000, "raw");
   await save(cache, "active", 3000);
   set({ jobs: [job(cache, "active", "downloading"), job(cache, "waiting", "queued")] });
+  expect(target.querySelector('[aria-label="Track download counts"]')?.textContent).toMatch(
+    /3\s+tracks available for offline listening, 2\s+pending/,
+  );
   const rows = [...target.querySelectorAll('[role="listitem"]')];
   expect(rows.map((row) => row.querySelector(".label")?.textContent)).toEqual([
     "active title",
@@ -169,9 +172,9 @@ it("counts unique pending tracks across jobs, durable intent and formats with ov
     ],
   });
   const summary = target.querySelector('[aria-label="Track download counts"]')!;
-  expect(summary.textContent).toMatch(/Pending 3.*Downloaded 1/s);
+  expect(summary.textContent).toMatch(/1\s+track available for offline listening, 3\s+pending/);
   set({ jobs: [] });
-  expect(summary.textContent).toMatch(/Pending 2.*Downloaded 1/s);
+  expect(summary.textContent).toMatch(/1\s+track available for offline listening, 2\s+pending/);
 });
 
 it("preserves a saved track name verbatim without adding badges", async () => {
