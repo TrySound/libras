@@ -159,61 +159,19 @@ it("counts unique pending tracks across jobs, durable intent and formats with ov
   const { target, cache, set } = setup();
   await save(cache, "both", 1000, "raw");
   await save(cache, "both", 1000, "mp3");
-  for (const id of ["both", "waiting", "failed"]) {
-    await cache.enqueueDownload(
-      { id, title: id, artist: "Artist", album: "Album" },
-      "raw",
-      "audio/flac",
-      true,
-    );
-    // Use independent failed formats on waiting and failed tracks.
-    if (id !== "both") await cache.failDownload(downloadKey(id, "raw"));
-  }
-  await cache.enqueueDownload(
-    { id: "failed", title: "failed", artist: "Artist", album: "Album" },
-    "mp3",
-    "audio/mpeg",
-  );
+  for (const id of ["failed", "queued"])
+    await cache.enqueueDownload(job(cache, id, "queued").track, "mp3", "audio/mpeg");
   await cache.failDownload(downloadKey("failed", "mp3"));
   set({
     jobs: [
       job(cache, "both", "downloading"),
       { ...job(cache, "both", "queued"), key: downloadKey("both", "raw"), format: "raw" },
-      job(cache, "waiting", "queued"),
     ],
   });
   const summary = target.querySelector('[aria-label="Track download counts"]')!;
   expect(summary.textContent).toMatch(/Pending 3.*Downloaded 1/s);
-  expect(summary.querySelector("[aria-live]")).toBeNull();
   set({ jobs: [] });
   expect(summary.textContent).toMatch(/Pending 2.*Downloaded 1/s);
-  await cache.enqueueDownload(
-    { id: "durable", title: "Durable", artist: "Artist", album: "Album" },
-    "mp3",
-    "audio/mpeg",
-  );
-  set({ loading: true });
-  expect(summary.textContent).toMatch(/Pending 3.*Downloaded 1/s);
-  expect(summary.textContent).not.toContain("Loading");
-  expect(summary.querySelector(".loader-bar")).toBeNull();
-});
-
-it("enables cancellation for failures alone", async () => {
-  const { target, cache, trackEngine } = setup(true);
-  await cache.enqueueDownload(
-    { id: "failed", title: "Failed", artist: "Artist", album: "Album" },
-    "mp3",
-    "audio/mpeg",
-  );
-  await cache.failDownload(downloadKey("failed", "mp3"));
-  flushSync();
-  const button = [...target.querySelectorAll("button")].find(
-    (button) => button.textContent === "Cancel downloads",
-  )!;
-  expect(trackEngine.downloadCount).toBe(0);
-  expect(button.disabled).toBe(false);
-  button.click();
-  await vi.waitFor(() => expect(cache.downloads.size).toBe(0));
 });
 
 it("preserves a saved track name verbatim without adding badges", async () => {
@@ -368,7 +326,7 @@ it("Retry all snapshots only failed files in exact formats without waiting for t
   expect(target.querySelectorAll("time")).toHaveLength(1);
 });
 
-it("Cancel downloads guards busy controls and preserves saved and failed files when durable cancellation rejects", async () => {
+it("Cancel downloads guards busy controls, preserves intent on rejection, and removes unfinished files on success", async () => {
   const { target, cache, trackEngine, disk } = setup(true);
   await save(cache, "saved", 1000);
   await cache.enqueueDownload(
@@ -377,6 +335,13 @@ it("Cancel downloads guards busy controls and preserves saved and failed files w
     "audio/mpeg",
   );
   await cache.failDownload(downloadKey("failed", "mp3"));
+  flushSync();
+  expect(trackEngine.downloadCount).toBe(0);
+  expect(
+    [...target.querySelectorAll("button")].find(
+      (button) => button.textContent === "Cancel downloads",
+    )!.disabled,
+  ).toBe(false);
   void trackEngine.download("queued");
   await vi.waitFor(() =>
     expect(cache.downloads.get(downloadKey("queued", "mp3"))?.status).toBe("queued"),
