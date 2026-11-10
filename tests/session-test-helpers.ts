@@ -8,6 +8,7 @@ import { Playback } from "../src/playback.svelte";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import type { Account } from "../src/schema";
 import { Session } from "../src/session.svelte";
+import { Favourites } from "../src/favourites.svelte";
 
 export const credentials = {
   host: "https://music.example",
@@ -53,7 +54,7 @@ export function createStorage() {
   };
 }
 
-export function createSession(saved = false, storage = createStorage()) {
+export function createSession(saved = false, storage = createStorage(), withFavourites = false) {
   const selection = new TestSelection();
   const auth = new AuthStore(storage);
   if (saved) auth.save(credentials);
@@ -140,6 +141,7 @@ export function createSession(saved = false, storage = createStorage()) {
       },
     };
   });
+  const favourites = withFavourites ? new Favourites(selection) : undefined;
   const session = new Session({
     selection,
     network,
@@ -148,16 +150,19 @@ export function createSession(saved = false, storage = createStorage()) {
     tracks: trackEngine,
     playback: player,
     preferences: storage,
+    favourites,
   });
   return {
     async destroy() {
       session.destroy();
+      favourites?.destroy();
       await player.destroy();
       covers.activate.mockRestore();
       coverResources.destroy();
       trackEngine.destroy();
     },
     session,
+    favourites,
     network,
     selection,
     auth,

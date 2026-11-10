@@ -8,15 +8,19 @@ const ordinal = v.optional(v.pipe(v.number(), v.integer(), v.minValue(1)));
 
 export const accountSchema = v.strictObject({ host: id, username: id });
 
+// localOnly: false proves a server target, true marks a local collection;
+// undefined is legacy/unknown provenance and must not authorize a star.
 export const artistSchema = v.strictObject({
   id,
   name: v.string(),
+  localOnly: v.optional(v.boolean()),
   artworkId: v.optional(id),
 });
 
 export const albumSchema = v.strictObject({
   id,
   title: v.string(),
+  localOnly: v.optional(v.boolean()),
   artistIds: v.pipe(v.array(id), v.minLength(1)),
   displayArtist: v.optional(v.string()),
   // Effective artwork: explicit album image, otherwise its artist's image.
@@ -66,6 +70,23 @@ export const playlistDetailSchema = v.strictObject({
   entries: v.array(playlistEntrySchema),
   fetchedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
 });
+
+export const favouriteDescriptionSchema = v.strictObject({
+  id,
+  title: v.string(),
+  artist: v.optional(v.string()),
+  artworkId: v.optional(id),
+});
+export const favouritesSchema = v.strictObject({
+  fetchedAt: v.nullable(v.number()),
+  artists: v.array(favouriteDescriptionSchema),
+  albums: v.array(favouriteDescriptionSchema),
+  tracks: v.array(favouriteDescriptionSchema),
+});
+export type FavouriteDescription = v.InferOutput<typeof favouriteDescriptionSchema>;
+export type FavouriteKind = "artists" | "albums" | "tracks";
+export type FavouriteTarget = { kind: FavouriteKind; id: string };
+export type FavouriteState = v.InferOutput<typeof favouritesSchema>;
 
 export type Playlist = v.InferOutput<typeof playlistSchema>;
 export type PlaylistEntry = v.InferOutput<typeof playlistEntrySchema>;

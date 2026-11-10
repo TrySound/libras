@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import type { FavouriteTarget } from "./schema";
 import { credentialsSchema, normalizeAndValidateServerHost, type Credentials } from "./auth";
 
 export interface SubsonicAuth {
@@ -67,6 +68,7 @@ const artistSchema = v.object({
 const albumSchema = v.object({
   id: v.string(),
   name: v.string(),
+  artist: v.optional(v.string()),
   artists: v.optional(v.array(artistSchema)),
   displayArtist: v.optional(v.string()),
   coverArt: v.optional(v.string()),
@@ -79,6 +81,7 @@ const trackSchema = v.object({
   title: v.string(),
   album: v.optional(v.string()),
   albumId: v.optional(v.string()),
+  artist: v.optional(v.string()),
   artists: v.optional(v.array(artistSchema)),
   displayArtist: v.optional(v.string()),
   duration: v.optional(v.number()),
@@ -121,6 +124,13 @@ const responseSchema = v.object({
     error: v.optional(v.object({ code: v.optional(v.number()), message: v.optional(v.string()) })),
     indexes: v.optional(v.object({ lastModified: v.optional(v.union([v.number(), v.string()])) })),
     searchResult3: v.optional(
+      v.object({
+        artist: v.optional(v.array(artistSchema)),
+        album: v.optional(v.array(albumSchema)),
+        song: v.optional(v.array(trackSchema)),
+      }),
+    ),
+    starred2: v.optional(
       v.object({
         artist: v.optional(v.array(artistSchema)),
         album: v.optional(v.array(albumSchema)),
@@ -290,6 +300,31 @@ export class SubsonicClient {
         signal: this.signal,
       }),
     );
+  }
+
+  async getStarred2() {
+    const result = await this.#get("getStarred2");
+    if (!result.starred2) throw new Error("The server returned an invalid starred2 response.");
+    return {
+      artists: result.starred2.artist ?? [],
+      albums: result.starred2.album ?? [],
+      tracks: result.starred2.song ?? [],
+    };
+  }
+
+  async star(target: FavouriteTarget): Promise<void> {
+    await this.#post("star", this.#starParameters(target));
+  }
+
+  async unstar(target: FavouriteTarget): Promise<void> {
+    await this.#post("unstar", this.#starParameters(target));
+  }
+
+  #starParameters(target: FavouriteTarget) {
+    return new URLSearchParams({
+      [target.kind === "artists" ? "artistId" : target.kind === "albums" ? "albumId" : "id"]:
+        target.id,
+    });
   }
 
   async getPlaylists(): Promise<SubsonicPlaylist[]> {

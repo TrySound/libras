@@ -53,7 +53,7 @@
     if (await result) {
       host = username = password = "";
       // Session may finish after navigation starts or Settings is hidden.
-      if (window.location.href === sourceURL && view?.checkVisibility()) navigate("/library");
+      if (window.location.href === sourceURL && view?.checkVisibility()) navigate("/");
     }
   }
 

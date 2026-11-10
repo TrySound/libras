@@ -52,6 +52,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
         ? { status: "failed", error: { code: pingCode, message: "Unauthorized" } }
         : { version: "1.16.1", type: "test-server", serverVersion: "1", openSubsonic: true };
     } else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
+    else if (method === "getStarred2") fields = { starred2: {} };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
     else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
     else if (method === "search3") {
@@ -140,7 +141,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
     pingGate = undefined;
     await page.getByLabel("Password", { exact: true }).fill("password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
-    await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
+    await page.getByRole("heading", { name: "Welcome Home", exact: true }).waitFor();
     await page.getByRole("link", { name: "Settings", exact: true }).click();
     await waitConnected();
 
@@ -237,13 +238,14 @@ test("Settings native controls, layout, and persistence", async (t) => {
       await control.focus();
       await page.keyboard.press("Space");
       await waitConnected();
+      assert.equal(await control.isChecked(), false);
       assert.equal(
         await control.evaluate((node) => getComputedStyle(node, "::before").backgroundColor),
-        onThumb,
+        "rgb(255, 141, 141)",
       );
       assert.equal(calls.filter((method) => method === "search3").length, searches);
       await page.getByRole("link", { name: "Libras home", exact: true }).click();
-      await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
+      await page.getByRole("heading", { name: "Welcome Home", exact: true }).waitFor();
       await page.getByRole("link", { name: "Settings", exact: true }).click();
       await waitConnected();
     });
@@ -265,7 +267,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
       assert.equal(passwordRequests, 0);
       const before = pingMethods.length;
       await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
+      await page.getByRole("heading", { name: "Welcome Home", exact: true }).waitFor();
       assert.deepEqual(pingMethods.slice(before), ["token", "password"]);
       assert.ok(passwordRequests > 0);
       assert.equal(

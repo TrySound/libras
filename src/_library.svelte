@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import FavouriteButton from "./ui/favourite-button.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -67,10 +68,10 @@
   }
 </script>
 
-<svelte:head><title>Your library | {appName}</title></svelte:head>
+<svelte:head><title>Artists | {appName}</title></svelte:head>
 
 <section aria-labelledby="library-heading">
-  <h1 class="visually-hidden" id="library-heading">Your library</h1>
+  <h1 class="visually-hidden" id="library-heading">Artists</h1>
   {#if session.loadingAfterConnect}
     <div class="library-loading" role="status">
       <Loader size="xl" />
@@ -234,6 +235,7 @@
       </button>
     </header>
     <div class="stack-sm">
+      {#if menuArtist}<FavouriteButton target={{ kind: "artists", id: menuArtist.id }} />{/if}
       <button
         class="menu-item"
         disabled={!availableTrackIds.length}

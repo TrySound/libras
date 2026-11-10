@@ -22,7 +22,9 @@ Libras is a browser-based minimalistic music player that connects to your own mu
 
 1. Open [Libras](https://libras-music.app/webapp/).
 2. Connect to your music server with your server address, username, and password.
-3. Browse your library and start listening.
+3. Welcome Home shows your favourite artists, albums, and tracks. Browse Artists to start listening or add independent server-backed favourites.
+
+Home previews stay within two rows; “All favourite…” opens the complete collection. Downloaded-only browsing filters favourites without changing membership or disabling authenticated edits. Disconnect keeps cached favourites but requires reconnection to edit them. Failed or uncertain server edits never become local-only stars; use Refresh favourites on Home to retry.
 
 Just trying it out? Connect to the [Navidrome demo server](https://demo.navidrome.org/) using `https://demo.navidrome.org` as the server address and `demo` as both the username and password.
 

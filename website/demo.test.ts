@@ -189,7 +189,7 @@ it("explains the fixed demo account and offers reload instead of an unusable log
 });
 
 it.each([
-  ["/library", "Your library"],
+  ["/library", "Artists"],
   ["/search", "Search"],
   ["/settings", "Settings"],
   ["/downloads", "Downloads"],

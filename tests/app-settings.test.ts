@@ -669,7 +669,7 @@ describe("app settings", () => {
     expect(offline().checked).toBe(false);
     expect(offline().disabled).toBe(false);
     expect(navigate).toHaveBeenCalledOnce();
-    expect(navigate).toHaveBeenCalledWith("/library", "push");
+    expect(navigate).toHaveBeenCalledWith("/", "push");
     expect(session.auth?.host).toBe(credentials.host);
   });
 });

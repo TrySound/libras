@@ -296,7 +296,7 @@ test("Edgerunner foundations and native controls", async (t) => {
         for (const sidebar of await sidebars.all()) {
           assert.equal(await sidebar.getByRole("navigation").getByRole("link").count(), 1);
           assert.equal(
-            await sidebar.getByRole("link", { name: "Your library", exact: true }).count(),
+            await sidebar.getByRole("link", { name: "Artists", exact: true }).count(),
             1,
           );
         }

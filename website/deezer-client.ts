@@ -160,6 +160,16 @@ export class DeezerSubsonicClient implements SubsonicApi {
       );
     return mediaUrl(track.preview, "https://cdnt-preview.dzcdn.net");
   }
+  async getStarred2(): ReturnType<SubsonicClient["getStarred2"]> {
+    throw new Error("Favourites are not supported in the demo.");
+  }
+  async star(): Promise<void> {
+    throw new Error("Favourites are not supported in the demo.");
+  }
+  async unstar(): Promise<void> {
+    throw new Error("Favourites are not supported in the demo.");
+  }
+
   async getPlaylists() {
     this.signal.throwIfAborted();
     return [];

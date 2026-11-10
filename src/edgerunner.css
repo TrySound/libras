@@ -1474,6 +1474,87 @@
     }
   }
 
+  .home {
+    min-inline-size: 0;
+  }
+  .home-grid {
+    align-items: start;
+  }
+  .home-artist {
+    overflow-wrap: anywhere;
+  }
+  .home-artist .tile-actions {
+    position: relative;
+    align-self: end;
+  }
+  .home-album,
+  .home-metadata > div,
+  .home-track-label {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+  .home-cover {
+    display: block;
+    aspect-ratio: 1;
+    inline-size: 100%;
+    border-radius: var(--radius-lg);
+    background: var(--item-bg);
+  }
+  .home-cover .artwork {
+    inline-size: 100%;
+    block-size: 100%;
+    aspect-ratio: 1;
+  }
+  .home-cover img {
+    object-fit: contain;
+    transform: none;
+    scale: none;
+  }
+  .home-metadata {
+    align-items: start;
+    justify-content: space-between;
+  }
+  .home-metadata > div:first-child {
+    flex: 1;
+  }
+  .home-metadata > div:last-child {
+    flex: none;
+  }
+  .home-track {
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+    gap: var(--space-sm);
+    align-items: center;
+    padding: var(--space-sm);
+  }
+  .home-overflow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 44px;
+    box-sizing: border-box;
+    padding: var(--space-md);
+    border: var(--border-width) solid var(--item-border);
+    border-radius: var(--radius-lg);
+    background: var(--item-bg);
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+  }
+  .home-overflow {
+    corner-shape: var(--corner-shape);
+  }
+  :is(.home-overflow, .home-cover):focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .home-overflow:hover {
+    background: var(--item-bg-hover);
+    border-color: var(--item-border-hover);
+  }
+  .home-overflow-square {
+    aspect-ratio: 1;
+    inline-size: 100%;
+  }
+
   .tile-grid-item {
     --tile-padding: var(--space-md);
     aspect-ratio: 1;
