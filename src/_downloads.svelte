@@ -26,10 +26,15 @@
     const pending = new Set<string>();
     const downloaded = new Set<string>();
     for (const entry of cache.downloads.values()) {
-      if (entry.status === "completed") downloaded.add(entry.track.id);
-      else pending.add(entry.track.id);
+      if (entry.status === "completed") {
+        downloaded.add(entry.track.id);
+      } else {
+        pending.add(entry.track.id);
+      }
     }
-    for (const job of trackEngine.downloadJobs) pending.add(job.track.id);
+    for (const job of trackEngine.downloadJobs) {
+      pending.add(job.track.id);
+    }
     return { pending: pending.size, downloaded: downloaded.size };
   });
 
