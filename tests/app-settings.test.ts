@@ -115,9 +115,7 @@ async function setup(
     )!;
   const offline = () => target.querySelector<HTMLInputElement>("#settings-offline")!;
   const confirmDisconnect = (cleanup = false) => {
-    const dialog = target.querySelector<HTMLDialogElement>(
-      "dialog[aria-labelledby=disconnect-title]",
-    )!;
+    const dialog = target.querySelector<HTMLDialogElement>("#disconnect-dialog")!;
     const checkbox = dialog.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     expect(checkbox.checked).toBe(false);
     expect(checkbox.getAttribute("role")).toBe("switch");
@@ -657,7 +655,7 @@ describe("app settings", () => {
     expect(server.querySelector("#settings-connection-status")?.textContent).toMatch(
       /Connected\s+·\s+listener@music\.example/,
     );
-    expect(server.querySelectorAll("button")).toHaveLength(2);
+    expect(server.querySelectorAll("button")).toHaveLength(3);
     expect(button("Refresh library")).toBeDefined();
     expect(button("Disconnect")).toBeDefined();
     expect(target.querySelector("#settings-server form")).toBeNull();
@@ -675,7 +673,7 @@ describe("app settings", () => {
     button("Disconnect").click();
     flushSync();
     expect(auth.load()).not.toBeNull();
-    const checkbox = target.querySelector<HTMLInputElement>("#disconnect-delete-local")!;
+    const checkbox = target.querySelector<HTMLInputElement>("#disconnect-dialog-delete-local")!;
     expect(checkbox.checked).toBe(false);
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event("change", { bubbles: true }));

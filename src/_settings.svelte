@@ -84,29 +84,47 @@
 
 <svelte:head><title>Settings | {appName}</title></svelte:head>
 
-<dialog id="disconnect-dialog" class="dialog" closedby="any" aria-labelledby="disconnect-title">
+<dialog
+  id="disconnect-dialog"
+  class="dialog"
+  closedby="any"
+  aria-labelledby="disconnect-dialog-title"
+>
+  {@render disconnectConfirmation("disconnect-dialog")}
+</dialog>
+
+<dialog
+  id="disconnect-sheet"
+  class="bottom-sheet"
+  closedby="any"
+  aria-labelledby="disconnect-sheet-title"
+  data-swipedown="close"
+>
+  <span class="dialog-handle" aria-hidden="true"></span>
+  {@render disconnectConfirmation("disconnect-sheet")}
+</dialog>
+
+{#snippet disconnectConfirmation(id: string)}
   <form
     method="dialog"
     class="stack-md"
-    aria-labelledby="disconnect-title"
+    aria-labelledby={`${id}-title`}
     onsubmit={finishDisconnect}
   >
-    <h2 class="heading-md" id="disconnect-title">Disconnect?</h2>
+    <h2 class="heading-md" id={`${id}-title`}>Disconnect from server?</h2>
     <div class="stack-xs">
-      <div class="row-md row-justify row-wrap">
-        <label class="body" for="disconnect-delete-local" style="flex: 1 1 14ch"
-          >Delete account data and downloads from device</label
-        >
+      <div class="row-md">
         <input
           class="switch"
-          id="disconnect-delete-local"
+          id={`${id}-delete-local`}
           type="checkbox"
           role="switch"
           bind:checked={deleteLocalData}
-          aria-describedby="disconnect-scope"
+          aria-describedby={`${id}-scope`}
         />
+        <label class="body" for={`${id}-delete-local`}>Clear local data</label>
       </div>
-      <p class="caption text-secondary" id="disconnect-scope">Server data is unaffected.</p>
+      <p class="caption text-secondary" id={`${id}-scope`}>Server data is unaffected.</p>
     </div>
     <div class="row-sm row-wrap row-end">
       <button
@@ -115,14 +133,14 @@
         data-variant="secondary"
         type="button"
         command="close"
-        commandfor="disconnect-dialog">Cancel</button
+        commandfor={id}>Cancel</button
       >
       <button class="button" data-size="text" data-variant="primary" type="submit"
         >Disconnect</button
       >
     </div>
   </form>
-</dialog>
+{/snippet}
 
 <section bind:this={view} aria-labelledby="settings-heading">
   <div class="stack-lg scroll-runway">
@@ -310,10 +328,18 @@
               </button>
               <button
                 id="settings-disconnect"
-                class="button"
+                class="button only-desktop"
                 data-size="text"
                 command="show-modal"
                 commandfor="disconnect-dialog"
+                onclick={() => (deleteLocalData = false)}>Disconnect</button
+              >
+              <button
+                id="settings-disconnect-mobile"
+                class="button only-mobile"
+                data-size="text"
+                command="show-modal"
+                commandfor="disconnect-sheet"
                 onclick={() => (deleteLocalData = false)}>Disconnect</button
               >
             </div>

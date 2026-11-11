@@ -176,7 +176,9 @@ it("explains the fixed demo account and offers reload instead of an unusable log
   expect(document.body.textContent).not.toContain("Disconnect to change servers");
   document.querySelector<HTMLButtonElement>("#settings-disconnect")!.click();
   flushSync();
-  expect(document.querySelector<HTMLInputElement>("#disconnect-delete-local")?.checked).toBe(false);
+  expect(document.querySelector<HTMLInputElement>("#disconnect-dialog-delete-local")?.checked).toBe(
+    false,
+  );
   [...document.querySelectorAll<HTMLButtonElement>("dialog button")]
     .find((button) => button.textContent === "Disconnect")!
     .click();
