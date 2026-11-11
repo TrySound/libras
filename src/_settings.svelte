@@ -65,23 +65,17 @@
   let deleteLocalData = $state(false);
 
   let cleaning = $state(false);
-  let cleanupError = $state("");
 
-  function finishDisconnect() {
+  async function finishDisconnect() {
     if (cleaning) return;
     if (!session.disconnect()) return;
     host = username = password = "";
-    if (deleteLocalData) void clearLocalData();
-  }
-
-  async function clearLocalData() {
-    if (cleaning) return;
+    if (!deleteLocalData) return;
     cleaning = true;
-    cleanupError = "";
     try {
       await session.cache?.clear();
     } catch {
-      cleanupError = "Disconnected, but some local data could not be removed. Retry cleanup.";
+      // Disconnect succeeds even if optional local deletion fails.
     } finally {
       cleaning = false;
     }
@@ -189,14 +183,6 @@
 
         {#if cleaning}
           <p class="row-sm body" role="status"><Loader /> Deleting local data…</p>
-        {:else if cleanupError}
-          <p class="body" role="alert">{cleanupError}</p>
-          <button
-            class="button"
-            data-size="text"
-            data-variant="primary"
-            onclick={() => void clearLocalData()}>Retry cleanup</button
-          >
         {:else if !session.auth && demo}
           <p class="body">
             This demo uses a fixed music library and cannot connect to other servers. Reload to

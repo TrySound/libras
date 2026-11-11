@@ -54,7 +54,7 @@ Download music while online, then switch to **Offline Library** to listen withou
 
 - **Manage downloads:** Settings → Downloads.
 - **Refresh library:** Automatic when opening online, or via Settings → Refresh library.
-- **Disconnect:** Clears credentials and optionally deletes this account’s local cache and downloads. Remembered identity, preferences, other accounts and server data are unchanged. Close other Libras tabs before deleting local data; retry in Settings if deletion fails.
+- **Disconnect:** Clears credentials and optionally deletes this account’s local cache and downloads. Remembered identity, preferences, other accounts and server data are unchanged. Close other Libras tabs before deleting local data.
 - **Storage:** Each server/account has its own offline library, saved only in this browser on this device. **Clearing site data deletes it.**
 
 ## App updates

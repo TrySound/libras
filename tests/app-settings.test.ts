@@ -145,21 +145,18 @@ async function setup(
 }
 
 describe("app settings", () => {
-  it("closes confirmation immediately and shows inline progress and retry", async () => {
-    const { target, button, session, selection, auth, confirmDisconnect } = await setup(
+  it("closes confirmation immediately and silently finishes a rejected cache clear", async () => {
+    const { target, button, session, selection, auth, confirmDisconnect, fill } = await setup(
       true,
       false,
     );
     const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
     const cache = selection.cache;
     const pending = deferred();
-    const deletion = vi
-      .spyOn(selection.cache!, "clear")
-      .mockImplementationOnce(async () => {
-        await pending.promise;
-        throw new Error("Denied");
-      })
-      .mockResolvedValue(undefined);
+    const deletion = vi.spyOn(selection.cache!, "clear").mockImplementationOnce(async () => {
+      await pending.promise;
+      throw new Error("Denied");
+    });
     button("Disconnect").click();
     confirmDisconnect(true);
     flushSync();
@@ -172,20 +169,16 @@ describe("app settings", () => {
     pending.resolve();
     await vi.waitFor(() => {
       flushSync();
-      expect(button("Retry cleanup")).toBeDefined();
-    });
-    expect(target.querySelector("#settings-server [role=alert]")?.textContent).toContain(
-      "some local data could not be removed",
-    );
-    expect(reload).not.toHaveBeenCalled();
-    button("Retry cleanup").click();
-    await vi.waitFor(() => {
-      flushSync();
       expect(target.querySelector("#settings-connect")).not.toBeNull();
     });
-    expect(deletion).toHaveBeenCalledTimes(2);
+    expect(target.querySelector("#settings-server [role=alert]")).toBeNull();
+    expect(button("Retry cleanup")).toBeUndefined();
+    expect(target.textContent).not.toContain("Deleting local data…");
+    expect(deletion).toHaveBeenCalledOnce();
     expect(selection.cache).toBe(cache);
     expect(reload).not.toHaveBeenCalled();
+    fill();
+    await vi.waitFor(() => expect(session.auth).not.toBeNull());
   });
 
   it("keeps one login form and automatically verifies a direct password", async () => {

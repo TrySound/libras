@@ -379,7 +379,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
       assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-account")));
     });
     await t.test(
-      "cleanup removes real OPFS account data, survives deletion denial and late work",
+      "cleanup removes real OPFS account data without changing identity or unrelated data",
       async () => {
         await page.getByLabel("Host", { exact: true }).fill(host);
         await page.getByLabel("Username", { exact: true }).fill(username);
@@ -397,17 +397,6 @@ test("Settings native controls, layout, and persistence", async (t) => {
           const writer = await marker.createWritable();
           await writer.write("preserve");
           await writer.close();
-          window.originalRemove = FileSystemDirectoryHandle.prototype.removeEntry;
-          FileSystemDirectoryHandle.prototype.removeEntry = async function (name, options) {
-            if (options?.recursive && name !== "unrelated") {
-              await new Promise((resolve) => {
-                window.releaseCleanup = resolve;
-              });
-              if (!window.allowCleanup)
-                throw new DOMException("Test deletion denial", "NotAllowedError");
-            }
-            return window.originalRemove.call(this, name, options);
-          };
         });
         await page.getByRole("button", { name: "Disconnect", exact: true }).click();
         const artifacts = process.env.ARTIFACT_DIR;
@@ -423,43 +412,13 @@ test("Settings native controls, layout, and persistence", async (t) => {
           .getByRole("dialog")
           .getByRole("button", { name: "Disconnect", exact: true })
           .click();
-        await page.waitForFunction(() => !!window.releaseCleanup);
+        await page.locator("#server-host").waitFor();
         assert.equal(await page.locator("dialog:modal").count(), 0);
-        await page.getByText("Deleting local data…", { exact: true }).waitFor();
-        if (artifacts) {
-          await page.screenshot({ path: `${artifacts}/disconnect-busy.png` });
-          await page.setViewportSize({ width: 320, height: 740 });
-          await page.screenshot({ path: `${artifacts}/settings-busy-mobile.png` });
-          await page.setViewportSize({ width: 1280, height: 900 });
-        }
-        await page.evaluate(() => window.releaseCleanup());
-        const retry = page.getByRole("button", { name: "Retry cleanup", exact: true });
-        await retry.waitFor();
-        assert.equal(await page.locator("#settings-connect").count(), 0);
-        assert.equal(await page.locator("dialog:modal").count(), 0);
-        assert.match(
-          await page.locator("#settings-server [role=alert]").textContent(),
-          /could not be removed/,
-        );
-        if (artifacts) {
-          await page.screenshot({ path: `${artifacts}/disconnect-error.png` });
-          await page.setViewportSize({ width: 320, height: 740 });
-          await page.screenshot({ path: `${artifacts}/settings-error-mobile.png` });
-          await page.setViewportSize({ width: 1280, height: 900 });
-        }
         assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-auth")), null);
         assert.equal(
           await page.evaluate(() => localStorage.getItem("navidrome-account")),
           remembered,
         );
-        await page.evaluate(() => {
-          window.releaseCleanup = null;
-          window.allowCleanup = true;
-        });
-        await retry.click();
-        await page.waitForFunction(() => !!window.releaseCleanup);
-        await page.evaluate(() => window.releaseCleanup());
-        await page.locator("#server-host").waitFor();
         assert.equal(await page.evaluate(() => window.cacheClearMarker), true);
         assert.equal(
           await page.evaluate(() => localStorage.getItem("unrelated-preference")),
