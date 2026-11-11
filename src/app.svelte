@@ -81,22 +81,6 @@
         preferences: auth.storage,
       }),
   );
-  // Release retained browser URLs only when the same cache loses its data.
-  let observedCache: Cache | undefined;
-  let hadData = false;
-  $effect(() => {
-    const hasData = cache.tracks.size > 0 || cache.images.size > 0;
-    const cleared = observedCache === cache && hadData && !hasData;
-    observedCache = cache;
-    hadData = hasData;
-    if (!cleared) return;
-    untrack(() => {
-      playback.suspend();
-      covers.activate();
-      void trackEngine.activate();
-    });
-  });
-
   const offlineMode = $derived(session.offlineMode);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);

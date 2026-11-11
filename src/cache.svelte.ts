@@ -113,7 +113,19 @@ type DocumentName = "library" | "queue" | "images" | "downloads" | "playlists";
 
 /** Private namespace and atomic JSON I/O. Knows no account settings or runtime indexes. */
 class Disk {
-  retired = false;
+  #scope = new AbortController();
+  get signal() {
+    return this.#scope.signal;
+  }
+
+  cancel() {
+    this.#scope.abort();
+  }
+
+  resume() {
+    this.#scope = new AbortController();
+  }
+
   #pending = new Set<Promise<unknown>>();
 
   #observe<T>(operation: Promise<T>) {
@@ -122,9 +134,11 @@ class Disk {
     return operation;
   }
 
-  async deleteAccount() {
-    this.retired = true;
+  async drain() {
     while (this.#pending.size) await Promise.allSettled([...this.#pending]);
+  }
+
+  async deleteAccount() {
     try {
       const root = await navigator.storage.getDirectory();
       const accounts = await root.getDirectoryHandle("accounts");
@@ -141,21 +155,23 @@ class Disk {
     void key.catch(() => {});
   }
 
-  async #directory() {
+  async #directory(signal: AbortSignal) {
+    signal.throwIfAborted();
     const key = await this.key;
-    if (this.retired) throw new DOMException("Cache retired.", "AbortError");
+    signal.throwIfAborted();
     let directory = await navigator.storage.getDirectory();
     for (const name of ["accounts", key]) {
-      if (this.retired) throw new DOMException("Cache retired.", "AbortError");
+      signal.throwIfAborted();
       directory = await directory.getDirectoryHandle(name, { create: true });
     }
     return directory;
   }
   files() {
+    const signal = this.signal;
     return this.#observe(
       (async () => {
-        const directory = await this.#directory();
-        if (this.retired) throw new DOMException("Cache retired.", "AbortError");
+        const directory = await this.#directory(signal);
+        signal.throwIfAborted();
         return directory.getDirectoryHandle("files", { create: true });
       })(),
     );
@@ -163,6 +179,7 @@ class Disk {
 
   /** Open only the named file, validating fresh metadata without buffering bytes. */
   openBinary(record: BinaryRecord, signal?: AbortSignal): Promise<File | null> {
+    signal = AbortSignal.any([this.signal, ...(signal ? [signal] : [])]);
     return this.#observe(this.#openBinary(record, signal));
   }
 
@@ -191,7 +208,8 @@ class Disk {
     source: ReadableStream<Uint8Array>,
     options: { signal?: AbortSignal; expectedSize?: number; nonempty?: boolean } = {},
   ) {
-    return this.#observe(this.#writeBinary(fileName, source, options));
+    const signal = AbortSignal.any([this.signal, ...(options.signal ? [options.signal] : [])]);
+    return this.#observe(this.#writeBinary(fileName, source, { ...options, signal }));
   }
 
   async #writeBinary(
@@ -230,6 +248,7 @@ class Disk {
   }
 
   lockDownload<T>(key: string, signal: AbortSignal, operation: () => Promise<T>) {
+    signal = AbortSignal.any([this.signal, signal]);
     return this.#observe(this.#lockDownload(key, signal, operation));
   }
 
@@ -253,14 +272,17 @@ class Disk {
     return result;
   }
 
-  async #locked<T>(
-    name: DocumentName,
-    operation: (directory: FileSystemDirectoryHandle) => Promise<T>,
-  ) {
-    const key = await this.key;
-    const run = async () => operation(await this.#directory());
+  #locked<T>(name: DocumentName, operation: (directory: FileSystemDirectoryHandle) => Promise<T>) {
+    const signal = this.signal;
     return this.#observe(
-      navigator.locks ? navigator.locks.request(`libras-${name}:${key}.cache`, run) : run(),
+      (async () => {
+        signal.throwIfAborted();
+        const key = await this.key;
+        const run = async () => operation(await this.#directory(signal));
+        return navigator.locks
+          ? navigator.locks.request(`libras-${name}:${key}.cache`, { signal }, run)
+          : run();
+      })(),
     );
   }
   async #read<T>(
@@ -303,7 +325,7 @@ class Disk {
 
 interface CheckpointOptions<T> {
   document: DocumentName;
-  initial: T;
+  initial: () => T;
   parse: (value: unknown) => T;
   serialize: (value: T) => unknown;
   saved?: (revision: number) => Promise<void>;
@@ -324,12 +346,16 @@ class CheckpointStore<T> {
     readonly disk: Disk | undefined,
     readonly options: CheckpointOptions<T>,
   ) {
-    this.#value = $state.raw(options.initial);
+    this.#value = $state.raw(options.initial());
   }
 
-  retire() {
+  async clear() {
     this.#clearTimers();
-    return this.#serial(async () => {});
+    await this.#serial(async () => {});
+    this.#value = this.options.initial();
+    this.#savedRevision = ++this.#revision;
+    this.#loaded = false;
+    this.error = undefined;
   }
 
   get value() {
@@ -344,23 +370,25 @@ class CheckpointStore<T> {
 
   async load(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
-    if (this.disk?.retired) return;
+    const scope = this.disk?.signal;
+    if (scope?.aborted) return;
     if (this.#loaded) return;
     const revision = this.#revision;
     return this.#serial(async () => {
       signal?.throwIfAborted();
-      if (this.#loaded) return;
+      if (scope?.aborted || this.#loaded) return;
       try {
         const value = await this.disk?.read(this.options.document, this.options.parse);
         signal?.throwIfAborted();
-        if (this.disk?.retired) return;
+        if (scope?.aborted) return;
         if (!this.dirty && revision === this.#revision) {
-          this.#value = value ?? this.options.initial;
+          this.#value = value ?? this.options.initial();
           this.#savedRevision = ++this.#revision;
           this.error = undefined;
         }
         this.#loaded = true;
       } catch (error) {
+        if (scope?.aborted) return;
         if (!signal?.aborted) this.error = error;
         throw error;
       }
@@ -369,7 +397,7 @@ class CheckpointStore<T> {
 
   set(value: T, checkpoint = false) {
     if (!this.disk) throw new Error("No cache storage configured.");
-    if (this.disk.retired) return this.#revision;
+    if (this.disk.signal.aborted) return this.#revision;
     this.#value = value;
     const revision = ++this.#revision;
     this.#schedule(checkpoint);
@@ -395,19 +423,22 @@ class CheckpointStore<T> {
 
   /** Capture at write time, never per edit. Later edits remain dirty. */
   flush(): Promise<void> {
+    const scope = this.disk?.signal;
     this.#clearTimers();
     return this.#serial(async () => {
-      if (this.disk?.retired || !this.dirty) return;
+      if (scope?.aborted || !this.dirty) return;
       this.#clearTimers();
       const revision = this.#revision;
       const value = this.#value;
       try {
         await this.disk?.write(this.options.document, this.options.serialize(value));
+        if (scope?.aborted) return;
         this.#savedRevision = revision;
         this.#loaded = true;
         this.error = undefined;
         await this.options.saved?.(revision);
       } catch (error) {
+        if (scope?.aborted) return;
         this.error = error;
         throw error;
       }
@@ -422,9 +453,14 @@ interface BinaryRecord {
 
 /** Image records use reactive checkpoints; obsolete bytes retire only after acknowledgement. */
 class ImageStore {
-  async retire() {
-    await this.store.retire();
+  #pending = new Set<Promise<unknown>>();
+
+  async clear() {
+    while (this.#pending.size) await Promise.allSettled([...this.#pending]);
     await this.#serial(async () => {});
+    await this.store.clear();
+    this.#obsolete.clear();
+    this.#error = undefined;
   }
 
   readonly store: CheckpointStore<SvelteMap<string, Immutable<ImageRecord>>>;
@@ -436,7 +472,7 @@ class ImageStore {
   constructor(readonly disk: Disk | undefined) {
     this.store = new CheckpointStore<SvelteMap<string, Immutable<ImageRecord>>>(disk, {
       document: "images",
-      initial: new SvelteMap(),
+      initial: () => new SvelteMap(),
       parse: (value) => new SvelteMap(parseImages(value).map((record) => [record.id, record])),
       // Capture membership synchronously before disk I/O yields. Records themselves
       // are immutable, so subsequent edits cannot change an in-flight checkpoint.
@@ -462,26 +498,32 @@ class ImageStore {
   }
 
   /** One error boundary per public Cache operation, not per internal I/O step. */
-  async operation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    try {
-      signal?.throwIfAborted();
-      const value = await action();
-      signal?.throwIfAborted();
-      this.#error = undefined;
-      return value;
-    } catch (error) {
-      if (!signal?.aborted && this.disk) this.#error = error;
-      throw error;
-    }
+  operation<T>(action: (signal?: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (this.disk) signal = signal ? AbortSignal.any([this.disk.signal, signal]) : this.disk.signal;
+    const pending = (async () => {
+      try {
+        signal?.throwIfAborted();
+        const value = await action(signal);
+        signal?.throwIfAborted();
+        this.#error = undefined;
+        return value;
+      } catch (error) {
+        if (!signal?.aborted && this.disk) this.#error = error;
+        throw error;
+      }
+    })();
+    this.#pending.add(pending);
+    void pending.finally(() => this.#pending.delete(pending)).catch(() => {});
+    return pending;
   }
 
   /** Hydration does not open binary files. */
   async load(signal?: AbortSignal) {
-    await this.operation(() => this.store.load(signal), signal);
+    await this.operation((scope) => this.store.load(scope), signal);
   }
 
   #replace(key: string, next?: Immutable<ImageRecord>) {
-    if (this.disk?.retired) return;
+    if (this.disk?.signal.aborted) return;
     const previous = this.records.get(key);
     const records = this.store.value;
     if (next) records.set(key, next);
@@ -529,7 +571,6 @@ class ImageStore {
       signal?.throwIfAborted();
       await this.store.load(signal);
       signal?.throwIfAborted();
-      if (this.disk?.retired) return;
       const records = this.store.value;
       if (!records.size) return;
       for (const [key, record] of records) records.set(key, { ...record, ...metadata });
@@ -554,7 +595,7 @@ class ImageStore {
     try {
       await this.#serial(async () => {
         signal?.throwIfAborted();
-        if (this.disk?.retired || this.records.get(record.id)?.fileName !== expected) return;
+        if (this.records.get(record.id)?.fileName !== expected) return;
         this.#replace(record.id, record);
         published = true;
       });
@@ -579,13 +620,18 @@ class DownloadStore {
     this.#disk = disk;
   }
 
-  retire() {
-    return this.#downloadSerial(async () => {});
+  async clear() {
+    await this.#downloadSerial(async () => {});
+    this.#downloads = new Map();
+    this.#downloadsLoaded = false;
+    this.#downloadsBlocked = false;
+    this.#downloadsReady = false;
+    this.#downloadError = undefined;
   }
 
   #requireDisk() {
     if (!this.#disk) throw new Error("No cache storage configured.");
-    if (this.#disk.retired) throw new DOMException("Cache retired.", "AbortError");
+    this.#disk.signal.throwIfAborted();
     return this.#disk;
   }
 
@@ -595,6 +641,7 @@ class DownloadStore {
 
   /** Metadata-queue barrier only: neither hydrates nor joins active byte transfers. */
   flush() {
+    if (this.#disk?.signal.aborted) return Promise.resolve();
     return this.#downloadOperation(() => this.#downloadSerial(async () => {}));
   }
 
@@ -603,10 +650,13 @@ class DownloadStore {
   }
 
   async #downloadOperation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const scope = this.#disk?.signal;
     try {
+      scope?.throwIfAborted();
       return await action();
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
+      scope?.throwIfAborted();
       this.#downloadError = new DownloadError();
       throw this.#downloadError;
     }
@@ -615,7 +665,7 @@ class DownloadStore {
   async #writeDownloads(records: ReadonlyMap<string, DownloadEntry>) {
     if (this.#downloadsBlocked) throw new DownloadError();
     await this.#requireDisk().write("downloads", { version: 2, records: [...records.values()] });
-    if (this.#disk?.retired) return;
+    this.#disk?.signal.throwIfAborted();
     this.#downloads = records;
     this.#downloadsLoaded = true;
     this.#downloadError = undefined;
@@ -664,7 +714,7 @@ class DownloadStore {
         if (!signal?.aborted) this.#downloadsBlocked = true;
         throw error;
       }
-      if (this.#disk?.retired) return;
+      this.#disk?.signal.throwIfAborted();
       this.#downloadsBlocked = false;
       this.#downloads = records;
       // Readable legacy bytes are usable, but cannot authorize subset writeback.
@@ -799,7 +849,7 @@ class DownloadStore {
           await this.#writeDownloads(records);
         } catch (error) {
           // Safe known-track presentation survives persistence denial; never overwrite unknown disk state.
-          if (!this.#disk?.retired) this.#downloads = records;
+          if (!this.#disk?.signal.aborted) this.#downloads = records;
           throw error;
         }
       }),
@@ -842,6 +892,8 @@ class DownloadStore {
     format: DownloadFormat,
     signal?: AbortSignal,
   ): Promise<File | null> {
+    if (this.#disk)
+      signal = signal ? AbortSignal.any([this.#disk.signal, signal]) : this.#disk.signal;
     signal?.throwIfAborted();
     if (!this.#disk) return null;
     try {
@@ -890,6 +942,7 @@ class DownloadStore {
     response: Response,
     signal: AbortSignal,
   ): Promise<File> {
+    if (this.#disk) signal = AbortSignal.any([this.#disk.signal, signal]);
     const safeTrack = {
       id: track.id,
       title: track.title,
@@ -950,7 +1003,7 @@ class DownloadStore {
             const committed = canonical?.find(
               (item) => item.status === "completed" && item.fileName === fileName,
             );
-            if (disk.retired) throw error;
+            if (disk.signal.aborted) throw error;
             if (committed?.status === "completed") {
               const confirmed = new Map(this.downloads);
               confirmed.set(downloadKey(committed.track.id, committed.format), committed);
@@ -1082,26 +1135,22 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
  */
 export class Cache {
   readonly key: string | undefined;
-  #library = $state.raw<CheckpointStore<ReturnType<typeof prepareLibrary>>>()!;
-  #disk: Disk | undefined;
-  #queue = $state.raw<CheckpointStore<Immutable<CachedQueue>>>()!;
-  #playlists = $state.raw<CheckpointStore<Immutable<CachedPlaylists>>>()!;
-  #images = $state.raw<ImageStore>()!;
-  #downloads = $state.raw<DownloadStore>()!;
+  readonly #library: CheckpointStore<ReturnType<typeof prepareLibrary>>;
+  readonly #disk: Disk | undefined;
+  readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
+  readonly #playlists: CheckpointStore<Immutable<CachedPlaylists>>;
+  readonly #images: ImageStore;
+  readonly #downloads: DownloadStore;
   #clearing?: Promise<void>;
 
   /** Omitting the key creates an empty, non-persisting UI fallback.
    * Keys are opaque identities; hashing and storage addressing stay internal. */
   constructor(key?: string) {
     this.key = key;
-    this.#initialize();
-  }
-
-  #initialize() {
-    this.#disk = this.key === undefined ? undefined : new Disk(hash(this.key));
+    this.#disk = key === undefined ? undefined : new Disk(hash(key));
     this.#library = new CheckpointStore(this.#disk, {
       document: "library",
-      initial: prepareLibrary(null),
+      initial: () => prepareLibrary(null),
       parse: (value) => prepareLibrary(parseLibrary(value)),
       serialize: (value) => ({
         savedAt: value.savedAt,
@@ -1113,13 +1162,13 @@ export class Cache {
     });
     this.#queue = new CheckpointStore<Immutable<CachedQueue>>(this.#disk, {
       document: "queue",
-      initial: { tracks: [], index: -1, position: 0 },
+      initial: () => ({ tracks: [], index: -1, position: 0 }),
       parse: (value) => v.parse(queueSchema, value),
       serialize: (value) => value,
     });
     this.#playlists = new CheckpointStore<Immutable<CachedPlaylists>>(this.#disk, {
       document: "playlists",
-      initial: { listedAt: null, summaries: [], details: [] },
+      initial: () => ({ listedAt: null, summaries: [], details: [] }),
       parse: (value) => v.parse(playlistsSchema, value),
       serialize: (value) => value,
     });
@@ -1162,20 +1211,19 @@ export class Cache {
   clear(): Promise<void> {
     if (this.#clearing) return this.#clearing;
     const disk = this.#disk;
-    // Old operations keep permanently retired stores; fresh stores make this Cache reusable.
-    if (disk) disk.retired = true;
-    const drained = Promise.all([
-      this.#library.retire(),
-      this.#queue.retire(),
-      this.#playlists.retire(),
-      this.#images.retire(),
-      this.#downloads.retire(),
-    ]);
+    disk?.cancel();
     return (this.#clearing = (async () => {
-      await drained;
+      await disk?.drain();
+      await Promise.all([
+        this.#library.clear(),
+        this.#queue.clear(),
+        this.#playlists.clear(),
+        this.#images.clear(),
+        this.#downloads.clear(),
+      ]);
       await disk?.deleteAccount();
     })().finally(() => {
-      this.#initialize();
+      disk?.resume();
       this.#clearing = undefined;
     }));
   }
@@ -1184,6 +1232,7 @@ export class Cache {
   async load(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
     if (!this.#disk) return;
+    const scope = this.#disk.signal;
     const results = await Promise.allSettled([
       this.#library.load(signal),
       this.#queue.load(signal),
@@ -1192,6 +1241,7 @@ export class Cache {
       this.loadDownloads(signal),
     ]);
     signal?.throwIfAborted();
+    if (scope.aborted) return;
     const errors = results.flatMap((result) =>
       result.status === "rejected" ? [result.reason] : [],
     );
@@ -1301,7 +1351,7 @@ export class Cache {
   /** Load bytes on demand. Missing/incomplete files invalidate only their matching record. */
   readImage(id: string, signal?: AbortSignal) {
     const images = this.#images;
-    return images.operation(async () => {
+    return images.operation(async (signal) => {
       const opened = await images.read(id, signal);
       if (!opened) return null;
       const { file, record } = opened;
@@ -1316,7 +1366,7 @@ export class Cache {
    */
   saveImage(id: string, image: CachedImage, signal?: AbortSignal) {
     const images = this.#images;
-    return images.operation(async () => {
+    return images.operation(async (signal) => {
       this.#requireDisk();
       await images.store.load(signal);
       signal?.throwIfAborted();
@@ -1341,7 +1391,7 @@ export class Cache {
   /** Mark all artwork stale while retaining its bytes and validators for offline use. */
   invalidateImages(signal?: AbortSignal) {
     return this.#images.operation(
-      () => this.#images.updateMetadata({ freshUntil: 0 }, signal),
+      (signal) => this.#images.updateMetadata({ freshUntil: 0 }, signal),
       signal,
     );
   }
@@ -1349,7 +1399,7 @@ export class Cache {
   /** A 304 changes freshness/validators, not the file or its URL. */
   updateImage(id: string, expected: string, metadata: ImageMetadata, signal?: AbortSignal) {
     return this.#images.operation(
-      () =>
+      (signal) =>
         this.#images.updateRecord(id, expected, (record) => ({ ...record, ...metadata }), signal),
       signal,
     );
@@ -1358,7 +1408,7 @@ export class Cache {
   /** Evict only the observed version, preserving any competing replacement. */
   evictImage(id: string, expected: string, signal?: AbortSignal) {
     return this.#images.operation(
-      () => this.#images.updateRecord(id, expected, () => undefined, signal),
+      (signal) => this.#images.updateRecord(id, expected, () => undefined, signal),
       signal,
     );
   }

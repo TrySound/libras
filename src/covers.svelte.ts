@@ -37,9 +37,29 @@ export class Covers {
   #loads = new Map<string, Promise<InstalledImage | undefined>>();
   #objectUrls = new Map<string, InstalledImage>();
   #version = $state(0);
+  #dispose: () => void;
 
   constructor(selection: CacheSelection) {
     this.#selection = selection;
+    this.#dispose = $effect.root(() => {
+      $effect(() => {
+        this.#version;
+        const records = this.#selection.cache?.images;
+        for (const [id, image] of this.#objectUrls) {
+          if (!image.persistedFileName || records?.get(id)?.fileName === image.persistedFileName)
+            continue;
+          untrack(() => {
+            const entry = this.#covers.get(id);
+            if (entry?.source === image.source) {
+              entry.generation++;
+              entry.source = undefined;
+            }
+            this.#objectUrls.delete(id);
+            URL.revokeObjectURL(image.source);
+          });
+        }
+      });
+    });
   }
 
   /** Session selected another cache. Invalidate resources, not persisted data. */
@@ -122,6 +142,7 @@ export class Covers {
   #replaceImage(id: string, image: InstalledImage) {
     const previous = this.#objectUrls.get(id);
     this.#objectUrls.set(id, image);
+    this.#version++;
     if (!previous) return;
     const entry = this.#covers.get(id);
     if (entry?.source === previous.source) entry.source = image.source;
@@ -269,7 +290,10 @@ export class Covers {
         const saved = await cache.saveImage(id, result, signal);
         if (!valid()) return;
         if (saved && cache.images.get(id)?.fileName === saved.record.fileName) {
-          if (memory) memory.persistedFileName = saved.record.fileName;
+          if (memory) {
+            memory.persistedFileName = saved.record.fileName;
+            this.#version++;
+          }
         } else {
           // Another local operation won: adopt its bytes rather than marking ours as saved.
           const winner = cache.images.get(id);
@@ -335,6 +359,7 @@ export class Covers {
     this.#downloads.clear();
   }
   destroy() {
+    this.#dispose();
     this.activate();
     this.#destroyed = true;
     this.#scope.abort();

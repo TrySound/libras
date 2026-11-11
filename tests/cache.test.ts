@@ -28,7 +28,6 @@ describe("account cache clear", () => {
     const cache = new Cache("selected");
     cache.setQueue({ tracks: ["track"], index: 0, position: 12 });
     await cache.flush();
-    const revision = cache.queueRevision;
     const writes = disk.state.writes;
     const root = await navigator.storage.getDirectory();
     const accounts = await root.getDirectoryHandle("accounts");
@@ -44,11 +43,13 @@ describe("account cache clear", () => {
     });
     const clearing = cache.clear();
     await entered.promise;
+    const revision = cache.queueRevision;
+    const position = cache.queue.position;
     try {
       expect(() =>
         cache.setQueue({ ...cache.queue, position: 13 }, { checkpoint: true }),
       ).not.toThrow();
-      expect(cache.queue.position).toBe(12);
+      expect(cache.queue.position).toBe(position);
       expect(cache.queueRevision).toBe(revision);
       await cache.flush();
       expect(disk.state.writes).toBe(writes);
@@ -90,15 +91,19 @@ describe("account cache clear", () => {
     flushSync();
     try {
       expect(states.at(-1)).toEqual([1, 1, 1, 1, 1]);
+      const revision = cache.queueRevision;
       await cache.clear();
       flushSync();
       expect(states.at(-1)).toEqual([0, 0, 0, 0, 0]);
       expect(cache.key).toBe("selected");
+      expect(cache.queueRevision).toBeGreaterThan(revision);
       expect(cache.queue).toEqual({ tracks: [], index: -1, position: 0 });
       expect(cache.error).toBeUndefined();
       expect(cache.dirty).toBe(false);
       expect(disk.files.size + disk.blobs.size).toBe(0);
       await cache.load();
+      expect(cache.images.size).toBe(0);
+      expect(cache.playlists.summaries).toEqual([]);
       await cache.saveImage("new", { blob: new Blob(["new image"]), type: "image/png" });
       await cache.saveDownload(
         track,
@@ -115,6 +120,51 @@ describe("account cache clear", () => {
     } finally {
       dispose();
     }
+  });
+
+  it("cancels an active binary stream and reuses the same cache without late download publication", async () => {
+    const disk = installDisk();
+    const cache = new Cache("selected");
+    const track = { id: "track", title: "Track", artist: "Artist", album: "Album" };
+    const cancel = vi.fn();
+    const writing = deferred();
+    disk.state.beforeWrite = (path) => {
+      if (path.endsWith(".audio")) writing.resolve();
+    };
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3]));
+      },
+      cancel,
+    });
+    const saving = cache.saveDownload(
+      track,
+      "raw",
+      "audio/mpeg",
+      new Response(body),
+      new AbortController().signal,
+    );
+    const saved = Promise.allSettled([saving]);
+    await writing.promise;
+    await cache.clear();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(await saved).toEqual([
+      expect.objectContaining({
+        status: "rejected",
+        reason: expect.objectContaining({ name: "AbortError" }),
+      }),
+    ]);
+    expect(cache.downloads.size).toBe(0);
+    expect(cache.error).toBeUndefined();
+    expect(disk.files.size + disk.blobs.size).toBe(0);
+    await cache.saveDownload(
+      track,
+      "raw",
+      "audio/mpeg",
+      new Response("new bytes"),
+      new AbortController().signal,
+    );
+    expect((await cache.readDownload("track", "raw"))?.size).toBe(9);
   });
 
   it("does not republish old hydration after clearing", async () => {
@@ -196,6 +246,7 @@ describe("account cache clear", () => {
       }
     };
     const saving = cache.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" });
+    const saved = Promise.allSettled([saving]);
     await vi.waitFor(() => expect(writing).toBe(true));
     let deleted = false;
     const deleting = cache.clear().then(() => {
@@ -204,7 +255,13 @@ describe("account cache clear", () => {
     await Promise.resolve();
     expect(deleted).toBe(false);
     close.resolve();
-    await Promise.all([saving, deleting]);
+    await deleting;
+    expect(await saved).toEqual([
+      expect.objectContaining({
+        status: "rejected",
+        reason: expect.objectContaining({ name: "AbortError" }),
+      }),
+    ]);
     expect(cache.images.size).toBe(0);
     expect(disk.files.size).toBe(0);
     expect(disk.blobs.size).toBe(0);
