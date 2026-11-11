@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import FavouriteButton from "./ui/favourite-button.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -68,10 +69,18 @@
   }
 
   let menuAlbumId = $state<string>();
-  const menuAlbum = $derived(menuAlbumId ? cache.albums.get(menuAlbumId) : undefined);
-  const menuTracks = $derived(menuAlbum ? (cache.albumTracks.get(menuAlbum.id) ?? []) : tracks);
-  const menuTitle = $derived(menuAlbum?.title ?? artist?.name);
-  const menuArtwork = $derived(menuAlbum ? menuAlbum.artworkId : artist?.artworkId);
+  const menuAlbum = $derived(visibleAlbums.find((album) => album.id === menuAlbumId));
+  const menuTracks = $derived(
+    menuAlbumId !== undefined
+      ? menuAlbum
+        ? (cache.albumTracks.get(menuAlbum.id) ?? [])
+        : []
+      : tracks,
+  );
+  const menuTitle = $derived(menuAlbumId !== undefined ? menuAlbum?.title : artist?.name);
+  const menuArtwork = $derived(
+    menuAlbumId !== undefined ? menuAlbum?.artworkId : artist?.artworkId,
+  );
   const menuTrackIds = $derived(availableTrackIds(menuTracks));
 
   let sheet: HTMLDialogElement;
@@ -80,6 +89,19 @@
     sheet.close();
     popover.hidePopover?.();
   }
+  $effect(() => {
+    if (artist && (menuAlbumId === undefined || menuAlbum)) return;
+    const wasOpen = sheet?.open || popover?.matches(":popover-open");
+    if (wasOpen) dismissActions();
+    menuAlbumId = undefined;
+    if (!wasOpen) return;
+    const section = document.querySelector<HTMLElement>('section[aria-label="Artist details"]');
+    const fallback = section?.querySelector<HTMLElement>("h1") ?? section;
+    if (fallback?.checkVisibility()) {
+      fallback.tabIndex = -1;
+      fallback.focus({ preventScroll: true });
+    }
+  });
 </script>
 
 <svelte:head><title>{artist?.name ?? "Artist"} | {appName}</title></svelte:head>
@@ -308,6 +330,14 @@
         <Icon name="download" />
         <span>Download</span>
       </button>
+      <FavouriteButton
+        overlayId={target}
+        target={menuAlbum
+          ? { kind: "albums", id: menuAlbum.id }
+          : menuAlbumId === undefined && artist
+            ? { kind: "artists", id: artist.id }
+            : undefined}
+      />
     </div>
   </div>
 {/snippet}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
-  import { onDestroy, onMount, untrack, type Snippet } from "svelte";
+  import { Favourites } from "./favourites.svelte";
+  import { onDestroy, onMount, untrack, setContext, type Snippet } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import { Playlists } from "./playlists.svelte";
@@ -50,6 +51,8 @@
   const hasPreviousTrack = $derived(cache.queue.index > 0);
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
+  const favourites = new Favourites(selection);
+  setContext("favourites", favourites);
   const trackEngine = new TrackEngine({ selection });
   let player = $state<ReturnType<typeof AudioPlayer>>();
   const playback: Playback = new Playback({
@@ -68,6 +71,7 @@
         tracks: trackEngine,
         playback,
         playlists,
+        favourites,
         preferences: auth.storage,
       }),
   );
@@ -104,6 +108,7 @@
     session.destroy();
     playback.destroy();
     playlists.destroy();
+    favourites.destroy();
     covers.destroy();
     trackEngine.destroy();
   });

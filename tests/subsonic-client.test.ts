@@ -212,12 +212,17 @@ describe("subsonic client", () => {
     await expect(client.search3(page)).rejects.toThrow("invalid Subsonic response");
   });
 
-  it("preserves structured artist credits and strips legacy artist fields", async () => {
+  it("preserves structured and standard singular credits while stripping legacy artistId", async () => {
     const artists = [
       { id: "lead", name: "Lead" },
       { id: "guest", name: "Guest" },
     ];
-    const credits = { artists, displayArtist: "Lead feat. Guest", artist: 123, artistId: 123 };
+    const credits = {
+      artists,
+      displayArtist: "Lead feat. Guest",
+      artist: "Standard credit",
+      artistId: 123,
+    };
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -232,8 +237,24 @@ describe("subsonic client", () => {
     const client = new SubsonicClient(auth);
     await expect(client.search3(page)).resolves.toEqual({
       artists: [],
-      albums: [{ id: "album", name: "Album", artists, displayArtist: "Lead feat. Guest" }],
-      tracks: [{ id: "song", title: "Song", artists, displayArtist: "Lead feat. Guest" }],
+      albums: [
+        {
+          id: "album",
+          name: "Album",
+          artists,
+          displayArtist: "Lead feat. Guest",
+          artist: "Standard credit",
+        },
+      ],
+      tracks: [
+        {
+          id: "song",
+          title: "Song",
+          artists,
+          displayArtist: "Lead feat. Guest",
+          artist: "Standard credit",
+        },
+      ],
     });
   });
 
