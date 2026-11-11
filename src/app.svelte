@@ -364,31 +364,34 @@
         </div>
       {/if}
       <dialog
-        class="right-sheet"
+        class="top-navigation"
         id="navigation-dialog"
-        data-swiperight="close"
+        data-swipeup="close"
         aria-label="Navigation"
-        closedby="any"
         bind:this={navigationDrawer}
         ontoggle={() => {
           navigationOpen = navigationDrawer.open;
         }}
       >
-        <span class="dialog-handle" data-side="left" aria-hidden="true"></span>
-        <div class="stack-lg">
-          <header class="row-md row-justify">
-            {@render brand()}
-            <button
-              class="button"
-              aria-label="Close menu"
-              commandfor="navigation-dialog"
-              command="close"
-            >
-              <Icon name="cross" />
-            </button>
-          </header>
-          {@render navigation()}
+        <div class="navigation-controls">
+          <button
+            class="button"
+            data-variant="ghost"
+            aria-label="Close menu"
+            autofocus
+            commandfor="navigation-dialog"
+            command="close"
+          >
+            <Icon name="cross" />
+          </button>
         </div>
+        <div class="navigation-content">
+          <div class="navigation-composition stack-lg">
+            <div class="navigation-brand">{@render brand()}</div>
+            {@render navigation()}
+          </div>
+        </div>
+        <span class="navigation-dash" aria-hidden="true"></span>
       </dialog>
     </div>
   </div>

@@ -373,14 +373,14 @@ describe("app settings", () => {
     expectStatus("unlink", "Disconnected");
   });
 
-  it("shows a decorative handle in the swipe-to-close navigation drawer", async () => {
+  it("uses whole-dialog upward dismissal with a decorative nonfocusable dash", async () => {
     const { target } = await setup();
     const drawer = target.querySelector("#navigation-dialog")!;
-    expect(drawer.getAttribute("data-swiperight")).toBe("close");
-    const handle = drawer.querySelector(":scope > .dialog-handle")!;
-    expect(handle.getAttribute("data-side")).toBe("left");
-    expect(handle.getAttribute("aria-hidden")).toBe("true");
-    expect(handle.hasAttribute("tabindex")).toBe(false);
+    expect(drawer.hasAttribute("data-swiperight")).toBe(false);
+    expect(drawer.getAttribute("data-swipeup")).toBe("close");
+    const dash = drawer.querySelector(".navigation-dash")!;
+    expect(dash.getAttribute("aria-hidden")).toBe("true");
+    expect(dash.hasAttribute("tabindex")).toBe(false);
   });
 
   it.each([".app-sidebar", "#navigation-dialog"])(

@@ -218,6 +218,7 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 48px;
+  --drawer-content-max-inline-size: 22rem;
 
   /* All button primitives share a minimum target; content may grow beyond it. */
   --control-min-size: 44px;
@@ -1288,6 +1289,7 @@
   /* Prototype overlay shells share appearance; sheets also share modal motion. */
   .bottom-sheet,
   .right-sheet,
+  .top-navigation,
   .popover {
     box-shadow: var(--shadow-xl);
     box-sizing: border-box;
@@ -1303,7 +1305,8 @@
   }
 
   .bottom-sheet,
-  .right-sheet {
+  .right-sheet,
+  .top-navigation {
     border-radius: 0;
     &:modal {
       /* Stop chaining and native rubber-band bounce at modal boundaries. */
@@ -1356,7 +1359,8 @@
     }
   }
 
-  .bottom-sheet {
+  .bottom-sheet,
+  .top-navigation {
     &[open] {
       translate: 0 var(--swipe-offset, 0px);
     }
@@ -1396,6 +1400,69 @@
     padding-inline-end: max(var(--space-lg), env(safe-area-inset-right));
   }
 
+  .top-navigation {
+    --sheet-closed-translate: 0 -100%;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    padding: 0;
+    overflow: auto;
+    &[open] {
+      display: grid;
+      grid-template-rows: auto minmax(min-content, 1fr) auto;
+    }
+  }
+
+  .navigation-controls {
+    display: flex;
+    justify-content: end;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 16px;
+    & .button {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+
+  .navigation-content {
+    display: flex;
+    padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
+  }
+
+  .navigation-dash {
+    justify-self: center;
+    inline-size: 40px;
+    block-size: 6px;
+    margin-block: 24px calc(32px + env(safe-area-inset-bottom));
+    background: var(--text-secondary);
+  }
+
+  .navigation-composition {
+    width: 100%;
+    max-inline-size: var(--drawer-content-max-inline-size);
+    margin: auto;
+    flex-shrink: 0;
+    overflow-wrap: anywhere;
+    & nav .menu-item {
+      box-sizing: border-box;
+      min-height: 52px;
+      padding-inline: 16px;
+      font-family: var(--heading-md-font);
+      font-size: var(--heading-md-size);
+      font-weight: var(--heading-md-weight);
+      line-height: var(--heading-md-leading);
+      letter-spacing: var(--heading-md-tracking);
+    }
+  }
+
+  .navigation-brand {
+    display: flex;
+    justify-content: center;
+    & > svg {
+      color: var(--accent);
+    }
+  }
   .notification-popover {
     box-shadow: var(--shadow-xl);
     box-sizing: border-box;
@@ -1627,6 +1694,26 @@
     max-block-size: calc(100dvh - var(--space-lg));
     padding-block-end: calc(var(--space-lg) + env(safe-area-inset-bottom));
     border-top: var(--border-width) solid var(--shell-border);
+  }
+
+  .bottom-sheet > .drawer-content {
+    inline-size: 100%;
+    max-inline-size: var(--drawer-content-max-inline-size);
+    margin-inline: auto;
+
+    & > header {
+      & > .row-md {
+        min-inline-size: 0;
+      }
+      & > .row-md > .artwork,
+      & > .button {
+        flex-shrink: 0;
+      }
+      & h2 {
+        min-inline-size: 0;
+        overflow-wrap: anywhere;
+      }
+    }
   }
 
   .dialog-handle {
