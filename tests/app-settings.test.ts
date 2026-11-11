@@ -236,7 +236,7 @@ describe("app settings", () => {
     modified.resolve(100);
     await vi.waitFor(() => expect(session.syncing).toBe(false));
     flushSync();
-    expect(status.textContent).toMatch(/Connected\s+·\s+listener@music\.example/);
+    expect(status.textContent).toMatch(/Music server · Connected\s+listener@music\.example/);
     expect(status.querySelector(".loader")).toBeNull();
   });
 
@@ -587,7 +587,7 @@ describe("app settings", () => {
       if (saved) {
         flushSync();
         const status = target.querySelector("#settings-connection-status")!;
-        expect(status.textContent).toMatch(/Connected\s+·\s+listener@music\.example/);
+        expect(status.textContent).toMatch(/Music server · Connected\s+listener@music\.example/);
         expect(status.textContent).not.toContain("Synchronizing");
         expect(status.querySelector(".loader")).toBeNull();
         expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refreshing…");
@@ -624,7 +624,7 @@ describe("app settings", () => {
           ?.textContent?.replace(/\s+/g, " ")
           .trim(),
       ).toBe(counter);
-      expect(status.textContent).not.toContain("Synchronizing");
+      expect(status.querySelector("h2")?.textContent).toContain("Music server · Synchronizing");
       expect(status.textContent).not.toContain("Connected");
       expect(status.querySelector(".loader")).not.toBeNull();
       expect(target.querySelector("#settings-refresh")?.textContent).toContain(
@@ -638,7 +638,7 @@ describe("app settings", () => {
       await loading;
       await vi.waitFor(() => expect(session.syncing).toBe(false));
       flushSync();
-      expect(status.textContent).toMatch(/Connected\s+·\s+listener@music\.example/);
+      expect(status.textContent).toMatch(/Music server · Connected\s+listener@music\.example/);
       expect(status.querySelector("#settings-library-progress")).toBeNull();
       expect(status.querySelector(".loader")).toBeNull();
       expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-check");
@@ -652,8 +652,8 @@ describe("app settings", () => {
     expect(server.querySelector("#settings-server-identity")?.textContent).toBe(
       `${credentials.username}@${new URL(credentials.host).host}`,
     );
-    expect(server.querySelector("#settings-connection-status")?.textContent).toMatch(
-      /Connected\s+·\s+listener@music\.example/,
+    expect(server.querySelector("#settings-server-title")?.textContent?.trim()).toBe(
+      "Music server · Connected",
     );
     expect(server.querySelectorAll("button")).toHaveLength(3);
     expect(button("Refresh library")).toBeDefined();

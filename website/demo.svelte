@@ -28,24 +28,22 @@
     }
   }
 
-  const base = new URL(import.meta.env.BASE_URL, location.origin);
+  const host = "https://demo.test";
+  const username = "demo";
   const auth = new AuthStore(new MemoryStorage());
   // Public synthetic identity; its URL isolates the demo's OPFS account.
   auth.save({
-    host: base.href.replace(/\/$/, ""),
-    username: "deezer-preview-demo",
+    host,
+    username,
     credentials: {
       method: "token",
-      username: "deezer-preview-demo",
+      username,
       token: "local-demo",
       salt: "local-demo",
     },
   });
   const network = new Network((identity) => {
-    if (
-      identity.host !== base.href.replace(/\/$/, "") ||
-      identity.credentials.username !== "deezer-preview-demo"
-    ) {
+    if (identity.host !== host || identity.credentials.username !== username) {
       throw new Error("This demo is fixed to its local library. Reload the demo to reconnect.");
     }
     return new DeezerSubsonicClient(identity);

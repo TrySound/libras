@@ -149,9 +149,9 @@
 
     <div class="split-layout" data-ratio="3:2">
       <section class="card stack-md" id="settings-server" aria-labelledby="settings-server-title">
-        <h2 class="heading-md uppercase" id="settings-server-title">Music server</h2>
         <div class="stack-sm" role="status" aria-atomic="true" id="settings-connection-status">
-          <p class="row-sm label">
+          <h2 class="row-sm heading-md uppercase" id="settings-server-title">
+            <span>Music server · {connectionLabel}</span>
             <span class="row-sm">
               {#if connectionLoading}
                 <Loader />
@@ -172,21 +172,17 @@
                 />
               {/if}
             </span>
-            {#if connectionLoading && session.libraryProgress}
-              <span class="text-subtle" id="settings-library-progress">
-                {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
-                tracks
-              </span>
-            {:else}
-              <span>
-                {connectionLabel}
-                {#if session.auth && !connectionLoading}
-                  ·
-                  <span id="settings-server-identity">{session.auth.username}@{serverAddress}</span>
-                {/if}
-              </span>
-            {/if}
-          </p>
+          </h2>
+          {#if connectionLoading && session.libraryProgress}
+            <p class="label text-subtle" id="settings-library-progress">
+              {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
+              tracks
+            </p>
+          {:else if session.auth && !connectionLoading}
+            <p class="label" id="settings-server-identity">
+              {session.auth.username}@{serverAddress}
+            </p>
+          {/if}
           {#if session.error}
             <p class="body" id="settings-server-error">{session.error}</p>
           {/if}
