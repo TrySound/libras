@@ -56,8 +56,6 @@ export class Session {
   #authController?: AbortController;
   #downloadController?: AbortController;
   #operationId = 0;
-  cleaning = $state(false);
-  cleanupError = $state("");
   #started = false;
   #destroyed = false;
 
@@ -98,7 +96,7 @@ export class Session {
   }
 
   get busy() {
-    return this.cleaning || this.#destroyed || this.status === "connecting";
+    return this.status === "connecting";
   }
 
   get offlineMode() {
@@ -336,32 +334,8 @@ export class Session {
     }
   }
 
-  /** Terminal cleanup: retire writers before teardown can flush; caller reloads on success. */
-  async cleanup(): Promise<void> {
-    if (this.cleaning) return;
-    this.cleaning = true;
-    this.cleanupError = "";
-    const { selection, network, playback, tracks, covers, playlists, auth } = this.#options;
-    const cache = selection.cache;
-    const retired = cache?.retire();
-    try {
-      this.destroy();
-      network.cancelPending();
-      const stopped = playback.destroy();
-      tracks.destroy();
-      covers.destroy();
-      playlists?.destroy();
-      // Selection stays available for retry, but this runtime cannot reconnect.
-      auth.clear();
-      auth.clearAccount();
-      await Promise.all([retired, stopped]);
-      await cache?.deleteAccount();
-    } catch (error) {
-      this.cleanupError = "Disconnected, but some local data could not be removed. Retry cleanup.";
-      throw error;
-    } finally {
-      this.cleaning = false;
-    }
+  get cache() {
+    return this.#options.selection.cache;
   }
 
   disconnect() {

@@ -30,19 +30,19 @@ afterEach(async () => {
 
 const input = { host: credentials.host, username: credentials.username, password: "password" };
 
-describe("cleanup", () => {
+describe("disconnect and cache clear", () => {
   it.each([
     [false, false],
     [false, true],
     [true, false],
     [true, true],
   ])(
-    "ignores late playlist completion after terminal cleanup (offline=%s, failure=%s)",
+    "ignores late playlist completion after disconnect (offline=%s, failure=%s)",
     async (offline, failure) => {
       const { session, selection, playlists } = await connected();
       await vi.waitFor(() => expect(session.syncing).toBe(false));
       const cache = selection.cache!;
-      vi.spyOn(cache, "deleteAccount").mockResolvedValue(undefined);
+      vi.spyOn(cache, "clear").mockResolvedValue(undefined);
       const publish = vi.spyOn(cache, "setPlaylists");
       const listed = deferred<[]>();
       const created = deferred<undefined>();
@@ -62,7 +62,8 @@ describe("cleanup", () => {
       expect(playlists.saving).toBe(true);
       if (offline) await session.setOfflineMode(true);
 
-      await session.cleanup();
+      session.disconnect();
+      await cache.clear();
       expect(playlists.error).toBeUndefined();
       expect(playlists.loading).toBe(false);
       expect(playlists.saving).toBe(false);
@@ -85,95 +86,30 @@ describe("cleanup", () => {
     },
   );
 
-  it("retires before teardown, deletes without waiting for network refresh, and blocks reconnect", async () => {
-    const fixture = await connected();
-    const { session, selection, metadata, auth, playback, storage } = fixture;
-    storage.setItem("unrelated-preference", "keep");
-    const cache = selection.cache!;
-    const deletion = vi.spyOn(cache, "deleteAccount").mockResolvedValue(undefined);
-    const late = deferred();
-    metadata.getModifiedAt.mockReturnValueOnce(late.promise.then(() => 200));
-    const refresh = session.refresh();
-    const retire = vi.spyOn(cache, "retire");
-    const stopPlayback = playback.destroy;
-    const cleanup = session.cleanup();
-    expect(retire.mock.invocationCallOrder[0]).toBeLessThan(
-      stopPlayback.mock.invocationCallOrder[0],
-    );
-    expect(selection.cache).toBe(cache);
-    expect(auth.load()).toBeNull();
-    expect(auth.loadAccount()).toBeNull();
-    expect(storage.getItem("unrelated-preference")).toBe("keep");
-    expect(playback.destroy).toHaveBeenCalledOnce();
-    expect(await session.connect(input)).toBe(false);
-    await cleanup;
-    expect(deletion).toHaveBeenCalledOnce();
-    expect(session.busy).toBe(true);
-    expect(session.offlineMode).toBe(true);
-    late.resolve();
-    await refresh;
-    expect(selection.cache).toBe(cache);
-  });
-
-  it.each(["clear", "clearAccount"] as const)(
-    "retries identity removal when %s fails without reopening the runtime",
-    async (method) => {
-      const { session, selection, auth } = await connected();
-      const cache = selection.cache!;
-      const deletion = vi.spyOn(cache, "deleteAccount").mockResolvedValue(undefined);
-      const remove = vi.spyOn(auth, method).mockImplementationOnce(() => {
-        throw new Error("Identity storage denied");
-      });
-      await expect(session.cleanup()).rejects.toThrow("Identity storage denied");
-      expect(session.cleaning).toBe(false);
-      expect(session.cleanupError).toContain("could not be removed");
-      expect(deletion).not.toHaveBeenCalled();
-      expect(selection.cache).toBe(cache);
-      await session.cleanup();
-      expect(remove).toHaveBeenCalledTimes(2);
+  it.each([false, true])(
+    "keeps identity and reconnects using the same cache (deletion denied=%s)",
+    async (denied) => {
+      const disk = installDisk();
+      const { session, selection, auth, storage } = await connected();
+      const cache = session.cache!;
+      storage.setItem("unrelated-preference", "keep");
+      expect(session.disconnect()).toBe(true);
+      disk.state.failRemove = denied;
+      if (denied) await expect(cache.clear()).rejects.toThrow("Deletion denied");
+      else await cache.clear();
       expect(auth.load()).toBeNull();
-      expect(auth.loadAccount()).toBeNull();
-      expect(deletion).toHaveBeenCalledOnce();
-      expect(await session.connect(input)).toBe(false);
+      expect(auth.loadAccount()).toEqual({
+        host: credentials.host,
+        username: credentials.username,
+      });
+      expect(storage.getItem("unrelated-preference")).toBe("keep");
+      expect(selection.cache).toBe(cache);
+      expect(await session.connect(input)).toBe(true);
+      expect(selection.cache).toBe(cache);
+      cache.setQueue({ tracks: [], index: -1, position: 0 });
+      await cache.flush();
     },
   );
-
-  it("deletes without joining stalled restoration and ignores duplicate cleanup", async () => {
-    const { session, selection, loadCache } = setup(true);
-    const restoration = deferred();
-    loadCache.mockReturnValueOnce(restoration.promise);
-    session.start();
-    const deletionGate = deferred();
-    const deletion = vi
-      .spyOn(selection.cache!, "deleteAccount")
-      .mockReturnValue(deletionGate.promise);
-    const cleanup = session.cleanup();
-    await vi.waitFor(() => expect(deletion).toHaveBeenCalledOnce());
-    await session.cleanup();
-    expect(deletion).toHaveBeenCalledOnce();
-    expect(session.cleaning).toBe(true);
-    deletionGate.resolve();
-    await cleanup;
-    expect(session.cleaning).toBe(false);
-    restoration.resolve();
-  });
-
-  it("keeps the captured cache retryable and requires reload before another login", async () => {
-    const { session, selection } = await connected();
-    const cache = selection.cache!;
-    const deletion = vi
-      .spyOn(cache, "deleteAccount")
-      .mockRejectedValueOnce(new Error("Storage denied"))
-      .mockResolvedValue(undefined);
-    await expect(session.cleanup()).rejects.toThrow("Storage denied");
-    expect(selection.cache).toBe(cache);
-    expect(session.cleanupError).toContain("could not be removed");
-    expect(await session.connect(input)).toBe(false);
-    await session.cleanup();
-    expect(deletion).toHaveBeenCalledTimes(2);
-    expect(session.cleanupError).toBe("");
-    expect(await session.connect(input)).toBe(false);
-  });
 });
 
 describe("session", () => {

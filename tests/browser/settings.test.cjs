@@ -273,6 +273,17 @@ test("Settings native controls, layout, and persistence", async (t) => {
           "Server data is unaffected.",
         );
         assert.equal(await dialog.getByRole("button").count(), 2);
+        assert.equal(await dialog.locator("form").getAttribute("method"), "dialog");
+        assert.equal(
+          await dialog
+            .getByRole("button", { name: "Disconnect", exact: true })
+            .getAttribute("type"),
+          "submit",
+        );
+        assert.equal(
+          await dialog.getByRole("button", { name: "Cancel", exact: true }).getAttribute("type"),
+          "button",
+        );
         for (const width of [1280, 320]) {
           await page.setViewportSize({ width, height: 740 });
           assert.equal(
@@ -447,6 +458,11 @@ test("Settings native controls, layout, and persistence", async (t) => {
           await page.setViewportSize({ width: 1280, height: 900 });
         }
         const before = calls.length;
+        await page.evaluate(() => {
+          window.cacheClearMarker = true;
+          localStorage.setItem("unrelated-preference", "keep");
+        });
+        const remembered = await page.evaluate(() => localStorage.getItem("navidrome-account"));
         await page.getByRole("dialog").getByRole("switch").check();
         await page
           .getByRole("dialog")
@@ -461,12 +477,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
           await page.screenshot({ path: `${artifacts}/settings-busy-mobile.png` });
           await page.setViewportSize({ width: 1280, height: 900 });
         }
-        // Settings may unmount while the terminal cleanup continues.
-        await page.goBack();
-        await page.locator("[aria-labelledby=library-heading]").waitFor();
-        assert.equal(await page.locator("dialog:modal").count(), 0);
         await page.evaluate(() => window.releaseCleanup());
-        await page.getByRole("link", { name: "Settings", exact: true }).click();
         const retry = page.getByRole("button", { name: "Retry cleanup", exact: true });
         await retry.waitFor();
         assert.equal(await page.locator("#settings-connect").count(), 0);
@@ -482,19 +493,23 @@ test("Settings native controls, layout, and persistence", async (t) => {
           await page.setViewportSize({ width: 1280, height: 900 });
         }
         assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-auth")), null);
-        assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-account")), null);
+        assert.equal(
+          await page.evaluate(() => localStorage.getItem("navidrome-account")),
+          remembered,
+        );
         await page.evaluate(() => {
           window.releaseCleanup = null;
           window.allowCleanup = true;
         });
         await retry.click();
         await page.waitForFunction(() => !!window.releaseCleanup);
-        await page.goBack();
-        await page.locator("[aria-labelledby=library-heading]").waitFor();
-        const reloaded = page.waitForEvent("load");
         await page.evaluate(() => window.releaseCleanup());
-        await reloaded;
         await page.locator("#server-host").waitFor();
+        assert.equal(await page.evaluate(() => window.cacheClearMarker), true);
+        assert.equal(
+          await page.evaluate(() => localStorage.getItem("unrelated-preference")),
+          "keep",
+        );
         assert.deepEqual(calls.slice(before), []);
         const accountDirectories = () =>
           page.evaluate(async () => {
@@ -504,11 +519,23 @@ test("Settings native controls, layout, and persistence", async (t) => {
             return Array.fromAsync(accounts.keys());
           });
         assert.deepEqual(await accountDirectories(), ["unrelated"]);
-        await page.reload();
-        await page.locator("#server-host").waitFor();
+        await page.getByRole("link", { name: "Libras home", exact: true }).click();
+        await page.locator("[aria-labelledby=library-heading]").waitFor();
+        assert.equal(await page.locator("[aria-labelledby=library-heading] .tile").count(), 0);
+        if (artifacts) {
+          await page.setViewportSize({ width: 320, height: 740 });
+          await page.screenshot({ path: `${artifacts}/empty-library-mobile.png` });
+          await page.setViewportSize({ width: 1280, height: 900 });
+        }
         await page.waitForTimeout(700);
         assert.deepEqual(await accountDirectories(), ["unrelated"]);
-        assert.equal(await page.locator("[aria-labelledby=library-heading] .tile").count(), 0);
+        await page.getByRole("link", { name: "Settings", exact: true }).click();
+        await page.getByLabel("Host", { exact: true }).fill(host);
+        await page.getByLabel("Username", { exact: true }).fill(username);
+        await page.getByLabel("Password", { exact: true }).fill("password");
+        await page.getByRole("button", { name: "Connect", exact: true }).click();
+        await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
+        assert.equal(await page.evaluate(() => window.cacheClearMarker), true);
       },
     );
     assert.deepEqual(errors, []);

@@ -3,6 +3,7 @@
   import Icon from "./icon.svelte";
   import Loader from "./ui/loader.svelte";
   import type { Session } from "./session.svelte";
+  import type { Cache } from "./cache.svelte";
   import { navigate } from "./router.svelte";
 
   interface Props {
@@ -64,25 +65,44 @@
 
   let deleteLocalData = $state(false);
 
-  async function finishDisconnect(cleanup: boolean) {
-    if (session.cleaning) return;
+  let cleaning = $state(false);
+  let cleanupError = $state("");
+  let cacheToClear: Cache | undefined;
+
+  function finishDisconnect() {
+    if (cleaning) return;
+    const cache = session.cache;
+    if (!session.disconnect()) return;
     host = username = password = "";
-    if (cleanup) {
-      try {
-        await session.cleanup();
-        window.location.reload();
-      } catch {
-        // Session retains recovery state even if Settings was unmounted meanwhile.
-        return;
-      }
-    } else session.disconnect();
+    if (deleteLocalData) {
+      cacheToClear = cache;
+      void clearLocalData();
+    }
+  }
+
+  async function clearLocalData() {
+    if (cleaning) return;
+    cleaning = true;
+    cleanupError = "";
+    try {
+      await cacheToClear?.clear();
+    } catch {
+      cleanupError = "Disconnected, but some local data could not be removed. Retry cleanup.";
+    } finally {
+      cleaning = false;
+    }
   }
 </script>
 
 <svelte:head><title>Settings | {appName}</title></svelte:head>
 
 <dialog id="disconnect-dialog" class="dialog" closedby="any" aria-labelledby="disconnect-title">
-  <div class="stack-md">
+  <form
+    method="dialog"
+    class="stack-md"
+    aria-labelledby="disconnect-title"
+    onsubmit={finishDisconnect}
+  >
     <h2 class="heading-md" id="disconnect-title">Disconnect?</h2>
     <div class="stack-xs">
       <div class="row-md row-justify row-wrap">
@@ -105,19 +125,15 @@
         class="button"
         data-size="text"
         data-variant="secondary"
+        type="button"
         command="close"
         commandfor="disconnect-dialog">Cancel</button
       >
-      <button
-        class="button"
-        data-size="text"
-        data-variant="primary"
-        command="close"
-        commandfor="disconnect-dialog"
-        onclick={() => void finishDisconnect(deleteLocalData)}>Disconnect</button
+      <button class="button" data-size="text" data-variant="primary" type="submit"
+        >Disconnect</button
       >
     </div>
-  </div>
+  </form>
 </dialog>
 
 <section bind:this={view} aria-labelledby="settings-heading">
@@ -177,15 +193,15 @@
           </div>
         {/if}
 
-        {#if session.cleaning}
+        {#if cleaning}
           <p class="row-sm body" role="status"><Loader /> Deleting local data…</p>
-        {:else if session.cleanupError}
-          <p class="body" role="alert">{session.cleanupError}</p>
+        {:else if cleanupError}
+          <p class="body" role="alert">{cleanupError}</p>
           <button
             class="button"
             data-size="text"
             data-variant="primary"
-            onclick={() => void finishDisconnect(true)}>Retry cleanup</button
+            onclick={() => void clearLocalData()}>Retry cleanup</button
           >
         {:else if !session.auth && demo}
           <p class="body">

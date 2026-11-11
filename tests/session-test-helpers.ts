@@ -118,7 +118,6 @@ export function createSession(saved = false, storage = createStorage()) {
       .mockImplementation(() => {}),
   };
   const playback = {
-    destroy: vi.spyOn(player, "destroy"),
     setConnection: vi.spyOn(player, "setConnection").mockImplementation(() => {}),
     activate: vi.spyOn(player, "activate").mockImplementation(() => {}),
     refreshQueue: vi.spyOn(player, "refreshQueue").mockResolvedValue(undefined),

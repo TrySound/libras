@@ -22,7 +22,88 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("account cleanup", () => {
+describe("account cache clear", () => {
+  it("reactively empties cache-owned data and remains writable with the same key", async () => {
+    const disk = installDisk();
+    const cache = new Cache("selected");
+    await cache.replaceLibrary(library());
+    cache.setQueue({ tracks: ["track"], index: 0, position: 12 });
+    cache.setPlaylists({ listedAt: 1, summaries: [{ id: "p", name: "Mix" }], details: [] });
+    await cache.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" });
+    const track = { id: "track", title: "Track", artist: "Artist", album: "Album" };
+    await cache.saveDownload(
+      track,
+      "raw",
+      "audio/mpeg",
+      new Response("audio"),
+      new AbortController().signal,
+    );
+    await cache.flush();
+    const states: number[][] = [];
+    const dispose = observeCache(() => {
+      states.push([
+        cache.tracks.size,
+        cache.images.size,
+        cache.downloads.size,
+        cache.queue.tracks.length,
+        cache.playlists.summaries.length,
+      ]);
+    });
+    flushSync();
+    try {
+      expect(states.at(-1)).toEqual([1, 1, 1, 1, 1]);
+      await cache.clear();
+      flushSync();
+      expect(states.at(-1)).toEqual([0, 0, 0, 0, 0]);
+      expect(cache.key).toBe("selected");
+      expect(cache.queue).toEqual({ tracks: [], index: -1, position: 0 });
+      expect(cache.error).toBeUndefined();
+      expect(cache.dirty).toBe(false);
+      expect(disk.files.size + disk.blobs.size).toBe(0);
+      await cache.load();
+      await cache.saveImage("new", { blob: new Blob(["new image"]), type: "image/png" });
+      await cache.saveDownload(
+        track,
+        "raw",
+        "audio/mpeg",
+        new Response("new audio"),
+        new AbortController().signal,
+      );
+      cache.setQueue({ tracks: ["track"], index: 0, position: 0 });
+      await cache.flush();
+      expect(cache.images.has("new")).toBe(true);
+      expect((await cache.readDownload("track", "raw"))?.size).toBe(9);
+      expect(cache.queue.index).toBe(0);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("does not republish old hydration after clearing", async () => {
+    const disk = installDisk();
+    const seed = new Cache("selected");
+    await seed.replaceLibrary(library());
+    await seed.flush();
+    const cache = new Cache("selected");
+    const read = deferred();
+    let reading = false;
+    disk.state.beforeRead = async (path) => {
+      if (path.endsWith("library.json")) {
+        reading = true;
+        await read.promise;
+      }
+    };
+    const loading = cache.load();
+    await vi.waitFor(() => expect(reading).toBe(true));
+    const clearing = cache.clear();
+    read.resolve();
+    await Promise.all([loading, clearing]);
+    expect(cache.tracks.size).toBe(0);
+    expect(cache.savedAt).toBeUndefined();
+    await cache.flush();
+    expect(disk.files.size).toBe(0);
+  });
+
   it("joins an in-flight checkpoint, cancels timers, and deletes only its account", async () => {
     const disk = installDisk();
     const cache = new Cache("selected");
@@ -41,7 +122,9 @@ describe("account cleanup", () => {
     const flushing = cache.flush();
     await vi.waitFor(() => expect(writing).toBe(true));
     let deleted = false;
-    const deleting = cache.deleteAccount().then(() => {
+    const clearing = cache.clear();
+    expect(cache.clear()).toBe(clearing);
+    const deleting = clearing.then(() => {
       deleted = true;
     });
     await Promise.resolve();
@@ -49,9 +132,17 @@ describe("account cleanup", () => {
     close.resolve();
     await Promise.all([flushing, deleting]);
     expect([...disk.files.keys()]).toEqual(unrelated);
-    await expect(cache.replaceLibrary(library(200))).rejects.toThrow("Cache retired");
+    expect(cache.artists.size).toBe(0);
+    expect(cache.tracks.size).toBe(0);
+    expect(cache.savedAt).toBeUndefined();
+    await cache.load();
     await cache.flush();
-    await cache.deleteAccount();
+    expect([...disk.files.keys()]).toEqual(unrelated);
+    await cache.replaceLibrary(library(200));
+    await cache.flush();
+    expect(cache.savedAt).toBe(200);
+    expect(cache.tracks.size).toBe(1);
+    await cache.clear();
     expect([...disk.files.keys()]).toEqual(unrelated);
   });
 
@@ -69,7 +160,7 @@ describe("account cleanup", () => {
     const saving = cache.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" });
     await vi.waitFor(() => expect(writing).toBe(true));
     let deleted = false;
-    const deleting = cache.deleteAccount().then(() => {
+    const deleting = cache.clear().then(() => {
       deleted = true;
     });
     await Promise.resolve();
@@ -83,16 +174,25 @@ describe("account cleanup", () => {
     expect(disk.files.size).toBe(0);
   });
 
-  it("propagates deletion failure and can retry without reactivating its writer", async () => {
+  it("remains loadable and writable after deletion failure, and can retry clearing", async () => {
     const disk = installDisk();
     const cache = new Cache("selected");
     await cache.replaceLibrary(library());
     await cache.flush();
     disk.state.failRemove = true;
-    await expect(cache.deleteAccount()).rejects.toThrow("Deletion denied");
+    await expect(cache.clear()).rejects.toThrow("Deletion denied");
     expect(disk.files.size).toBe(1);
+    await cache.load();
+    expect(cache.tracks.size).toBe(1);
+    await cache.replaceLibrary(library(200));
+    cache.setQueue({ tracks: ["track"], index: 0, position: 12 });
+    await cache.flush();
+    const restored = new Cache("selected");
+    await restored.load();
+    expect(restored.savedAt).toBe(200);
+    expect(restored.queue.position).toBe(12);
     disk.state.failRemove = false;
-    await cache.deleteAccount();
+    await cache.clear();
     expect(disk.files.size).toBe(0);
   });
 });

@@ -131,13 +131,13 @@ async function setup(
       .click();
   };
   const fill = (host = credentials.host) => {
-    const inputs = [...target.querySelectorAll<HTMLInputElement>("form input")];
+    const inputs = [...target.querySelectorAll<HTMLInputElement>("#settings-server form input")];
     for (const [index, value] of [host, credentials.username, "password"].entries()) {
       inputs[index].value = value;
       inputs[index].dispatchEvent(new Event("input", { bubbles: true }));
     }
     target
-      .querySelector("form")!
+      .querySelector("#settings-server form")!
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     flushSync();
   };
@@ -154,7 +154,7 @@ describe("app settings", () => {
     const cache = selection.cache;
     const pending = deferred();
     const deletion = vi
-      .spyOn(selection.cache!, "deleteAccount")
+      .spyOn(selection.cache!, "clear")
       .mockImplementationOnce(async () => {
         await pending.promise;
         throw new Error("Denied");
@@ -163,7 +163,8 @@ describe("app settings", () => {
     button("Disconnect").click();
     confirmDisconnect(true);
     flushSync();
-    expect(session.cleaning).toBe(true);
+    expect(session.auth).toBeNull();
+    expect(auth.loadAccount()).not.toBeNull();
     expect(auth.load()).toBeNull();
     expect(target.querySelector("dialog")?.open).toBe(false);
     expect(target.querySelector("#settings-server")?.textContent).toContain("Deleting local data…");
@@ -180,61 +181,12 @@ describe("app settings", () => {
     button("Retry cleanup").click();
     await vi.waitFor(() => {
       flushSync();
-      expect(reload).toHaveBeenCalledOnce();
+      expect(target.querySelector("#settings-connect")).not.toBeNull();
     });
     expect(deletion).toHaveBeenCalledTimes(2);
     expect(selection.cache).toBe(cache);
+    expect(reload).not.toHaveBeenCalled();
   });
-
-  it.each([true, false])(
-    "retains cleanup across navigation and reloads on success (failure=%s)",
-    async (fails) => {
-      const { target, button, session, selection, confirmDisconnect } = await setup(true, false);
-      const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
-      const pending = deferred();
-      const deletion = vi
-        .spyOn(selection.cache!, "deleteAccount")
-        .mockImplementationOnce(async () => {
-          await pending.promise;
-          if (fails) throw new Error("Denied");
-        })
-        .mockResolvedValue(undefined);
-      const route = async (path: string) => {
-        const intercept = vi.fn();
-        window.navigation.dispatchEvent(
-          Object.assign(navigationEvent(), {
-            canIntercept: true,
-            navigationType: "traverse",
-            destination: { url: new URL(`?${path}`, window.location.href).href },
-            intercept,
-          }),
-        );
-        await intercept.mock.calls[0][0].handler();
-        flushSync();
-      };
-      button("Disconnect").click();
-      confirmDisconnect(true);
-      await vi.waitFor(() => expect(deletion).toHaveBeenCalledOnce());
-      await route("/downloads");
-      expect(target.querySelector("[aria-labelledby=settings-heading]")).toBeNull();
-      if (fails) {
-        pending.resolve();
-        await vi.waitFor(() => expect(session.cleanupError).toContain("could not be removed"));
-      }
-      if (fails) {
-        expect(reload).not.toHaveBeenCalled();
-        await route("/settings");
-        expect(target.querySelector("#settings-connect")).toBeNull();
-        expect(target.querySelector("#settings-server [role=alert]")?.textContent).toContain(
-          "could not be removed",
-        );
-        button("Retry cleanup").click();
-      } else pending.resolve();
-      await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
-      expect(session.cleanupError).toBe("");
-      expect(deletion).toHaveBeenCalledTimes(fails ? 2 : 1);
-    },
-  );
 
   it("keeps one login form and automatically verifies a direct password", async () => {
     const { target, fill, session, validate, auth } = await setup(false, false);
@@ -744,7 +696,9 @@ describe("app settings", () => {
     expect(auth.load()).toBeNull();
     expect(target.querySelector("#settings-server form")).not.toBeNull();
     expect(
-      [...target.querySelectorAll<HTMLInputElement>("form input")].map((input) => input.value),
+      [...target.querySelectorAll<HTMLInputElement>("#settings-server form input")].map(
+        (input) => input.value,
+      ),
     ).toEqual(["", "", ""]);
     expect(offline().checked).toBe(true);
     expect(offline().disabled).toBe(true);
@@ -766,10 +720,12 @@ describe("app settings", () => {
     expect(connect.disabled).toBe(false);
     expect(connect.getAttribute("aria-disabled")).toBe("true");
     expect(
-      [...target.querySelectorAll<HTMLInputElement>("form input")].every((input) => input.disabled),
+      [...target.querySelectorAll<HTMLInputElement>("#settings-server form input")].every(
+        (input) => input.disabled,
+      ),
     ).toBe(true);
     target
-      .querySelector("form")!
+      .querySelector("#settings-server form")!
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
     pending.reject(new Error("Unauthorized"));

@@ -81,6 +81,16 @@
         preferences: auth.storage,
       }),
   );
+  // Clearing the selected cache empties reactive data, but retained browser URLs need release.
+  $effect(() => {
+    if (cache.tracks.size || cache.images.size) return;
+    untrack(() => {
+      playback.suspend();
+      covers.activate();
+      void trackEngine.activate();
+    });
+  });
+
   const offlineMode = $derived(session.offlineMode);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);

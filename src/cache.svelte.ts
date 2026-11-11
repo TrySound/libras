@@ -1082,18 +1082,23 @@ function prepareLibrary(snapshot: Immutable<LibrarySnapshot> | null) {
  */
 export class Cache {
   readonly key: string | undefined;
-  readonly #library: CheckpointStore<ReturnType<typeof prepareLibrary>>;
-  readonly #disk: Disk | undefined;
-  readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
-  readonly #playlists: CheckpointStore<Immutable<CachedPlaylists>>;
-  readonly #images: ImageStore;
-  readonly #downloads: DownloadStore;
+  #library = $state.raw<CheckpointStore<ReturnType<typeof prepareLibrary>>>()!;
+  #disk: Disk | undefined;
+  #queue = $state.raw<CheckpointStore<Immutable<CachedQueue>>>()!;
+  #playlists = $state.raw<CheckpointStore<Immutable<CachedPlaylists>>>()!;
+  #images = $state.raw<ImageStore>()!;
+  #downloads = $state.raw<DownloadStore>()!;
+  #clearing?: Promise<void>;
 
   /** Omitting the key creates an empty, non-persisting UI fallback.
    * Keys are opaque identities; hashing and storage addressing stay internal. */
   constructor(key?: string) {
     this.key = key;
-    this.#disk = key === undefined ? undefined : new Disk(hash(key));
+    this.#initialize();
+  }
+
+  #initialize() {
+    this.#disk = this.key === undefined ? undefined : new Disk(hash(this.key));
     this.#library = new CheckpointStore(this.#disk, {
       document: "library",
       initial: prepareLibrary(null),
@@ -1154,22 +1159,26 @@ export class Cache {
     return this.#library.value.savedAt;
   }
 
-  /** Permanently retire this writer before joining producers and removing its namespace.
-   * Other tabs are not coordinated; close them before cleanup. */
-  retire() {
-    if (this.#disk) this.#disk.retired = true;
-    return Promise.all([
+  /** Clear only this account's OPFS data. Other tabs must be closed first. */
+  clear(): Promise<void> {
+    if (this.#clearing) return this.#clearing;
+    const disk = this.#disk;
+    // Old operations keep permanently retired stores; fresh stores make this Cache reusable.
+    if (disk) disk.retired = true;
+    const drained = Promise.all([
       this.#library.retire(),
       this.#queue.retire(),
       this.#playlists.retire(),
       this.#images.retire(),
       this.#downloads.retire(),
     ]);
-  }
-
-  async deleteAccount() {
-    await this.retire();
-    await this.#disk?.deleteAccount();
+    return (this.#clearing = (async () => {
+      await drained;
+      await disk?.deleteAccount();
+    })().finally(() => {
+      this.#initialize();
+      this.#clearing = undefined;
+    }));
   }
 
   /** Restore independent local domains, reporting failures after all finish. */
@@ -1292,8 +1301,9 @@ export class Cache {
 
   /** Load bytes on demand. Missing/incomplete files invalidate only their matching record. */
   readImage(id: string, signal?: AbortSignal) {
-    return this.#images.operation(async () => {
-      const opened = await this.#images.read(id, signal);
+    const images = this.#images;
+    return images.operation(async () => {
+      const opened = await images.read(id, signal);
       if (!opened) return null;
       const { file, record } = opened;
       return { blob: new Blob([await file.arrayBuffer()], { type: record.type }), record };
@@ -1306,9 +1316,10 @@ export class Cache {
    * callers can readImage() after an undefined result to use the competing winner.
    */
   saveImage(id: string, image: CachedImage, signal?: AbortSignal) {
-    return this.#images.operation(async () => {
+    const images = this.#images;
+    return images.operation(async () => {
       this.#requireDisk();
-      await this.#images.store.load(signal);
+      await images.store.load(signal);
       signal?.throwIfAborted();
       const record: Immutable<ImageRecord> = {
         id,
@@ -1323,8 +1334,8 @@ export class Cache {
         lastModified: image.lastModified,
       };
       const blob = new Blob([image.blob], { type: record.type });
-      const expected = this.images.get(id)?.fileName;
-      return this.#images.write(record, blob, expected, signal);
+      const expected = images.records.get(id)?.fileName;
+      return images.write(record, blob, expected, signal);
     }, signal);
   }
 

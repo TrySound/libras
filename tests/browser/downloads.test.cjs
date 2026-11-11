@@ -22,12 +22,33 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
+  await page.addInitScript(() => {
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...args) {
+      window.testAudio = this;
+      return play.apply(this, args);
+    };
+  });
   let release;
   let gate = new Promise((resolve) => {
     release = resolve;
   });
   let streams = 0;
   let retrySucceeds = false;
+  // Decodable saved audio lets cleanup exercise real cached playback, not only file records.
+  const audio = Buffer.alloc(44 + 8000 * 2 * 60);
+  audio.write("RIFF", 0);
+  audio.writeUInt32LE(audio.length - 8, 4);
+  audio.write("WAVEfmt ", 8);
+  audio.writeUInt32LE(16, 16);
+  audio.writeUInt16LE(1, 20);
+  audio.writeUInt16LE(1, 22);
+  audio.writeUInt32LE(8000, 24);
+  audio.writeUInt32LE(16000, 28);
+  audio.writeUInt16LE(2, 32);
+  audio.writeUInt16LE(16, 34);
+  audio.write("data", 36);
+  audio.writeUInt32LE(audio.length - 44, 40);
   const errors = [];
   const unexpected = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -40,7 +61,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       await route.fulfill({
         status: !retrySucceeds && url.searchParams.get("id") === "track-6" ? 500 : 200,
         contentType: "audio/mpeg",
-        body: "test audio bytes",
+        body: audio,
       });
       return;
     }
@@ -58,6 +79,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
     else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
+    else if (method === "savePlayQueue") fields = {};
     else if (method === "search3") {
       const slice = (values, name) => {
         const offset = Number(url.searchParams.get(`${name}Offset`) ?? 0);
@@ -77,6 +99,19 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     });
   });
   const navigate = (path) => page.goto(new URL(`?${path}`, base).href);
+  const playCached = async () => {
+    const artistTile = page.getByRole("link", { name: artist.name, exact: true });
+    await artistTile.hover();
+    await page.mouse.down();
+    await page.waitForTimeout(600);
+    await page.mouse.up();
+    await page.locator("#artist-menu").getByRole("button", { name: "Play", exact: true }).click();
+    await page.waitForFunction(() => {
+      const audio = window.testAudio;
+      return audio && !audio.paused && audio.currentSrc.startsWith("blob:");
+    });
+    await page.waitForFunction(() => document.querySelector('img[src^="blob:"]'));
+  };
   try {
     await page.goto(base);
     await page.locator("#server-host").waitFor();
@@ -336,13 +371,21 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       },
     );
 
-    await t.test("disconnect and reload retain offline downloads", async () => {
-      await navigate("/settings");
+    await t.test("unchecked disconnect retains cached playback and offline downloads", async () => {
+      await navigate("/library");
+      await playCached();
+      await page.getByRole("link", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: "Disconnect", exact: true }).click();
       await page
         .getByRole("dialog")
         .getByRole("button", { name: "Disconnect", exact: true })
         .click();
+      assert.equal(
+        await page.evaluate(
+          () => !window.testAudio.paused && window.testAudio.currentSrc.startsWith("blob:"),
+        ),
+        true,
+      );
       await navigate("/downloads");
       await page.reload();
       await page.waitForFunction(
@@ -371,12 +414,10 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
           await page.getByRole("link", { name: "Settings", exact: true }).click();
           await page.getByRole("button", { name: "Disconnect", exact: true }).click();
           await page.getByRole("dialog").getByRole("switch").check();
-          const reloaded = page.waitForEvent("load");
           await page
             .getByRole("dialog")
             .getByRole("button", { name: "Disconnect", exact: true })
             .click();
-          await reloaded;
           await page.locator("#server-host").waitFor();
         };
         const directories = () =>
@@ -387,7 +428,38 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
             return Array.fromAsync(accounts.keys());
           });
         await connect();
+        await playCached();
+        const streamsBeforeClear = streams;
+        await page.evaluate(() => {
+          window.retainedSources = [
+            window.testAudio.currentSrc,
+            ...Array.from(document.querySelectorAll('img[src^="blob:"]'), (image) => image.src),
+          ];
+        });
         await cleanup();
+        assert.equal(streams, streamsBeforeClear);
+        assert.equal(
+          await page.evaluate(
+            () => window.testAudio.paused && !window.testAudio.getAttribute("src"),
+          ),
+          true,
+        );
+        assert.equal(await page.locator('img[src^="blob:"]').count(), 0);
+        assert.equal(
+          await page.evaluate(async () =>
+            (
+              await Promise.all(
+                window.retainedSources.map((url) =>
+                  fetch(url).then(
+                    () => false,
+                    () => true,
+                  ),
+                ),
+              )
+            ).every(Boolean),
+          ),
+          true,
+        );
         assert.deepEqual(await directories(), []);
         gate = new Promise((resolve) => {
           release = resolve;
@@ -412,7 +484,6 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
         release();
         await page.waitForTimeout(700);
         assert.deepEqual(await directories(), []);
-        await page.reload();
         await page.locator("#server-host").waitFor();
         await page.locator('.app-sidebar a[href="?/downloads"]').click();
         await page.getByRole("heading", { name: "No downloads yet" }).waitFor();
