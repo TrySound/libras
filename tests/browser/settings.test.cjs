@@ -319,6 +319,10 @@ test("Settings native controls, layout, and persistence", async (t) => {
             const handle = node.querySelector(".dialog-handle")?.getBoundingClientRect();
             return {
               padding: getComputedStyle(node).padding,
+              radius: getComputedStyle(node).borderRadius,
+              cornersMatchCard:
+                getComputedStyle(node).cornerShape ===
+                getComputedStyle(document.querySelector(".card")).cornerShape,
               bottom: box.bottom,
               left: box.left,
               width: box.width,
@@ -331,8 +335,12 @@ test("Settings native controls, layout, and persistence", async (t) => {
           assert.equal(geometry.switchLeft, true);
           assert.equal(geometry.fits, true);
           assert.equal(geometry.handleClear, true);
-          if (width === 1280) assert.equal(geometry.padding, "24px");
-          else {
+          if (width === 1280) {
+            assert.equal(geometry.padding, "24px");
+            assert.equal(geometry.radius, "24px");
+            assert.equal(geometry.cornersMatchCard, true);
+          } else {
+            assert.equal(geometry.radius, "0px");
             assert.equal(geometry.bottom, 740);
             assert.equal(geometry.left, 0);
             assert.equal(geometry.width, await page.evaluate(() => document.body.clientWidth));
