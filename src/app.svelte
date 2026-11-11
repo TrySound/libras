@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
-  import { onDestroy, onMount, untrack, type Snippet } from "svelte";
+  import { Favourites } from "./favourites.svelte";
+  import { onDestroy, onMount, untrack, setContext, type Snippet } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import { Playlists } from "./playlists.svelte";
@@ -45,8 +46,8 @@
   const emptyCache = new Cache();
   const cache = $derived(selection.cache ?? emptyCache);
   const appName = $derived(demo ? "Libras demo" : "Libras");
-  function newSearchState() {
-    const state = $state(createSearchState());
+  function newSearchState(query = "") {
+    const state = $state(createSearchState(query));
     return state;
   }
   // Owned above the route so Back retains state; cache switches discard it.
@@ -54,12 +55,28 @@
     void cache;
     return newSearchState();
   });
+  const seededSearchStates = $derived.by(() => {
+    void cache;
+    return new Map<string, ReturnType<typeof createSearchState>>();
+  });
+  function searchDraft(params: RouteParams) {
+    if (params.query === undefined) return searchState;
+    const key = params.entryKey!;
+    let state = seededSearchStates.get(key);
+    if (!state) {
+      state = newSearchState(params.query);
+      seededSearchStates.set(key, state);
+    }
+    return state;
+  }
   const hasNextTrack = $derived(
     cache.queue.index >= 0 && cache.queue.index < cache.queue.tracks.length - 1,
   );
   const hasPreviousTrack = $derived(cache.queue.index > 0);
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
+  const favourites = new Favourites(selection);
+  setContext("favourites", favourites);
   const trackEngine = new TrackEngine({ selection });
   let player = $state<ReturnType<typeof AudioPlayer>>();
   const playback: Playback = new Playback({
@@ -78,6 +95,7 @@
         tracks: trackEngine,
         playback,
         playlists,
+        favourites,
         preferences: auth.storage,
       }),
   );
@@ -114,6 +132,7 @@
     session.destroy();
     playback.destroy();
     playlists.destroy();
+    favourites.destroy();
     covers.destroy();
     trackEngine.destroy();
   });
@@ -160,9 +179,17 @@
   <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
 {/snippet}
 
-{#snippet searchRoute()}
+{#snippet searchRoute(params: RouteParams)}
   <Atmosphere />
-  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} {appName} state={searchState} />
+  <SearchRoute
+    {cache}
+    {covers}
+    {trackEngine}
+    {session}
+    {playback}
+    {appName}
+    state={searchDraft(params)}
+  />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
@@ -329,6 +356,7 @@
             routes={[
               { pattern: "/library", render: libraryRoute },
               { pattern: "/search", render: searchRoute },
+              { pattern: "/search/:query", render: searchRoute },
               { pattern: "/library/album/:albumId", render: albumRoute },
               { pattern: "/library/artist/:artistId", render: artistRoute },
               { pattern: "/settings", render: settingsRoute },

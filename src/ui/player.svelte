@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "../icon.svelte";
+  import FavouriteButton from "./favourite-button.svelte";
   import Artwork from "./artwork.svelte";
   import Atmosphere from "./atmosphere.svelte";
   import Loader from "./loader.svelte";
@@ -142,6 +143,66 @@
         <Icon name="cross" />
       </button>
     </header>
+    <div
+      id="playing-actions"
+      class="popover"
+      popover="auto"
+      role="dialog"
+      aria-labelledby="playing-actions-title"
+    >
+      <div class="stack-lg">
+        <header class="row-md row-justify">
+          <div class="row-md">
+            <Artwork {covers} id={track?.artworkId} size="lg" />
+            <h2 id="playing-actions-title" class="heading-md">{track?.title ?? "Current track"}</h2>
+          </div>
+          <button
+            class="button"
+            commandfor="playing-actions"
+            command="hide-popover"
+            aria-label="Close menu"><Icon name="cross" /></button
+          >
+        </header>
+        <div class="stack-sm">
+          <button
+            class="menu-item"
+            disabled={!track || (offlineMode && trackEngine.getStatus(track.id) !== "downloaded")}
+            onclick={() => {
+              void playback.toggle();
+              document.getElementById("playing-actions")?.hidePopover();
+            }}><Icon name="play" /><span>Play / pause</span></button
+          >
+          <button
+            class="menu-item"
+            disabled={!track}
+            onclick={() => {
+              if (track) void playback.enqueue([track.id], "next");
+              document.getElementById("playing-actions")?.hidePopover();
+            }}><Icon name="next" /><span>Play next</span></button
+          >
+          <button
+            class="menu-item"
+            disabled={!track}
+            onclick={() => {
+              if (track) void playback.enqueue([track.id], "last");
+              document.getElementById("playing-actions")?.hidePopover();
+            }}><Icon name="plus" /><span>Play last</span></button
+          >
+          <button
+            class="menu-item"
+            disabled={!track || !["idle", "failed"].includes(trackEngine.getStatus(track.id))}
+            onclick={() => {
+              if (track) trackEngine.downloadMany([track.id]);
+              document.getElementById("playing-actions")?.hidePopover();
+            }}><Icon name="download" /><span>Download</span></button
+          >
+          <FavouriteButton
+            overlayId="playing-actions"
+            target={track ? { kind: "tracks", id: track.id } : undefined}
+          />
+        </div>
+      </div>
+    </div>
     <section class="split-layout large-player-content" aria-label="Playback and queue">
       <div class="player-panel">
         <Artwork {covers} id={track?.artworkId} size="cover" loading="eager" />
@@ -203,7 +264,14 @@
               </div>
             </div>
             <div class="player-controls row-xs row-justify">
-              <div class="button-hidden-stub" aria-hidden="true"></div>
+              <button
+                class="button"
+                commandfor="playing-actions"
+                command="toggle-popover"
+                disabled={!track}
+                aria-label={`Actions for ${track?.title ?? "current track"}`}
+                ><Icon name="menu" /></button
+              >
               <div class="row-md" role="group" aria-label="Playback controls">
                 <button
                   class="button"

@@ -244,7 +244,7 @@
                 aria-label={session.refreshing ? "Refreshing…" : "Refresh library"}
                 aria-disabled={session.syncing}
                 aria-busy={session.refreshing}
-                disabled={session.offlineMode || session.busy}
+                disabled={session.busy || session.syncing}
                 onclick={() => {
                   if (!session.syncing) void session.refresh();
                 }}

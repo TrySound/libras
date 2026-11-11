@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import FavouriteButton from "./ui/favourite-button.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -23,7 +24,7 @@
 
   // Long-press focuses the primary target before opening the shared dialog.
   let menuArtistId = $state<string>();
-  const menuArtist = $derived(menuArtistId ? cache.artists.get(menuArtistId) : undefined);
+  const menuArtist = $derived.by(() => visibleArtists.find((artist) => artist.id === menuArtistId));
 
   function artistTracks(artist: Immutable<Artist>) {
     return (cache.artistAlbums.get(artist.id) ?? []).flatMap(
@@ -65,6 +66,20 @@
     (document.getElementById("artist-menu") as HTMLDialogElement)?.close();
     document.getElementById("artist-popover")?.hidePopover?.();
   }
+  $effect(() => {
+    if (menuArtistId === undefined || menuArtist) return;
+    const sheet = document.getElementById("artist-menu") as HTMLDialogElement | null;
+    const popover = document.getElementById("artist-popover");
+    const wasOpen = sheet?.open || popover?.matches(":popover-open");
+    if (wasOpen) dismissActions();
+    menuArtistId = undefined;
+    if (!wasOpen) return;
+    const fallback = document.getElementById("library-heading")?.closest("section");
+    if (fallback?.checkVisibility()) {
+      fallback.tabIndex = -1;
+      fallback.focus({ preventScroll: true });
+    }
+  });
 </script>
 
 <svelte:head><title>Your library | {appName}</title></svelte:head>
@@ -278,6 +293,10 @@
         <Icon name="download" />
         <span>Download</span>
       </button>
+      <FavouriteButton
+        overlayId={id}
+        target={menuArtist ? { kind: "artists", id: menuArtist.id } : undefined}
+      />
     </div>
   </div>
 {/snippet}

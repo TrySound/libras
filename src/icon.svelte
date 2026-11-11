@@ -1,6 +1,7 @@
 <script module lang="ts">
   export type IconName =
     | "brand"
+    | "favourite"
     | "search"
     | "check"
     | "clock"

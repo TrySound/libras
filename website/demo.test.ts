@@ -244,7 +244,7 @@ it("syncs and refreshes the snapshot even when live Deezer album responses would
   await vi.waitFor(() =>
     expect(document.querySelector("#settings-refresh")?.getAttribute("aria-busy")).toBe("false"),
   );
-  expect(document.body.textContent).not.toContain("Synchronization needs attention");
+  expect(document.body.textContent).toContain("Favourites are not supported in the demo.");
   expect(document.body.textContent).not.toContain("Unexpected Deezer album or artist");
   expect(read).not.toHaveBeenCalled();
 });
