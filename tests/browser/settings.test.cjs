@@ -237,7 +237,8 @@ test("Settings native controls, layout, and persistence", async (t) => {
       await control.focus();
       await page.keyboard.press("Space");
       await waitConnected();
-      assert.equal(
+      assert.equal(await control.isChecked(), false);
+      assert.notEqual(
         await control.evaluate((node) => getComputedStyle(node, "::before").backgroundColor),
         onThumb,
       );
@@ -248,14 +249,132 @@ test("Settings native controls, layout, and persistence", async (t) => {
       await waitConnected();
     });
 
-    await t.test("Disconnect does not autofocus Host", async () => {
-      await page.getByRole("button", { name: "Disconnect", exact: true }).click();
-      await page.locator("#server-host").waitFor();
-      assert.equal(
-        await page.locator("#server-host").evaluate((input) => input === document.activeElement),
-        false,
-      );
+    await t.test("shared modals reduce mobile padding without crowding handles", async () => {
+      const artifacts = process.env.ARTIFACT_DIR;
+      if (artifacts) require("node:fs").mkdirSync(artifacts, { recursive: true });
+      await page.getByRole("link", { name: "Libras home", exact: true }).click();
+      await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
+      for (const width of [1280, 320]) {
+        await page.setViewportSize({ width, height: 740 });
+        for (const selector of ["#navigation-dialog", "#artist-menu"]) {
+          const modal = page.locator(selector);
+          await modal.evaluate((node) => node.showModal());
+          const geometry = await modal.evaluate((node) => {
+            const style = getComputedStyle(node);
+            const handle = node.querySelector(".dialog-handle").getBoundingClientRect();
+            const content = node
+              .querySelector(".dialog-handle")
+              .nextElementSibling.getBoundingClientRect();
+            return {
+              padding: [
+                style.paddingTop,
+                style.paddingRight,
+                style.paddingBottom,
+                style.paddingLeft,
+              ],
+              fits: node.scrollWidth <= node.clientWidth,
+              handleClear: node.classList.contains("bottom-sheet")
+                ? content.top > handle.bottom
+                : content.left > handle.right,
+            };
+          });
+          assert.deepEqual(
+            geometry.padding,
+            width === 1280
+              ? ["24px", "24px", "24px", "24px"]
+              : selector === "#artist-menu"
+                ? ["24px", "16px", "16px", "16px"]
+                : ["16px", "16px", "16px", "24px"],
+          );
+          assert.equal(geometry.fits, true);
+          assert.equal(geometry.handleClear, true);
+          if (artifacts)
+            await page.screenshot({ path: `${artifacts}/${selector.slice(1)}-${width}.png` });
+          await modal.evaluate((node) => node.close());
+        }
+      }
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.getByRole("link", { name: "Settings", exact: true }).click();
+      await waitConnected();
     });
+
+    await t.test(
+      "Disconnect safely focuses Cancel, preserves on dismissal, and keeps data",
+      async () => {
+        await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+        assert.equal(
+          await page
+            .getByRole("button", { name: "Cancel", exact: true })
+            .evaluate((node) => node === document.activeElement),
+          true,
+        );
+        const dialog = page.getByRole("dialog", { name: "Disconnect?", exact: true });
+        const checkbox = dialog.getByRole("switch", {
+          name: "Delete account data and downloads from device",
+          exact: true,
+        });
+        assert.equal(await checkbox.isChecked(), false);
+        assert.equal(await checkbox.getAttribute("aria-describedby"), "disconnect-scope");
+        assert.equal(
+          await dialog.locator("#disconnect-scope").textContent(),
+          "Server data is unaffected.",
+        );
+        assert.equal(await dialog.getByRole("button").count(), 2);
+        for (const width of [1280, 320]) {
+          await page.setViewportSize({ width, height: 740 });
+          assert.equal(
+            await checkbox.evaluate((node) => {
+              const label = document
+                .querySelector('label[for="disconnect-delete-local"]')
+                .getBoundingClientRect();
+              return node.getBoundingClientRect().left >= label.right;
+            }),
+            true,
+          );
+        }
+        await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
+        const enlarged = await dialog.evaluate((node) => {
+          const label = node.querySelector('label[for="disconnect-delete-local"]');
+          const text = label.firstChild;
+          const words = [...text.textContent.matchAll(/\S+/g)];
+          const wholeWords = words.every((word) => {
+            const range = document.createRange();
+            range.setStart(text, word.index);
+            range.setEnd(text, word.index + word[0].length);
+            return range.getClientRects().length === 1;
+          });
+          return {
+            wholeWords,
+            switchBelow:
+              node.querySelector('[role="switch"]').getBoundingClientRect().top >=
+              label.getBoundingClientRect().bottom,
+            fits: node.scrollWidth <= node.clientWidth,
+          };
+        });
+        assert.deepEqual(enlarged, { wholeWords: true, switchBelow: true, fits: true });
+        await page.evaluate(() => document.documentElement.style.removeProperty("font-size"));
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await checkbox.focus();
+        await page.keyboard.press("Space");
+        assert.equal(await checkbox.isChecked(), true);
+        await page.keyboard.press("Escape");
+        assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-auth")));
+        await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+        assert.equal(await checkbox.isChecked(), false);
+        await checkbox.check();
+        await page.mouse.click(2, 2);
+        assert.equal(await page.locator("dialog:modal").count(), 0);
+        assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-auth")));
+        await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+        assert.equal(await checkbox.isChecked(), false);
+        await dialog.getByRole("button", { name: "Disconnect", exact: true }).click();
+        await page.locator("#server-host").waitFor();
+        assert.equal(
+          await page.locator("#server-host").evaluate((input) => input === document.activeElement),
+          true,
+        );
+      },
+    );
     await t.test("automatic password fallback survives reload until disconnect", async () => {
       pingFailure = true;
       pingCode = 41;
@@ -279,9 +398,167 @@ test("Settings native controls, layout, and persistence", async (t) => {
       await page.reload();
       await waitConnected();
       await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Disconnect", exact: true })
+        .click();
       assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-auth")), null);
       assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-account")));
     });
+    await t.test(
+      "cleanup removes real OPFS account data, survives deletion denial and late work",
+      async () => {
+        await page.getByLabel("Host", { exact: true }).fill(host);
+        await page.getByLabel("Username", { exact: true }).fill(username);
+        await page.getByLabel("Password", { exact: true }).fill("password");
+        await page.getByRole("button", { name: "Connect", exact: true }).click();
+        await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
+        await page.getByRole("link", { name: "Settings", exact: true }).click();
+        await waitConnected();
+        await page.waitForTimeout(600);
+        await page.evaluate(async () => {
+          const root = await navigator.storage.getDirectory();
+          const accounts = await root.getDirectoryHandle("accounts");
+          const unrelated = await accounts.getDirectoryHandle("unrelated", { create: true });
+          const marker = await unrelated.getFileHandle("keep", { create: true });
+          const writer = await marker.createWritable();
+          await writer.write("preserve");
+          await writer.close();
+          window.originalRemove = FileSystemDirectoryHandle.prototype.removeEntry;
+          FileSystemDirectoryHandle.prototype.removeEntry = async function (name, options) {
+            if (options?.recursive && name !== "unrelated") {
+              await new Promise((resolve) => {
+                window.releaseCleanup = resolve;
+              });
+              if (!window.allowCleanup)
+                throw new DOMException("Test deletion denial", "NotAllowedError");
+            }
+            return window.originalRemove.call(this, name, options);
+          };
+        });
+        await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+        const artifacts = process.env.ARTIFACT_DIR;
+        if (artifacts) {
+          require("node:fs").mkdirSync(artifacts, { recursive: true });
+          const modal = page.getByRole("dialog", { name: "Disconnect?", exact: true });
+          const padding = () => modal.evaluate((node) => getComputedStyle(node).padding);
+          assert.equal(await padding(), "24px");
+          await page.screenshot({ path: `${artifacts}/disconnect-desktop.png` });
+          await modal.getByRole("switch").check();
+          await page.screenshot({ path: `${artifacts}/disconnect-desktop-checked.png` });
+          await modal.getByRole("switch").uncheck();
+          await page.setViewportSize({ width: 320, height: 740 });
+          assert.equal(await padding(), "16px");
+          await page.screenshot({ path: `${artifacts}/disconnect-mobile.png` });
+          await modal.getByRole("switch").check();
+          await page.screenshot({ path: `${artifacts}/disconnect-mobile-checked.png` });
+          await modal.getByRole("switch").uncheck();
+          await page.locator("dialog:modal").evaluate((dialog) => {
+            dialog.scrollTop = dialog.scrollHeight;
+          });
+          await page.screenshot({ path: `${artifacts}/disconnect-mobile-actions.png` });
+          assert.equal(
+            await page
+              .locator("dialog:modal")
+              .evaluate((node) => node.scrollWidth <= node.clientWidth),
+            true,
+          );
+          await page.evaluate(() => {
+            document.documentElement.style.fontSize = "200%";
+          });
+          assert.equal(
+            await page
+              .locator("dialog:modal")
+              .evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth),
+            true,
+          );
+          assert.equal(
+            await modal
+              .getByRole("switch")
+              .evaluate((node) => node.getBoundingClientRect().width === node.offsetWidth),
+            true,
+          );
+          await page.screenshot({ path: `${artifacts}/disconnect-enlarged.png` });
+          await page.evaluate(() => {
+            document.documentElement.style.fontSize = "";
+          });
+          await page.setViewportSize({ width: 1280, height: 900 });
+        }
+        const before = calls.length;
+        await page.getByRole("dialog").getByRole("switch").check();
+        await page
+          .getByRole("dialog")
+          .getByRole("button", { name: "Disconnect", exact: true })
+          .click();
+        await page.waitForFunction(() => !!window.releaseCleanup);
+        await page.keyboard.press("Escape");
+        assert.equal(await page.locator("dialog:modal").count(), 1);
+        assert.equal(
+          await page
+            .locator("dialog [data-cleanup-focus]")
+            .evaluate((node) => node === document.activeElement),
+          true,
+        );
+        if (artifacts) await page.screenshot({ path: `${artifacts}/disconnect-busy.png` });
+        // Browser history can leave a modal view while Session continues cleanup.
+        await page.goBack();
+        await page.locator("[aria-labelledby=library-heading]").waitFor();
+        assert.equal(await page.locator("dialog:modal").count(), 0);
+        await page.evaluate(() => window.releaseCleanup());
+        await page.getByRole("link", { name: "Settings", exact: true }).click();
+        const recovery = page.locator("#settings-cleanup-recovery");
+        await recovery.waitFor();
+        assert.equal(await page.locator("#settings-connect").count(), 0);
+        await recovery.click();
+        const retry = page
+          .locator("dialog:modal")
+          .getByRole("button", { name: "Retry cleanup", exact: true });
+        await retry.waitFor();
+        await page.waitForFunction(() =>
+          document.activeElement?.matches("dialog [data-cleanup-focus]"),
+        );
+        assert.equal(await retry.getAttribute("aria-describedby"), "disconnect-cleanup-error");
+        if (artifacts) await page.screenshot({ path: `${artifacts}/disconnect-error.png` });
+        await page.keyboard.press("Escape");
+        await page.waitForFunction(
+          () => document.activeElement?.id === "settings-cleanup-recovery",
+        );
+        assert.equal(await page.locator("dialog:modal").count(), 0);
+        if (artifacts) await page.screenshot({ path: `${artifacts}/disconnect-recovery.png` });
+        await recovery.press("Enter");
+        await retry.waitFor();
+        await page.getByRole("button", { name: "Close", exact: true }).click();
+        await page.waitForFunction(
+          () => document.activeElement?.id === "settings-cleanup-recovery",
+        );
+        await recovery.press("Enter");
+        await retry.waitFor();
+        assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-auth")), null);
+        assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-account")), null);
+        await page.evaluate(() => {
+          window.releaseCleanup = null;
+          window.allowCleanup = true;
+        });
+        await retry.click();
+        await page.waitForFunction(() => !!window.releaseCleanup);
+        await page.evaluate(() => window.releaseCleanup());
+        await page.waitForFunction(() => !document.querySelector("dialog:modal"));
+        assert.deepEqual(calls.slice(before), []);
+        const accountDirectories = () =>
+          page.evaluate(async () => {
+            const accounts = await (
+              await navigator.storage.getDirectory()
+            ).getDirectoryHandle("accounts");
+            return Array.fromAsync(accounts.keys());
+          });
+        assert.deepEqual(await accountDirectories(), ["unrelated"]);
+        await page.reload();
+        await page.locator("#server-host").waitFor();
+        await page.waitForTimeout(700);
+        assert.deepEqual(await accountDirectories(), ["unrelated"]);
+        assert.equal(await page.locator("[aria-labelledby=library-heading] .tile").count(), 0);
+      },
+    );
     assert.deepEqual(errors, []);
   } finally {
     for (const release of releases) release();

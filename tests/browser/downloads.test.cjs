@@ -339,6 +339,10 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     await t.test("disconnect and reload retain offline downloads", async () => {
       await navigate("/settings");
       await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Disconnect", exact: true })
+        .click();
       await navigate("/downloads");
       await page.reload();
       await page.waitForFunction(
@@ -352,6 +356,67 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       assert.equal(await page.getByRole("button", { name: /^Retry download of 6/ }).count(), 0);
       assert.equal(await page.getByRole("button", { name: "Show errors", exact: true }).count(), 0);
     });
+    await t.test(
+      "cleanup deletes completed audio and aborts late transfers without recreating OPFS",
+      async () => {
+        const connect = async () => {
+          await navigate("/settings");
+          await page.getByLabel("Host", { exact: true }).fill("https://music.example.test");
+          await page.getByLabel("Username", { exact: true }).fill("listener");
+          await page.getByLabel("Password", { exact: true }).fill("fictional-password");
+          await page.getByRole("button", { name: "Connect", exact: true }).click();
+          await page.getByRole("link", { name: artist.name, exact: true }).waitFor();
+        };
+        const cleanup = async () => {
+          await page.getByRole("link", { name: "Settings", exact: true }).click();
+          await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+          await page.getByRole("dialog").getByRole("switch").check();
+          await page
+            .getByRole("dialog")
+            .getByRole("button", { name: "Disconnect", exact: true })
+            .click();
+          await page.waitForFunction(() => !document.querySelector("dialog:modal"));
+        };
+        const directories = () =>
+          page.evaluate(async () => {
+            const accounts = await (
+              await navigator.storage.getDirectory()
+            ).getDirectoryHandle("accounts");
+            return Array.fromAsync(accounts.keys());
+          });
+        await connect();
+        await cleanup();
+        assert.deepEqual(await directories(), []);
+        gate = new Promise((resolve) => {
+          release = resolve;
+        });
+        await connect();
+        const fresh = page.getByRole("link", { name: artist.name, exact: true });
+        await fresh.hover();
+        await page.mouse.down();
+        await page.waitForTimeout(600);
+        await page.mouse.up();
+        await page
+          .locator("#artist-menu")
+          .getByRole("button", { name: "Download", exact: true })
+          .click();
+        await page.waitForFunction(() =>
+          document
+            .querySelector('.app-sidebar a[href="?/downloads"]')
+            ?.getAttribute("aria-label")
+            ?.includes("6 active"),
+        );
+        await cleanup();
+        release();
+        await page.waitForTimeout(700);
+        assert.deepEqual(await directories(), []);
+        await page.reload();
+        await page.locator("#server-host").waitFor();
+        await page.locator('.app-sidebar a[href="?/downloads"]').click();
+        await page.getByRole("heading", { name: "No downloads yet" }).waitFor();
+        assert.deepEqual(await directories(), []);
+      },
+    );
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
   } finally {

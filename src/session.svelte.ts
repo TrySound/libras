@@ -56,6 +56,11 @@ export class Session {
   #authController?: AbortController;
   #downloadController?: AbortController;
   #operationId = 0;
+  cleaning = $state(false);
+  cleanupError = $state("");
+  #cleanupCache?: Cache;
+  #cleanupRequired = $state(false);
+  #cleanupPending?: Promise<void>;
   #started = false;
   #destroyed = false;
 
@@ -95,8 +100,13 @@ export class Session {
     return message ? `Synchronization failed: ${message}` : "";
   }
 
+  /** Survives view navigation until this account's deletion succeeds. */
+  get cleanupRequired() {
+    return this.#cleanupRequired;
+  }
+
   get busy() {
-    return this.status === "connecting";
+    return this.cleaning || this.#cleanupRequired || this.status === "connecting";
   }
 
   get offlineMode() {
@@ -332,6 +342,60 @@ export class Session {
       if (this.#isCurrentOperation(operationId) && this.status === "connecting")
         this.status = "disconnected";
     }
+  }
+
+  /** Separate from preserve-data disconnect: detach first, then retire and delete. */
+  cleanup(): Promise<void> {
+    if (this.#cleanupPending) return this.#cleanupPending;
+    this.cleaning = true;
+    this.cleanupError = "";
+    this.#cleanupRequired = true;
+    this.#cleanupCache ??= this.#options.selection.cache;
+    const cache = this.#cleanupCache;
+    const refresh = this.#refreshPending;
+    this.#beginOperation();
+    this.auth = null;
+    this.#loadController?.abort();
+    this.#authController?.abort();
+    this.#downloadController?.abort();
+    this.#options.network.cancelPending();
+    this.#options.network.setMode("offline");
+    this.#setConnection(undefined);
+    this.#options.tracks.setDownloadConnection(undefined);
+    this.#options.playback.suspend();
+    const retired = cache?.retire();
+    this.#options.selection.cache = undefined;
+    this.#account = undefined;
+    this.#options.playback.activate();
+    this.#options.covers.activate();
+    const downloads = this.#options.tracks.activate();
+    this.#options.playlists?.reset();
+    this.status = "disconnected";
+    this.loadingAfterConnect = false;
+    this.#libraryProgress = undefined;
+    this.#syncState = "idle";
+    this.#refreshError = undefined;
+    this.#refreshPending = undefined;
+    this.localReady = true;
+    return (this.#cleanupPending = (async () => {
+      // Retry also retries identity removal if browser storage denied it.
+      this.#options.auth.clear();
+      this.#options.auth.clearAccount();
+      this.#options.preferences.setItem(offlineModeStorageKey, "true");
+      await Promise.allSettled([this.#restoration, refresh, downloads, retired]);
+      await cache?.deleteAccount();
+      this.#cleanupCache = undefined;
+      this.#cleanupRequired = false;
+    })()
+      .catch((error) => {
+        this.cleanupError =
+          "Disconnected, but some local data could not be removed. Retry cleanup.";
+        throw error;
+      })
+      .finally(() => {
+        this.cleaning = false;
+        this.#cleanupPending = undefined;
+      }));
   }
 
   disconnect() {

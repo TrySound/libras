@@ -35,6 +35,14 @@ export class Playlists {
     this.#pending.clear();
   }
 
+  reset() {
+    this.#connection = undefined;
+    this.#generation++;
+    this.#pending.clear();
+    this.loading = this.saving = false;
+    this.error = undefined;
+  }
+
   #scope() {
     const connection = this.#connection;
     const cache = this.#selection.cache;

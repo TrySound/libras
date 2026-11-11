@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { tick, type Snippet } from "svelte";
   import Icon from "./icon.svelte";
   import Loader from "./ui/loader.svelte";
   import type { Session } from "./session.svelte";
@@ -29,7 +29,7 @@
   };
   const connectionState = $derived.by((): keyof typeof connectionLabels => {
     if (session.auth && session.offlineMode) return "offline";
-    if (session.busy) return session.localReady ? "connecting" : "initializing";
+    if (session.status === "connecting") return session.localReady ? "connecting" : "initializing";
     if (!session.auth) return session.status === "error" ? "error" : "disconnected";
     if (session.status === "error") return "error";
     // A manual refresh keeps the existing status until scan counts are available.
@@ -62,13 +62,133 @@
     password = "";
   }
 
-  function disconnectServer() {
-    session.disconnect();
+  let disconnectDialog: HTMLDialogElement;
+  let deleteLocalData = $state(false);
+  async function focusCleanupState() {
+    await tick();
+    if (disconnectDialog?.isConnected && disconnectDialog.open) {
+      disconnectDialog.querySelector<HTMLElement>("[data-cleanup-focus]")?.focus();
+    }
+  }
+
+  $effect(() => {
+    if (session.cleaning || session.cleanupError) void focusCleanupState();
+    else if (!session.auth && !session.cleanupRequired) void closeDisconnectedDialog();
+  });
+
+  function openDisconnect() {
+    deleteLocalData = false;
+    disconnectDialog.showModal();
+    if (session.cleanupRequired) void focusCleanupState();
+  }
+
+  async function dialogClosed() {
+    if (!session.cleanupRequired) return;
+    await tick();
+    if (view?.isConnected && !disconnectDialog.open)
+      view.querySelector<HTMLButtonElement>("#settings-cleanup-recovery")?.focus();
+  }
+
+  async function finishDisconnect(cleanup: boolean) {
+    if (session.cleaning) return;
     host = username = password = "";
+    if (cleanup) {
+      try {
+        await session.cleanup();
+      } catch {
+        // Session retains recovery state even if Settings was unmounted meanwhile.
+        return;
+      }
+    } else session.disconnect();
+    await closeDisconnectedDialog();
+  }
+
+  async function closeDisconnectedDialog() {
+    // Also handles success while this view is displaying work started before navigation.
+    if (!disconnectDialog?.isConnected || !disconnectDialog.open) return;
+    disconnectDialog.close();
+    await tick();
+    if (!view?.isConnected) return;
+    // The Disconnect invoker no longer exists after confirmation.
+    (demo
+      ? view?.querySelector<HTMLButtonElement>("button")
+      : view?.querySelector<HTMLInputElement>("#server-host")
+    )?.focus();
   }
 </script>
 
 <svelte:head><title>Settings | {appName}</title></svelte:head>
+
+<dialog
+  bind:this={disconnectDialog}
+  class="dialog"
+  closedby={session.cleaning ? "none" : "any"}
+  aria-labelledby="disconnect-title"
+  oncancel={(event) => {
+    if (session.cleaning) event.preventDefault();
+  }}
+  onclose={() => void dialogClosed()}
+>
+  <div class="stack-md">
+    <h2 class="heading-md" id="disconnect-title">Disconnect?</h2>
+    {#if session.cleaning}
+      <div class="stack-sm" role="status" tabindex="-1" data-cleanup-focus>
+        <p class="row-sm body"><Loader /> Deleting local data…</p>
+      </div>
+    {:else if session.cleanupError}
+      <p class="body" role="alert" id="disconnect-cleanup-error">{session.cleanupError}</p>
+      <div class="stack-sm">
+        <button
+          class="button"
+          data-size="text"
+          data-variant="secondary"
+          onclick={() => disconnectDialog.close()}>Close</button
+        >
+        <button
+          class="button"
+          data-size="text"
+          data-variant="primary"
+          data-cleanup-focus
+          aria-describedby="disconnect-cleanup-error"
+          onclick={() => void finishDisconnect(true)}>Retry cleanup</button
+        >
+      </div>
+    {:else}
+      <div class="stack-xs">
+        <div class="row-md row-justify row-wrap">
+          <label class="body" for="disconnect-delete-local" style="flex: 1 1 14ch"
+            >Delete account data and downloads from device</label
+          >
+          <input
+            class="switch"
+            id="disconnect-delete-local"
+            type="checkbox"
+            role="switch"
+            bind:checked={deleteLocalData}
+            aria-describedby="disconnect-scope"
+          />
+        </div>
+        <p class="caption text-secondary" id="disconnect-scope">Server data is unaffected.</p>
+      </div>
+      <div class="row-sm row-wrap row-end">
+        <!-- svelte-ignore a11y_autofocus -->
+        <button
+          class="button"
+          data-size="text"
+          data-variant="secondary"
+          autofocus
+          onclick={() => disconnectDialog.close()}>Cancel</button
+        >
+        <button
+          class="button"
+          data-size="text"
+          data-variant="primary"
+          onclick={() => void finishDisconnect(deleteLocalData)}>Disconnect</button
+        >
+      </div>
+    {/if}
+  </div>
+</dialog>
 
 <section bind:this={view} aria-labelledby="settings-heading">
   <div class="stack-lg scroll-runway">
@@ -127,7 +247,25 @@
           </div>
         {/if}
 
-        {#if !session.auth && demo}
+        {#if session.cleanupRequired}
+          <div class="stack-sm">
+            <p class="body" id="settings-cleanup-help">
+              {session.cleaning
+                ? "Clearing this account’s local data. Please wait until cleanup finishes."
+                : session.cleanupError}
+              Connecting is unavailable until cleanup succeeds.
+            </p>
+            <button
+              id="settings-cleanup-recovery"
+              class="button"
+              data-size="text"
+              data-variant="primary"
+              aria-describedby="settings-cleanup-help"
+              onclick={openDisconnect}
+              >{session.cleaning ? "View cleanup progress" : "Retry cleanup"}</button
+            >
+          </div>
+        {:else if !session.auth && demo}
           <p class="body">
             This demo uses a fixed music library and cannot connect to other servers. Reload to
             reconnect to the demo.
@@ -230,9 +368,10 @@
             <p class="caption text-secondary">
               {#if demo}
                 This demo uses a fixed music library. Disconnect stops streaming; reload to
-                reconnect. Your downloaded previews stay on this device.
+                reconnect. Choose whether to keep its local data.
               {:else}
-                Disconnect to change servers. Your offline library will stay on this device.
+                Disconnect to switch users or servers. Choose whether to keep this account’s local
+                data.
               {/if}
             </p>
             <div class="row-sm row-wrap">
@@ -255,7 +394,7 @@
                 id="settings-disconnect"
                 class="button"
                 data-size="text"
-                onclick={disconnectServer}>Disconnect</button
+                onclick={openDisconnect}>Disconnect</button
               >
             </div>
           </div>
@@ -287,8 +426,8 @@
         <p class="body" id="settings-offline-help">
           {#if !session.auth}
             {demo
-              ? "Reload the demo to browse online. Your downloaded previews remain available."
-              : "Connect to a server to browse online. Your saved music remains available."}
+              ? "Reload the demo to browse online. Any previews you kept remain available."
+              : "Connect to a server to browse online. Any music you kept remains available."}
           {:else if session.offlineMode}
             Showing downloaded music only. Turn this off to browse and stream {demo
               ? "demo previews"

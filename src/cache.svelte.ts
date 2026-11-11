@@ -113,6 +113,27 @@ type DocumentName = "library" | "queue" | "images" | "downloads" | "playlists";
 
 /** Private namespace and atomic JSON I/O. Knows no account settings or runtime indexes. */
 class Disk {
+  retired = false;
+  #pending = new Set<Promise<unknown>>();
+
+  #observe<T>(operation: Promise<T>) {
+    this.#pending.add(operation);
+    void operation.finally(() => this.#pending.delete(operation)).catch(() => {});
+    return operation;
+  }
+
+  async deleteAccount() {
+    this.retired = true;
+    while (this.#pending.size) await Promise.allSettled([...this.#pending]);
+    try {
+      const root = await navigator.storage.getDirectory();
+      const accounts = await root.getDirectoryHandle("accounts");
+      await accounts.removeEntry(await this.key, { recursive: true });
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "NotFoundError")) throw error;
+    }
+  }
+
   #downloadLocks = new Map<string, Promise<void>>();
   constructor(readonly key: Promise<string>) {
     // Construction starts hashing, but the disk may never be used. Observe a
@@ -122,17 +143,30 @@ class Disk {
 
   async #directory() {
     const key = await this.key;
+    if (this.retired) throw new DOMException("Cache retired.", "AbortError");
     let directory = await navigator.storage.getDirectory();
-    for (const name of ["accounts", key])
+    for (const name of ["accounts", key]) {
+      if (this.retired) throw new DOMException("Cache retired.", "AbortError");
       directory = await directory.getDirectoryHandle(name, { create: true });
+    }
     return directory;
   }
-  async files() {
-    return (await this.#directory()).getDirectoryHandle("files", { create: true });
+  files() {
+    return this.#observe(
+      (async () => {
+        const directory = await this.#directory();
+        if (this.retired) throw new DOMException("Cache retired.", "AbortError");
+        return directory.getDirectoryHandle("files", { create: true });
+      })(),
+    );
   }
 
   /** Open only the named file, validating fresh metadata without buffering bytes. */
-  async openBinary(record: BinaryRecord, signal?: AbortSignal): Promise<File | null> {
+  openBinary(record: BinaryRecord, signal?: AbortSignal): Promise<File | null> {
+    return this.#observe(this.#openBinary(record, signal));
+  }
+
+  async #openBinary(record: BinaryRecord, signal?: AbortSignal): Promise<File | null> {
     signal?.throwIfAborted();
     try {
       const directory = await this.files();
@@ -152,7 +186,15 @@ class Disk {
   }
 
   /** Concrete byte I/O only. Successful close is the cancellation boundary. */
-  async writeBinary(
+  writeBinary(
+    fileName: string,
+    source: ReadableStream<Uint8Array>,
+    options: { signal?: AbortSignal; expectedSize?: number; nonempty?: boolean } = {},
+  ) {
+    return this.#observe(this.#writeBinary(fileName, source, options));
+  }
+
+  async #writeBinary(
     fileName: string,
     source: ReadableStream<Uint8Array>,
     options: { signal?: AbortSignal; expectedSize?: number; nonempty?: boolean } = {},
@@ -187,7 +229,11 @@ class Disk {
     }
   }
 
-  async lockDownload<T>(key: string, signal: AbortSignal, operation: () => Promise<T>) {
+  lockDownload<T>(key: string, signal: AbortSignal, operation: () => Promise<T>) {
+    return this.#observe(this.#lockDownload(key, signal, operation));
+  }
+
+  async #lockDownload<T>(key: string, signal: AbortSignal, operation: () => Promise<T>) {
     signal.throwIfAborted();
     const name = `libras-download:${await this.key}:${key}.audio`;
     signal.throwIfAborted();
@@ -213,7 +259,9 @@ class Disk {
   ) {
     const key = await this.key;
     const run = async () => operation(await this.#directory());
-    return navigator.locks ? navigator.locks.request(`libras-${name}:${key}.cache`, run) : run();
+    return this.#observe(
+      navigator.locks ? navigator.locks.request(`libras-${name}:${key}.cache`, run) : run(),
+    );
   }
   async #read<T>(
     directory: FileSystemDirectoryHandle,
@@ -279,6 +327,11 @@ class CheckpointStore<T> {
     this.#value = $state.raw(options.initial);
   }
 
+  retire() {
+    this.#clearTimers();
+    return this.#serial(async () => {});
+  }
+
   get value() {
     return this.#value;
   }
@@ -291,6 +344,7 @@ class CheckpointStore<T> {
 
   async load(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
+    if (this.disk?.retired) return;
     if (this.#loaded) return;
     const revision = this.#revision;
     return this.#serial(async () => {
@@ -299,6 +353,7 @@ class CheckpointStore<T> {
       try {
         const value = await this.disk?.read(this.options.document, this.options.parse);
         signal?.throwIfAborted();
+        if (this.disk?.retired) return;
         if (!this.dirty && revision === this.#revision) {
           this.#value = value ?? this.options.initial;
           this.#savedRevision = ++this.#revision;
@@ -314,6 +369,7 @@ class CheckpointStore<T> {
 
   set(value: T, checkpoint = false) {
     if (!this.disk) throw new Error("No cache storage configured.");
+    if (this.disk.retired) return this.#revision;
     this.#value = value;
     const revision = ++this.#revision;
     this.#schedule(checkpoint);
@@ -341,7 +397,7 @@ class CheckpointStore<T> {
   flush(): Promise<void> {
     this.#clearTimers();
     return this.#serial(async () => {
-      if (!this.dirty) return;
+      if (this.disk?.retired || !this.dirty) return;
       this.#clearTimers();
       const revision = this.#revision;
       const value = this.#value;
@@ -366,6 +422,14 @@ interface BinaryRecord {
 
 /** Image records use reactive checkpoints; obsolete bytes retire only after acknowledgement. */
 class ImageStore {
+  #pending = new Set<Promise<unknown>>();
+
+  async retire() {
+    await this.store.retire();
+    while (this.#pending.size) await Promise.allSettled([...this.#pending]);
+    await this.#serial(async () => {});
+  }
+
   readonly store: CheckpointStore<SvelteMap<string, Immutable<ImageRecord>>>;
   #error = $state.raw<unknown>();
   #serial = serial();
@@ -401,7 +465,14 @@ class ImageStore {
   }
 
   /** One error boundary per public Cache operation, not per internal I/O step. */
-  async operation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  operation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const pending = this.#operation(action, signal);
+    this.#pending.add(pending);
+    void pending.finally(() => this.#pending.delete(pending)).catch(() => {});
+    return pending;
+  }
+
+  async #operation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     try {
       signal?.throwIfAborted();
       const value = await action();
@@ -420,6 +491,7 @@ class ImageStore {
   }
 
   #replace(key: string, next?: Immutable<ImageRecord>) {
+    if (this.disk?.retired) return;
     const previous = this.records.get(key);
     const records = this.store.value;
     if (next) records.set(key, next);
@@ -467,6 +539,7 @@ class ImageStore {
       signal?.throwIfAborted();
       await this.store.load(signal);
       signal?.throwIfAborted();
+      if (this.disk?.retired) return;
       const records = this.store.value;
       if (!records.size) return;
       for (const [key, record] of records) records.set(key, { ...record, ...metadata });
@@ -491,7 +564,7 @@ class ImageStore {
     try {
       await this.#serial(async () => {
         signal?.throwIfAborted();
-        if (this.records.get(record.id)?.fileName !== expected) return;
+        if (this.disk?.retired || this.records.get(record.id)?.fileName !== expected) return;
         this.#replace(record.id, record);
         published = true;
       });
@@ -516,8 +589,13 @@ class DownloadStore {
     this.#disk = disk;
   }
 
+  retire() {
+    return this.#downloadSerial(async () => {});
+  }
+
   #requireDisk() {
     if (!this.#disk) throw new Error("No cache storage configured.");
+    if (this.#disk.retired) throw new DOMException("Cache retired.", "AbortError");
     return this.#disk;
   }
 
@@ -547,6 +625,7 @@ class DownloadStore {
   async #writeDownloads(records: ReadonlyMap<string, DownloadEntry>) {
     if (this.#downloadsBlocked) throw new DownloadError();
     await this.#requireDisk().write("downloads", { version: 2, records: [...records.values()] });
+    if (this.#disk?.retired) return;
     this.#downloads = records;
     this.#downloadsLoaded = true;
     this.#downloadError = undefined;
@@ -574,6 +653,7 @@ class DownloadStore {
           return { legacy: false, records: parsed.records };
         });
         signal?.throwIfAborted();
+        this.#requireDisk();
         migrate = stored?.legacy ?? false;
         const restored = new Map<string, DownloadEntry>(
           (stored?.records ?? []).map((item) => [downloadKey(item.track.id, item.format), item]),
@@ -594,6 +674,7 @@ class DownloadStore {
         if (!signal?.aborted) this.#downloadsBlocked = true;
         throw error;
       }
+      if (this.#disk?.retired) return;
       this.#downloadsBlocked = false;
       this.#downloads = records;
       // Readable legacy bytes are usable, but cannot authorize subset writeback.
@@ -728,7 +809,7 @@ class DownloadStore {
           await this.#writeDownloads(records);
         } catch (error) {
           // Safe known-track presentation survives persistence denial; never overwrite unknown disk state.
-          this.#downloads = records;
+          if (!this.#disk?.retired) this.#downloads = records;
           throw error;
         }
       }),
@@ -879,6 +960,7 @@ class DownloadStore {
             const committed = canonical?.find(
               (item) => item.status === "completed" && item.fileName === fileName,
             );
+            if (disk.retired) throw error;
             if (committed?.status === "completed") {
               const confirmed = new Map(this.downloads);
               confirmed.set(downloadKey(committed.track.id, committed.format), committed);
@@ -1052,6 +1134,7 @@ export class Cache {
 
   #requireDisk() {
     if (!this.#disk) throw new Error("No cache storage configured.");
+    if (this.#disk.retired) throw new DOMException("Cache retired.", "AbortError");
     return this.#disk;
   }
 
@@ -1079,6 +1162,24 @@ export class Cache {
   }
   get savedAt() {
     return this.#library.value.savedAt;
+  }
+
+  /** Permanently retire this writer before joining producers and removing its namespace.
+   * Other tabs are not coordinated; close them before cleanup. */
+  retire() {
+    if (this.#disk) this.#disk.retired = true;
+    return Promise.all([
+      this.#library.retire(),
+      this.#queue.retire(),
+      this.#playlists.retire(),
+      this.#images.retire(),
+      this.#downloads.retire(),
+    ]);
+  }
+
+  async deleteAccount() {
+    await this.retire();
+    await this.#disk?.deleteAccount();
   }
 
   /** Restore independent local domains, reporting failures after all finish. */

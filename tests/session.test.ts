@@ -30,6 +30,51 @@ afterEach(async () => {
 
 const input = { host: credentials.host, username: credentials.username, password: "password" };
 
+describe("cleanup", () => {
+  it("hides the workspace immediately, joins late refresh, and blocks reconnect until deletion", async () => {
+    const fixture = await connected();
+    const { session, selection, metadata, auth, playback, storage } = fixture;
+    storage.setItem("unrelated-preference", "keep");
+    const cache = selection.cache!;
+    const deletion = vi.spyOn(cache, "deleteAccount").mockResolvedValue(undefined);
+    const late = deferred();
+    metadata.getModifiedAt.mockReturnValueOnce(late.promise.then(() => 200));
+    const refresh = session.refresh();
+    const cleanup = session.cleanup();
+    expect(selection.cache).toBeUndefined();
+    expect(session.auth).toBeNull();
+    expect(auth.load()).toBeNull();
+    expect(auth.loadAccount()).toBeNull();
+    expect(storage.getItem("unrelated-preference")).toBe("keep");
+    expect(playback.suspend).toHaveBeenCalled();
+    expect(session.localReady).toBe(true);
+    expect(await session.connect(input)).toBe(false);
+    expect(deletion).not.toHaveBeenCalled();
+    late.resolve();
+    await Promise.all([refresh, cleanup]);
+    expect(deletion).toHaveBeenCalledOnce();
+    expect(session.busy).toBe(false);
+    expect(session.status).toBe("disconnected");
+    expect(session.offlineMode).toBe(true);
+  });
+
+  it("keeps failed deletion hidden and retryable, then allows another login", async () => {
+    const { session, selection } = await connected();
+    const cache = selection.cache!;
+    const deletion = vi
+      .spyOn(cache, "deleteAccount")
+      .mockRejectedValueOnce(new Error("Storage denied"))
+      .mockResolvedValue(undefined);
+    await expect(session.cleanup()).rejects.toThrow("Storage denied");
+    expect(selection.cache).toBeUndefined();
+    expect(await session.connect(input)).toBe(false);
+    await session.cleanup();
+    expect(deletion).toHaveBeenCalledTimes(2);
+    expect(await session.connect(input)).toBe(true);
+    expect(selection.cache).not.toBe(cache);
+  });
+});
+
 describe("session", () => {
   it("reports failed metadata restoration without preventing offline queue restoration", async () => {
     const { session, metadata, playback, storage, loadCache } = setup(true);

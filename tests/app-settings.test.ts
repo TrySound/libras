@@ -109,9 +109,27 @@ async function setup(
   });
   const button = (label: string) =>
     [...target.querySelectorAll("button")].find(
-      (button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label,
+      (button) =>
+        (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label &&
+        (label !== "Disconnect" || button.id === "settings-disconnect"),
     )!;
-  const offline = () => target.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  const offline = () => target.querySelector<HTMLInputElement>("#settings-offline")!;
+  const confirmDisconnect = (cleanup = false) => {
+    const dialog = target.querySelector<HTMLDialogElement>(
+      "dialog[aria-labelledby=disconnect-title]",
+    )!;
+    const checkbox = dialog.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(checkbox.checked).toBe(false);
+    expect(checkbox.getAttribute("role")).toBe("switch");
+    expect(checkbox.classList.contains("switch")).toBe(true);
+    if (cleanup) {
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    [...dialog.querySelectorAll("button")]
+      .find((button) => button.textContent === "Disconnect")!
+      .click();
+  };
   const fill = (host = credentials.host) => {
     const inputs = [...target.querySelectorAll<HTMLInputElement>("form input")];
     for (const [index, value] of [host, credentials.username, "password"].entries()) {
@@ -123,10 +141,126 @@ async function setup(
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     flushSync();
   };
-  return { ...fixture, target, button, offline, fill, navigate };
+  return { ...fixture, target, button, offline, fill, navigate, confirmDisconnect };
 }
 
 describe("app settings", () => {
+  it("keeps cleanup busy, focuses recovery controls, and allows closing after failure", async () => {
+    const { target, button, session, selection, auth, confirmDisconnect } = await setup(
+      true,
+      false,
+    );
+    const pending = deferred();
+    const deletion = vi
+      .spyOn(selection.cache!, "deleteAccount")
+      .mockImplementationOnce(async () => {
+        await pending.promise;
+        throw new Error("Denied");
+      })
+      .mockResolvedValue(undefined);
+    button("Disconnect").click();
+    confirmDisconnect(true);
+    flushSync();
+    expect(session.cleaning).toBe(true);
+    expect(auth.load()).toBeNull();
+    expect(target.querySelector("dialog")?.open).toBe(true);
+    expect(target.querySelector("dialog")?.textContent).toContain("Deleting local data…");
+    expect(target.querySelector("dialog input[type=checkbox]")).toBeNull();
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(target.querySelector("[data-cleanup-focus]")),
+    );
+    pending.resolve();
+    await vi.waitFor(() => {
+      flushSync();
+      expect(button("Retry cleanup")).toBeDefined();
+    });
+    expect(target.querySelector("dialog [role=alert]")?.textContent).toContain(
+      "some local data could not be removed",
+    );
+    expect(target.querySelector("dialog input[type=checkbox]")).toBeNull();
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(target.querySelector("dialog [data-cleanup-focus]")),
+    );
+    expect(
+      target.querySelector("dialog [data-cleanup-focus]")?.getAttribute("aria-describedby"),
+    ).toBe("disconnect-cleanup-error");
+    button("Close").click();
+    flushSync();
+    expect(target.querySelector("dialog")?.open).toBe(false);
+    expect(session.cleanupRequired).toBe(true);
+    expect(target.querySelector("#settings-connect")).toBeNull();
+    target.querySelector<HTMLButtonElement>("#settings-cleanup-recovery")!.click();
+    flushSync();
+    button("Retry cleanup").click();
+    await vi.waitFor(() => {
+      flushSync();
+      expect(target.querySelector("dialog")?.open).toBe(false);
+    });
+    expect(deletion).toHaveBeenCalledTimes(2);
+    expect(selection.cache).toBeUndefined();
+  });
+
+  it.each([true, false])(
+    "retains cleanup across navigation and allows connecting after recovery (failure=%s)",
+    async (fails) => {
+      const { target, button, session, selection, fill, confirmDisconnect } = await setup(
+        true,
+        false,
+      );
+      const pending = deferred();
+      const deletion = vi
+        .spyOn(selection.cache!, "deleteAccount")
+        .mockImplementationOnce(async () => {
+          await pending.promise;
+          if (fails) throw new Error("Denied");
+        })
+        .mockResolvedValue(undefined);
+      const route = async (path: string) => {
+        const intercept = vi.fn();
+        window.navigation.dispatchEvent(
+          Object.assign(navigationEvent(), {
+            canIntercept: true,
+            navigationType: "traverse",
+            destination: { url: new URL(`?${path}`, window.location.href).href },
+            intercept,
+          }),
+        );
+        await intercept.mock.calls[0][0].handler();
+        flushSync();
+      };
+      button("Disconnect").click();
+      confirmDisconnect(true);
+      await vi.waitFor(() => expect(deletion).toHaveBeenCalledOnce());
+      await route("/downloads");
+      expect(target.querySelector("[aria-labelledby=settings-heading]")).toBeNull();
+      if (fails) {
+        pending.resolve();
+        await vi.waitFor(() => expect(session.cleanupError).toContain("could not be removed"));
+      }
+      await route("/settings");
+      expect(target.querySelector("#settings-connect")).toBeNull();
+      expect(session.auth).toBeNull();
+      expect(selection.cache).toBeUndefined();
+      expect(session.cleanupRequired).toBe(true);
+      target.querySelector<HTMLButtonElement>("#settings-cleanup-recovery")!.click();
+      await vi.waitFor(() =>
+        expect(document.activeElement).toBe(target.querySelector("dialog [data-cleanup-focus]")),
+      );
+      if (fails) button("Retry cleanup").click();
+      else pending.resolve();
+      await vi.waitFor(() => {
+        flushSync();
+        expect(session.cleanupRequired).toBe(false);
+      });
+      await vi.waitFor(() => expect(target.querySelector("dialog")?.open).toBe(false));
+      expect(session.cleanupError).toBe("");
+      expect(deletion).toHaveBeenCalledTimes(fails ? 2 : 1);
+      expect(target.querySelector("#settings-connect")).not.toBeNull();
+      fill();
+      await vi.waitFor(() => expect(session.auth).not.toBeNull());
+    },
+  );
+
   it("keeps one login form and automatically verifies a direct password", async () => {
     const { target, fill, session, validate, auth } = await setup(false, false);
     expect(target.querySelectorAll('input[type="radio"]')).toHaveLength(0);
@@ -594,7 +728,8 @@ describe("app settings", () => {
     },
   );
   it("shows read-only connection information and allows disconnect during refresh", async () => {
-    const { target, session, auth, metadata, button, offline } = await setup(true);
+    const { target, session, auth, metadata, button, offline, confirmDisconnect } =
+      await setup(true);
     const server = target.querySelector("#settings-server")!;
     expect(server.querySelector("#settings-server-identity")?.textContent).toBe(
       `${credentials.username}@${new URL(credentials.host).host}`,
@@ -618,6 +753,18 @@ describe("app settings", () => {
     button("Refreshing…").click();
     await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
     button("Disconnect").click();
+    flushSync();
+    expect(auth.load()).not.toBeNull();
+    const checkbox = target.querySelector<HTMLInputElement>("#disconnect-delete-local")!;
+    expect(checkbox.checked).toBe(false);
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    button("Cancel").click();
+    expect(auth.load()).not.toBeNull();
+    button("Disconnect").click();
+    flushSync();
+    expect(checkbox.checked).toBe(false);
+    confirmDisconnect();
     flushSync();
     expect(auth.load()).toBeNull();
     expect(target.querySelector("#settings-server form")).not.toBeNull();

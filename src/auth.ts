@@ -182,6 +182,10 @@ export class AuthStore {
     this.#storage.removeItem(this.#key);
   }
 
+  clearAccount() {
+    this.#storage.removeItem("navidrome-account");
+  }
+
   loadAccount(): Account | null {
     const value = this.#storage.getItem("navidrome-account");
     if (!value) return null;

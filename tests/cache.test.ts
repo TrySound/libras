@@ -22,6 +22,81 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("account cleanup", () => {
+  it("joins an in-flight checkpoint, cancels timers, and deletes only its account", async () => {
+    const disk = installDisk();
+    const cache = new Cache("selected");
+    const other = new Cache("unrelated");
+    await other.replaceLibrary(library());
+    await other.flush();
+    disk.files.set("application/asset.js", "application asset");
+    const unrelated = [...disk.files.keys()];
+    const close = deferred();
+    let writing = false;
+    disk.state.beforeClose = async () => {
+      writing = true;
+      await close.promise;
+    };
+    await cache.replaceLibrary(library());
+    const flushing = cache.flush();
+    await vi.waitFor(() => expect(writing).toBe(true));
+    let deleted = false;
+    const deleting = cache.deleteAccount().then(() => {
+      deleted = true;
+    });
+    await Promise.resolve();
+    expect(deleted).toBe(false);
+    close.resolve();
+    await Promise.all([flushing, deleting]);
+    expect([...disk.files.keys()]).toEqual(unrelated);
+    await expect(cache.replaceLibrary(library(200))).rejects.toThrow("Cache retired");
+    await cache.flush();
+    await cache.deleteAccount();
+    expect([...disk.files.keys()]).toEqual(unrelated);
+  });
+
+  it("joins a late binary close without publishing artwork or recreating the directory", async () => {
+    const disk = installDisk();
+    const cache = new Cache("selected");
+    const close = deferred();
+    let writing = false;
+    disk.state.beforeClose = async (path) => {
+      if (path.endsWith(".image")) {
+        writing = true;
+        await close.promise;
+      }
+    };
+    const saving = cache.saveImage("cover", { blob: new Blob(["image"]), type: "image/png" });
+    await vi.waitFor(() => expect(writing).toBe(true));
+    let deleted = false;
+    const deleting = cache.deleteAccount().then(() => {
+      deleted = true;
+    });
+    await Promise.resolve();
+    expect(deleted).toBe(false);
+    close.resolve();
+    await Promise.all([saving, deleting]);
+    expect(cache.images.size).toBe(0);
+    expect(disk.files.size).toBe(0);
+    expect(disk.blobs.size).toBe(0);
+    await cache.flush();
+    expect(disk.files.size).toBe(0);
+  });
+
+  it("propagates deletion failure and can retry without reactivating its writer", async () => {
+    const disk = installDisk();
+    const cache = new Cache("selected");
+    await cache.replaceLibrary(library());
+    await cache.flush();
+    disk.state.failRemove = true;
+    await expect(cache.deleteAccount()).rejects.toThrow("Deletion denied");
+    expect(disk.files.size).toBe(1);
+    disk.state.failRemove = false;
+    await cache.deleteAccount();
+    expect(disk.files.size).toBe(0);
+  });
+});
+
 describe("memory-first library", () => {
   it("constructs an empty key-scoped view without I/O", () => {
     const disk = installDisk();
