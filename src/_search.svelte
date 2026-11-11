@@ -203,7 +203,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
   import FavouriteButton from "./ui/favourite-button.svelte";
-  import { getContext } from "svelte";
   import type { Favourites } from "./favourites.svelte";
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
@@ -214,13 +213,14 @@
   import type { Session } from "./session.svelte";
   import type { Playback } from "./playback.svelte";
 
-  const favourites = getContext<Favourites | undefined>("favourites");
+  let searchInput = $state<HTMLInputElement>();
   let {
     cache,
     covers,
     trackEngine,
     session,
     playback,
+    favourites,
     appName = "Libras",
     state: searchState,
   }: {
@@ -229,6 +229,7 @@
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
+    favourites: Favourites;
     state: SearchState;
     appName?: string;
   } = $props();
@@ -313,7 +314,7 @@
       // Consume the disappeared selection, even if its overlay was already dismissed.
       // Later background index changes must not steal the user's new focus.
       menuSelection = undefined;
-      if (wasOpen) document.getElementById("library-search")?.focus({ preventScroll: true });
+      if (wasOpen) searchInput?.focus({ preventScroll: true });
     }
   });
 
@@ -369,6 +370,7 @@
     <label class="label" for="library-search">Search library</label>
     <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
     <input
+      bind:this={searchInput}
       class="input"
       id="library-search"
       type="search"
@@ -384,12 +386,12 @@
     />
     <p class="caption text-secondary">Filter with :artist, :album, :track, or :favourite.</p>
   </search>
-  {#if matches.favourite && (favourites?.loading || favourites?.error || cache.favouritesError || cache.favourites.fetchedAt === null)}
-    <div class="card stack-sm" aria-busy={favourites?.loading}>
+  {#if matches.favourite && (favourites.loading || favourites.error || cache.favouritesError || cache.favourites.fetchedAt === null)}
+    <div class="card stack-sm" aria-busy={favourites.loading}>
       <p class="caption">
-        {favourites?.loading
+        {favourites.loading
           ? "Loading favourites…"
-          : favourites?.error
+          : favourites.error
             ? `Favourites need attention: ${favourites.error instanceof Error ? favourites.error.message : "Could not load favourites."}`
             : cache.favourites.fetchedAt === null
               ? "Favourites haven’t been loaded."
@@ -637,6 +639,8 @@
         <span>{downloadPresentation[menuDownloadStatus].label}</span>
       </button>
       <FavouriteButton
+        {favourites}
+        focusFallback={searchInput}
         overlayId={target}
         target={menuItem ? { kind: kindFor[menuItem.group], id: menuItem.id } : undefined}
       />

@@ -45,6 +45,7 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
     releaseFavourite,
     favouriteWaiting = false;
   const writes = [];
+  let rejectWrites = false;
   let favouriteReads = 0;
   await page.route("https://lifecycle.example.test/**", async (route) => {
     const url = new URL(route.request().url());
@@ -76,7 +77,19 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
       }
       fields = { starred2: starred };
     }
-    if (endpoint === "star" || endpoint === "unstar") writes.push(endpoint);
+    if (endpoint === "star" || endpoint === "unstar") {
+      writes.push(endpoint);
+      if (rejectWrites)
+        return route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            "subsonic-response": {
+              status: "failed",
+              error: { code: 50, message: "Fixture permission denied" },
+            },
+          }),
+        });
+    }
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ "subsonic-response": { status: "ok", ...fields } }),
@@ -264,6 +277,50 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
       await refresh();
       await settled();
       assert.equal(favouriteReads, before + 1);
+    }
+    // Each explicit owner forwards the same domain and owns Settings recovery.
+    rejectWrites = true;
+    async function recover(panel) {
+      const overlay = page.locator(panel);
+      await overlay.getByRole("button", { name: /^(Add to|Remove from) favourites$/ }).click();
+      await overlay.getByText(/Fixture permission denied/).waitFor();
+      const settings = overlay.getByRole("link", { name: "Open settings", exact: true });
+      await settings.focus();
+      assert.equal(await overlay.evaluate((node) => node.contains(document.activeElement)), true);
+      await settings.click();
+      await overlay.waitFor({ state: "hidden" });
+      await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
+      assert.equal(
+        await page.evaluate(() => !!document.activeElement?.closest(".bottom-sheet, [popover]")),
+        false,
+      );
+    }
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const [path, name] of [
+        ["/library", "Actions for Fixture owner"],
+        ["/library/artist/owner", "Actions for Fixture owner"],
+        ["/library/artist/owner", "Actions for Keep album"],
+        ["/library/album/keep", "Actions for Keep album"],
+        ["/library/album/keep", "Actions for Keep song"],
+        ["/search/:track", "Open menu for Keep song"],
+      ]) {
+        await navigate(path);
+        const panel =
+          "#" +
+          (await page
+            .getByRole("button", { name, exact: true })
+            .filter({ visible: true })
+            .getAttribute("commandfor"));
+        await open(name, panel);
+        await recover(panel);
+      }
+      await navigate("/search/:track");
+      await page.getByRole("button", { name: /^(Play|Toggle playback for) Keep song$/ }).click();
+      await page.getByRole("button", { name: "Open Now Playing", exact: true }).click();
+      await open("Actions for Keep song", "#playing-actions");
+      await recover("#playing-actions");
+      await page.locator("#player-dialog").waitFor({ state: "hidden" });
     }
     assert.deepEqual(errors, []);
   } finally {

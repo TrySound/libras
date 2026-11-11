@@ -11,8 +11,7 @@ export class Favourites {
   #connection?: FavouritesConnection;
   #generation = 0;
   #tail: Promise<unknown> = Promise.resolve();
-  pending = new SvelteSet<string>();
-  intentions = new SvelteMap<string, boolean>();
+  pending = new SvelteMap<string, boolean>();
   loading = $state(false);
   available = $state(false);
   error = $state.raw<unknown>();
@@ -29,7 +28,6 @@ export class Favourites {
     this.#generation++;
     this.#tail = Promise.resolve();
     this.pending.clear();
-    this.intentions.clear();
     this.loading = false;
     this.available = !!connection && !connection.signal.aborted;
     this.error = undefined;
@@ -110,9 +108,8 @@ export class Favourites {
     const key = this.key(target);
     if (this.pending.has(key)) return;
     if (this.outcomeUnknown) throw new Error("Outcome unknown; refresh before retrying.");
-    this.pending.add(key);
     const selected = !this.has(target);
-    this.intentions.set(key, selected);
+    this.pending.set(key, selected);
     try {
       await this.#serialize(async () => {
         scope.check();
@@ -156,7 +153,6 @@ export class Favourites {
     } finally {
       if (scope.current()) {
         this.pending.delete(key);
-        this.intentions.delete(key);
       }
     }
   }

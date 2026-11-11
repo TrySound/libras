@@ -243,6 +243,12 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await overlay.getByRole("button", { name: "Add to favourites", exact: true }).click();
     await overlay.waitFor({ state: "hidden" });
     assert.deepEqual(writes.at(-1), ["star", "song", "same"]);
+    assert.equal(
+      await page
+        .getByRole("button", { name: "Actions for Fixture track 00", exact: true })
+        .evaluate((node) => node === document.activeElement),
+      true,
+    );
     reject = true;
     overlay = await open("Actions for Fixture track 00", "#playing-actions");
     await overlay.getByRole("button", { name: "Remove from favourites", exact: true }).click();
@@ -336,6 +342,22 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     readGate = undefined;
     await page.getByRole("heading", { name: "No favourites yet." }).waitFor();
     await shot("favourites-confirmed-empty-1280");
+    // A resize can hide the captured desktop invoker without dismissing its popover.
+    // Success must then use this Search owner's input, not a global page selector.
+    await input.fill(":track");
+    overlay = await open("Open menu for Fixture track 02", "#search-menu-popover");
+    gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    await overlay.getByRole("button", { name: "Add to favourites", exact: true }).click();
+    await overlay.getByRole("button", { name: "Adding to favourites…", exact: true }).waitFor();
+    await page.setViewportSize({ width: 390, height: 900 });
+    assert.equal(await overlay.isVisible(), true);
+    release();
+    gate = undefined;
+    await overlay.waitFor({ state: "hidden" });
+    await page.waitForFunction(() => document.activeElement?.id === "library-search");
+    await page.setViewportSize({ width: 1280, height: 900 });
     await navigate("/search");
     await input.fill("bare account draft");
     await navigate("/library");

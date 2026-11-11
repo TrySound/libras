@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
   import FavouriteButton from "./ui/favourite-button.svelte";
+  import type { Favourites } from "./favourites.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -20,6 +21,7 @@
     session: Session;
     playbackState: "loading" | "playing" | "paused";
     playback: Playback;
+    favourites: Favourites;
     appName?: string;
   }
 
@@ -31,9 +33,12 @@
     session,
     playbackState,
     playback,
+    favourites,
     appName = "Libras",
   }: Props = $props();
 
+  let section = $state<HTMLElement>();
+  let heading = $state<HTMLHeadingElement>();
   const loading = $derived(!session.localReady);
   const offlineMode = $derived(session.offlineMode);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
@@ -95,8 +100,7 @@
     if (wasOpen) dismissActions();
     menuAlbumId = undefined;
     if (!wasOpen) return;
-    const section = document.querySelector<HTMLElement>('section[aria-label="Artist details"]');
-    const fallback = section?.querySelector<HTMLElement>("h1") ?? section;
+    const fallback = heading ?? section;
     if (fallback?.checkVisibility()) {
       fallback.tabIndex = -1;
       fallback.focus({ preventScroll: true });
@@ -107,7 +111,7 @@
 <svelte:head><title>{artist?.name ?? "Artist"} | {appName}</title></svelte:head>
 
 <Atmosphere src={libraryAvailable && artist ? atmosphere?.source : undefined} />
-<section class="split-layout" aria-label="Artist details">
+<section bind:this={section} class="split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
     <div class="detail-panel view-slide-up">
       <Artwork
@@ -119,7 +123,9 @@
       />
       <div class="stack-sm">
         <div class="row-md row-justify">
-          <div class="stack-xs"><h1 class="heading-lg uppercase">{artist.name}</h1></div>
+          <div class="stack-xs">
+            <h1 bind:this={heading} class="heading-lg uppercase">{artist.name}</h1>
+          </div>
           <div class="row-sm">
             <button
               class="button"
@@ -331,6 +337,8 @@
         <span>Download</span>
       </button>
       <FavouriteButton
+        {favourites}
+        focusFallback={heading ?? section}
         overlayId={target}
         target={menuAlbum
           ? { kind: "albums", id: menuAlbum.id }

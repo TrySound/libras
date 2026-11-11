@@ -51,6 +51,62 @@ describe("server-confirmed favourites", () => {
     expect(s.engine.has(artist)).toBe(false);
     expect(s.engine.has({ kind: "tracks", id: "same" })).toBe(true);
   });
+  it.each([true, false])(
+    "stores pending intent %s once, including a false removal, and guards duplicates",
+    async (intended) => {
+      const s = setup();
+      if (!intended) await s.engine.toggle(artist);
+      const before = s.connection.mutate.mock.calls.length;
+      const gate = Promise.withResolvers<void>();
+      const apply = s.connection.mutate.getMockImplementation()!;
+      s.connection.mutate.mockImplementationOnce(async (...args) => {
+        await gate.promise;
+        await apply(...args);
+      });
+      const edit = s.engine.toggle(artist);
+      const key = s.engine.key(artist);
+      expect(s.engine.pending.has(key)).toBe(true);
+      expect(s.engine.pending.get(key)).toBe(intended);
+      await s.engine.toggle(artist);
+      await vi.waitFor(() => expect(s.connection.mutate).toHaveBeenCalledTimes(before + 1));
+      expect(s.engine.has(artist)).toBe(!intended);
+      gate.resolve();
+      await edit;
+      expect(s.engine.pending.has(key)).toBe(false);
+      expect(s.engine.has(artist)).toBe(intended);
+    },
+  );
+  it("does not let retired completion remove a newer pending removal for the same key", async () => {
+    const s = setup();
+    const old = Promise.withResolvers<void>();
+    const current = Promise.withResolvers<void>();
+    const read = s.connection.read.getMockImplementation()!;
+    s.connection.read.mockImplementationOnce(async () => {
+      await old.promise;
+      return read();
+    });
+    const oldEdit = s.engine.toggle(artist).catch((error) => error);
+    await vi.waitFor(() => expect(s.connection.read).toHaveBeenCalledOnce());
+    s.engine.setConnection(s.connection);
+    await s.engine.refresh(); // Resolve the captured cache's unknown outcome authoritatively.
+    s.connection.read.mockImplementationOnce(async () => {
+      await current.promise;
+      return read();
+    });
+    const currentEdit = s.engine.toggle(artist);
+    const key = s.engine.key(artist);
+    await vi.waitFor(() => expect(s.connection.read).toHaveBeenCalledTimes(3));
+    expect(s.engine.pending.has(key)).toBe(true);
+    expect(s.engine.pending.get(key)).toBe(false);
+    old.resolve();
+    expect(await oldEdit).toMatchObject({ name: "AbortError" });
+    expect(s.engine.pending.has(key)).toBe(true);
+    expect(s.engine.pending.get(key)).toBe(false);
+    expect(s.engine.error).toBeUndefined();
+    current.resolve();
+    await currentEdit;
+    expect(s.engine.pending.size).toBe(0);
+  });
   it("rejects explicit local provenance, never an arbitrary server ID prefix", async () => {
     const s = setup();
     vi.spyOn(s.cache, "artists", "get").mockReturnValue(
@@ -93,13 +149,21 @@ describe("server-confirmed favourites", () => {
     expect(s.engine.has(artist)).toBe(false);
     expect(s.engine.outcomeUnknown).toBe(false);
   });
-  it("reports structured rejection without local fallback", async () => {
-    const s = setup();
-    s.connection.mutate.mockRejectedValueOnce(new SubsonicError(50, "Not supported"));
-    await expect(s.engine.toggle(artist)).rejects.toThrow("Not supported");
-    expect(s.publish).not.toHaveBeenCalled();
-    expect(s.connection.read).not.toHaveBeenCalled();
-  });
+  it.each([false, true])(
+    "reports structured rejection without local fallback (already selected: %s)",
+    async (selected) => {
+      const s = setup();
+      if (selected) await s.engine.toggle(artist);
+      s.publish.mockClear();
+      s.connection.read.mockClear();
+      s.connection.mutate.mockRejectedValueOnce(new SubsonicError(50, "Not supported"));
+      await expect(s.engine.toggle(artist)).rejects.toThrow("Not supported");
+      expect(s.publish).not.toHaveBeenCalled();
+      expect(s.connection.read).not.toHaveBeenCalled();
+      expect(s.engine.pending.size).toBe(0);
+      expect(s.engine.has(artist)).toBe(selected);
+    },
+  );
   it("serializes refreshes and writes so stale reads cannot overwrite edits", async () => {
     const s = setup();
     let release!: () => void;

@@ -2,6 +2,7 @@
 import { flushSync, mount, unmount } from "svelte";
 import fuzzysort from "fuzzysort";
 import { SvelteSet } from "svelte/reactivity";
+import { Favourites } from "../src/favourites.svelte";
 import { expect, it, vi } from "vitest";
 import Harness from "./search-test-app.svelte";
 import type Search from "../src/_search.svelte";
@@ -22,6 +23,7 @@ it("focuses the input, expands results, retains route state, and uses album play
   const props = {
     cache: {
       savedAt: 1,
+      favourites: { fetchedAt: null, artists: [], albums: [], tracks: [] },
       queue: { tracks: ["0"], index: 0 },
       artists: new Map([["artist", { id: "artist", name: "Artist" }]]),
       albums: new Map([
@@ -38,6 +40,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     },
     playback,
   } as unknown as Omit<ComponentProps<typeof Search>, "state">;
+  props.favourites = new Favourites({ cache: props.cache });
   const target = document.createElement("div");
   document.body.append(target);
   const app = mount(Harness, { target, props: { props } });
@@ -188,6 +191,7 @@ it("consumes dismissed Search selection without stealing focus on background dow
   const props = {
     cache: {
       savedAt: 1,
+      favourites: { fetchedAt: null, artists: [], albums: [], tracks: [] },
       queue: { tracks: [], index: -1 },
       artists: new Map([["artist", { id: "artist", name: "Artist" }]]),
       albums: new Map([
@@ -202,6 +206,7 @@ it("consumes dismissed Search selection without stealing focus on background dow
     covers: { ensureCover: () => ({ load: vi.fn(), source: undefined }) },
     playback: {},
   } as unknown as Omit<ComponentProps<typeof Search>, "state">;
+  props.favourites = new Favourites({ cache: props.cache });
   const target = document.createElement("div");
   document.body.append(target);
   const app = mount(Harness, { target, props: { props } });
@@ -262,6 +267,7 @@ it.each([
     const props = {
       cache: {
         savedAt,
+        favourites: { fetchedAt: null, artists: [], albums: [], tracks: [] },
         queue: { tracks: [], index: 0 },
         artists: new Map(),
         albums: new Map(),
@@ -274,6 +280,7 @@ it.each([
       covers: {},
       playback: {},
     } as unknown as Omit<ComponentProps<typeof Search>, "state">;
+    props.favourites = new Favourites({ cache: props.cache });
     const app = mount(Harness, { target, props: { props } });
     flushSync();
     try {

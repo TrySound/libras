@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
   import { Favourites } from "./favourites.svelte";
-  import { onDestroy, onMount, untrack, setContext, type Snippet } from "svelte";
+  import { onDestroy, onMount, untrack, type Snippet } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import { Playlists } from "./playlists.svelte";
@@ -76,7 +76,6 @@
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
   const favourites = new Favourites(selection);
-  setContext("favourites", favourites);
   const trackEngine = new TrackEngine({ selection });
   let player = $state<ReturnType<typeof AudioPlayer>>();
   const playback: Playback = new Playback({
@@ -176,12 +175,13 @@
 
 {#snippet libraryRoute()}
   <Atmosphere />
-  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
+  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {favourites} {appName} />
 {/snippet}
 
 {#snippet searchRoute(params: RouteParams)}
   <Atmosphere />
   <SearchRoute
+    {favourites}
     {cache}
     {covers}
     {trackEngine}
@@ -194,6 +194,7 @@
 
 {#snippet artistRoute(params: RouteParams)}
   <ArtistRoute
+    {favourites}
     {params}
     {cache}
     {covers}
@@ -207,6 +208,7 @@
 
 {#snippet albumRoute(params: RouteParams)}
   <AlbumRoute
+    {favourites}
     {params}
     {cache}
     {covers}
@@ -365,7 +367,7 @@
           />
         {/if}
       </main>
-      <Player {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
+      <Player {cache} {covers} {playback} {trackEngine} {favourites} {offlineMode} audio={player} />
       {#if hasErrors}
         <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
           <div class="stack-sm">
