@@ -1,10 +1,14 @@
 <script module lang="ts">
   import type { Snippet } from "svelte";
+  import { splitRoute } from "./search-url";
 
   export type RouteParams = Record<string, string | undefined>;
 
   /** Current route metadata, published reactively by the page's Router. */
-  export const route = $state<{ pattern: string | undefined }>({ pattern: undefined });
+  export const route = $state<{ pattern: string | undefined; parameters: URLSearchParams }>({
+    pattern: undefined,
+    parameters: new URLSearchParams(),
+  });
 
   /** Match a navigation destination to the resolved page or a parent section. */
   export function isCurrentPage(path: string): boolean {
@@ -12,10 +16,19 @@
   }
 
   /** Paths are slash-prefixed; the query selects a page and the hash selects an anchor. */
-  export function navigate(path: string, history: "push" | "replace" = "push") {
+  export function navigate(
+    path: string,
+    history: "push" | "replace" = "push",
+    options?: { preserveScroll: boolean },
+  ) {
     const destination = new URL(`?${path}`, window.location.href);
     if (destination.href === window.location.href) return;
-    void window.navigation.navigate(`?${path}`, { history }).finished?.catch(() => {});
+    void window.navigation
+      .navigate(`?${path}`, {
+        history,
+        ...(options ? { info: options } : {}),
+      })
+      .finished?.catch(() => {});
   }
 
   export interface RenderRoute {
@@ -44,10 +57,11 @@
   const initialMatch = resolve(new URL(window.location.href));
   let match = $state.raw(initialMatch);
   route.pattern = initialMatch.route.pattern;
+  route.parameters = splitRoute(window.location.search).parameters;
 
   function resolve(url: URL): { route: RenderRoute; params: RouteParams } {
     for (const { route, pattern } of compiled) {
-      const result = pattern.exec({ pathname: url.search.slice(1) });
+      const result = pattern.exec({ pathname: splitRoute(url.search).path });
       if (!result) continue;
       return {
         route,
@@ -65,6 +79,7 @@
   function updateRoute(url: URL) {
     match = resolve(url);
     route.pattern = match.route.pattern;
+    route.parameters = splitRoute(url.search).parameters;
   }
 
   onMount(() => {
@@ -93,7 +108,20 @@
       )
         return;
 
+      const sameSearch =
+        splitRoute(current.search).path === "/search" &&
+        splitRoute(destination.search).path === "/search";
       event.intercept({
+        ...(sameSearch
+          ? {
+              focusReset: "manual" as const,
+              // Local controls reset their own result viewport. Incoming links need
+              // native scroll-to-top/anchor handling, and traversal needs restoration.
+              ...(event.navigationType !== "traverse" && event.info?.preserveScroll === true
+                ? { scroll: "manual" as const }
+                : {}),
+            }
+          : {}),
         handler: async () => {
           const update = async () => {
             if (event.signal.aborted) return;
@@ -101,6 +129,7 @@
             await tick();
           };
           if (
+            sameSearch ||
             destination.href === current.href ||
             !document.startViewTransition ||
             window.matchMedia("(prefers-reduced-motion: reduce)").matches

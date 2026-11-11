@@ -66,6 +66,7 @@ describe("router", () => {
     ["/library", "library:{}"],
     ["/library/artist/artist%201", 'artist:{"artistId":"artist 1"}'],
     ["/library/artist/a%2Fb%3Fc%23d%26e%25", 'artist:{"artistId":"a/b?c#d&e%"}'],
+    ["/library/artist/a%2Fb%3Fc%23d%26e%25&ignored=x", 'artist:{"artistId":"a/b?c#d&e%"}'],
     ["/library/album/album-1", 'album:{"albumId":"album-1"}'],
     ["/library/album/a%2Fb%3Fc%23d%26e%25", 'album:{"albumId":"a/b?c#d&e%"}'],
     ["/unknown", "library:{}"],
@@ -112,6 +113,43 @@ describe("router", () => {
     },
   );
 
+  it.each([
+    { navigationType: "push", local: false },
+    { navigationType: "replace", local: false },
+    { navigationType: "push", local: true },
+    { navigationType: "replace", local: true },
+    { navigationType: "traverse", local: false },
+    { navigationType: "traverse", local: true },
+  ])(
+    "updates same-route search $navigationType (local: $local) with appropriate scroll handling",
+    async ({ navigationType, local }) => {
+      const { navigation } = setup("/search&type=artist&q=one");
+      expect(route.parameters.get("q")).toBe("one");
+      const start = vi.fn();
+      document.startViewTransition = start;
+      const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+      navigation.dispatchEvent(
+        Object.assign(navigationEvent(), {
+          navigationType,
+          info: local ? { preserveScroll: true } : undefined,
+          canIntercept: true,
+          destination: {
+            url: new URL("?/search&type=track&q=two#anchor", window.location.href).href,
+          },
+          intercept,
+        }),
+      );
+      await intercept.mock.results[0].value;
+      expect(route.parameters.get("q")).toBe("two");
+      expect(route.parameters.getAll("type")).toEqual(["track"]);
+      expect(intercept.mock.calls[0][0]).toMatchObject({ focusReset: "manual" });
+      if (local && navigationType !== "traverse")
+        expect(intercept.mock.calls[0][0]).toMatchObject({ scroll: "manual" });
+      else expect(intercept.mock.calls[0][0]).not.toHaveProperty("scroll");
+      expect(start).not.toHaveBeenCalled();
+    },
+  );
+
   it("does not navigate to the current URL", () => {
     const navigation = installNavigation("/library");
     navigate("/library");
@@ -146,6 +184,15 @@ describe("router", () => {
     expect(navigation.navigate).toHaveBeenCalledWith("?/player", { history: "push" });
     navigate("/player", "replace");
     expect(navigation.navigate).toHaveBeenLastCalledWith("?/player", { history: "replace" });
+  });
+
+  it("marks local search updates without changing ordinary navigation options", () => {
+    const navigation = installNavigation("/search&type=artist");
+    navigate("/search&type=album", "push", { preserveScroll: true });
+    expect(navigation.navigate).toHaveBeenCalledWith("?/search&type=album", {
+      history: "push",
+      info: { preserveScroll: true },
+    });
   });
 
   it.each(["/webapp/", "/webapp/?section"])("renders the fallback without rewriting %s", (url) => {

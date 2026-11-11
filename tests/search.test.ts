@@ -42,6 +42,17 @@ describe("local library search", () => {
       expect(search(query).every((group) => group.total === 0)).toBe(true);
     }
   });
+  it("enumerates complete single-type browse results in cache order, including offline eligibility", () => {
+    const { artists, albums, tracks } = fixture(1500);
+    const reverse = new Map([...tracks].reverse());
+    const index = createSearchIndex(artists, albums, reverse);
+    const result = searchLibrary(index, "  ", true).groups[2];
+    expect(result.total).toBe(1500);
+    expect(result.records.map((record) => record.id)).toEqual([...reverse.keys()]);
+    expect(searchLibrary(index, "formation", true).groups[2].total).toBe(1500);
+    const offline = createSearchIndex(artists, albums, reverse, (id) => id === "1499");
+    expect(searchLibrary(offline, "", true).groups.map((group) => group.total)).toEqual([1, 1, 1]);
+  });
   it("ranks all matches independently of pagination and keeps ties deterministic", () => {
     expect(search("formation")[2].records.map((r) => r.id)).toEqual([...tracks.keys()]);
     const reverse = createSearchIndex(artists, albums, new Map([...tracks].reverse()));
