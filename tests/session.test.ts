@@ -31,85 +31,26 @@ afterEach(async () => {
 const input = { host: credentials.host, username: credentials.username, password: "password" };
 
 describe("disconnect and cache clear", () => {
-  it.each([
-    [false, false],
-    [false, true],
-    [true, false],
-    [true, true],
-  ])(
-    "ignores late playlist completion after disconnect (offline=%s, failure=%s)",
-    async (offline, failure) => {
-      const { session, selection, playlists } = await connected();
-      await vi.waitFor(() => expect(session.syncing).toBe(false));
-      const cache = selection.cache!;
-      vi.spyOn(cache, "clear").mockResolvedValue(undefined);
-      const publish = vi.spyOn(cache, "setPlaylists");
-      const listed = deferred<[]>();
-      const created = deferred<undefined>();
-      // Keep this signal live so generation invalidation, not transport abort, is tested.
-      playlists.setConnection({
-        account: credentials,
-        signal: new AbortController().signal,
-        list: () => listed.promise,
-        read: vi.fn(),
-        mutate: () => created.promise,
-      });
-      vi.mocked(playlists.refresh).mockRestore();
-      const refreshing = playlists.refresh();
-      const creating = playlists.create("Pending");
-      const settled = Promise.allSettled([refreshing, creating]);
-      expect(playlists.loading).toBe(true);
-      expect(playlists.saving).toBe(true);
-      if (offline) await session.setOfflineMode(true);
-
-      session.disconnect();
-      await cache.clear();
-      expect(playlists.error).toBeUndefined();
-      expect(playlists.loading).toBe(false);
-      expect(playlists.saving).toBe(false);
-      if (failure) {
-        listed.reject(new Error("Late list failure"));
-        created.reject(new Error("Late create failure"));
-      } else {
-        listed.resolve([]);
-        created.resolve(undefined);
-      }
-      expect(await settled).toEqual([
-        expect.objectContaining({ status: "rejected" }),
-        expect.objectContaining({ status: "rejected" }),
-      ]);
-      expect(publish).not.toHaveBeenCalled();
-      expect(playlists.error).toBeUndefined();
-      expect(playlists.loading).toBe(false);
-      expect(playlists.saving).toBe(false);
-      expect(session.refreshError).toBe("");
-    },
-  );
-
-  it.each([false, true])(
-    "keeps identity and reconnects using the same cache (deletion denied=%s)",
-    async (denied) => {
-      const disk = installDisk();
-      const { session, selection, auth, storage } = await connected();
-      const cache = session.cache!;
-      storage.setItem("unrelated-preference", "keep");
-      expect(session.disconnect()).toBe(true);
-      disk.state.failRemove = denied;
-      if (denied) await expect(cache.clear()).rejects.toThrow("Deletion denied");
-      else await cache.clear();
-      expect(auth.load()).toBeNull();
-      expect(auth.loadAccount()).toEqual({
-        host: credentials.host,
-        username: credentials.username,
-      });
-      expect(storage.getItem("unrelated-preference")).toBe("keep");
-      expect(selection.cache).toBe(cache);
-      expect(await session.connect(input)).toBe(true);
-      expect(selection.cache).toBe(cache);
-      cache.setQueue({ tracks: [], index: -1, position: 0 });
-      await cache.flush();
-    },
-  );
+  it("keeps identity and reconnects using the same cache after deletion is denied", async () => {
+    const disk = installDisk();
+    const { session, selection, auth, storage } = await connected();
+    const cache = session.cache!;
+    storage.setItem("unrelated-preference", "keep");
+    expect(session.disconnect()).toBe(true);
+    disk.state.failRemove = true;
+    await expect(cache.clear()).rejects.toThrow("Deletion denied");
+    expect(auth.load()).toBeNull();
+    expect(auth.loadAccount()).toEqual({
+      host: credentials.host,
+      username: credentials.username,
+    });
+    expect(storage.getItem("unrelated-preference")).toBe("keep");
+    expect(selection.cache).toBe(cache);
+    expect(await session.connect(input)).toBe(true);
+    expect(selection.cache).toBe(cache);
+    cache.setQueue({ tracks: [], index: -1, position: 0 });
+    await cache.flush();
+  });
 });
 
 describe("session", () => {

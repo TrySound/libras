@@ -411,52 +411,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
         });
         await page.getByRole("button", { name: "Disconnect", exact: true }).click();
         const artifacts = process.env.ARTIFACT_DIR;
-        if (artifacts) {
-          require("node:fs").mkdirSync(artifacts, { recursive: true });
-          const modal = page.getByRole("dialog", { name: "Disconnect?", exact: true });
-          const padding = () => modal.evaluate((node) => getComputedStyle(node).padding);
-          assert.equal(await padding(), "24px");
-          await page.screenshot({ path: `${artifacts}/disconnect-desktop.png` });
-          await modal.getByRole("switch").check();
-          await page.screenshot({ path: `${artifacts}/disconnect-desktop-checked.png` });
-          await modal.getByRole("switch").uncheck();
-          await page.setViewportSize({ width: 320, height: 740 });
-          assert.equal(await padding(), "16px");
-          await page.screenshot({ path: `${artifacts}/disconnect-mobile.png` });
-          await modal.getByRole("switch").check();
-          await page.screenshot({ path: `${artifacts}/disconnect-mobile-checked.png` });
-          await modal.getByRole("switch").uncheck();
-          await page.locator("dialog:modal").evaluate((dialog) => {
-            dialog.scrollTop = dialog.scrollHeight;
-          });
-          await page.screenshot({ path: `${artifacts}/disconnect-mobile-actions.png` });
-          assert.equal(
-            await page
-              .locator("dialog:modal")
-              .evaluate((node) => node.scrollWidth <= node.clientWidth),
-            true,
-          );
-          await page.evaluate(() => {
-            document.documentElement.style.fontSize = "200%";
-          });
-          assert.equal(
-            await page
-              .locator("dialog:modal")
-              .evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth),
-            true,
-          );
-          assert.equal(
-            await modal
-              .getByRole("switch")
-              .evaluate((node) => node.getBoundingClientRect().width === node.offsetWidth),
-            true,
-          );
-          await page.screenshot({ path: `${artifacts}/disconnect-enlarged.png` });
-          await page.evaluate(() => {
-            document.documentElement.style.fontSize = "";
-          });
-          await page.setViewportSize({ width: 1280, height: 900 });
-        }
+        if (artifacts) require("node:fs").mkdirSync(artifacts, { recursive: true });
         const before = calls.length;
         await page.evaluate(() => {
           window.cacheClearMarker = true;

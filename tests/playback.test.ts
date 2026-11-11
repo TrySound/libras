@@ -322,20 +322,6 @@ describe("playback", () => {
     expect(player.track).toBeUndefined();
     expect(queuePosition()).toBe(0);
   });
-  it("releases cached playback when the attached player's selected track disappears on clear", async () => {
-    const { player, audio, selection, tracks } = setup();
-    const release = vi.fn();
-    tracks.getSource.mockResolvedValueOnce({ cached: true, release, url: "blob:saved" });
-    await player.play();
-    flushSync();
-    expect(audio.paused).toBe(false);
-    await selection.cache!.clear();
-    flushSync();
-    expect(audio.paused).toBe(true);
-    expect(audio.src).toBe("");
-    expect(release).toHaveBeenCalledOnce();
-  });
-
   it("keeps cached playback running when network sources are suspended", async () => {
     const { player, getPlayer, audio, tracks } = setup();
     await player.play();

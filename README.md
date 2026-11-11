@@ -54,7 +54,7 @@ Download music while online, then switch to **Offline Library** to listen withou
 
 - **Manage downloads:** Settings → Downloads.
 - **Refresh library:** Automatic when opening online, or via Settings → Refresh library.
-- **Disconnect:** Choose to keep this account’s offline library and queue, or clean up its local library, playlists, queue, artwork and downloads before switching users. Disconnect clears credentials but remembers the account. Optional cleanup clears its local cache and stops cached playback without reloading; it does not delete anything from the server or other accounts, remembered identity, preferences or app assets. Close other tabs running Libras first: cleanup does not coordinate with other tabs, which can retain or recreate account data. If deletion fails, retry cleanup in Settings.
+- **Disconnect:** Clears credentials and optionally deletes this account’s local cache and downloads. Remembered identity, preferences, other accounts and server data are unchanged. Close other Libras tabs before deleting local data; retry in Settings if deletion fails.
 - **Storage:** Each server/account has its own offline library, saved only in this browser on this device. **Clearing site data deletes it.**
 
 ## App updates

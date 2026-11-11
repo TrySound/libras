@@ -1,4 +1,3 @@
-import { untrack } from "svelte";
 import { getAccountKey } from "./auth";
 import type { Covers } from "./covers.svelte";
 import type { Cache, CachedQueue, CacheSelection, Immutable } from "./cache.svelte";
@@ -147,17 +146,11 @@ export class Playback {
     document.addEventListener("visibilitychange", hidden);
     this.#syncSelection();
     this.updatePlayerState(player);
-    const disposeSelection = $effect.root(() => {
-      $effect(() => {
-        if (!this.track) untrack(() => this.#syncSelection());
-      });
-    });
     let disposed = false;
     const cleanup = () => {
       if (disposed) return;
       disposed = true;
       document.removeEventListener("visibilitychange", hidden);
-      disposeSelection();
       this.suspend();
       this.#player = undefined;
       this.#selectedTrackId = undefined;

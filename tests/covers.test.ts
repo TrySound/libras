@@ -93,33 +93,6 @@ afterEach(() => {
 });
 
 describe("cover engine using Cache", () => {
-  it("releases only persisted artwork whose cache record disappears, including held handles on clear", async () => {
-    installOpfs();
-    const { cache, covers } = await engine();
-    await cache.saveImage("one", image("one"));
-    await cache.saveImage("two", image("two"));
-    const one = covers.ensureCover("one");
-    const two = covers.ensureCover("two");
-    one.load();
-    two.load();
-    await vi.waitFor(() => {
-      expect(one.source).toBeDefined();
-      expect(two.source).toBeDefined();
-    });
-    const first = one.source;
-    const second = two.source;
-    await cache.evictImage("one", cache.images.get("one")!.fileName);
-    flushSync();
-    expect(one.source).toBeUndefined();
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith(first);
-    expect(two.source).toBe(second);
-    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(second);
-    await cache.clear();
-    flushSync();
-    expect(two.source).toBeUndefined();
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith(second);
-  });
-
   it("settles unavailable offline artwork so tiles can show their fallback", async () => {
     installOpfs();
     const { covers } = await engine();

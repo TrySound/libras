@@ -3,7 +3,6 @@
   import Icon from "./icon.svelte";
   import Loader from "./ui/loader.svelte";
   import type { Session } from "./session.svelte";
-  import type { Cache } from "./cache.svelte";
   import { navigate } from "./router.svelte";
 
   interface Props {
@@ -30,7 +29,7 @@
   };
   const connectionState = $derived.by((): keyof typeof connectionLabels => {
     if (session.auth && session.offlineMode) return "offline";
-    if (session.status === "connecting") return session.localReady ? "connecting" : "initializing";
+    if (session.busy) return session.localReady ? "connecting" : "initializing";
     if (!session.auth) return session.status === "error" ? "error" : "disconnected";
     if (session.status === "error") return "error";
     // A manual refresh keeps the existing status until scan counts are available.
@@ -67,17 +66,12 @@
 
   let cleaning = $state(false);
   let cleanupError = $state("");
-  let cacheToClear: Cache | undefined;
 
   function finishDisconnect() {
     if (cleaning) return;
-    const cache = session.cache;
     if (!session.disconnect()) return;
     host = username = password = "";
-    if (deleteLocalData) {
-      cacheToClear = cache;
-      void clearLocalData();
-    }
+    if (deleteLocalData) void clearLocalData();
   }
 
   async function clearLocalData() {
@@ -85,7 +79,7 @@
     cleaning = true;
     cleanupError = "";
     try {
-      await cacheToClear?.clear();
+      await session.cache?.clear();
     } catch {
       cleanupError = "Disconnected, but some local data could not be removed. Retry cleanup.";
     } finally {
