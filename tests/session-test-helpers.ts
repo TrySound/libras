@@ -5,6 +5,7 @@ import { Network, type MetadataConnection } from "../src/network.svelte";
 import { Covers } from "../src/covers.svelte";
 import { TrackEngine } from "../src/track.svelte";
 import { Playback } from "../src/playback.svelte";
+import { Playlists } from "../src/playlists.svelte";
 import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import type { Account } from "../src/schema";
 import { Session } from "../src/session.svelte";
@@ -124,6 +125,8 @@ export function createSession(saved = false, storage = createStorage()) {
     suspend: vi.spyOn(player, "suspend").mockImplementation(() => {}),
     suspendNetwork: vi.spyOn(player, "suspendNetwork").mockImplementation(() => {}),
   };
+  const playlists = new Playlists(selection);
+  vi.spyOn(playlists, "refresh").mockResolvedValue(undefined);
   const network = new Network();
   const prepare = vi.spyOn(network, "prepare");
   const validate = vi.spyOn(network, "validate").mockResolvedValue(undefined);
@@ -147,11 +150,13 @@ export function createSession(saved = false, storage = createStorage()) {
     covers: coverResources,
     tracks: trackEngine,
     playback: player,
+    playlists,
     preferences: storage,
   });
   return {
     async destroy() {
       session.destroy();
+      playlists.destroy();
       await player.destroy();
       covers.activate.mockRestore();
       coverResources.destroy();
@@ -166,6 +171,7 @@ export function createSession(saved = false, storage = createStorage()) {
     tracks,
     trackEngine,
     playback,
+    playlists,
     storage,
     validate,
     loadCache,

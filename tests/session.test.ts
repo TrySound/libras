@@ -31,6 +31,62 @@ afterEach(async () => {
 const input = { host: credentials.host, username: credentials.username, password: "password" };
 
 describe("cleanup", () => {
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    "clears playlist errors and ignores late completion (offline=%s, failure=%s)",
+    async (offline, failure) => {
+      const { session, selection, playlists } = await connected();
+      await vi.waitFor(() => expect(session.syncing).toBe(false));
+      const cache = selection.cache!;
+      vi.spyOn(cache, "deleteAccount").mockResolvedValue(undefined);
+      const publish = vi.spyOn(cache, "setPlaylists");
+      const listed = deferred<[]>();
+      const created = deferred<undefined>();
+      // Keep this signal live so generation invalidation, not transport abort, is tested.
+      playlists.setConnection({
+        account: credentials,
+        signal: new AbortController().signal,
+        list: () => listed.promise,
+        read: vi.fn(),
+        mutate: () => created.promise,
+      });
+      vi.mocked(playlists.refresh).mockRestore();
+      const refreshing = playlists.refresh();
+      const creating = playlists.create("Pending");
+      const settled = Promise.allSettled([refreshing, creating]);
+      expect(playlists.loading).toBe(true);
+      expect(playlists.saving).toBe(true);
+      if (offline) await session.setOfflineMode(true);
+      playlists.error = new Error("Retained playlist error");
+      expect(session.refreshError).toContain("Retained playlist error");
+
+      await session.cleanup();
+      expect(playlists.error).toBeUndefined();
+      expect(playlists.loading).toBe(false);
+      expect(playlists.saving).toBe(false);
+      if (failure) {
+        listed.reject(new Error("Late list failure"));
+        created.reject(new Error("Late create failure"));
+      } else {
+        listed.resolve([]);
+        created.resolve(undefined);
+      }
+      expect(await settled).toEqual([
+        expect.objectContaining({ status: "rejected" }),
+        expect.objectContaining({ status: "rejected" }),
+      ]);
+      expect(publish).not.toHaveBeenCalled();
+      expect(playlists.error).toBeUndefined();
+      expect(playlists.loading).toBe(false);
+      expect(playlists.saving).toBe(false);
+      expect(session.refreshError).toBe("");
+    },
+  );
+
   it("hides the workspace immediately, joins late refresh, and blocks reconnect until deletion", async () => {
     const fixture = await connected();
     const { session, selection, metadata, auth, playback, storage } = fixture;

@@ -369,7 +369,7 @@ export class Session {
     this.#options.playback.activate();
     this.#options.covers.activate();
     const downloads = this.#options.tracks.activate();
-    this.#options.playlists?.reset();
+    if (this.#options.playlists) this.#options.playlists.error = undefined;
     this.status = "disconnected";
     this.loadingAfterConnect = false;
     this.#libraryProgress = undefined;
