@@ -1630,26 +1630,8 @@
   }
 
   @media (width <= 50rem) {
-    .dialog:not(.popover, .large-player),
-    .bottom-sheet:modal:not(.popover, .large-player),
-    .right-sheet:modal:not(.popover, .large-player) {
+    .dialog:not(.popover, .large-player) {
       padding: var(--space-md);
-    }
-
-    .bottom-sheet:modal:not(.popover, .large-player) {
-      padding-block-end: calc(var(--space-md) + env(safe-area-inset-bottom));
-      &:has(> .dialog-handle:not([data-side])) {
-        padding-block-start: var(--space-lg);
-      }
-    }
-
-    .right-sheet:modal:not(.popover, .large-player) {
-      padding-block-start: max(var(--space-md), env(safe-area-inset-top));
-      padding-block-end: max(var(--space-md), env(safe-area-inset-bottom));
-      padding-inline-end: max(var(--space-md), env(safe-area-inset-right));
-      &:has(> .dialog-handle[data-side="left"]) {
-        padding-inline-start: var(--space-lg);
-      }
     }
   }
 

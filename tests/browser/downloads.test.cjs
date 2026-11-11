@@ -371,11 +371,13 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
           await page.getByRole("link", { name: "Settings", exact: true }).click();
           await page.getByRole("button", { name: "Disconnect", exact: true }).click();
           await page.getByRole("dialog").getByRole("switch").check();
+          const reloaded = page.waitForEvent("load");
           await page
             .getByRole("dialog")
             .getByRole("button", { name: "Disconnect", exact: true })
             .click();
-          await page.waitForFunction(() => !document.querySelector("dialog:modal"));
+          await reloaded;
+          await page.locator("#server-host").waitFor();
         };
         const directories = () =>
           page.evaluate(async () => {

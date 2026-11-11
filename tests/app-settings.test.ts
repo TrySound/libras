@@ -145,11 +145,13 @@ async function setup(
 }
 
 describe("app settings", () => {
-  it("keeps cleanup busy, focuses recovery controls, and allows closing after failure", async () => {
+  it("closes confirmation immediately and shows inline progress and retry", async () => {
     const { target, button, session, selection, auth, confirmDisconnect } = await setup(
       true,
       false,
     );
+    const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
+    const cache = selection.cache;
     const pending = deferred();
     const deletion = vi
       .spyOn(selection.cache!, "deleteAccount")
@@ -163,50 +165,32 @@ describe("app settings", () => {
     flushSync();
     expect(session.cleaning).toBe(true);
     expect(auth.load()).toBeNull();
-    expect(target.querySelector("dialog")?.open).toBe(true);
-    expect(target.querySelector("dialog")?.textContent).toContain("Deleting local data…");
-    expect(target.querySelector("dialog input[type=checkbox]")).toBeNull();
-    await vi.waitFor(() =>
-      expect(document.activeElement).toBe(target.querySelector("[data-cleanup-focus]")),
-    );
+    expect(target.querySelector("dialog")?.open).toBe(false);
+    expect(target.querySelector("#settings-server")?.textContent).toContain("Deleting local data…");
+    expect(target.querySelector("#settings-connect")).toBeNull();
     pending.resolve();
     await vi.waitFor(() => {
       flushSync();
       expect(button("Retry cleanup")).toBeDefined();
     });
-    expect(target.querySelector("dialog [role=alert]")?.textContent).toContain(
+    expect(target.querySelector("#settings-server [role=alert]")?.textContent).toContain(
       "some local data could not be removed",
     );
-    expect(target.querySelector("dialog input[type=checkbox]")).toBeNull();
-    await vi.waitFor(() =>
-      expect(document.activeElement).toBe(target.querySelector("dialog [data-cleanup-focus]")),
-    );
-    expect(
-      target.querySelector("dialog [data-cleanup-focus]")?.getAttribute("aria-describedby"),
-    ).toBe("disconnect-cleanup-error");
-    button("Close").click();
-    flushSync();
-    expect(target.querySelector("dialog")?.open).toBe(false);
-    expect(session.cleanupRequired).toBe(true);
-    expect(target.querySelector("#settings-connect")).toBeNull();
-    target.querySelector<HTMLButtonElement>("#settings-cleanup-recovery")!.click();
-    flushSync();
+    expect(reload).not.toHaveBeenCalled();
     button("Retry cleanup").click();
     await vi.waitFor(() => {
       flushSync();
-      expect(target.querySelector("dialog")?.open).toBe(false);
+      expect(reload).toHaveBeenCalledOnce();
     });
     expect(deletion).toHaveBeenCalledTimes(2);
-    expect(selection.cache).toBeUndefined();
+    expect(selection.cache).toBe(cache);
   });
 
   it.each([true, false])(
-    "retains cleanup across navigation and allows connecting after recovery (failure=%s)",
+    "retains cleanup across navigation and reloads on success (failure=%s)",
     async (fails) => {
-      const { target, button, session, selection, fill, confirmDisconnect } = await setup(
-        true,
-        false,
-      );
+      const { target, button, session, selection, confirmDisconnect } = await setup(true, false);
+      const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
       const pending = deferred();
       const deletion = vi
         .spyOn(selection.cache!, "deleteAccount")
@@ -237,27 +221,18 @@ describe("app settings", () => {
         pending.resolve();
         await vi.waitFor(() => expect(session.cleanupError).toContain("could not be removed"));
       }
-      await route("/settings");
-      expect(target.querySelector("#settings-connect")).toBeNull();
-      expect(session.auth).toBeNull();
-      expect(selection.cache).toBeUndefined();
-      expect(session.cleanupRequired).toBe(true);
-      target.querySelector<HTMLButtonElement>("#settings-cleanup-recovery")!.click();
-      await vi.waitFor(() =>
-        expect(document.activeElement).toBe(target.querySelector("dialog [data-cleanup-focus]")),
-      );
-      if (fails) button("Retry cleanup").click();
-      else pending.resolve();
-      await vi.waitFor(() => {
-        flushSync();
-        expect(session.cleanupRequired).toBe(false);
-      });
-      await vi.waitFor(() => expect(target.querySelector("dialog")?.open).toBe(false));
+      if (fails) {
+        expect(reload).not.toHaveBeenCalled();
+        await route("/settings");
+        expect(target.querySelector("#settings-connect")).toBeNull();
+        expect(target.querySelector("#settings-server [role=alert]")?.textContent).toContain(
+          "could not be removed",
+        );
+        button("Retry cleanup").click();
+      } else pending.resolve();
+      await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
       expect(session.cleanupError).toBe("");
       expect(deletion).toHaveBeenCalledTimes(fails ? 2 : 1);
-      expect(target.querySelector("#settings-connect")).not.toBeNull();
-      fill();
-      await vi.waitFor(() => expect(session.auth).not.toBeNull());
     },
   );
 

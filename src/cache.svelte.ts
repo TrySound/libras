@@ -422,11 +422,8 @@ interface BinaryRecord {
 
 /** Image records use reactive checkpoints; obsolete bytes retire only after acknowledgement. */
 class ImageStore {
-  #pending = new Set<Promise<unknown>>();
-
   async retire() {
     await this.store.retire();
-    while (this.#pending.size) await Promise.allSettled([...this.#pending]);
     await this.#serial(async () => {});
   }
 
@@ -465,14 +462,7 @@ class ImageStore {
   }
 
   /** One error boundary per public Cache operation, not per internal I/O step. */
-  operation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    const pending = this.#operation(action, signal);
-    this.#pending.add(pending);
-    void pending.finally(() => this.#pending.delete(pending)).catch(() => {});
-    return pending;
-  }
-
-  async #operation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  async operation<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     try {
       signal?.throwIfAborted();
       const value = await action();

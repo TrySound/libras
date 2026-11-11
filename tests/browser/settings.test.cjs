@@ -249,64 +249,17 @@ test("Settings native controls, layout, and persistence", async (t) => {
       await waitConnected();
     });
 
-    await t.test("shared modals reduce mobile padding without crowding handles", async () => {
-      const artifacts = process.env.ARTIFACT_DIR;
-      if (artifacts) require("node:fs").mkdirSync(artifacts, { recursive: true });
-      await page.getByRole("link", { name: "Libras home", exact: true }).click();
-      await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
-      for (const width of [1280, 320]) {
-        await page.setViewportSize({ width, height: 740 });
-        for (const selector of ["#navigation-dialog", "#artist-menu"]) {
-          const modal = page.locator(selector);
-          await modal.evaluate((node) => node.showModal());
-          const geometry = await modal.evaluate((node) => {
-            const style = getComputedStyle(node);
-            const handle = node.querySelector(".dialog-handle").getBoundingClientRect();
-            const content = node
-              .querySelector(".dialog-handle")
-              .nextElementSibling.getBoundingClientRect();
-            return {
-              padding: [
-                style.paddingTop,
-                style.paddingRight,
-                style.paddingBottom,
-                style.paddingLeft,
-              ],
-              fits: node.scrollWidth <= node.clientWidth,
-              handleClear: node.classList.contains("bottom-sheet")
-                ? content.top > handle.bottom
-                : content.left > handle.right,
-            };
-          });
-          assert.deepEqual(
-            geometry.padding,
-            width === 1280
-              ? ["24px", "24px", "24px", "24px"]
-              : selector === "#artist-menu"
-                ? ["24px", "16px", "16px", "16px"]
-                : ["16px", "16px", "16px", "24px"],
-          );
-          assert.equal(geometry.fits, true);
-          assert.equal(geometry.handleClear, true);
-          if (artifacts)
-            await page.screenshot({ path: `${artifacts}/${selector.slice(1)}-${width}.png` });
-          await modal.evaluate((node) => node.close());
-        }
-      }
-      await page.setViewportSize({ width: 1280, height: 900 });
-      await page.getByRole("link", { name: "Settings", exact: true }).click();
-      await waitConnected();
-    });
-
     await t.test(
-      "Disconnect safely focuses Cancel, preserves on dismissal, and keeps data",
+      "native invokers dismiss without disconnecting, reset the switch, and preserve data",
       async () => {
         await page.getByRole("button", { name: "Disconnect", exact: true }).click();
         assert.equal(
-          await page
-            .getByRole("button", { name: "Cancel", exact: true })
-            .evaluate((node) => node === document.activeElement),
-          true,
+          await page.locator("#settings-disconnect").getAttribute("command"),
+          "show-modal",
+        );
+        assert.equal(
+          await page.locator("#settings-disconnect").getAttribute("commandfor"),
+          "disconnect-dialog",
         );
         const dialog = page.getByRole("dialog", { name: "Disconnect?", exact: true });
         const checkbox = dialog.getByRole("switch", {
@@ -322,6 +275,14 @@ test("Settings native controls, layout, and persistence", async (t) => {
         assert.equal(await dialog.getByRole("button").count(), 2);
         for (const width of [1280, 320]) {
           await page.setViewportSize({ width, height: 740 });
+          assert.equal(
+            await dialog.evaluate((node) => getComputedStyle(node).padding),
+            width === 320 ? "16px" : "24px",
+          );
+          if (process.env.ARTIFACT_DIR) {
+            require("node:fs").mkdirSync(process.env.ARTIFACT_DIR, { recursive: true });
+            await page.screenshot({ path: `${process.env.ARTIFACT_DIR}/disconnect-${width}.png` });
+          }
           assert.equal(
             await checkbox.evaluate((node) => {
               const label = document
@@ -354,6 +315,10 @@ test("Settings native controls, layout, and persistence", async (t) => {
         assert.deepEqual(enlarged, { wholeWords: true, switchBelow: true, fits: true });
         await page.evaluate(() => document.documentElement.style.removeProperty("font-size"));
         await page.setViewportSize({ width: 1280, height: 900 });
+        await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+        assert.equal(await page.locator("dialog:modal").count(), 0);
+        assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-auth")));
+        await page.locator("#settings-disconnect").click();
         await checkbox.focus();
         await page.keyboard.press("Space");
         assert.equal(await checkbox.isChecked(), true);
@@ -369,10 +334,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
         assert.equal(await checkbox.isChecked(), false);
         await dialog.getByRole("button", { name: "Disconnect", exact: true }).click();
         await page.locator("#server-host").waitFor();
-        assert.equal(
-          await page.locator("#server-host").evaluate((input) => input === document.activeElement),
-          true,
-        );
+        assert.equal(await page.locator("dialog:modal").count(), 0);
       },
     );
     await t.test("automatic password fallback survives reload until disconnect", async () => {
@@ -491,48 +453,34 @@ test("Settings native controls, layout, and persistence", async (t) => {
           .getByRole("button", { name: "Disconnect", exact: true })
           .click();
         await page.waitForFunction(() => !!window.releaseCleanup);
-        await page.keyboard.press("Escape");
-        assert.equal(await page.locator("dialog:modal").count(), 1);
-        assert.equal(
-          await page
-            .locator("dialog [data-cleanup-focus]")
-            .evaluate((node) => node === document.activeElement),
-          true,
-        );
-        if (artifacts) await page.screenshot({ path: `${artifacts}/disconnect-busy.png` });
-        // Browser history can leave a modal view while Session continues cleanup.
+        assert.equal(await page.locator("dialog:modal").count(), 0);
+        await page.getByText("Deleting local data…", { exact: true }).waitFor();
+        if (artifacts) {
+          await page.screenshot({ path: `${artifacts}/disconnect-busy.png` });
+          await page.setViewportSize({ width: 320, height: 740 });
+          await page.screenshot({ path: `${artifacts}/settings-busy-mobile.png` });
+          await page.setViewportSize({ width: 1280, height: 900 });
+        }
+        // Settings may unmount while the terminal cleanup continues.
         await page.goBack();
         await page.locator("[aria-labelledby=library-heading]").waitFor();
         assert.equal(await page.locator("dialog:modal").count(), 0);
         await page.evaluate(() => window.releaseCleanup());
         await page.getByRole("link", { name: "Settings", exact: true }).click();
-        const recovery = page.locator("#settings-cleanup-recovery");
-        await recovery.waitFor();
+        const retry = page.getByRole("button", { name: "Retry cleanup", exact: true });
+        await retry.waitFor();
         assert.equal(await page.locator("#settings-connect").count(), 0);
-        await recovery.click();
-        const retry = page
-          .locator("dialog:modal")
-          .getByRole("button", { name: "Retry cleanup", exact: true });
-        await retry.waitFor();
-        await page.waitForFunction(() =>
-          document.activeElement?.matches("dialog [data-cleanup-focus]"),
-        );
-        assert.equal(await retry.getAttribute("aria-describedby"), "disconnect-cleanup-error");
-        if (artifacts) await page.screenshot({ path: `${artifacts}/disconnect-error.png` });
-        await page.keyboard.press("Escape");
-        await page.waitForFunction(
-          () => document.activeElement?.id === "settings-cleanup-recovery",
-        );
         assert.equal(await page.locator("dialog:modal").count(), 0);
-        if (artifacts) await page.screenshot({ path: `${artifacts}/disconnect-recovery.png` });
-        await recovery.press("Enter");
-        await retry.waitFor();
-        await page.getByRole("button", { name: "Close", exact: true }).click();
-        await page.waitForFunction(
-          () => document.activeElement?.id === "settings-cleanup-recovery",
+        assert.match(
+          await page.locator("#settings-server [role=alert]").textContent(),
+          /could not be removed/,
         );
-        await recovery.press("Enter");
-        await retry.waitFor();
+        if (artifacts) {
+          await page.screenshot({ path: `${artifacts}/disconnect-error.png` });
+          await page.setViewportSize({ width: 320, height: 740 });
+          await page.screenshot({ path: `${artifacts}/settings-error-mobile.png` });
+          await page.setViewportSize({ width: 1280, height: 900 });
+        }
         assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-auth")), null);
         assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-account")), null);
         await page.evaluate(() => {
@@ -541,8 +489,12 @@ test("Settings native controls, layout, and persistence", async (t) => {
         });
         await retry.click();
         await page.waitForFunction(() => !!window.releaseCleanup);
+        await page.goBack();
+        await page.locator("[aria-labelledby=library-heading]").waitFor();
+        const reloaded = page.waitForEvent("load");
         await page.evaluate(() => window.releaseCleanup());
-        await page.waitForFunction(() => !document.querySelector("dialog:modal"));
+        await reloaded;
+        await page.locator("#server-host").waitFor();
         assert.deepEqual(calls.slice(before), []);
         const accountDirectories = () =>
           page.evaluate(async () => {

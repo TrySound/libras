@@ -37,7 +37,7 @@ describe("cleanup", () => {
     [true, false],
     [true, true],
   ])(
-    "clears playlist errors and ignores late completion (offline=%s, failure=%s)",
+    "ignores late playlist completion after terminal cleanup (offline=%s, failure=%s)",
     async (offline, failure) => {
       const { session, selection, playlists } = await connected();
       await vi.waitFor(() => expect(session.syncing).toBe(false));
@@ -61,8 +61,6 @@ describe("cleanup", () => {
       expect(playlists.loading).toBe(true);
       expect(playlists.saving).toBe(true);
       if (offline) await session.setOfflineMode(true);
-      playlists.error = new Error("Retained playlist error");
-      expect(session.refreshError).toContain("Retained playlist error");
 
       await session.cleanup();
       expect(playlists.error).toBeUndefined();
@@ -87,7 +85,7 @@ describe("cleanup", () => {
     },
   );
 
-  it("hides the workspace immediately, joins late refresh, and blocks reconnect until deletion", async () => {
+  it("retires before teardown, deletes without waiting for network refresh, and blocks reconnect", async () => {
     const fixture = await connected();
     const { session, selection, metadata, auth, playback, storage } = fixture;
     storage.setItem("unrelated-preference", "keep");
@@ -96,25 +94,71 @@ describe("cleanup", () => {
     const late = deferred();
     metadata.getModifiedAt.mockReturnValueOnce(late.promise.then(() => 200));
     const refresh = session.refresh();
+    const retire = vi.spyOn(cache, "retire");
+    const stopPlayback = playback.destroy;
     const cleanup = session.cleanup();
-    expect(selection.cache).toBeUndefined();
-    expect(session.auth).toBeNull();
+    expect(retire.mock.invocationCallOrder[0]).toBeLessThan(
+      stopPlayback.mock.invocationCallOrder[0],
+    );
+    expect(selection.cache).toBe(cache);
     expect(auth.load()).toBeNull();
     expect(auth.loadAccount()).toBeNull();
     expect(storage.getItem("unrelated-preference")).toBe("keep");
-    expect(playback.suspend).toHaveBeenCalled();
-    expect(session.localReady).toBe(true);
+    expect(playback.destroy).toHaveBeenCalledOnce();
     expect(await session.connect(input)).toBe(false);
-    expect(deletion).not.toHaveBeenCalled();
-    late.resolve();
-    await Promise.all([refresh, cleanup]);
+    await cleanup;
     expect(deletion).toHaveBeenCalledOnce();
-    expect(session.busy).toBe(false);
-    expect(session.status).toBe("disconnected");
+    expect(session.busy).toBe(true);
     expect(session.offlineMode).toBe(true);
+    late.resolve();
+    await refresh;
+    expect(selection.cache).toBe(cache);
   });
 
-  it("keeps failed deletion hidden and retryable, then allows another login", async () => {
+  it.each(["clear", "clearAccount"] as const)(
+    "retries identity removal when %s fails without reopening the runtime",
+    async (method) => {
+      const { session, selection, auth } = await connected();
+      const cache = selection.cache!;
+      const deletion = vi.spyOn(cache, "deleteAccount").mockResolvedValue(undefined);
+      const remove = vi.spyOn(auth, method).mockImplementationOnce(() => {
+        throw new Error("Identity storage denied");
+      });
+      await expect(session.cleanup()).rejects.toThrow("Identity storage denied");
+      expect(session.cleaning).toBe(false);
+      expect(session.cleanupError).toContain("could not be removed");
+      expect(deletion).not.toHaveBeenCalled();
+      expect(selection.cache).toBe(cache);
+      await session.cleanup();
+      expect(remove).toHaveBeenCalledTimes(2);
+      expect(auth.load()).toBeNull();
+      expect(auth.loadAccount()).toBeNull();
+      expect(deletion).toHaveBeenCalledOnce();
+      expect(await session.connect(input)).toBe(false);
+    },
+  );
+
+  it("deletes without joining stalled restoration and ignores duplicate cleanup", async () => {
+    const { session, selection, loadCache } = setup(true);
+    const restoration = deferred();
+    loadCache.mockReturnValueOnce(restoration.promise);
+    session.start();
+    const deletionGate = deferred();
+    const deletion = vi
+      .spyOn(selection.cache!, "deleteAccount")
+      .mockReturnValue(deletionGate.promise);
+    const cleanup = session.cleanup();
+    await vi.waitFor(() => expect(deletion).toHaveBeenCalledOnce());
+    await session.cleanup();
+    expect(deletion).toHaveBeenCalledOnce();
+    expect(session.cleaning).toBe(true);
+    deletionGate.resolve();
+    await cleanup;
+    expect(session.cleaning).toBe(false);
+    restoration.resolve();
+  });
+
+  it("keeps the captured cache retryable and requires reload before another login", async () => {
     const { session, selection } = await connected();
     const cache = selection.cache!;
     const deletion = vi
@@ -122,12 +166,13 @@ describe("cleanup", () => {
       .mockRejectedValueOnce(new Error("Storage denied"))
       .mockResolvedValue(undefined);
     await expect(session.cleanup()).rejects.toThrow("Storage denied");
-    expect(selection.cache).toBeUndefined();
+    expect(selection.cache).toBe(cache);
+    expect(session.cleanupError).toContain("could not be removed");
     expect(await session.connect(input)).toBe(false);
     await session.cleanup();
     expect(deletion).toHaveBeenCalledTimes(2);
-    expect(await session.connect(input)).toBe(true);
-    expect(selection.cache).not.toBe(cache);
+    expect(session.cleanupError).toBe("");
+    expect(await session.connect(input)).toBe(false);
   });
 });
 
