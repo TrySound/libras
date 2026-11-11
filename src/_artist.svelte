@@ -1,5 +1,7 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import FavouriteButton from "./ui/favourite-button.svelte";
+  import type { Favourites } from "./favourites.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -19,6 +21,7 @@
     session: Session;
     playbackState: "loading" | "playing" | "paused";
     playback: Playback;
+    favourites: Favourites;
     appName?: string;
   }
 
@@ -30,9 +33,12 @@
     session,
     playbackState,
     playback,
+    favourites,
     appName = "Libras",
   }: Props = $props();
 
+  let section = $state<HTMLElement>();
+  let heading = $state<HTMLHeadingElement>();
   const loading = $derived(!session.localReady);
   const offlineMode = $derived(session.offlineMode);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
@@ -68,10 +74,18 @@
   }
 
   let menuAlbumId = $state<string>();
-  const menuAlbum = $derived(menuAlbumId ? cache.albums.get(menuAlbumId) : undefined);
-  const menuTracks = $derived(menuAlbum ? (cache.albumTracks.get(menuAlbum.id) ?? []) : tracks);
-  const menuTitle = $derived(menuAlbum?.title ?? artist?.name);
-  const menuArtwork = $derived(menuAlbum ? menuAlbum.artworkId : artist?.artworkId);
+  const menuAlbum = $derived(visibleAlbums.find((album) => album.id === menuAlbumId));
+  const menuTracks = $derived(
+    menuAlbumId !== undefined
+      ? menuAlbum
+        ? (cache.albumTracks.get(menuAlbum.id) ?? [])
+        : []
+      : tracks,
+  );
+  const menuTitle = $derived(menuAlbumId !== undefined ? menuAlbum?.title : artist?.name);
+  const menuArtwork = $derived(
+    menuAlbumId !== undefined ? menuAlbum?.artworkId : artist?.artworkId,
+  );
   const menuTrackIds = $derived(availableTrackIds(menuTracks));
 
   let sheet: HTMLDialogElement;
@@ -80,12 +94,24 @@
     sheet.close();
     popover.hidePopover?.();
   }
+  $effect(() => {
+    if (artist && (menuAlbumId === undefined || menuAlbum)) return;
+    const wasOpen = sheet?.open || popover?.matches(":popover-open");
+    if (wasOpen) dismissActions();
+    menuAlbumId = undefined;
+    if (!wasOpen) return;
+    const fallback = heading ?? section;
+    if (fallback?.checkVisibility()) {
+      fallback.tabIndex = -1;
+      fallback.focus({ preventScroll: true });
+    }
+  });
 </script>
 
 <svelte:head><title>{artist?.name ?? "Artist"} | {appName}</title></svelte:head>
 
 <Atmosphere src={libraryAvailable && artist ? atmosphere?.source : undefined} />
-<section class="split-layout" aria-label="Artist details">
+<section bind:this={section} class="split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
     <div class="detail-panel view-slide-up">
       <Artwork
@@ -97,7 +123,9 @@
       />
       <div class="stack-sm">
         <div class="row-md row-justify">
-          <div class="stack-xs"><h1 class="heading-lg uppercase">{artist.name}</h1></div>
+          <div class="stack-xs">
+            <h1 bind:this={heading} class="heading-lg uppercase">{artist.name}</h1>
+          </div>
           <div class="row-sm">
             <button
               class="button"
@@ -308,6 +336,16 @@
         <Icon name="download" />
         <span>Download</span>
       </button>
+      <FavouriteButton
+        {favourites}
+        focusFallback={heading ?? section}
+        overlayId={target}
+        target={menuAlbum
+          ? { kind: "albums", id: menuAlbum.id }
+          : menuAlbumId === undefined && artist
+            ? { kind: "artists", id: artist.id }
+            : undefined}
+      />
     </div>
   </div>
 {/snippet}

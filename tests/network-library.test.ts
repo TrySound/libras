@@ -71,6 +71,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("network library", () => {
+  it("marks arbitrary server ID prefixes as genuine, not local collections", async () => {
+    const artist = { id: "local:artist:server-owned", name: "Genuine artist" };
+    const album = { id: "local:singles:server-owned", name: "Genuine album", artists: [artist] };
+    vi.stubGlobal(
+      "fetch",
+      serveLibrary({
+        artists: [artist],
+        albums: [album],
+        tracks: [{ id: "song", title: "Song", albumId: album.id, artists: [artist] }],
+      }),
+    );
+    const connection = createConnection();
+    const library = await connection.readLibrary(connection.signal);
+    expect(library.artists[0]).toMatchObject({ id: artist.id, localOnly: false });
+    expect(library.albums[0]).toMatchObject({ id: album.id, localOnly: false });
+    connection.abort();
+  });
   it.each([false, true])(
     "retains singles in a mixed/singles-only catalog (only=%s)",
     async (only) => {
@@ -132,10 +149,16 @@ describe("network library", () => {
       expect(fallback).toMatchObject({ albumId: single.albumId, artworkId: "artist-art" });
       expect(library.albums.find((album) => album.id === single.albumId)).toMatchObject({
         title: "Singles",
+        localOnly: true,
         artistIds: ["artist"],
         displayArtist: "Artist solo",
         artworkId: "artist-art",
       });
+      expect(
+        library.artists.find((artist) => artist.id === "local:artist:Guest%20%26%20friends")
+          ?.localOnly,
+      ).toBe(true);
+      expect(library.artists.find((artist) => artist.id === "artist")?.localOnly).toBe(false);
       expect(library.tracks.find((track) => track.id === "display")).toMatchObject({
         artistIds: ["local:artist:Guest%20%26%20friends"],
         displayArtist: "Guest & friends",
@@ -439,6 +462,7 @@ describe("network library", () => {
     const library = await connection.readLibrary(connection.signal);
     expect(library.albums.find((album) => album.id === "album")).toEqual({
       id: "album",
+      localOnly: false,
       title: "Album",
       artistIds: ["artist"],
       displayArtist: "Artist",
@@ -553,10 +577,10 @@ describe("network library", () => {
       expect(library.tracks[0]).not.toHaveProperty("artistName");
       expect(library.tracks[0]).not.toHaveProperty("artists");
       expect(library.artists).toEqual([
-        { id: "owner", name: "Owner" },
-        { id: "other", name: "Other" },
-        { id: "lead", name: "Lead" },
-        { id: "guest", name: "Guest" },
+        { id: "owner", name: "Owner", localOnly: false },
+        { id: "other", name: "Other", localOnly: false },
+        { id: "lead", name: "Lead", localOnly: false },
+        { id: "guest", name: "Guest", localOnly: false },
       ]);
       connection.abort();
     },
@@ -660,8 +684,8 @@ describe("network library", () => {
       displayArtist: "Alpha, Beta",
     });
     expect(library.artists).toEqual([
-      { id: "a", name: "Alpha" },
-      { id: "b", name: "Beta" },
+      { id: "a", name: "Alpha", localOnly: false },
+      { id: "b", name: "Beta", localOnly: false },
     ]);
     connection.abort();
   });

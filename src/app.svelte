@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import { Favourites } from "./favourites.svelte";
   import { onDestroy, onMount, untrack, type Snippet } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
@@ -45,8 +46,8 @@
   const emptyCache = new Cache();
   const cache = $derived(selection.cache ?? emptyCache);
   const appName = $derived(demo ? "Libras demo" : "Libras");
-  function newSearchState() {
-    const state = $state(createSearchState());
+  function newSearchState(query = "") {
+    const state = $state(createSearchState(query));
     return state;
   }
   // Owned above the route so Back retains state; cache switches discard it.
@@ -54,12 +55,27 @@
     void cache;
     return newSearchState();
   });
+  const seededSearchStates = $derived.by(() => {
+    void cache;
+    return new Map<string, ReturnType<typeof createSearchState>>();
+  });
+  function searchDraft(params: RouteParams) {
+    if (params.query === undefined) return searchState;
+    const key = params.entryKey!;
+    let state = seededSearchStates.get(key);
+    if (!state) {
+      state = newSearchState(params.query);
+      seededSearchStates.set(key, state);
+    }
+    return state;
+  }
   const hasNextTrack = $derived(
     cache.queue.index >= 0 && cache.queue.index < cache.queue.tracks.length - 1,
   );
   const hasPreviousTrack = $derived(cache.queue.index > 0);
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
+  const favourites = new Favourites(selection);
   const trackEngine = new TrackEngine({ selection });
   let player = $state<ReturnType<typeof AudioPlayer>>();
   const playback: Playback = new Playback({
@@ -78,6 +94,7 @@
         tracks: trackEngine,
         playback,
         playlists,
+        favourites,
         preferences: auth.storage,
       }),
   );
@@ -114,6 +131,7 @@
     session.destroy();
     playback.destroy();
     playlists.destroy();
+    favourites.destroy();
     covers.destroy();
     trackEngine.destroy();
   });
@@ -157,16 +175,26 @@
 
 {#snippet libraryRoute()}
   <Atmosphere />
-  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
+  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {favourites} {appName} />
 {/snippet}
 
-{#snippet searchRoute()}
+{#snippet searchRoute(params: RouteParams)}
   <Atmosphere />
-  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} {appName} state={searchState} />
+  <SearchRoute
+    {favourites}
+    {cache}
+    {covers}
+    {trackEngine}
+    {session}
+    {playback}
+    {appName}
+    state={searchDraft(params)}
+  />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
   <ArtistRoute
+    {favourites}
     {params}
     {cache}
     {covers}
@@ -180,6 +208,7 @@
 
 {#snippet albumRoute(params: RouteParams)}
   <AlbumRoute
+    {favourites}
     {params}
     {cache}
     {covers}
@@ -329,6 +358,7 @@
             routes={[
               { pattern: "/library", render: libraryRoute },
               { pattern: "/search", render: searchRoute },
+              { pattern: "/search/:query", render: searchRoute },
               { pattern: "/library/album/:albumId", render: albumRoute },
               { pattern: "/library/artist/:artistId", render: artistRoute },
               { pattern: "/settings", render: settingsRoute },
@@ -337,7 +367,7 @@
           />
         {/if}
       </main>
-      <Player {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
+      <Player {cache} {covers} {playback} {trackEngine} {favourites} {offlineMode} audio={player} />
       {#if hasErrors}
         <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
           <div class="stack-sm">

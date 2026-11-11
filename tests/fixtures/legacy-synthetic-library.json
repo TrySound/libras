@@ -1,0 +1,25 @@
+{
+  "lastModified": 1,
+  "savedAt": 1,
+  "artists": [
+    { "id": "local:artist:Display%20credit", "name": "Display credit" },
+    { "id": "ordinary-server", "name": "Old server artist" }
+  ],
+  "albums": [
+    {
+      "id": "local:singles:legacy",
+      "title": "Singles",
+      "artistIds": ["local:artist:Display%20credit"],
+      "genres": []
+    }
+  ],
+  "tracks": [
+    {
+      "id": "server-song",
+      "title": "Single",
+      "albumId": "local:singles:legacy",
+      "artistIds": ["local:artist:Display%20credit"],
+      "genres": []
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 <script lang="ts">
   import Icon from "../icon.svelte";
+  import FavouriteButton from "./favourite-button.svelte";
+  import type { Favourites } from "../favourites.svelte";
   import Artwork from "./artwork.svelte";
   import Atmosphere from "./atmosphere.svelte";
   import Loader from "./loader.svelte";
@@ -14,12 +16,15 @@
     cache: Cache;
     covers: Covers;
     playback: Playback;
+    favourites: Favourites;
     trackEngine: TrackEngine;
     audio: ReturnType<typeof AudioPlayer> | undefined;
     offlineMode: boolean;
   }
 
-  let { cache, covers, playback, trackEngine, audio, offlineMode }: Props = $props();
+  let { cache, covers, playback, favourites, trackEngine, audio, offlineMode }: Props = $props();
+  let playerDialog = $state<HTMLDialogElement>();
+  let nowTitle = $state<HTMLHeadingElement>();
   const id = $props.id();
   const track = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const artist = $derived(track && cache.artists.get(track.artistIds[0]));
@@ -121,6 +126,7 @@
 {/if}
 
 <dialog
+  bind:this={playerDialog}
   id="player-dialog"
   class="large-player"
   closedby="any"
@@ -142,12 +148,75 @@
         <Icon name="cross" />
       </button>
     </header>
+    <div
+      id="playing-actions"
+      class="popover"
+      popover="auto"
+      role="dialog"
+      aria-labelledby="playing-actions-title"
+    >
+      <div class="stack-lg">
+        <header class="row-md row-justify">
+          <div class="row-md">
+            <Artwork {covers} id={track?.artworkId} size="lg" />
+            <h2 id="playing-actions-title" class="heading-md">{track?.title ?? "Current track"}</h2>
+          </div>
+          <button
+            class="button"
+            commandfor="playing-actions"
+            command="hide-popover"
+            aria-label="Close menu"><Icon name="cross" /></button
+          >
+        </header>
+        <div class="stack-sm">
+          <button
+            class="menu-item"
+            disabled={!track || (offlineMode && trackEngine.getStatus(track.id) !== "downloaded")}
+            onclick={() => {
+              void playback.toggle();
+              document.getElementById("playing-actions")?.hidePopover();
+            }}><Icon name="play" /><span>Play / pause</span></button
+          >
+          <button
+            class="menu-item"
+            disabled={!track}
+            onclick={() => {
+              if (track) void playback.enqueue([track.id], "next");
+              document.getElementById("playing-actions")?.hidePopover();
+            }}><Icon name="next" /><span>Play next</span></button
+          >
+          <button
+            class="menu-item"
+            disabled={!track}
+            onclick={() => {
+              if (track) void playback.enqueue([track.id], "last");
+              document.getElementById("playing-actions")?.hidePopover();
+            }}><Icon name="plus" /><span>Play last</span></button
+          >
+          <button
+            class="menu-item"
+            disabled={!track || !["idle", "failed"].includes(trackEngine.getStatus(track.id))}
+            onclick={() => {
+              if (track) trackEngine.downloadMany([track.id]);
+              document.getElementById("playing-actions")?.hidePopover();
+            }}><Icon name="download" /><span>Download</span></button
+          >
+          <FavouriteButton
+            {favourites}
+            focusFallback={nowTitle}
+            onsettings={() => playerDialog?.close()}
+            overlayId="playing-actions"
+            target={track ? { kind: "tracks", id: track.id } : undefined}
+          />
+        </div>
+      </div>
+    </div>
     <section class="split-layout large-player-content" aria-label="Playback and queue">
       <div class="player-panel">
         <Artwork {covers} id={track?.artworkId} size="cover" loading="eager" />
         <div class="stack-lg">
           <div class="stack-xs">
-            <h1 id={`${id}-now-title`} class="heading-lg uppercase">
+            <h1 bind:this={nowTitle} id={`${id}-now-title`} class="heading-lg uppercase">
               {track?.title ?? "Nothing playing"}
             </h1>
             {#if track}
@@ -203,7 +272,14 @@
               </div>
             </div>
             <div class="player-controls row-xs row-justify">
-              <div class="button-hidden-stub" aria-hidden="true"></div>
+              <button
+                class="button"
+                commandfor="playing-actions"
+                command="toggle-popover"
+                disabled={!track}
+                aria-label={`Actions for ${track?.title ?? "current track"}`}
+                ><Icon name="menu" /></button
+              >
               <div class="row-md" role="group" aria-label="Playback controls">
                 <button
                   class="button"

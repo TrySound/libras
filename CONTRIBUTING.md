@@ -40,6 +40,7 @@ The workspace contains the root app (`src/`, `tests/`) and `@libras/website` (`w
 | `AudioPlayer`                | Audio transport, seeking, keyboard shortcuts, and Media Session                                  |
 | `Covers` / `TrackEngine`     | Resource acquisition, download scheduling, and browser URL lifetimes                             |
 | `Playlists`                  | Server-confirmed playlist operations and conflict detection; no offline outbox                   |
+| `Favourites`                 | Serialized server-confirmed stars and reconciliation; independent account checkpoint, no outbox  |
 | `Router`                     | Query routes, native fragment anchors, active navigation metadata, and optional view transitions |
 
 Routes use the bare query, for example `/webapp/?/library/artist/123#section`. Encode each dynamic path segment with `encodeURIComponent`; fragments remain native in-page anchors. The service worker serves one cached app shell for root/index navigation requests, including their route queries; assets and API requests are excluded.
@@ -47,6 +48,7 @@ Routes use the bare query, for example `/webapp/?/library/artist/123#section`. E
 ### Persistence and account safety
 
 - Read Cache collections directly; change them through explicit methods. Session owns account details; Cache accepts an opaque account key and hashes it for storage. An undefined key creates an empty, non-persisting fallback. A defined key does not mean hydration succeeded.
+- Favourites use an independent `favourites.json` checkpoint. Server confirmation publishes before device checkpointing; cache failures never repeat a server write. Unreadable favourites documents are preserved, even after a server refresh restores visible memory, and are excluded from drainable retirement writes. Downloaded-only filtering does not disconnect authenticated favourites access. An unknown write outcome blocks further edits until an authoritative refresh succeeds.
 - Library, queue, playlist, and image memory updates checkpoint asynchronously. Downloads instead await explicit queued/failed/completed commits in one versioned store; failed jobs require explicit Retry or a bulk Download action. Interrupted queued jobs restart from scratch, never adopting unregistered bytes. Successful byte close wins cancellation while completed metadata commits; cancellation joins that work. Unknown queued/failed job fields, including old attempts, are ignored on load and omitted on subsequent writes; orphan-file reclamation after old attempts or abrupt termination is intentionally out of scope. Offline library limits browsing/listening, not requested downloads. Do not treat visible state as proof of persistence. Unreadable download documents are preserved, not reset; readable saved files remain usable.
 - Credentials use localStorage only, until disconnect. Token login stores username/token/salt; verified direct-password fallback stores the actual password. localStorage is not encrypted and is readable by same-origin scripts. Never log credentials or credential-bearing URLs. Legacy token records migrate without changing account keys; migration writeback is best-effort.
 - Disconnect retains local data for offline use. Same-account reconnects reuse the live cache to preserve edits. Account changes drain old writes and retire resources before committing the new workspace. Late results must not leak into a different account.
@@ -94,17 +96,17 @@ NODE_PATH=/path/to/external/node_modules PREVIEW_URL=http://127.0.0.1:5173 \
 
 Select suites for the behavior being changed:
 
-| Suite in `tests/browser/`                 | Coverage                                                                                                                                                              |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `edgerunner.test.cjs`                     | Shared styles, fonts, native controls, overlays, and reduced motion                                                                                                   |
-| `navigation.test.cjs`                     | Document scrolling, shell, playback, query routes, anchors, and optional offline navigation                                                                           |
-| `startup.test.cjs`                        | Initial Settings route, reloads, and subsequent animated navigation                                                                                                   |
-| `pwa-updates.test.cjs`                    | Self-hosted production builds: real worker installation, per-tab consent, repeated discovery, offline application, failed precache, and optional old-plugin migration |
-| `library.test.cjs`, `search.test.cjs`     | Browsing, actions, responsive layouts, and native dismissal                                                                                                           |
-| `downloads.test.cjs`, `settings.test.cjs` | Actual app/OPFS behavior with intercepted Subsonic requests                                                                                                           |
-| `atmosphere.test.cjs`                     | Document/dialog scroll timelines; self-contained, no server required                                                                                                  |
-| `website-cascade.test.cjs`                | Script-free landing layout, keyboard/FAQ behavior, and standalone demo journeys                                                                                       |
-| `design-improvements.test.cjs`            | Compact details, full-height player, queue anchors, confirmation, gradients, popover timing, titles, and demo guidance (website server)                               |
+| Suite in `tests/browser/`                                    | Coverage                                                                                                                                                              |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `edgerunner.test.cjs`                                        | Shared styles, fonts, native controls, overlays, and reduced motion                                                                                                   |
+| `navigation.test.cjs`                                        | Document scrolling, shell, playback, query routes, anchors, and optional offline navigation                                                                           |
+| `startup.test.cjs`                                           | Initial Settings route, reloads, and subsequent animated navigation                                                                                                   |
+| `pwa-updates.test.cjs`                                       | Self-hosted production builds: real worker installation, per-tab consent, repeated discovery, offline application, failed precache, and optional old-plugin migration |
+| `library.test.cjs`, `search.test.cjs`, `favourites.test.cjs` | Browsing, actions, responsive layouts, native dismissal, server stars, and Search-entry drafts                                                                        |
+| `downloads.test.cjs`, `settings.test.cjs`                    | Actual app/OPFS behavior with intercepted Subsonic requests                                                                                                           |
+| `atmosphere.test.cjs`                                        | Document/dialog scroll timelines; self-contained, no server required                                                                                                  |
+| `website-cascade.test.cjs`                                   | Script-free landing layout, keyboard/FAQ behavior, and standalone demo journeys                                                                                       |
+| `design-improvements.test.cjs`                               | Compact details, full-height player, queue anchors, confirmation, gradients, popover timing, titles, and demo guidance (website server)                               |
 
 `cache-downloads.test.cjs` exercises native OPFS close/publication boundaries and restart-from-scratch behavior by importing the owning modules. Run it against the app **dev** server; Downloads, Settings, and navigation checks can run against production preview.
 

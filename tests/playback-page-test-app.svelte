@@ -36,6 +36,7 @@
   cache={props.cache}
   covers={props.covers}
   playback={props.playback}
+  favourites={props.favourites}
   trackEngine={props.trackEngine}
   {audio}
   offlineMode={props.session.offlineMode}

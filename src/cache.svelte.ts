@@ -9,6 +9,8 @@ import {
   downloadTrackSchema,
   playlistSchema,
   playlistDetailSchema,
+  favouritesSchema,
+  type FavouriteState,
   type Playlist,
   type PlaylistDetail,
   type ImageRecord,
@@ -109,7 +111,7 @@ async function hash(key: string) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-type DocumentName = "library" | "queue" | "images" | "downloads" | "playlists";
+type DocumentName = "library" | "queue" | "images" | "downloads" | "playlists" | "favourites";
 
 /** Private namespace and atomic JSON I/O. Knows no account settings or runtime indexes. */
 class Disk {
@@ -229,7 +231,7 @@ class Disk {
     }
     // An interrupted first write can leave a zero-byte placeholder, not a record.
     // All other read/validation failures propagate; catalogs must not start empty.
-    if (file.size === 0 && name !== "downloads") return null;
+    if (file.size === 0 && name !== "downloads" && name !== "favourites") return null;
     const text = await file.text();
     return parse(JSON.parse(text));
   }
@@ -259,6 +261,7 @@ interface CheckpointOptions<T> {
   parse: (value: unknown) => T;
   serialize: (value: T) => unknown;
   saved?: (revision: number) => Promise<void>;
+  preserveUnreadable?: boolean;
 }
 
 /** Memory is authoritative after hydration. Only flushes allocate disk snapshots. */
@@ -267,6 +270,7 @@ class CheckpointStore<T> {
   #revision = $state(0);
   #savedRevision = $state(0);
   #loaded = false;
+  #unreadable = false;
   error = $state.raw<unknown>();
   #serial = serial();
   #debounceTimer?: ReturnType<typeof setTimeout>;
@@ -289,6 +293,10 @@ class CheckpointStore<T> {
     return this.#revision !== this.#savedRevision;
   }
 
+  get preservedUnreadable() {
+    return !!this.options.preserveUnreadable && this.#unreadable;
+  }
+
   async load(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
     if (this.#loaded) return;
@@ -305,8 +313,12 @@ class CheckpointStore<T> {
           this.error = undefined;
         }
         this.#loaded = true;
+        this.#unreadable = false;
       } catch (error) {
-        if (!signal?.aborted) this.error = error;
+        if (!signal?.aborted) {
+          this.error = error;
+          this.#unreadable = true;
+        }
         throw error;
       }
     });
@@ -342,6 +354,8 @@ class CheckpointStore<T> {
     this.#clearTimers();
     return this.#serial(async () => {
       if (!this.dirty) return;
+      if (this.options.preserveUnreadable && this.#unreadable)
+        throw this.error ?? new Error("Unreadable cache preserved.");
       this.#clearTimers();
       const revision = this.#revision;
       const value = this.#value;
@@ -1014,6 +1028,7 @@ export class Cache {
   readonly #disk: Disk | undefined;
   readonly #queue: CheckpointStore<Immutable<CachedQueue>>;
   readonly #playlists: CheckpointStore<Immutable<CachedPlaylists>>;
+  readonly #favourites: CheckpointStore<Immutable<FavouriteState>>;
   readonly #images: ImageStore;
   readonly #downloads: DownloadStore;
 
@@ -1044,6 +1059,13 @@ export class Cache {
       document: "playlists",
       initial: { listedAt: null, summaries: [], details: [] },
       parse: (value) => v.parse(playlistsSchema, value),
+      serialize: (value) => value,
+    });
+    this.#favourites = new CheckpointStore<Immutable<FavouriteState>>(this.#disk, {
+      document: "favourites",
+      preserveUnreadable: true,
+      initial: { fetchedAt: null, artists: [], albums: [], tracks: [] },
+      parse: (value) => v.parse(favouritesSchema, value),
       serialize: (value) => value,
     });
     this.#images = new ImageStore(this.#disk);
@@ -1089,6 +1111,7 @@ export class Cache {
       this.#library.load(signal),
       this.#queue.load(signal),
       this.#playlists.load(signal),
+      this.#favourites.load(signal),
       this.#images.load(signal),
       this.loadDownloads(signal),
     ]);
@@ -1097,6 +1120,20 @@ export class Cache {
       result.status === "rejected" ? [result.reason] : [],
     );
     if (errors.length) throw new AggregateError(errors, "Could not restore cache.");
+  }
+
+  get favourites() {
+    return this.#favourites.value;
+  }
+  get favouritesError() {
+    return this.#favourites.error;
+  }
+  get favouritesDirty() {
+    return this.#favourites.dirty;
+  }
+  setFavourites(value: Immutable<FavouriteState>) {
+    this.#requireDisk();
+    this.#favourites.set(structuredClone(value));
   }
 
   get playlists() {
@@ -1130,11 +1167,16 @@ export class Cache {
   }
 
   /** Checkpoint independent documents, waiting for every attempt before reporting failure. */
-  async flush(): Promise<void> {
+  async flush(options: { retiring?: boolean } = {}): Promise<void> {
     const results = await Promise.allSettled([
       this.#library.flush(),
       this.#queue.flush(),
       this.#playlists.flush(),
+      // Preserved corruption is terminal, not a write that retirement can drain.
+      // Ordinary flush still reports it; memory remains honestly dirty/unsaved.
+      options.retiring && this.#favourites.preservedUnreadable
+        ? undefined
+        : this.#favourites.flush(),
       this.#images.store.flush(),
       this.#downloads.flush(),
     ]);
@@ -1149,6 +1191,7 @@ export class Cache {
       this.#library.error,
       this.#queue.error,
       this.#playlists.error,
+      this.#favourites.error,
       this.#images.error,
       this.#downloads.error,
     ].filter((error) => error !== undefined);
@@ -1195,7 +1238,22 @@ export class Cache {
 
   get dirty() {
     return (
-      this.#library.dirty || this.#queue.dirty || this.#playlists.dirty || this.#images.store.dirty
+      this.#library.dirty ||
+      this.#queue.dirty ||
+      this.#playlists.dirty ||
+      this.#favourites.dirty ||
+      this.#images.store.dirty
+    );
+  }
+
+  /** Drainable checkpoints only; preserved unreadable favourites remain dirty, not writable. */
+  get pendingWrites() {
+    return (
+      this.#library.dirty ||
+      this.#queue.dirty ||
+      this.#playlists.dirty ||
+      (this.#favourites.dirty && !this.#favourites.preservedUnreadable) ||
+      this.#images.store.dirty
     );
   }
 

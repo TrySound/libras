@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import fuzzysort from "fuzzysort";
+import { SvelteSet } from "svelte/reactivity";
+import { Favourites } from "../src/favourites.svelte";
 import { expect, it, vi } from "vitest";
 import Harness from "./search-test-app.svelte";
 import type Search from "../src/_search.svelte";
@@ -21,6 +23,7 @@ it("focuses the input, expands results, retains route state, and uses album play
   const props = {
     cache: {
       savedAt: 1,
+      favourites: { fetchedAt: null, artists: [], albums: [], tracks: [] },
       queue: { tracks: ["0"], index: 0 },
       artists: new Map([["artist", { id: "artist", name: "Artist" }]]),
       albums: new Map([
@@ -37,6 +40,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     },
     playback,
   } as unknown as Omit<ComponentProps<typeof Search>, "state">;
+  props.favourites = new Favourites({ cache: props.cache });
   const target = document.createElement("div");
   document.body.append(target);
   const app = mount(Harness, { target, props: { props } });
@@ -175,6 +179,81 @@ it("focuses the input, expands results, retains route state, and uses album play
   }
 });
 
+it("consumes dismissed Search selection without stealing focus on background download changes", async () => {
+  const tracks = ["0", "1", "2"].map((id) => ({
+    id,
+    title: `Song ${id}`,
+    albumId: "album",
+    artistIds: ["artist"],
+    genres: [],
+  }));
+  const downloaded = new SvelteSet(["0", "1"]);
+  const props = {
+    cache: {
+      savedAt: 1,
+      favourites: { fetchedAt: null, artists: [], albums: [], tracks: [] },
+      queue: { tracks: [], index: -1 },
+      artists: new Map([["artist", { id: "artist", name: "Artist" }]]),
+      albums: new Map([
+        ["album", { id: "album", title: "Album", artistIds: ["artist"], genres: [] }],
+      ]),
+      tracks: new Map(tracks.map((track) => [track.id, track])),
+      albumTracks: new Map([["album", tracks]]),
+      artistAlbums: new Map(),
+    },
+    session: { localReady: true, offlineMode: true },
+    trackEngine: { getStatus: (id: string) => (downloaded.has(id) ? "downloaded" : "idle") },
+    covers: { ensureCover: () => ({ load: vi.fn(), source: undefined }) },
+    playback: {},
+  } as unknown as Omit<ComponentProps<typeof Search>, "state">;
+  props.favourites = new Favourites({ cache: props.cache });
+  const target = document.createElement("div");
+  document.body.append(target);
+  const app = mount(Harness, { target, props: { props } });
+  flushSync();
+  try {
+    const input = target.querySelector("input")!;
+    input.value = ":track";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    flushSync();
+    const select = () => {
+      target
+        .querySelector<HTMLButtonElement>('.only-mobile[aria-label="Open menu for Song 0"]')!
+        .click();
+      flushSync();
+    };
+    const other = [...target.querySelectorAll("button")].find(
+      (button) => button.textContent === "Toggle route",
+    )!;
+    select(); // Native overlay is closed in the DOM emulator: model prior dismissal.
+    other.focus();
+    downloaded.delete("0");
+    flushSync();
+    expect(document.activeElement).toBe(other);
+    downloaded.add("2");
+    flushSync();
+    expect(document.activeElement).toBe(other);
+    downloaded.add("0");
+    flushSync();
+    select();
+    const sheet = target.querySelector<HTMLDialogElement>("#search-menu")!;
+    sheet.showModal();
+    downloaded.delete("0");
+    flushSync();
+    expect(sheet.open).toBe(false);
+    expect(document.activeElement).toBe(input);
+    other.focus();
+    downloaded.delete("1");
+    flushSync();
+    downloaded.add("1");
+    flushSync();
+    expect(document.activeElement).toBe(other);
+  } finally {
+    await unmount(app);
+    target.remove();
+  }
+});
+
 it.each([
   { localReady: false, savedAt: undefined, offlineMode: false, heading: undefined },
   { localReady: true, savedAt: undefined, offlineMode: false, heading: "Connect your library" },
@@ -188,6 +267,7 @@ it.each([
     const props = {
       cache: {
         savedAt,
+        favourites: { fetchedAt: null, artists: [], albums: [], tracks: [] },
         queue: { tracks: [], index: 0 },
         artists: new Map(),
         albums: new Map(),
@@ -200,6 +280,7 @@ it.each([
       covers: {},
       playback: {},
     } as unknown as Omit<ComponentProps<typeof Search>, "state">;
+    props.favourites = new Favourites({ cache: props.cache });
     const app = mount(Harness, { target, props: { props } });
     flushSync();
     try {

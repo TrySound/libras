@@ -411,7 +411,7 @@ it("shows playing indicators only on selected track rows and labels pending tran
     expect(row(scope).querySelector('[aria-hidden="true"]')).not.toBeNull();
   }
   const transportButtons = () =>
-    Array.from(target.querySelectorAll<HTMLButtonElement>("button[aria-busy]"));
+    Array.from(target.querySelectorAll<HTMLButtonElement>("button[aria-busy]:not([aria-pressed])"));
   expect(transportButtons()).toHaveLength(3);
   expect(
     transportButtons().every(

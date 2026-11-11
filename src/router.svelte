@@ -41,29 +41,32 @@
     routes.map((route) => ({ route, pattern: new URLPattern({ pathname: route.pattern }) })),
   );
 
-  const initialMatch = resolve(new URL(window.location.href));
+  const initialMatch = resolve(new URL(window.location.href), window.navigation.currentEntry?.key);
   let match = $state.raw(initialMatch);
   route.pattern = initialMatch.route.pattern;
 
-  function resolve(url: URL): { route: RenderRoute; params: RouteParams } {
+  function resolve(url: URL, entryKey?: string): { route: RenderRoute; params: RouteParams } {
     for (const { route, pattern } of compiled) {
       const result = pattern.exec({ pathname: url.search.slice(1) });
       if (!result) continue;
       return {
         route,
-        params: Object.fromEntries(
-          Object.entries(result.pathname.groups).map(([name, value]) => [
-            name,
-            value === undefined ? undefined : decodeURIComponent(value),
-          ]),
-        ),
+        params: {
+          entryKey,
+          ...Object.fromEntries(
+            Object.entries(result.pathname.groups).map(([name, value]) => [
+              name,
+              value === undefined ? undefined : decodeURIComponent(value),
+            ]),
+          ),
+        },
       };
     }
     return { route: defaultRoute, params: {} };
   }
 
-  function updateRoute(url: URL) {
-    match = resolve(url);
+  function updateRoute(url: URL, entryKey?: string) {
+    match = resolve(url, entryKey);
     route.pattern = match.route.pattern;
   }
 
@@ -97,7 +100,7 @@
         handler: async () => {
           const update = async () => {
             if (event.signal.aborted) return;
-            updateRoute(destination);
+            updateRoute(destination, window.navigation.currentEntry?.key);
             await tick();
           };
           if (

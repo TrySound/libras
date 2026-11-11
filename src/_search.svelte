@@ -1,7 +1,33 @@
 <script module lang="ts">
   import fuzzysort from "fuzzysort";
-  import type { Album, Artist, Track } from "./schema";
+  import type { Album, Artist, Track, FavouriteState } from "./schema";
   import type { Immutable } from "./cache.svelte";
+
+  export function parseSearch(query: string) {
+    const kinds = new Set<string>();
+    let favourite = false;
+    let directed = false;
+    const text = query
+      .trim()
+      .split(/\s+/)
+      .filter((token) => {
+        const directive = token.toLowerCase();
+        if ([":artist", ":album", ":track"].includes(directive)) {
+          kinds.add(directive.slice(1));
+          directed = true;
+          return false;
+        }
+        if (directive === ":favourite") {
+          favourite = true;
+          directed = true;
+          return false;
+        }
+        return true;
+      })
+      .join(" ");
+    return { text, kinds, favourite, directed };
+  }
+  const kindFor = { Artists: "artists", Albums: "albums", Tracks: "tracks" } as const;
 
   const searchGroups = ["Artists", "Albums", "Tracks"] as const;
 
@@ -14,10 +40,12 @@
     album: string;
     href?: string;
     artworkId?: string;
+    unavailable?: boolean;
   }
 
-  export function createSearchState() {
-    return { query: "", limits: { Artists: 3, Albums: 3, Tracks: 3 } };
+  export function createSearchState(query = "") {
+    const limit = parseSearch(query).directed ? 10 : 3;
+    return { query, limits: { Artists: limit, Albums: limit, Tracks: limit } };
   }
 
   type SearchState = ReturnType<typeof createSearchState>;
@@ -43,6 +71,7 @@
     albums: ReadonlyMap<string, Immutable<Album>>,
     tracks: ReadonlyMap<string, Immutable<Track>>,
     available?: (id: string) => boolean,
+    favourites?: Immutable<FavouriteState>,
   ) {
     const eligibleTracks = [...tracks.values()].filter(
       (track) => !available || available(track.id),
@@ -51,7 +80,14 @@
     const eligibleAlbums = [...albums.values()].filter(
       (album) => !available || albumIds.has(album.id),
     );
-    const artistIds = new Set(eligibleAlbums.flatMap((album) => album.artistIds));
+    const artistIds = new Set([
+      ...eligibleAlbums.flatMap((album) => album.artistIds),
+      // A downloaded album remains browsable under every credited contributor,
+      // including guests whose own track has not been downloaded.
+      ...[...tracks.values()]
+        .filter((track) => albumIds.has(track.albumId))
+        .flatMap((track) => track.artistIds),
+    ]);
     const artistPath = (id: string) => `?/library/artist/${encodeURIComponent(id)}`;
     const records: Record<SearchGroup, SearchRecord[]> = {
       Artists: [...artists.values()]
@@ -82,47 +118,92 @@
         album: albums.get(track.albumId)?.title ?? "",
       })),
     };
-    const snapshot = (group: SearchGroup) =>
-      fuzzysort.snapshot(records[group], {
-        keys: ["title", "artist", "album"],
+    const membership = Object.fromEntries(
+      searchGroups.map((group) => [
+        group,
+        new Set(favourites?.[kindFor[group]].map((item) => item.id)),
+      ]),
+    ) as Record<SearchGroup, Set<string>>;
+    if (!available && favourites) {
+      for (const group of searchGroups) {
+        const ids = new Set(records[group].map((item) => item.id));
+        for (const item of favourites[kindFor[group]]) {
+          if (!ids.has(item.id)) {
+            ids.add(item.id);
+            records[group].push({
+              ...item,
+              artist: item.artist ?? "",
+              album: "",
+              unavailable: true,
+            });
+          }
+        }
+      }
+    }
+    const groupIndex = (group: SearchGroup) => {
+      const prepare = (records: SearchRecord[]) => ({
+        records,
+        snapshot: fuzzysort.snapshot(records, { keys: ["title", "artist", "album"] }),
       });
+      return {
+        ordinary: prepare(records[group].filter((record) => !record.unavailable)),
+        favourite: prepare(records[group].filter((record) => membership[group].has(record.id))),
+      };
+    };
     return {
-      Artists: snapshot("Artists"),
-      Albums: snapshot("Albums"),
-      Tracks: snapshot("Tracks"),
+      Artists: groupIndex("Artists"),
+      Albums: groupIndex("Albums"),
+      Tracks: groupIndex("Tracks"),
       size: Object.values(records).reduce((sum, group) => sum + group.length, 0),
     };
   }
 
   export function searchLibrary(index: ReturnType<typeof createSearchIndex>, query: string) {
+    const parsed = parseSearch(query);
     query = query.trim().replace(/\s+/g, " ");
     const groups = searchGroups.map((group) => {
+      const kind = kindFor[group].slice(0, -1);
+      const eligible = !parsed.kinds.size || parsed.kinds.has(kind);
+      const { records: candidates, snapshot } =
+        index[group][parsed.favourite ? "favourite" : "ordinary"];
       // Retrieve matches explicitly without a library limit so equal scores can be
       // ordered deterministically before applying the UI limit.
-      const matches = query
-        ? [
-            ...fuzzysort.go(query, index[group], {
-              limit: 0,
-              // Keep consonant abbreviations such as “frmtn” → “Formation”.
-              threshold: 0.2,
-              scoreFn: (result) => result.score * (0.8 + 0.2 * result[0].score),
-            }),
-          ].sort(
-            (a, b) => b.score - a.score || (a.obj.id < b.obj.id ? -1 : a.obj.id > b.obj.id ? 1 : 0),
-          )
-        : [];
+      const matches = !eligible
+        ? []
+        : parsed.text
+          ? [
+              ...fuzzysort.go(parsed.text, snapshot, {
+                limit: 0,
+                // Keep consonant abbreviations such as “frmtn” → “Formation”.
+                threshold: 0.2,
+                scoreFn: (result) => result.score * (0.8 + 0.2 * result[0].score),
+              }),
+            ].sort(
+              (a, b) =>
+                b.score - a.score || (a.obj.id < b.obj.id ? -1 : a.obj.id > b.obj.id ? 1 : 0),
+            )
+          : parsed.directed
+            ? [...candidates]
+                .sort(
+                  (a, b) =>
+                    a.title.localeCompare(b.title) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+                )
+                .map((obj) => ({ obj }))
+            : [];
       return {
         group,
         total: matches.length,
         records: matches.map((result) => result.obj),
       };
     });
-    return { query, groups };
+    return { query, groups, ...parsed };
   }
 </script>
 
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import FavouriteButton from "./ui/favourite-button.svelte";
+  import type { Favourites } from "./favourites.svelte";
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -132,12 +213,14 @@
   import type { Session } from "./session.svelte";
   import type { Playback } from "./playback.svelte";
 
+  let searchInput = $state<HTMLInputElement>();
   let {
     cache,
     covers,
     trackEngine,
     session,
     playback,
+    favourites,
     appName = "Libras",
     state: searchState,
   }: {
@@ -146,6 +229,7 @@
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
+    favourites: Favourites;
     state: SearchState;
     appName?: string;
   } = $props();
@@ -156,6 +240,7 @@
       cache.albums,
       cache.tracks,
       session.offlineMode ? isAvailable : undefined,
+      cache.favourites,
     ),
   );
 
@@ -187,19 +272,14 @@
   const menuItem = $derived.by(() => {
     if (!menuSelection || menuSelection.cache !== cache) return;
     const { group, id } = menuSelection;
-    const item =
-      group === "Artists"
-        ? cache.artists.get(id)
-        : group === "Albums"
-          ? cache.albums.get(id)
-          : cache.tracks.get(id);
-    return item
-      ? { group, id, title: "name" in item ? item.name : item.title, artworkId: item.artworkId }
-      : undefined;
+    const item = matches.groups
+      .find((result) => result.group === group)
+      ?.records.find((record) => record.id === id);
+    return item ? { ...item, group } : undefined;
   });
 
   const menuTracks = $derived.by(() => {
-    if (!menuItem) return [];
+    if (!menuItem || menuItem.unavailable) return [];
     if (menuItem.group === "Artists") {
       return (cache.artistAlbums.get(menuItem.id) ?? []).flatMap(
         (album) => cache.albumTracks.get(album.id) ?? [],
@@ -227,7 +307,20 @@
     popover.hidePopover?.();
   }
 
+  $effect(() => {
+    if (!menuItem && menuSelection) {
+      const wasOpen = sheet?.open || popover?.matches(":popover-open");
+      if (wasOpen) dismissActions();
+      // Consume the disappeared selection, even if its overlay was already dismissed.
+      // Later background index changes must not steal the user's new focus.
+      menuSelection = undefined;
+      if (wasOpen) searchInput?.focus({ preventScroll: true });
+    }
+  });
+
   function supportingText(group: SearchGroup, record: SearchRecord) {
+    if (record.unavailable)
+      return [record.artist, "Unavailable in your library"].filter(Boolean).join(" · ");
     if (group === "Artists") {
       const albums = (cache.artistAlbums.get(record.id) ?? []).filter(
         (album) =>
@@ -277,6 +370,7 @@
     <label class="label" for="library-search">Search library</label>
     <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
     <input
+      bind:this={searchInput}
       class="input"
       id="library-search"
       type="search"
@@ -286,10 +380,26 @@
       autocapitalize="off"
       spellcheck="false"
       bind:value={searchState.query}
-      oninput={() => (searchState.limits = createSearchState().limits)}
+      oninput={(event) =>
+        (searchState.limits = createSearchState(event.currentTarget.value).limits)}
       autofocus
     />
+    <p class="caption text-secondary">Filter with :artist, :album, :track, or :favourite.</p>
   </search>
+  {#if matches.favourite && (favourites.loading || favourites.error || cache.favouritesError || cache.favourites.fetchedAt === null)}
+    <div class="card stack-sm" aria-busy={favourites.loading}>
+      <p class="caption">
+        {favourites.loading
+          ? "Loading favourites…"
+          : favourites.error
+            ? `Favourites need attention: ${favourites.error instanceof Error ? favourites.error.message : "Could not load favourites."}`
+            : cache.favourites.fetchedAt === null
+              ? "Favourites haven’t been loaded."
+              : "Confirmed favourites could not be saved to this device cache."}
+      </p>
+      <a href="?/settings">Open settings</a>
+    </div>
+  {/if}
   {#if libraryError}
     <div class="card stack-md">
       <h2 class="heading-sm">Library needs attention</h2>
@@ -303,7 +413,7 @@
     </div>
   {/if}
   <div class="stack-xl" aria-busy={!session.localReady}>
-    {#if index.size === 0}
+    {#if index.size === 0 && !matches.favourite}
       {#if session.localReady}
         <div class="stack-md">
           <h2 class="heading-sm">
@@ -335,8 +445,22 @@
       <p class="body text-secondary">Type to find music in your library.</p>
     {:else if results.every((result) => result.total === 0)}
       <div class="stack-md">
-        <h2 class="heading-sm">No matches found.</h2>
-        <p class="body">Try another artist, album, or track name.</p>
+        <h2 class="heading-sm">
+          {matches.favourite
+            ? cache.favourites.fetchedAt === null
+              ? "Favourites are not available yet."
+              : !cache.favourites.artists.length &&
+                  !cache.favourites.albums.length &&
+                  !cache.favourites.tracks.length
+                ? "No favourites yet."
+                : "No matching favourites."
+            : "No matches found."}
+        </h2>
+        <p class="body">
+          {matches.favourite
+            ? "Add favourites through item Actions, or change your search/filter."
+            : "Try another artist, album, or track name."}
+        </p>
       </div>
     {:else}
       {#each results as { group, records, total }}
@@ -369,7 +493,7 @@
                       data-longpress="show-modal"
                       onfocus={() => selectMenu(group, record.id)}
                     ></a>
-                  {:else}
+                  {:else if !record.unavailable && group === "Tracks"}
                     <button
                       class="button-quiet link-target"
                       aria-label={currentTrackId === record.id
@@ -514,6 +638,12 @@
         {/if}
         <span>{downloadPresentation[menuDownloadStatus].label}</span>
       </button>
+      <FavouriteButton
+        {favourites}
+        focusFallback={searchInput}
+        overlayId={target}
+        target={menuItem ? { kind: kindFor[menuItem.group], id: menuItem.id } : undefined}
+      />
     </div>
   </div>
 {/snippet}
