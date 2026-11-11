@@ -1596,6 +1596,8 @@
     background: var(--shell-bg) var(--palette-maroon-shade-7);
     color: var(--text-primary);
     border: var(--border-width) solid var(--shell-border);
+    border-radius: var(--radius-xl);
+    corner-shape: var(--corner-shape);
     overscroll-behavior: contain;
     &::backdrop {
       background: rgb(from #130000 r g b / 65%);

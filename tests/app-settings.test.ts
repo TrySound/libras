@@ -109,24 +109,76 @@ async function setup(
   });
   const button = (label: string) =>
     [...target.querySelectorAll("button")].find(
-      (button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label,
+      (button) =>
+        (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label &&
+        (label !== "Disconnect" || button.id === "settings-disconnect"),
     )!;
-  const offline = () => target.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  const offline = () => target.querySelector<HTMLInputElement>("#settings-offline")!;
+  const confirmDisconnect = (cleanup = false) => {
+    const dialog = target.querySelector<HTMLDialogElement>("#disconnect-dialog")!;
+    const checkbox = dialog.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(checkbox.checked).toBe(false);
+    expect(checkbox.getAttribute("role")).toBe("switch");
+    expect(checkbox.classList.contains("switch")).toBe(true);
+    if (cleanup) {
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    [...dialog.querySelectorAll("button")]
+      .find((button) => button.textContent === "Disconnect")!
+      .click();
+  };
   const fill = (host = credentials.host) => {
-    const inputs = [...target.querySelectorAll<HTMLInputElement>("form input")];
+    const inputs = [...target.querySelectorAll<HTMLInputElement>("#settings-server form input")];
     for (const [index, value] of [host, credentials.username, "password"].entries()) {
       inputs[index].value = value;
       inputs[index].dispatchEvent(new Event("input", { bubbles: true }));
     }
     target
-      .querySelector("form")!
+      .querySelector("#settings-server form")!
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     flushSync();
   };
-  return { ...fixture, target, button, offline, fill, navigate };
+  return { ...fixture, target, button, offline, fill, navigate, confirmDisconnect };
 }
 
 describe("app settings", () => {
+  it("closes confirmation immediately and silently finishes a rejected cache clear", async () => {
+    const { target, button, session, selection, auth, confirmDisconnect, fill } = await setup(
+      true,
+      false,
+    );
+    const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
+    const cache = selection.cache;
+    const pending = deferred();
+    const deletion = vi.spyOn(selection.cache!, "clear").mockImplementationOnce(async () => {
+      await pending.promise;
+      throw new Error("Denied");
+    });
+    button("Disconnect").click();
+    confirmDisconnect(true);
+    flushSync();
+    expect(session.auth).toBeNull();
+    expect(auth.loadAccount()).not.toBeNull();
+    expect(auth.load()).toBeNull();
+    expect(target.querySelector("dialog")?.open).toBe(false);
+    expect(target.querySelector("#settings-server")?.textContent).toContain("Deleting local data…");
+    expect(target.querySelector("#settings-connect")).toBeNull();
+    pending.resolve();
+    await vi.waitFor(() => {
+      flushSync();
+      expect(target.querySelector("#settings-connect")).not.toBeNull();
+    });
+    expect(target.querySelector("#settings-server [role=alert]")).toBeNull();
+    expect(button("Retry cleanup")).toBeUndefined();
+    expect(target.textContent).not.toContain("Deleting local data…");
+    expect(deletion).toHaveBeenCalledOnce();
+    expect(selection.cache).toBe(cache);
+    expect(reload).not.toHaveBeenCalled();
+    fill();
+    await vi.waitFor(() => expect(session.auth).not.toBeNull());
+  });
+
   it("keeps one login form and automatically verifies a direct password", async () => {
     const { target, fill, session, validate, auth } = await setup(false, false);
     expect(target.querySelectorAll('input[type="radio"]')).toHaveLength(0);
@@ -594,7 +646,8 @@ describe("app settings", () => {
     },
   );
   it("shows read-only connection information and allows disconnect during refresh", async () => {
-    const { target, session, auth, metadata, button, offline } = await setup(true);
+    const { target, session, auth, metadata, button, offline, confirmDisconnect } =
+      await setup(true);
     const server = target.querySelector("#settings-server")!;
     expect(server.querySelector("#settings-server-identity")?.textContent).toBe(
       `${credentials.username}@${new URL(credentials.host).host}`,
@@ -602,7 +655,7 @@ describe("app settings", () => {
     expect(server.querySelector("#settings-connection-status")?.textContent).toMatch(
       /Connected\s+·\s+listener@music\.example/,
     );
-    expect(server.querySelectorAll("button")).toHaveLength(2);
+    expect(server.querySelectorAll("button")).toHaveLength(3);
     expect(button("Refresh library")).toBeDefined();
     expect(button("Disconnect")).toBeDefined();
     expect(target.querySelector("#settings-server form")).toBeNull();
@@ -619,10 +672,24 @@ describe("app settings", () => {
     await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
     button("Disconnect").click();
     flushSync();
+    expect(auth.load()).not.toBeNull();
+    const checkbox = target.querySelector<HTMLInputElement>("#disconnect-dialog-delete-local")!;
+    expect(checkbox.checked).toBe(false);
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    button("Cancel").click();
+    expect(auth.load()).not.toBeNull();
+    button("Disconnect").click();
+    flushSync();
+    expect(checkbox.checked).toBe(false);
+    confirmDisconnect();
+    flushSync();
     expect(auth.load()).toBeNull();
     expect(target.querySelector("#settings-server form")).not.toBeNull();
     expect(
-      [...target.querySelectorAll<HTMLInputElement>("form input")].map((input) => input.value),
+      [...target.querySelectorAll<HTMLInputElement>("#settings-server form input")].map(
+        (input) => input.value,
+      ),
     ).toEqual(["", "", ""]);
     expect(offline().checked).toBe(true);
     expect(offline().disabled).toBe(true);
@@ -644,10 +711,12 @@ describe("app settings", () => {
     expect(connect.disabled).toBe(false);
     expect(connect.getAttribute("aria-disabled")).toBe("true");
     expect(
-      [...target.querySelectorAll<HTMLInputElement>("form input")].every((input) => input.disabled),
+      [...target.querySelectorAll<HTMLInputElement>("#settings-server form input")].every(
+        (input) => input.disabled,
+      ),
     ).toBe(true);
     target
-      .querySelector("form")!
+      .querySelector("#settings-server form")!
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
     pending.reject(new Error("Unauthorized"));

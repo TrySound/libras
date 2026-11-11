@@ -30,6 +30,29 @@ afterEach(async () => {
 
 const input = { host: credentials.host, username: credentials.username, password: "password" };
 
+describe("disconnect and cache clear", () => {
+  it("keeps identity and reconnects using the same cache after deletion is denied", async () => {
+    const disk = installDisk();
+    const { session, selection, auth, storage } = await connected();
+    const cache = session.cache!;
+    storage.setItem("unrelated-preference", "keep");
+    expect(session.disconnect()).toBe(true);
+    disk.state.failRemove = true;
+    await expect(cache.clear()).rejects.toThrow("Deletion denied");
+    expect(auth.load()).toBeNull();
+    expect(auth.loadAccount()).toEqual({
+      host: credentials.host,
+      username: credentials.username,
+    });
+    expect(storage.getItem("unrelated-preference")).toBe("keep");
+    expect(selection.cache).toBe(cache);
+    expect(await session.connect(input)).toBe(true);
+    expect(selection.cache).toBe(cache);
+    cache.setQueue({ tracks: [], index: -1, position: 0 });
+    await cache.flush();
+  });
+});
+
 describe("session", () => {
   it("reports failed metadata restoration without preventing offline queue restoration", async () => {
     const { session, metadata, playback, storage, loadCache } = setup(true);

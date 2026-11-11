@@ -16,11 +16,31 @@ const tracks = Array.from({ length: 6 }, (_, i) => ({
   ...(i === 0 ? { coverArt: "cover" } : {}),
 }));
 
+const otherArtist = { id: "other-artist", name: "Other account artist" };
+const otherAlbum = { id: "other-album", name: "Other account album", artists: [otherArtist] };
+const otherTracks = [
+  {
+    ...tracks[0],
+    id: "other-track",
+    title: "Other account track",
+    albumId: otherAlbum.id,
+    album: otherAlbum.name,
+    artists: [otherArtist],
+  },
+];
+
 test("Downloads redesign preserves real transfer states and offline files", async (t) => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
+  });
+  await page.addInitScript(() => {
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...args) {
+      window.testAudio = this;
+      return play.apply(this, args);
+    };
   });
   let release;
   let gate = new Promise((resolve) => {
@@ -28,6 +48,22 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
   });
   let streams = 0;
   let retrySucceeds = false;
+  let libraryGate = Promise.resolve();
+  let releaseLibrary = () => {};
+  // Decodable saved audio lets cleanup exercise real cached playback, not only file records.
+  const audio = Buffer.alloc(44 + 8000 * 2 * 60);
+  audio.write("RIFF", 0);
+  audio.writeUInt32LE(audio.length - 8, 4);
+  audio.write("WAVEfmt ", 8);
+  audio.writeUInt32LE(16, 16);
+  audio.writeUInt16LE(1, 20);
+  audio.writeUInt16LE(1, 22);
+  audio.writeUInt32LE(8000, 24);
+  audio.writeUInt32LE(16000, 28);
+  audio.writeUInt16LE(2, 32);
+  audio.writeUInt16LE(16, 34);
+  audio.write("data", 36);
+  audio.writeUInt32LE(audio.length - 44, 40);
   const errors = [];
   const unexpected = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -40,7 +76,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       await route.fulfill({
         status: !retrySucceeds && url.searchParams.get("id") === "track-6" ? 500 : 200,
         contentType: "audio/mpeg",
-        body: "test audio bytes",
+        body: audio,
       });
       return;
     }
@@ -55,19 +91,22 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     let fields = {};
     if (method === "ping")
       fields = { version: "1.16.1", type: "test-server", serverVersion: "1", openSubsonic: true };
-    else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
+    else if (method === "getIndexes") fields = { indexes: { lastModified: 2 } };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
     else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
+    else if (method === "savePlayQueue") fields = {};
     else if (method === "search3") {
+      await libraryGate;
+      const other = url.searchParams.get("u") === "other";
       const slice = (values, name) => {
         const offset = Number(url.searchParams.get(`${name}Offset`) ?? 0);
         return values.slice(offset, offset + Number(url.searchParams.get(`${name}Count`) ?? 500));
       };
       fields = {
         searchResult3: {
-          artist: slice([artist], "artist"),
-          album: slice([album], "album"),
-          song: slice(tracks, "song"),
+          artist: slice([other ? otherArtist : artist], "artist"),
+          album: slice([other ? otherAlbum : album], "album"),
+          song: slice(other ? otherTracks : tracks, "song"),
         },
       };
     } else unexpected.push(method);
@@ -77,6 +116,41 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     });
   });
   const navigate = (path) => page.goto(new URL(`?${path}`, base).href);
+  const connect = async (username = "listener") => {
+    await page.getByLabel("Host", { exact: true }).fill("https://music.example.test");
+    await page.getByLabel("Username", { exact: true }).fill(username);
+    await page.getByLabel("Password", { exact: true }).fill("fictional-password");
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page
+      .getByRole("link", {
+        name: username === "other" ? otherArtist.name : artist.name,
+        exact: true,
+      })
+      .waitFor();
+  };
+  const cleanup = async () => {
+    await page.getByRole("link", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+    await page.getByRole("dialog").getByRole("switch").check();
+    await page.getByRole("dialog").getByRole("button", { name: "Disconnect", exact: true }).click();
+    await page.locator("#server-host").waitFor();
+  };
+  const artistAction = async (action, name = artist.name) => {
+    const artistTile = page.getByRole("link", { name, exact: true });
+    await artistTile.hover();
+    await page.mouse.down();
+    await page.waitForTimeout(600);
+    await page.mouse.up();
+    await page.locator("#artist-menu").getByRole("button", { name: action, exact: true }).click();
+  };
+  const playCached = async (name = artist.name) => {
+    await artistAction("Play", name);
+    await page.waitForFunction(() => {
+      const audio = window.testAudio;
+      return audio && !audio.paused && audio.currentSrc.startsWith("blob:");
+    });
+    await page.waitForFunction(() => document.querySelector('img[src^="blob:"]'));
+  };
   try {
     await page.goto(base);
     await page.locator("#server-host").waitFor();
@@ -103,21 +177,9 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     });
 
     await navigate("/settings");
-    await page.getByLabel("Host", { exact: true }).fill("https://music.example.test");
-    await page.getByLabel("Username", { exact: true }).fill("listener");
-    await page.getByLabel("Password", { exact: true }).fill("fictional-password");
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
-    const tile = page.getByRole("link", { name: artist.name, exact: true });
-    await tile.waitFor();
+    await connect();
     // Use the existing long-press interaction, rather than invoking a domain method.
-    await tile.hover();
-    await page.mouse.down();
-    await page.waitForTimeout(600);
-    await page.mouse.up();
-    await page
-      .locator("#artist-menu")
-      .getByRole("button", { name: "Download", exact: true })
-      .click();
+    await artistAction("Download");
     await page.locator('.app-sidebar a[href="?/downloads"]').click();
 
     await t.test(
@@ -336,9 +398,21 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       },
     );
 
-    await t.test("disconnect and reload retain offline downloads", async () => {
-      await navigate("/settings");
+    await t.test("unchecked disconnect retains cached playback and offline downloads", async () => {
+      await navigate("/library");
+      await playCached();
+      await page.getByRole("link", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Disconnect", exact: true })
+        .click();
+      assert.equal(
+        await page.evaluate(
+          () => !window.testAudio.paused && window.testAudio.currentSrc.startsWith("blob:"),
+        ),
+        true,
+      );
       await navigate("/downloads");
       await page.reload();
       await page.waitForFunction(
@@ -352,10 +426,190 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       assert.equal(await page.getByRole("button", { name: /^Retry download of 6/ }).count(), 0);
       assert.equal(await page.getByRole("button", { name: "Show errors", exact: true }).count(), 0);
     });
+    await t.test(
+      "cleanup deletes completed audio and aborts late transfers without recreating OPFS",
+      async () => {
+        const directories = () =>
+          page.evaluate(async () => {
+            const accounts = await (
+              await navigator.storage.getDirectory()
+            ).getDirectoryHandle("accounts");
+            return Array.fromAsync(accounts.keys());
+          });
+        await navigate("/settings");
+        await connect();
+        await cleanup();
+        assert.deepEqual(await directories(), []);
+        gate = new Promise((resolve) => {
+          release = resolve;
+        });
+        await connect();
+        await artistAction("Download");
+        await page.waitForFunction(() =>
+          document
+            .querySelector('.app-sidebar a[href="?/downloads"]')
+            ?.getAttribute("aria-label")
+            ?.includes("6 active"),
+        );
+        await cleanup();
+        release();
+        await page.waitForTimeout(700);
+        assert.deepEqual(await directories(), []);
+        await page.locator("#server-host").waitFor();
+        await page.locator('.app-sidebar a[href="?/downloads"]').click();
+        await page.getByRole("heading", { name: "No downloads yet" }).waitFor();
+        assert.deepEqual(await directories(), []);
+      },
+    );
+    for (const username of ["listener", "other"]) {
+      await t.test(
+        `clear then ${username === "listener" ? "same" : "different"} account completes fresh downloads and cached playback`,
+        async () => {
+          await page.getByRole("link", { name: "Settings", exact: true }).click();
+          await connect(username);
+          const ownArtist = username === "listener" ? artist : otherArtist;
+          const ownTracks = username === "listener" ? tracks : otherTracks;
+          assert.equal(
+            await page
+              .getByRole("link", {
+                name: username === "listener" ? otherArtist.name : artist.name,
+                exact: true,
+              })
+              .count(),
+            0,
+          );
+          assert.equal(
+            await page.getByRole("button", { name: "Open Now Playing", exact: true }).count(),
+            0,
+          );
+          const queue = await page.evaluate(async () => {
+            const account = JSON.parse(localStorage.getItem("navidrome-account"));
+            const digest = await crypto.subtle.digest(
+              "SHA-256",
+              new TextEncoder().encode(JSON.stringify([account.host, account.username])),
+            );
+            const key = Array.from(new Uint8Array(digest), (byte) =>
+              byte.toString(16).padStart(2, "0"),
+            ).join("");
+            const accounts = await (
+              await navigator.storage.getDirectory()
+            ).getDirectoryHandle("accounts");
+            const directory = await accounts.getDirectoryHandle(key);
+            try {
+              return JSON.parse(
+                await (await (await directory.getFileHandle("queue.json")).getFile()).text(),
+              );
+            } catch (error) {
+              if (error.name !== "NotFoundError") throw error;
+              return { tracks: [], index: -1, position: 0 };
+            }
+          });
+          assert.deepEqual(queue, { tracks: [], index: -1, position: 0 });
+          await page.locator('.app-sidebar a[href="?/downloads"]').click();
+          await page.getByRole("heading", { name: "No downloads yet" }).waitFor();
+          await page.getByRole("link", { name: "Libras home", exact: true }).click();
+          const before = streams;
+          await artistAction("Download", ownArtist.name);
+          await page.locator('.app-sidebar a[href="?/downloads"]').click();
+          await page.waitForFunction(
+            (count) => document.querySelectorAll('[aria-label="Downloaded"]').length === count,
+            ownTracks.length,
+          );
+          assert.equal(streams, before + ownTracks.length);
+          assert.ok(
+            (await page.locator('[aria-labelledby="downloads-heading"]').textContent()).includes(
+              ownTracks[0].title,
+            ),
+          );
+          await page.getByRole("link", { name: "Libras home", exact: true }).click();
+          await playCached(ownArtist.name);
+          assert.equal(
+            streams,
+            before + ownTracks.length,
+            "playback uses the newly completed local files",
+          );
+          await cleanup();
+        },
+      );
+    }
+    await t.test(
+      "empty-catalog account selection restores queued intent despite delayed library hydration",
+      async () => {
+        // Seed the documented OPFS documents directly so this suite also runs against production preview.
+        await page.evaluate(
+          async ({ track, artist, album }) => {
+            const identity = JSON.stringify(["https://music.example.test", "listener"]);
+            const digest = await crypto.subtle.digest(
+              "SHA-256",
+              new TextEncoder().encode(identity),
+            );
+            const key = Array.from(new Uint8Array(digest), (byte) =>
+              byte.toString(16).padStart(2, "0"),
+            ).join("");
+            const root = await navigator.storage.getDirectory();
+            const accounts = await root.getDirectoryHandle("accounts", { create: true });
+            const directory = await accounts.getDirectoryHandle(key, { create: true });
+            for (const [name, value] of Object.entries({
+              library: { savedAt: 1, lastModified: 1, artists: [], albums: [], tracks: [] },
+              images: [],
+              downloads: {
+                version: 2,
+                records: [
+                  {
+                    track: {
+                      id: track.id,
+                      title: track.title,
+                      artist: artist.name,
+                      album: album.name,
+                      contentType: track.contentType,
+                    },
+                    format: "raw",
+                    contentType: track.contentType,
+                    status: "queued",
+                  },
+                ],
+              },
+            })) {
+              const writer = await (
+                await directory.getFileHandle(`${name}.json`, { create: true })
+              ).createWritable();
+              await writer.write(JSON.stringify(value));
+              await writer.close();
+            }
+          },
+          { track: tracks[0], artist, album },
+        );
+        libraryGate = new Promise((resolve) => {
+          releaseLibrary = resolve;
+        });
+        const requested = page.waitForRequest((request) => {
+          const url = new URL(request.url());
+          return (
+            /\/search3(?:\.view)?$/.test(url.pathname) && url.searchParams.get("u") === "listener"
+          );
+        });
+        const before = streams;
+        const connecting = connect();
+        await requested;
+        await page.waitForTimeout(100);
+        releaseLibrary();
+        await connecting;
+        await page.locator('.app-sidebar a[href="?/downloads"]').click();
+        await page.locator('[aria-label="Downloaded"]').waitFor();
+        assert.equal(await page.locator('[aria-label="Downloaded"]').count(), 1);
+        assert.equal(streams, before + 1);
+        assert.ok(
+          (await page.locator('[aria-labelledby="downloads-heading"]').textContent()).includes(
+            tracks[0].title,
+          ),
+        );
+      },
+    );
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
   } finally {
     release();
+    releaseLibrary();
     await browser.close();
   }
 });

@@ -24,6 +24,7 @@ export function installDisk() {
   const blobs = new Map<string, Blob>();
   const state = {
     failClose: false,
+    failRemove: false,
     beforeRead: async (_path: string) => {},
     beforeWrite: (_path: string) => {},
     beforeClose: async (_path: string) => {},
@@ -75,9 +76,15 @@ export function installDisk() {
           },
         };
       },
-      async removeEntry(name: string) {
-        files.delete(`${path}/${name}`);
-        blobs.delete(`${path}/${name}`);
+      async removeEntry(name: string, options?: { recursive?: boolean }) {
+        if (state.failRemove) throw new DOMException("Deletion denied", "NotAllowedError");
+        const target = `${path}/${name}`;
+        for (const map of [files, blobs]) {
+          for (const key of map.keys()) {
+            if (key === target || (options?.recursive && key.startsWith(`${target}/`)))
+              map.delete(key);
+          }
+        }
       },
     };
   }

@@ -62,13 +62,86 @@
     password = "";
   }
 
-  function disconnectServer() {
-    session.disconnect();
+  let deleteLocalData = $state(false);
+
+  let cleaning = $state(false);
+
+  async function finishDisconnect() {
+    if (cleaning) return;
+    if (!session.disconnect()) return;
     host = username = password = "";
+    if (!deleteLocalData) return;
+    cleaning = true;
+    try {
+      await session.cache?.clear();
+    } catch {
+      // Disconnect succeeds even if optional local deletion fails.
+    } finally {
+      cleaning = false;
+    }
   }
 </script>
 
 <svelte:head><title>Settings | {appName}</title></svelte:head>
+
+<dialog
+  id="disconnect-dialog"
+  class="dialog"
+  closedby="any"
+  aria-labelledby="disconnect-dialog-title"
+>
+  {@render disconnectConfirmation("disconnect-dialog")}
+</dialog>
+
+<dialog
+  id="disconnect-sheet"
+  class="bottom-sheet"
+  closedby="any"
+  aria-labelledby="disconnect-sheet-title"
+  data-swipedown="close"
+>
+  <span class="dialog-handle" aria-hidden="true"></span>
+  {@render disconnectConfirmation("disconnect-sheet")}
+</dialog>
+
+{#snippet disconnectConfirmation(id: string)}
+  <form
+    method="dialog"
+    class="stack-md"
+    aria-labelledby={`${id}-title`}
+    onsubmit={finishDisconnect}
+  >
+    <h2 class="heading-md" id={`${id}-title`}>Disconnect from server</h2>
+    <p class="body" id={`${id}-scope`}>
+      Would you also like to clear this account’s data and downloads from this device? Server data
+      won’t be affected.
+    </p>
+    <div class="row-md">
+      <input
+        class="switch"
+        id={`${id}-delete-local`}
+        type="checkbox"
+        role="switch"
+        bind:checked={deleteLocalData}
+        aria-describedby={`${id}-scope`}
+      />
+      <label class="body" for={`${id}-delete-local`}>Clear data on device</label>
+    </div>
+    <div class="row-sm row-wrap row-end">
+      <button
+        class="button"
+        data-size="text"
+        data-variant="secondary"
+        type="button"
+        command="close"
+        commandfor={id}>Cancel</button
+      >
+      <button class="button" data-size="text" data-variant="primary" type="submit"
+        >Disconnect</button
+      >
+    </div>
+  </form>
+{/snippet}
 
 <section bind:this={view} aria-labelledby="settings-heading">
   <div class="stack-lg scroll-runway">
@@ -127,7 +200,9 @@
           </div>
         {/if}
 
-        {#if !session.auth && demo}
+        {#if cleaning}
+          <p class="row-sm body" role="status"><Loader /> Deleting local data…</p>
+        {:else if !session.auth && demo}
           <p class="body">
             This demo uses a fixed music library and cannot connect to other servers. Reload to
             reconnect to the demo.
@@ -230,9 +305,10 @@
             <p class="caption text-secondary">
               {#if demo}
                 This demo uses a fixed music library. Disconnect stops streaming; reload to
-                reconnect. Your downloaded previews stay on this device.
+                reconnect. Choose whether to keep its local data.
               {:else}
-                Disconnect to change servers. Your offline library will stay on this device.
+                Disconnect to switch users or servers. Choose whether to keep this account’s local
+                data.
               {/if}
             </p>
             <div class="row-sm row-wrap">
@@ -253,9 +329,19 @@
               </button>
               <button
                 id="settings-disconnect"
-                class="button"
+                class="button only-desktop"
                 data-size="text"
-                onclick={disconnectServer}>Disconnect</button
+                command="show-modal"
+                commandfor="disconnect-dialog"
+                onclick={() => (deleteLocalData = false)}>Disconnect</button
+              >
+              <button
+                id="settings-disconnect-mobile"
+                class="button only-mobile"
+                data-size="text"
+                command="show-modal"
+                commandfor="disconnect-sheet"
+                onclick={() => (deleteLocalData = false)}>Disconnect</button
               >
             </div>
           </div>
@@ -287,8 +373,8 @@
         <p class="body" id="settings-offline-help">
           {#if !session.auth}
             {demo
-              ? "Reload the demo to browse online. Your downloaded previews remain available."
-              : "Connect to a server to browse online. Your saved music remains available."}
+              ? "Reload the demo to browse online. Any previews you kept remain available."
+              : "Connect to a server to browse online. Any music you kept remains available."}
           {:else if session.offlineMode}
             Showing downloaded music only. Turn this off to browse and stream {demo
               ? "demo previews"

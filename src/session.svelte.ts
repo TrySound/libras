@@ -334,6 +334,10 @@ export class Session {
     }
   }
 
+  get cache() {
+    return this.#options.selection.cache;
+  }
+
   disconnect() {
     if (this.#destroyed) return false;
     const operationId = this.#beginOperation();
