@@ -17,7 +17,11 @@
   }
 
   export function createSearchState() {
-    return { query: "", limits: { Artists: 3, Albums: 3, Tracks: 3 } };
+    return {
+      query: "",
+      types: [] as import("./search-url").SearchType[],
+      limits: { Artists: 3, Albums: 3, Tracks: 3 },
+    };
   }
 
   type SearchState = ReturnType<typeof createSearchState>;
@@ -87,6 +91,7 @@
         keys: ["title", "artist", "album"],
       });
     return {
+      records,
       Artists: snapshot("Artists"),
       Albums: snapshot("Albums"),
       Tracks: snapshot("Tracks"),
@@ -94,7 +99,11 @@
     };
   }
 
-  export function searchLibrary(index: ReturnType<typeof createSearchIndex>, query: string) {
+  export function searchLibrary(
+    index: ReturnType<typeof createSearchIndex>,
+    query: string,
+    browse = false,
+  ) {
     query = query.trim().replace(/\s+/g, " ");
     const groups = searchGroups.map((group) => {
       // Retrieve matches explicitly without a library limit so equal scores can be
@@ -113,8 +122,8 @@
         : [];
       return {
         group,
-        total: matches.length,
-        records: matches.map((result) => result.obj),
+        total: !query && browse ? index.records[group].length : matches.length,
+        records: !query && browse ? index.records[group] : matches.map((result) => result.obj),
       };
     });
     return { query, groups };
@@ -122,7 +131,11 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from "svelte";
   import Icon from "./icon.svelte";
+  import VirtualList from "./ui/virtual-list.svelte";
+  import { navigate } from "./router.svelte";
+  import { searchHref, searchTypes, type SearchType } from "./search-url";
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -140,6 +153,7 @@
     playback,
     appName = "Libras",
     state: searchState,
+    criteria,
   }: {
     cache: Cache;
     covers: Covers;
@@ -147,6 +161,7 @@
     session: Session;
     playback: Playback;
     state: SearchState;
+    criteria?: { query: string; types: SearchType[] };
     appName?: string;
   } = $props();
 
@@ -159,7 +174,46 @@
     ),
   );
 
-  const matches = $derived(searchLibrary(index, searchState.query));
+  $effect(() => {
+    if (!criteria) return;
+    const current = searchState;
+    const incoming = criteria;
+    untrack(() => {
+      if (
+        current.query !== incoming.query ||
+        JSON.stringify(current.types) !== JSON.stringify(incoming.types)
+      ) {
+        current.limits = createSearchState().limits;
+      }
+      current.query = incoming.query;
+      current.types = [...incoming.types];
+      dismissActions();
+    });
+  });
+
+  const selectedTypes = $derived(searchState.types ?? []);
+  const singleType = $derived(selectedTypes.length === 1);
+  const criteriaKey = $derived(JSON.stringify([searchState.query, selectedTypes]));
+  const matches = $derived(searchLibrary(index, searchState.query, singleType));
+
+  function updateCriteria(history: "push" | "replace") {
+    searchState.limits = createSearchState().limits;
+    dismissActions();
+    window.scrollTo({ top: 0 });
+    if (criteria)
+      navigate(
+        searchHref(searchState.query, selectedTypes).slice(1) + window.location.hash,
+        history,
+        { preserveScroll: true },
+      );
+  }
+
+  function toggleType(type: SearchType) {
+    searchState.types = selectedTypes.includes(type)
+      ? selectedTypes.filter((value) => value !== type)
+      : searchTypes.filter((value) => value === type || selectedTypes.includes(value));
+    updateCriteria("push");
+  }
   const currentTrackId = $derived(cache.queue.tracks[cache.queue.index]);
   const libraryError = $derived(
     session.refreshError ||
@@ -168,10 +222,14 @@
   );
 
   const results = $derived(
-    matches.groups.map((result) => ({
-      ...result,
-      records: result.records.slice(0, searchState.limits[result.group]),
-    })),
+    matches.groups
+      .filter((_, i) => !selectedTypes.length || selectedTypes.includes(searchTypes[i]))
+      .map((result) => ({
+        ...result,
+        records: singleType
+          ? result.records
+          : result.records.slice(0, searchState.limits[result.group]),
+      })),
   );
 
   function isAvailable(id: string) {
@@ -215,16 +273,45 @@
     menuItem?.group === "Tracks" ? trackEngine.getStatus(menuItem.id) : "idle",
   );
 
+  let menuInvoker: HTMLElement | undefined;
+
   function selectMenu(group: SearchGroup, id: string) {
     menuSelection = { cache, group, id };
+    if (document.activeElement instanceof HTMLElement) menuInvoker = document.activeElement;
   }
 
+  $effect(() => {
+    void cache;
+    untrack(() => {
+      dismissActions();
+      menuSelection = undefined;
+      menuInvoker = undefined;
+    });
+  });
+
+  function menuVisibility(open: boolean) {
+    const active = document.activeElement;
+    const restoreFocus =
+      active === document.body ||
+      active === menuInvoker ||
+      (active && (sheet?.contains(active) || popover?.contains(active)));
+    if (!open && menuOpen && menuInvoker?.isConnected && restoreFocus) {
+      // Restore before releasing the pinned row, including a scrolled-away invoker.
+      // Light dismissal onto another control must not steal that control's focus.
+      menuInvoker.focus();
+      menuInvoker.scrollIntoView({ block: "nearest" });
+    }
+    menuOpen = open;
+  }
+
+  let menuOpen = $state(false);
   let sheet: HTMLDialogElement;
   let popover: HTMLDivElement;
 
   function dismissActions() {
-    sheet.close();
-    popover.hidePopover?.();
+    sheet?.close();
+    popover?.hidePopover?.();
+    menuVisibility(false);
   }
 
   function supportingText(group: SearchGroup, record: SearchRecord) {
@@ -286,9 +373,26 @@
       autocapitalize="off"
       spellcheck="false"
       bind:value={searchState.query}
-      oninput={() => (searchState.limits = createSearchState().limits)}
+      oninput={(event) => {
+        searchState.query = event.currentTarget.value;
+        updateCriteria("replace");
+      }}
       autofocus
     />
+    <div class="search-filters" role="group" aria-label="Result types">
+      {#each searchTypes as type}
+        <button
+          type="button"
+          class="button search-filter"
+          data-size="text"
+          data-variant={selectedTypes.includes(type) ? "primary" : "secondary"}
+          aria-pressed={selectedTypes.includes(type)}
+          onclick={() => toggleType(type)}
+        >
+          {type === "artist" ? "Artist" : type === "album" ? "Album" : "Track"}
+        </button>
+      {/each}
+    </div>
   </search>
   {#if libraryError}
     <div class="card stack-md">
@@ -303,7 +407,12 @@
     </div>
   {/if}
   <div class="stack-xl" aria-busy={!session.localReady}>
-    {#if index.size === 0}
+    {#if !session.localReady && index.size === 0}
+      <div class="row-sm">
+        <Loader />
+        <p class="body">Loading your library…</p>
+      </div>
+    {:else if index.size === 0}
       {#if session.localReady}
         <div class="stack-md">
           <h2 class="heading-sm">
@@ -331,12 +440,15 @@
           </div>
         </div>
       {/if}
-    {:else if !matches.query}
-      <p class="body text-secondary">Type to find music in your library.</p>
+    {:else if !matches.query && !singleType}
+      <p class="body text-secondary">
+        Type to find music in your library.
+        {#if selectedTypes.length > 1}Select one type to browse your library.{/if}
+      </p>
     {:else if results.every((result) => result.total === 0)}
       <div class="stack-md">
         <h2 class="heading-sm">No matches found.</h2>
-        <p class="body">Try another artist, album, or track name.</p>
+        <p class="body">Try another search or change the selected types.</p>
       </div>
     {:else}
       {#each results as { group, records, total }}
@@ -346,70 +458,85 @@
               <h2 class="heading-lg uppercase">{group}</h2>
               <span class="metadata text-subtle">{total}</span>
             </header>
-            <div class="stack-sm">
-              {#each records as record (record.id)}
-                {@const track = group === "Tracks" ? cache.tracks.get(record.id) : undefined}
-                <div
-                  class="menu-item track-row"
-                  aria-current={track && currentTrackId === track.id ? "true" : undefined}
-                >
-                  <div class="row-sm">
-                    <Artwork {covers} id={record.artworkId} size="sm" />
-                    <div>
-                      <p class="label">{record.title}</p>
-                      <p class="caption text-secondary">{supportingText(group, record)}</p>
-                    </div>
-                  </div>
-                  {#if record.href}
-                    <a
-                      class="button-quiet link-target"
-                      href={record.href}
-                      aria-label={record.title}
-                      data-longpressfor="search-menu"
-                      data-longpress="show-modal"
-                      onfocus={() => selectMenu(group, record.id)}
-                    ></a>
-                  {:else}
-                    <button
-                      class="button-quiet link-target"
-                      aria-label={currentTrackId === record.id
-                        ? `Toggle playback for ${record.title}`
-                        : `Play ${record.title}`}
-                      data-longpressfor="search-menu"
-                      data-longpress="show-modal"
-                      onfocus={() => selectMenu(group, record.id)}
-                      onclick={() => playback.toggleTrack(record.id, trackContext(record.id))}
-                    ></button>
-                  {/if}
-                  <div class="row-sm">
-                    {#if track?.duration !== undefined}
-                      <span class="metadata text-subtle">{formatDuration(track.duration)}</span>
-                    {/if}
-                    <button
-                      class="button only-mobile"
-                      data-variant="secondary"
-                      commandfor="search-menu"
-                      command="show-modal"
-                      aria-label={`Open menu for ${record.title}`}
-                      onclick={() => selectMenu(group, record.id)}
-                    >
-                      <Icon name="menu" />
-                    </button>
-                    <button
-                      class="button only-desktop"
-                      data-variant="secondary"
-                      commandfor="search-menu-popover"
-                      command="toggle-popover"
-                      aria-label={`Open menu for ${record.title}`}
-                      onclick={() => selectMenu(group, record.id)}
-                    >
-                      <Icon name="menu" />
-                    </button>
+            {#snippet resultRow(record: SearchRecord)}
+              {@const track = group === "Tracks" ? cache.tracks.get(record.id) : undefined}
+              <div
+                class="menu-item track-row"
+                aria-current={track && currentTrackId === track.id ? "true" : undefined}
+              >
+                <div class="row-sm">
+                  <Artwork {covers} id={record.artworkId} size="sm" />
+                  <div>
+                    <p class="label">{record.title}</p>
+                    <p class="caption text-secondary">{supportingText(group, record)}</p>
                   </div>
                 </div>
-              {/each}
-            </div>
-            {#if total > records.length}
+                {#if record.href}
+                  <a
+                    class="button-quiet link-target"
+                    href={record.href}
+                    aria-label={record.title}
+                    data-longpressfor="search-menu"
+                    data-longpress="show-modal"
+                    onfocus={() => selectMenu(group, record.id)}
+                  ></a>
+                {:else}
+                  <button
+                    class="button-quiet link-target"
+                    aria-label={currentTrackId === record.id
+                      ? `Toggle playback for ${record.title}`
+                      : `Play ${record.title}`}
+                    data-longpressfor="search-menu"
+                    data-longpress="show-modal"
+                    onfocus={() => selectMenu(group, record.id)}
+                    onclick={() => playback.toggleTrack(record.id, trackContext(record.id))}
+                  ></button>
+                {/if}
+                <div class="row-sm">
+                  {#if track?.duration !== undefined}
+                    <span class="metadata text-subtle">{formatDuration(track.duration)}</span>
+                  {/if}
+                  <button
+                    class="button only-mobile"
+                    data-variant="secondary"
+                    commandfor="search-menu"
+                    command="show-modal"
+                    aria-label={`Open menu for ${record.title}`}
+                    onclick={() => selectMenu(group, record.id)}
+                  >
+                    <Icon name="menu" />
+                  </button>
+                  <button
+                    class="button only-desktop"
+                    data-variant="secondary"
+                    commandfor="search-menu-popover"
+                    command="toggle-popover"
+                    aria-label={`Open menu for ${record.title}`}
+                    onclick={() => selectMenu(group, record.id)}
+                  >
+                    <Icon name="menu" />
+                  </button>
+                </div>
+              </div>
+            {/snippet}
+            {#if singleType}
+              {#key cache}
+                {#key criteriaKey}
+                  <VirtualList
+                    items={records}
+                    row={resultRow}
+                    pinnedId={menuOpen ? menuItem?.id : undefined}
+                  />
+                {/key}
+              {/key}
+            {:else}
+              <ul class="search-preview stack-sm">
+                {#each records as record (record.id)}
+                  <li>{@render resultRow(record)}</li>
+                {/each}
+              </ul>
+            {/if}
+            {#if !singleType && total > records.length}
               <div class="row-sm">
                 <button
                   class="button"
@@ -429,6 +556,8 @@
 
 <dialog
   bind:this={sheet}
+  onclose={() => menuVisibility(false)}
+  ontoggle={(event) => menuVisibility(event.newState === "open")}
   id="search-menu"
   class="bottom-sheet"
   aria-labelledby="search-menu-title"
@@ -440,6 +569,7 @@
 </dialog>
 <div
   bind:this={popover}
+  ontoggle={(event) => menuVisibility(event.newState === "open")}
   id="search-menu-popover"
   class="popover"
   popover="auto"
@@ -517,3 +647,32 @@
     </div>
   </div>
 {/snippet}
+
+<style>
+  .search-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+  }
+  .search-filter {
+    min-height: 44px;
+    padding-inline: 16px;
+    border: 2px solid transparent;
+  }
+  .search-filter[aria-pressed="true"] {
+    border-color: var(--accent);
+  }
+  .search-preview {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .track-row > .row-sm:first-child,
+  .track-row > .row-sm:first-child > div {
+    min-inline-size: 0;
+  }
+  .track-row > .row-sm:last-child {
+    flex-shrink: 0;
+  }
+</style>

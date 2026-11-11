@@ -203,6 +203,8 @@ it.each([
     const app = mount(Harness, { target, props: { props } });
     flushSync();
     try {
+      expect(target.querySelectorAll('[aria-label="Result types"] button')).toHaveLength(3);
+      if (!localReady) expect(target.textContent).toContain("Loading your library…");
       expect(target.querySelector("[aria-busy]")?.getAttribute("aria-busy")).toBe(
         String(!localReady),
       );

@@ -20,7 +20,8 @@
   import { Cache } from "./cache.svelte";
   import { Session } from "./session.svelte";
   import type { Network } from "./network.svelte";
-  import Router, { isCurrentPage, type RouteParams } from "./router.svelte";
+  import Router, { isCurrentPage, route, type RouteParams } from "./router.svelte";
+  import { parseSearch } from "./search-url";
   import { TrackEngine } from "./track.svelte";
   import { installSwipeToDismiss } from "./swipe-to-dismiss";
 
@@ -48,7 +49,8 @@
     const state = $state(createSearchState());
     return state;
   }
-  // Owned above the route so Back retains state; cache switches discard it.
+  // Retain transient preview expansion on Back; URL criteria remain authoritative.
+  // Cache switches discard transient rendering state, not the incoming URL.
   const searchState = $derived.by(() => {
     void cache;
     return newSearchState();
@@ -161,7 +163,16 @@
 
 {#snippet searchRoute()}
   <Atmosphere />
-  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} {appName} state={searchState} />
+  <SearchRoute
+    {cache}
+    {covers}
+    {trackEngine}
+    {session}
+    {playback}
+    {appName}
+    state={searchState}
+    criteria={parseSearch(route.parameters)}
+  />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
