@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { installSwipeToDismiss } from "../src/swipe-to-dismiss";
 
 const cleanups: (() => void)[] = [];
-function createDialog(direction: "down" | "right" | "up") {
+function createDialog(direction: "down" | "up") {
   const destroy = installSwipeToDismiss();
   cleanups.push(destroy);
   // Dialogs mounted after installation need no per-element setup.
@@ -29,8 +29,8 @@ function createDialog(direction: "down" | "right" | "up") {
     const event = new Event(type, { bubbles: true, cancelable });
     // Tests use y as the dismissal axis and x as the perpendicular axis.
     const point = {
-      clientY: direction === "right" ? x : direction === "up" ? -y : y,
-      clientX: direction === "right" ? y : x,
+      clientY: direction === "up" ? -y : y,
+      clientX: x,
       identifier: 1,
     };
     Object.assign(event, { touches: Array(count).fill(point), changedTouches: [point] });
@@ -52,7 +52,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe.each(["down", "right", "up"] as const)("global swipe %s to dismiss", (direction) => {
+describe.each(["down", "up"] as const)("global swipe %s to dismiss", (direction) => {
   const setup = () => createDialog(direction);
   it("delegates from descendants and only closes on release after the threshold", () => {
     const { dialog, touch, close } = setup();
@@ -89,8 +89,8 @@ describe.each(["down", "right", "up"] as const)("global swipe %s to dismiss", (d
   ])("uses the dismissal dimension %s with release at %s", (size, distance, dismiss) => {
     const { dialog, touch, close } = setup();
     vi.mocked(dialog.getBoundingClientRect).mockReturnValue({
-      width: direction === "right" ? size : 2000,
-      height: direction === "right" ? 2000 : size,
+      width: 2000,
+      height: size,
     } as DOMRect);
     touch("touchstart", 0);
     touch("touchmove", distance);
@@ -100,8 +100,7 @@ describe.each(["down", "right", "up"] as const)("global swipe %s to dismiss", (d
 
   it("allows dismissal when content is scrolled on the perpendicular axis", () => {
     const { dialog, button, touch, close } = setup();
-    const axis = direction === "right" ? "scrollTop" : "scrollLeft";
-    dialog[axis] = button[axis] = 100;
+    dialog.scrollLeft = button.scrollLeft = 100;
     touch("touchstart", 0);
     expect(touch("touchmove", 140).defaultPrevented).toBe(true);
     touch("touchend", 140);
@@ -110,7 +109,7 @@ describe.each(["down", "right", "up"] as const)("global swipe %s to dismiss", (d
 
   it("ignores dialogs configured with both dismissal directions", () => {
     const { dialog, touch, close } = setup();
-    dialog.dataset.swipedown = dialog.dataset.swiperight = "close";
+    dialog.dataset.swipedown = dialog.dataset.swipeup = "close";
     touch("touchstart", 0);
     expect(touch("touchmove", 140).defaultPrevented).toBe(false);
     touch("touchend", 140);
@@ -136,20 +135,23 @@ describe.each(["down", "right", "up"] as const)("global swipe %s to dismiss", (d
     expect(dialog.style.getPropertyValue("--swipe-offset")).toBe("");
   });
 
-  it.each(["dialog", "child"])("preserves scrolling when %s is not at the start", (kind) => {
-    const { dialog, button, touch, close } = setup();
-    const scroller = kind === "dialog" ? dialog : button;
-    if (direction === "up")
-      Object.defineProperties(scroller, {
-        scrollHeight: { value: 500, configurable: true },
-        clientHeight: { value: 200, configurable: true },
-      });
-    scroller[direction === "right" ? "scrollLeft" : "scrollTop"] = 100;
-    touch("touchstart", 0);
-    expect(touch("touchmove", 200).defaultPrevented).toBe(false);
-    touch("touchend", 200);
-    expect(close).not.toHaveBeenCalled();
-  });
+  it.each(["dialog", "child"])(
+    "preserves scrolling when %s is not at its dismissal boundary",
+    (kind) => {
+      const { dialog, button, touch, close } = setup();
+      const scroller = kind === "dialog" ? dialog : button;
+      if (direction === "up")
+        Object.defineProperties(scroller, {
+          scrollHeight: { value: 500, configurable: true },
+          clientHeight: { value: 200, configurable: true },
+        });
+      scroller.scrollTop = 100;
+      touch("touchstart", 0);
+      expect(touch("touchmove", 200).defaultPrevented).toBe(false);
+      touch("touchend", 200);
+      expect(close).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["input", "textarea", "select", "[contenteditable]"])("preserves %s gestures", (kind) => {
     const { dialog, touch, close } = setup();
@@ -219,16 +221,6 @@ describe.each(["down", "right", "up"] as const)("global swipe %s to dismiss", (d
     touch("touchend", 200, 0, document);
     expect(close).not.toHaveBeenCalled();
     expect(dialog.style.getPropertyValue("--swipe-offset")).toBe("");
-  });
-
-  it.each(["down", "right", "up"] as const)("rejects a second direction %s", (other) => {
-    if (other === direction) return;
-    const { dialog, touch, close } = setup();
-    dialog.dataset[`swipe${other}`] = "close";
-    touch("touchstart", 0);
-    expect(touch("touchmove", 140).defaultPrevented).toBe(false);
-    touch("touchend", 140);
-    expect(close).not.toHaveBeenCalled();
   });
 
   it("cleans up listeners, drag styling and click suppression", () => {

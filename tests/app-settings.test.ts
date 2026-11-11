@@ -376,9 +376,8 @@ describe("app settings", () => {
   it("uses whole-dialog upward dismissal with a decorative nonfocusable dash", async () => {
     const { target } = await setup();
     const drawer = target.querySelector("#navigation-dialog")!;
-    expect(drawer.hasAttribute("data-swiperight")).toBe(false);
     expect(drawer.getAttribute("data-swipeup")).toBe("close");
-    const dash = drawer.querySelector(".navigation-dash")!;
+    const dash = drawer.querySelector(":scope > .dialog-handle")!;
     expect(dash.getAttribute("aria-hidden")).toBe("true");
     expect(dash.hasAttribute("tabindex")).toBe(false);
   });

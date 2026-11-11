@@ -364,7 +364,7 @@
         </div>
       {/if}
       <dialog
-        class="top-navigation"
+        class="top-sheet"
         id="navigation-dialog"
         data-swipeup="close"
         aria-label="Navigation"
@@ -373,7 +373,7 @@
           navigationOpen = navigationDrawer.open;
         }}
       >
-        <div class="navigation-controls">
+        <div class="navigation-controls row-sm row-end">
           <button
             class="button"
             data-variant="ghost"
@@ -386,12 +386,12 @@
           </button>
         </div>
         <div class="navigation-content">
-          <div class="navigation-composition stack-lg">
-            <div class="navigation-brand">{@render brand()}</div>
+          <div class="drawer-content stack-lg">
+            <div class="row-sm row-center">{@render brand()}</div>
             {@render navigation()}
           </div>
         </div>
-        <span class="navigation-dash" aria-hidden="true"></span>
+        <span class="dialog-handle" aria-hidden="true"></span>
       </dialog>
     </div>
   </div>

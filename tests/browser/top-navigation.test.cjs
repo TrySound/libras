@@ -54,7 +54,7 @@ for (const reducedMotion of ["reduce", "no-preference"]) {
       const geometry = await drawer.evaluate((d) => {
         const rect = d.getBoundingClientRect(),
           content = d.querySelector(".navigation-content").getBoundingClientRect(),
-          group = d.querySelector(".navigation-composition").getBoundingClientRect();
+          group = d.querySelector(".drawer-content").getBoundingClientRect();
         const close = d.querySelector("button").getBoundingClientRect();
         return {
           width: rect.width,
@@ -62,8 +62,17 @@ for (const reducedMotion of ["reduce", "no-preference"]) {
           y: rect.y,
           centered: Math.abs(group.top + group.bottom - content.top - content.bottom) < 2,
           target: close.width >= 44 && close.height >= 44,
+          compactRows: (() => {
+            const row = d.querySelector("nav .menu-item");
+            return (
+              row.getBoundingClientRect().height >= 44 &&
+              row.getBoundingClientRect().height < 52 &&
+              getComputedStyle(row).fontFamily ===
+                getComputedStyle(document.querySelector(".app-sidebar .menu-item")).fontFamily
+            );
+          })(),
           dash: (() => {
-            const dash = d.querySelector(".navigation-dash"),
+            const dash = d.querySelector(":scope > .dialog-handle"),
               r = dash.getBoundingClientRect();
             return (
               r.width === 40 &&
@@ -82,6 +91,7 @@ for (const reducedMotion of ["reduce", "no-preference"]) {
         y: 0,
         centered: true,
         target: true,
+        compactRows: true,
         dash: true,
       });
       assert.equal(
@@ -170,7 +180,7 @@ for (const reducedMotion of ["reduce", "no-preference"]) {
 }
 
 async function overflowJourney(page, drawer, menu, cdp) {
-  await drawer.locator(".navigation-composition").evaluate((e) => {
+  await drawer.locator(".drawer-content").evaluate((e) => {
     const section = document.createElement("section");
     section.innerHTML =
       '<p class="caption">' +
@@ -194,9 +204,9 @@ async function overflowJourney(page, drawer, menu, cdp) {
     "the dialog is the sole scrolling surface, with a reachable overflow start",
   );
   const close = drawer.locator(".navigation-controls button"),
-    brand = drawer.locator(".navigation-brand");
+    brand = drawer.locator(".brand");
   assert.ok((await close.boundingBox()).y >= 0);
-  for (const control of await drawer.locator("nav a, section button, .navigation-dash").all()) {
+  for (const control of await drawer.locator("nav a, section button, .dialog-handle").all()) {
     await control.scrollIntoViewIfNeeded();
     assert.equal(
       await control.evaluate((e) => {
@@ -209,10 +219,10 @@ async function overflowJourney(page, drawer, menu, cdp) {
   await drawer.evaluate((d) => (d.scrollTop = d.scrollHeight));
   assert.equal(
     await drawer.evaluate((d) => {
-      const dash = d.querySelector(".navigation-dash").getBoundingClientRect();
+      const dash = d.querySelector(":scope > .dialog-handle").getBoundingClientRect();
       return (
         d.querySelector(".navigation-controls").getBoundingClientRect().bottom < 0 &&
-        d.querySelector(".navigation-brand").getBoundingClientRect().bottom < 0 &&
+        d.querySelector(".brand").getBoundingClientRect().bottom < 0 &&
         d.getBoundingClientRect().bottom - dash.bottom >= 31
       );
     }),

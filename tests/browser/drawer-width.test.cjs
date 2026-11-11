@@ -58,7 +58,7 @@ test("top Close is idle ghost, retains keyboard feedback and shared centered cap
     ]) {
       await page.setViewportSize({ width, height: 844 });
       await page.evaluate((font) => (document.documentElement.style.fontSize = font), font);
-      assert.deepEqual(await geometry(drawer, ".navigation-composition"), {
+      assert.deepEqual(await geometry(drawer, ".drawer-content"), {
         fullWidth: true,
         centered: true,
         capped: true,
@@ -154,6 +154,42 @@ test("all four bottom action consumers cap content, wrap long titles and leave p
         `${id} popover is not capped`,
       );
       await page.evaluate(() => (document.documentElement.style.fontSize = "100%"));
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test("shared handles keep bottom-sheet and player overlay placement", async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: "reduce",
+  });
+  try {
+    await page.goto(`${base}/styleguide.html`);
+    for (const [name, id] of [
+      ["Open bottom drawer specimen", "guide-bottom-drawer"],
+      ["Open Now Playing specimen", "guide-player"],
+    ]) {
+      await page.getByRole("button", { name, exact: true }).click();
+      const dialog = page.locator(`#${id}`);
+      assert.equal(
+        await dialog.locator(".dialog-handle").evaluate((e) => {
+          const r = e.getBoundingClientRect(),
+            parent = e.offsetParent.getBoundingClientRect();
+          return (
+            getComputedStyle(e).position === "absolute" &&
+            r.width === 40 &&
+            r.height === 6 &&
+            Math.abs(r.top - parent.top - e.offsetParent.clientTop - 8) < 1
+          );
+        }),
+        true,
+        `${id} handle retains absolute top placement`,
+      );
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
     }
   } finally {
     await browser.close();

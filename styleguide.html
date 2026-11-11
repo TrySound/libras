@@ -1001,11 +1001,11 @@
     </script>
     <dialog
       id="guide-navigation"
-      class="top-navigation"
+      class="top-sheet"
       aria-label="Navigation specimen"
       data-swipeup="close"
     >
-      <div class="navigation-controls">
+      <div class="navigation-controls row-sm row-end">
         <button
           class="button"
           commandfor="guide-navigation"
@@ -1020,9 +1020,10 @@
         </button>
       </div>
       <div class="navigation-content">
-        <div class="navigation-composition stack-lg">
-          <div class="navigation-brand row-sm">
-            <svg width="32" height="32" aria-hidden="true"><use href="#icon-brand"></use></svg
+        <div class="drawer-content stack-lg">
+          <div class="row-sm row-center">
+            <svg width="32" height="32" aria-hidden="true" style="color: var(--accent)">
+              <use href="#icon-brand"></use></svg
             ><span class="brand uppercase">Libras</span>
           </div>
           <nav class="stack-sm" aria-label="Specimen navigation">
@@ -1048,7 +1049,7 @@
           </nav>
         </div>
       </div>
-      <span class="navigation-dash" aria-hidden="true"></span>
+      <span class="dialog-handle" aria-hidden="true"></span>
     </dialog>
     <dialog
       id="guide-bottom-drawer"
