@@ -16,19 +16,10 @@
   }
 
   /** Paths are slash-prefixed; the query selects a page and the hash selects an anchor. */
-  export function navigate(
-    path: string,
-    history: "push" | "replace" = "push",
-    options?: { preserveScroll: boolean },
-  ) {
+  export function navigate(path: string, history: "push" | "replace" = "push") {
     const destination = new URL(`?${path}`, window.location.href);
     if (destination.href === window.location.href) return;
-    void window.navigation
-      .navigate(`?${path}`, {
-        history,
-        ...(options ? { info: options } : {}),
-      })
-      .finished?.catch(() => {});
+    void window.navigation.navigate(`?${path}`, { history }).finished?.catch(() => {});
   }
 
   export interface RenderRoute {
@@ -112,16 +103,8 @@
         splitRoute(current.search).path === "/search" &&
         splitRoute(destination.search).path === "/search";
       event.intercept({
-        ...(sameSearch
-          ? {
-              focusReset: "manual" as const,
-              // Local controls reset their own result viewport. Incoming links need
-              // native scroll-to-top/anchor handling, and traversal needs restoration.
-              ...(event.navigationType !== "traverse" && event.info?.preserveScroll === true
-                ? { scroll: "manual" as const }
-                : {}),
-            }
-          : {}),
+        // Keep typing/toggle focus; leave scrolling and history restoration native.
+        ...(sameSearch ? { focusReset: "manual" as const } : {}),
         handler: async () => {
           const update = async () => {
             if (event.signal.aborted) return;
