@@ -1,6 +1,5 @@
 <script module lang="ts">
   import type { Snippet } from "svelte";
-  import { splitRoute } from "./search-url";
 
   export type RouteParams = Record<string, string | undefined>;
 
@@ -45,14 +44,26 @@
     routes.map((route) => ({ route, pattern: new URLPattern({ pathname: route.pattern }) })),
   );
 
-  const initialMatch = resolve(new URL(window.location.href));
+  const initialUrl = new URL(window.location.href);
+  const initialMatch = resolve(initialUrl);
   let match = $state.raw(initialMatch);
   route.pattern = initialMatch.route.pattern;
-  route.parameters = splitRoute(window.location.search).parameters;
+  route.parameters = initialUrl.searchParams;
+
+  function routePath(url: URL) {
+    // Match the first raw token, not a decoded searchParams key: IDs may contain
+    // encoded slashes/ampersands or literal plus signs. Only empty values are valid.
+    const token = url.search.slice(1).split("&", 1)[0];
+    const separator = token.indexOf("=");
+    if (separator < 0) return token;
+    return token.slice(separator + 1) === "" ? token.slice(0, separator) : undefined;
+  }
 
   function resolve(url: URL): { route: RenderRoute; params: RouteParams } {
+    const path = routePath(url);
+    if (path === undefined) return { route: defaultRoute, params: {} };
     for (const { route, pattern } of compiled) {
-      const result = pattern.exec({ pathname: splitRoute(url.search).path });
+      const result = pattern.exec({ pathname: path });
       if (!result) continue;
       return {
         route,
@@ -70,7 +81,7 @@
   function updateRoute(url: URL) {
     match = resolve(url);
     route.pattern = match.route.pattern;
-    route.parameters = splitRoute(url.search).parameters;
+    route.parameters = url.searchParams;
   }
 
   onMount(() => {
@@ -99,9 +110,7 @@
       )
         return;
 
-      const sameSearch =
-        splitRoute(current.search).path === "/search" &&
-        splitRoute(destination.search).path === "/search";
+      const sameSearch = routePath(current) === "/search" && routePath(destination) === "/search";
       event.intercept({
         // Keep typing/toggle focus; leave scrolling and history restoration native.
         ...(sameSearch ? { focusReset: "manual" as const } : {}),

@@ -3,6 +3,26 @@
   import type { Album, Artist, Track } from "./schema";
   import type { Immutable } from "./cache.svelte";
 
+  export const searchTypes = ["artist", "album", "track"] as const;
+  export type SearchType = (typeof searchTypes)[number];
+
+  export function parseSearch(parameters: URLSearchParams) {
+    const selected = parameters.getAll("type");
+    return {
+      query: parameters.get("q") ?? "",
+      types: searchTypes.filter((type) => selected.includes(type)),
+    };
+  }
+
+  /** Keep the route bare; encode only search criteria, never the full parameter collection. */
+  export function searchHref(query = "", types: readonly SearchType[] = []) {
+    const parameters = new URLSearchParams();
+    for (const type of searchTypes) if (types.includes(type)) parameters.append("type", type);
+    if (query) parameters.set("q", query);
+    const suffix = parameters.toString();
+    return `?/search${suffix ? `&${suffix}` : ""}`;
+  }
+
   const searchGroups = ["Artists", "Albums", "Tracks"] as const;
 
   type SearchGroup = (typeof searchGroups)[number];
@@ -123,7 +143,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
   import { navigate, route } from "./router.svelte";
-  import { parseSearch, searchHref, searchTypes, type SearchType } from "./search-url";
   import { onVisible } from "./viewport";
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";

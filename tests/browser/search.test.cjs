@@ -14,10 +14,15 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const artist = {
-    id: "artist",
+    id: "artist/a&b+c%2F=d?#",
     name: "Search fixture artist with a long name that wraps naturally",
   };
-  const album = { id: "album", name: "Search fixture album", artists: [artist], year: 2024 };
+  const album = {
+    id: "album/a&b+c%2F=d?#",
+    name: "Search fixture album",
+    artists: [artist],
+    year: 2024,
+  };
   const directoryArtists = Array.from({ length: 149 }, (_, i) => ({
     id: `directory-artist-${i}`,
     name: `Directory artist ${i}`,
@@ -255,6 +260,25 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     await page.goForward();
     assert.equal(await chips[1].getAttribute("aria-pressed"), "true");
     assert.equal(await input.inputValue(), "Directory");
+    // Router matches raw tokens while Search reads only criteria from the full params.
+    await page.goto(
+      `${base}/?/search=&unknown=keep&type=no&type=track&type=track&q=Search+fixture&q=ignored`,
+    );
+    await tracks.locator(".track-row").first().waitFor();
+    assert.equal(await input.inputValue(), "Search fixture");
+    assert.equal(await chips[2].getAttribute("aria-pressed"), "true");
+    assert.equal(await chips[0].getAttribute("aria-pressed"), "false");
+    await input.fill("Search fixture track 149");
+    assert.equal(await input.evaluate((node) => node === document.activeElement), true);
+    // Use the browser's real URLPattern with encoded IDs and a literal route +.
+    for (const [kind, item] of [
+      ["artist", artist],
+      ["album", album],
+    ]) {
+      const id = encodeURIComponent(item.id).replace("%2B", "+");
+      await page.goto(`${base}/?/library/${kind}/${id}=&unknown=keep`);
+      await page.getByRole("heading", { level: 1, name: item.name, exact: true }).waitFor();
+    }
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

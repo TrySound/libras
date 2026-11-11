@@ -64,9 +64,18 @@ describe("router", () => {
 
   it.each([
     ["/library", "library:{}"],
+    ["/player", "player:{}"],
+    ["/player=", "player:{}"],
+    ["/player=nonempty", "library:{}"],
+    ["/player==", "library:{}"],
+    ["q=one&/player", "library:{}"],
+    ["&/player", "library:{}"],
+    ["", "library:{}"],
     ["/library/artist/artist%201", 'artist:{"artistId":"artist 1"}'],
     ["/library/artist/a%2Fb%3Fc%23d%26e%25", 'artist:{"artistId":"a/b?c#d&e%"}'],
     ["/library/artist/a%2Fb%3Fc%23d%26e%25&ignored=x", 'artist:{"artistId":"a/b?c#d&e%"}'],
+    ["/library/artist/a+b%2Bc%252F%26%3D=&ignored=x", 'artist:{"artistId":"a+b+c%2F&="}'],
+    ["/library/album/a+b%2Bc%252F%26%3D", 'album:{"albumId":"a+b+c%2F&="}'],
     ["/library/album/album-1", 'album:{"albumId":"album-1"}'],
     ["/library/album/a%2Fb%3Fc%23d%26e%25", 'album:{"albumId":"a/b?c#d&e%"}'],
     ["/unknown", "library:{}"],
@@ -75,6 +84,22 @@ describe("router", () => {
     expect(target.querySelector("p")!.textContent).toBe(expected);
     expect(rendered).toEqual([expected.split(":")[0]]);
   });
+
+  it.each(["/player", "/player=", "/player=invalid"])(
+    "exposes the complete initial parameter collection for %s",
+    (path) => {
+      const search = `?${path}&unknown=first&type=album&type=track&q=one&q=two&unknown=last`;
+      setup("/library", `/webapp/${search}#anchor`);
+      const expected = new URL(search, window.location.href).searchParams;
+      expect([...route.parameters]).toEqual([...expected]);
+      expect([...route.parameters][0]).toEqual([
+        "/player",
+        path.includes("invalid") ? "invalid" : "",
+      ]);
+      expect(window.location.search).toBe(search);
+      expect(window.location.hash).toBe("#anchor");
+    },
+  );
 
   it.each([false, true])(
     "uses view transitions unless reduced motion is enabled: %s",
@@ -116,7 +141,7 @@ describe("router", () => {
   it.each(["push", "replace", "traverse"])(
     "updates same-route search %s with native scrolling and preserved focus",
     async (navigationType) => {
-      const { navigation } = setup("/search&type=artist&q=one");
+      const { navigation } = setup("/search=&unknown=old&type=artist&q=one");
       expect(route.parameters.get("q")).toBe("one");
       const start = vi.fn();
       document.startViewTransition = start;
@@ -126,14 +151,25 @@ describe("router", () => {
           navigationType,
           canIntercept: true,
           destination: {
-            url: new URL("?/search&type=track&q=two#anchor", window.location.href).href,
+            url: new URL(
+              "?/search=&unknown=first&type=track&type=album&q=two&q=three&unknown=last#anchor",
+              window.location.href,
+            ).href,
           },
           intercept,
         }),
       );
       await intercept.mock.results[0].value;
       expect(route.parameters.get("q")).toBe("two");
-      expect(route.parameters.getAll("type")).toEqual(["track"]);
+      expect([...route.parameters]).toEqual([
+        ["/search", ""],
+        ["unknown", "first"],
+        ["type", "track"],
+        ["type", "album"],
+        ["q", "two"],
+        ["q", "three"],
+        ["unknown", "last"],
+      ]);
       expect(intercept.mock.calls[0][0]).toMatchObject({ focusReset: "manual" });
       expect(intercept.mock.calls[0][0]).not.toHaveProperty("scroll");
       expect(start).not.toHaveBeenCalled();
