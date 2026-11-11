@@ -13,15 +13,14 @@
   import AlbumRoute from "./_album.svelte";
   import ArtistRoute from "./_artist.svelte";
   import LibraryRoute from "./_library.svelte";
-  import SearchRoute, { createSearchState } from "./_search.svelte";
+  import SearchRoute from "./_search.svelte";
   import type WebappUpdater from "./webapp-updater.svelte";
   import type { AuthStore } from "./auth";
   import { Covers } from "./covers.svelte";
   import { Cache } from "./cache.svelte";
   import { Session } from "./session.svelte";
   import type { Network } from "./network.svelte";
-  import Router, { isCurrentPage, route, type RouteParams } from "./router.svelte";
-  import { parseSearch } from "./search-url";
+  import Router, { isCurrentPage, type RouteParams } from "./router.svelte";
   import { TrackEngine } from "./track.svelte";
   import { installSwipeToDismiss } from "./swipe-to-dismiss";
 
@@ -46,16 +45,6 @@
   const emptyCache = new Cache();
   const cache = $derived(selection.cache ?? emptyCache);
   const appName = $derived(demo ? "Libras demo" : "Libras");
-  function newSearchState() {
-    const state = $state(createSearchState());
-    return state;
-  }
-  // Retain transient preview expansion on Back; URL criteria remain authoritative.
-  // Cache switches discard transient rendering state, not the incoming URL.
-  const searchState = $derived.by(() => {
-    void cache;
-    return newSearchState();
-  });
   const hasNextTrack = $derived(
     cache.queue.index >= 0 && cache.queue.index < cache.queue.tracks.length - 1,
   );
@@ -164,16 +153,7 @@
 
 {#snippet searchRoute()}
   <Atmosphere />
-  <SearchRoute
-    {cache}
-    {covers}
-    {trackEngine}
-    {session}
-    {playback}
-    {appName}
-    state={searchState}
-    criteria={parseSearch(route.parameters)}
-  />
+  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}

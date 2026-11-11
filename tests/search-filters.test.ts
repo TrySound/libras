@@ -1,12 +1,14 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
-import { describe, expect, it, vi } from "vitest";
-import Search, { createSearchState } from "../src/_search.svelte";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type Search from "../src/_search.svelte";
 import Harness from "./search-test-app.svelte";
 import type { ComponentProps } from "svelte";
 
-function fixture() {
-  const artists = Array.from({ length: 1500 }, (_, i) => ({
+afterEach(() => vi.unstubAllGlobals());
+
+function fixture(count = 1500) {
+  const artists = Array.from({ length: count }, (_, i) => ({
     id: `a${i}`,
     name: `Fixture artist ${i}`,
   }));
@@ -37,11 +39,57 @@ function fixture() {
     covers: {},
     trackEngine: { getStatus: () => "downloaded" },
     playback: { toggleTrack: vi.fn(), replaceQueueAndPlay: vi.fn(), enqueue: vi.fn() },
-    state: createSearchState(),
   } as unknown as ComponentProps<typeof Search>;
 }
 
 describe("independent search filters", () => {
+  it.each([0, 1, 2])(
+    "appends batches for type %s and restarts on URL criteria changes",
+    async (type) => {
+      let callback: IntersectionObserverCallback;
+      vi.stubGlobal(
+        "IntersectionObserver",
+        class {
+          constructor(cb: IntersectionObserverCallback) {
+            callback = cb;
+          }
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+      const target = document.createElement("main");
+      document.body.append(target);
+      const app = mount(Harness, { target, props: { props: fixture(120) } });
+      flushSync();
+      try {
+        target.querySelectorAll<HTMLButtonElement>("[aria-pressed]")[type].click();
+        flushSync();
+        const first = target.querySelector(".track-row");
+        expect(target.querySelectorAll(".track-row")).toHaveLength(48);
+        for (const size of [96, 120]) {
+          const sentinel = target.querySelector(".library-sentinel")!;
+          callback!(
+            [{ target: sentinel, isIntersecting: true } as IntersectionObserverEntry],
+            {} as IntersectionObserver,
+          );
+          flushSync();
+          expect(target.querySelectorAll(".track-row")).toHaveLength(size);
+          expect(target.querySelector(".track-row")).toBe(first);
+        }
+        expect(target.querySelector(".library-sentinel")).toBeNull();
+        expect(target.textContent).toContain("119");
+        const input = target.querySelector("input")!;
+        input.value = "Fixture";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        flushSync();
+        expect(target.querySelectorAll(".track-row")).toHaveLength(48);
+      } finally {
+        await unmount(app);
+        target.remove();
+      }
+    },
+  );
   it("filters offline browse eligibility before counting and retains album playback context", async () => {
     const props = fixture();
     const offlineProps = {
@@ -58,7 +106,9 @@ describe("independent search filters", () => {
       trackChip.click();
       flushSync();
       expect(target.querySelectorAll(".track-row")).toHaveLength(1);
-      expect(target.querySelector("li[aria-setsize]")?.getAttribute("aria-setsize")).toBe("1");
+      expect(target.querySelector('section[aria-label="Tracks"] header')?.textContent).toContain(
+        "1",
+      );
       const play = target.querySelector<HTMLButtonElement>(".track-row button.link-target")!;
       expect(play.getAttribute("aria-label")).toBe("Play Fixture track 1499");
       play.click();
@@ -75,7 +125,7 @@ describe("independent search filters", () => {
     }
   });
   it.each(Array.from({ length: 8 }, (_, mask) => mask))(
-    "supports combination %s, previews and full bounded browse",
+    "supports combination %s, previews and single-type batches",
     async (mask) => {
       const props = fixture();
       const target = document.createElement("main");
@@ -96,11 +146,9 @@ describe("independent search filters", () => {
         );
         const selected = chips.filter((_, i) => mask & (1 << i)).length;
         if (selected === 1) {
-          expect(target.querySelector(".virtual-list")).not.toBeNull();
-          expect(target.querySelectorAll(".track-row").length).toBeLessThan(30);
-          expect(target.querySelector("li[aria-setsize]")?.getAttribute("aria-setsize")).toBe(
-            "1500",
-          );
+          expect(target.querySelectorAll(".track-row")).toHaveLength(48);
+          expect(target.querySelector(".library-sentinel")).not.toBeNull();
+          expect(target.querySelector("section[aria-label] header")?.textContent).toContain("1500");
           expect(target.textContent).not.toContain("Show more");
         } else expect(target.textContent).toContain("Type to find music");
         const input = target.querySelector("input")!;
@@ -108,7 +156,8 @@ describe("independent search filters", () => {
         input.dispatchEvent(new Event("input", { bubbles: true }));
         flushSync();
         expect(target.querySelectorAll("section[aria-label]").length).toBe(selected || 3);
-        expect(target.querySelectorAll(".virtual-list").length).toBe(selected === 1 ? 1 : 0);
+        expect(target.querySelectorAll(".library-sentinel").length).toBe(selected === 1 ? 1 : 0);
+        if (selected === 1) expect(target.querySelectorAll(".track-row")).toHaveLength(48);
         if (selected !== 1)
           expect(target.querySelectorAll(".track-row").length).toBe((selected || 3) * 3);
         chips.forEach((chip) => {
