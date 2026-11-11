@@ -23,6 +23,44 @@ afterEach(() => {
 });
 
 describe("account cache clear", () => {
+  it("ignores queue position updates while deletion is held without throwing or writing", async () => {
+    const disk = installDisk();
+    const cache = new Cache("selected");
+    cache.setQueue({ tracks: ["track"], index: 0, position: 12 });
+    await cache.flush();
+    const revision = cache.queueRevision;
+    const writes = disk.state.writes;
+    const root = await navigator.storage.getDirectory();
+    const accounts = await root.getDirectoryHandle("accounts");
+    vi.spyOn(root, "getDirectoryHandle").mockResolvedValue(accounts);
+    disk.getDirectory.mockResolvedValue(root);
+    const entered = deferred();
+    const release = deferred();
+    const remove = accounts.removeEntry.bind(accounts);
+    vi.spyOn(accounts, "removeEntry").mockImplementation(async (name, options) => {
+      entered.resolve();
+      await release.promise;
+      await remove(name, options);
+    });
+    const clearing = cache.clear();
+    await entered.promise;
+    try {
+      expect(() =>
+        cache.setQueue({ ...cache.queue, position: 13 }, { checkpoint: true }),
+      ).not.toThrow();
+      expect(cache.queue.position).toBe(12);
+      expect(cache.queueRevision).toBe(revision);
+      await cache.flush();
+      expect(disk.state.writes).toBe(writes);
+    } finally {
+      release.resolve();
+      await clearing;
+    }
+    await cache.flush();
+    expect(disk.state.writes).toBe(writes);
+    expect(disk.files.size).toBe(0);
+  });
+
   it("reactively empties cache-owned data and remains writable with the same key", async () => {
     const disk = installDisk();
     const cache = new Cache("selected");

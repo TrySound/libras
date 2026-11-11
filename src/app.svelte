@@ -81,9 +81,15 @@
         preferences: auth.storage,
       }),
   );
-  // Clearing the selected cache empties reactive data, but retained browser URLs need release.
+  // Release retained browser URLs only when the same cache loses its data.
+  let observedCache: Cache | undefined;
+  let hadData = false;
   $effect(() => {
-    if (cache.tracks.size || cache.images.size) return;
+    const hasData = cache.tracks.size > 0 || cache.images.size > 0;
+    const cleared = observedCache === cache && hadData && !hasData;
+    observedCache = cache;
+    hadData = hasData;
+    if (!cleared) return;
     untrack(() => {
       playback.suspend();
       covers.activate();

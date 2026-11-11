@@ -1129,7 +1129,6 @@ export class Cache {
 
   #requireDisk() {
     if (!this.#disk) throw new Error("No cache storage configured.");
-    if (this.#disk.retired) throw new DOMException("Cache retired.", "AbortError");
     return this.#disk;
   }
 
