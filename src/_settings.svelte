@@ -111,20 +111,21 @@
     aria-labelledby={`${id}-title`}
     onsubmit={finishDisconnect}
   >
-    <h2 class="heading-md" id={`${id}-title`}>Disconnect from server?</h2>
-    <div class="stack-xs">
-      <div class="row-md">
-        <input
-          class="switch"
-          id={`${id}-delete-local`}
-          type="checkbox"
-          role="switch"
-          bind:checked={deleteLocalData}
-          aria-describedby={`${id}-scope`}
-        />
-        <label class="body" for={`${id}-delete-local`}>Clear local data</label>
-      </div>
-      <p class="caption text-secondary" id={`${id}-scope`}>Server data is unaffected.</p>
+    <h2 class="heading-md" id={`${id}-title`}>Disconnect from server</h2>
+    <p class="body" id={`${id}-scope`}>
+      Would you also like to clear this account’s data and downloads from this device? Server data
+      won’t be affected.
+    </p>
+    <div class="row-md">
+      <input
+        class="switch"
+        id={`${id}-delete-local`}
+        type="checkbox"
+        role="switch"
+        bind:checked={deleteLocalData}
+        aria-describedby={`${id}-scope`}
+      />
+      <label class="body" for={`${id}-delete-local`}>Clear data on device</label>
     </div>
     <div class="row-sm row-wrap row-end">
       <button

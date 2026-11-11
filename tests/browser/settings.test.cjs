@@ -263,13 +263,15 @@ test("Settings native controls, layout, and persistence", async (t) => {
           await page.locator("#settings-disconnect").getAttribute("commandfor"),
           "disconnect-dialog",
         );
-        const dialog = page.getByRole("dialog", { name: "Disconnect from server?", exact: true });
-        const checkbox = dialog.getByRole("switch", { name: "Clear local data", exact: true });
+        const dialog = page.getByRole("dialog", { name: "Disconnect from server", exact: true });
+        const checkbox = dialog.getByRole("switch", { name: "Clear data on device", exact: true });
         assert.equal(await checkbox.isChecked(), false);
         assert.equal(await checkbox.getAttribute("aria-describedby"), "disconnect-dialog-scope");
         assert.equal(
-          await dialog.locator("#disconnect-dialog-scope").textContent(),
-          "Server data is unaffected.",
+          (await dialog.locator("#disconnect-dialog-scope").textContent())
+            .trim()
+            .replace(/\s+/g, " "),
+          "Would you also like to clear this account’s data and downloads from this device? Server data won’t be affected.",
         );
         assert.equal(await dialog.getByRole("button").count(), 2);
         assert.equal(await dialog.locator("form").getAttribute("method"), "dialog");
@@ -310,6 +312,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
             id,
           );
           const geometry = await dialog.evaluate((node) => {
+            node.scrollTop = 0;
             const box = node.getBoundingClientRect();
             const label = node.querySelector("label").getBoundingClientRect();
             const control = node.querySelector('[role="switch"]').getBoundingClientRect();
@@ -348,6 +351,29 @@ test("Settings native controls, layout, and persistence", async (t) => {
             });
           }
           await checkbox.check();
+          if (enlarged) {
+            await dialog
+              .getByRole("button", { name: "Disconnect", exact: true })
+              .scrollIntoViewIfNeeded();
+            const actionsFit = await dialog.evaluate((node) => {
+              const box = node.getBoundingClientRect();
+              return [...node.querySelectorAll("button")].every((button) => {
+                const action = button.getBoundingClientRect();
+                return (
+                  action.left >= box.left &&
+                  action.right <= box.right &&
+                  action.top >= box.top &&
+                  action.bottom <= box.bottom
+                );
+              });
+            });
+            assert.equal(actionsFit, true);
+            if (process.env.ARTIFACT_DIR) {
+              await page.screenshot({
+                path: `${process.env.ARTIFACT_DIR}/disconnect-320-enlarged-actions.png`,
+              });
+            }
+          }
           await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
         }
         await page.evaluate(() => document.documentElement.style.removeProperty("font-size"));
@@ -394,7 +420,9 @@ test("Settings native controls, layout, and persistence", async (t) => {
         await page.setViewportSize({ width: 390, height: 740 });
         await page.locator("#settings-disconnect-mobile").click();
         assert.equal(await checkbox.isChecked(), false);
-        await dialog.getByRole("button", { name: "Disconnect", exact: true }).click();
+        // Keyboard activation also avoids the swipe installer's brief synthetic-click guard.
+        await dialog.getByRole("button", { name: "Disconnect", exact: true }).focus();
+        await page.keyboard.press("Enter");
         await page.locator("#server-host").waitFor();
         assert.equal(await page.locator("dialog:modal").count(), 0);
         await page.setViewportSize({ width: 1280, height: 900 });
