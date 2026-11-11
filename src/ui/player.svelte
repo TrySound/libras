@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "../icon.svelte";
   import FavouriteButton from "./favourite-button.svelte";
+  import type { Favourites } from "../favourites.svelte";
   import Artwork from "./artwork.svelte";
   import Atmosphere from "./atmosphere.svelte";
   import Loader from "./loader.svelte";
@@ -15,12 +16,15 @@
     cache: Cache;
     covers: Covers;
     playback: Playback;
+    favourites: Favourites;
     trackEngine: TrackEngine;
     audio: ReturnType<typeof AudioPlayer> | undefined;
     offlineMode: boolean;
   }
 
-  let { cache, covers, playback, trackEngine, audio, offlineMode }: Props = $props();
+  let { cache, covers, playback, favourites, trackEngine, audio, offlineMode }: Props = $props();
+  let playerDialog = $state<HTMLDialogElement>();
+  let nowTitle = $state<HTMLHeadingElement>();
   const id = $props.id();
   const track = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const artist = $derived(track && cache.artists.get(track.artistIds[0]));
@@ -122,6 +126,7 @@
 {/if}
 
 <dialog
+  bind:this={playerDialog}
   id="player-dialog"
   class="large-player"
   closedby="any"
@@ -197,6 +202,9 @@
             }}><Icon name="download" /><span>Download</span></button
           >
           <FavouriteButton
+            {favourites}
+            focusFallback={nowTitle}
+            onsettings={() => playerDialog?.close()}
             overlayId="playing-actions"
             target={track ? { kind: "tracks", id: track.id } : undefined}
           />
@@ -208,7 +216,7 @@
         <Artwork {covers} id={track?.artworkId} size="cover" loading="eager" />
         <div class="stack-lg">
           <div class="stack-xs">
-            <h1 id={`${id}-now-title`} class="heading-lg uppercase">
+            <h1 bind:this={nowTitle} id={`${id}-now-title`} class="heading-lg uppercase">
               {track?.title ?? "Nothing playing"}
             </h1>
             {#if track}

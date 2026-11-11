@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
   import FavouriteButton from "./ui/favourite-button.svelte";
+  import type { Favourites } from "./favourites.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -22,6 +23,7 @@
     session: Session;
     playbackState: "loading" | "playing" | "paused";
     playback: Playback;
+    favourites: Favourites;
     appName?: string;
   }
 
@@ -33,9 +35,12 @@
     session,
     playbackState,
     playback,
+    favourites,
     appName = "Libras",
   }: Props = $props();
 
+  let section = $state<HTMLElement>();
+  let heading = $state<HTMLHeadingElement>();
   const offlineMode = $derived(session.offlineMode);
   const loading = $derived(!session.localReady);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
@@ -94,8 +99,7 @@
     if (wasOpen) dismissActions();
     menuTrackId = undefined;
     if (!wasOpen) return;
-    const section = document.querySelector<HTMLElement>('section[aria-label="Album details"]');
-    const fallback = section?.querySelector<HTMLElement>("h1") ?? section;
+    const fallback = heading ?? section;
     if (fallback?.checkVisibility()) {
       fallback.tabIndex = -1;
       fallback.focus({ preventScroll: true });
@@ -106,14 +110,14 @@
 <svelte:head><title>{album?.title ?? "Album"} | {appName}</title></svelte:head>
 
 <Atmosphere src={libraryAvailable && artist && album ? atmosphere?.source : undefined} />
-<section class="split-layout" aria-label="Album details">
+<section bind:this={section} class="split-layout" aria-label="Album details">
   {#if libraryAvailable && artist && album}
     <div class="detail-panel view-slide-up">
       <Artwork {covers} id={album.artworkId} size="cover" loading="eager" />
       <div class="stack-sm">
         <div class="row-md row-justify">
           <div class="stack-xs">
-            <h1 class="heading-lg uppercase">{album.title}</h1>
+            <h1 bind:this={heading} class="heading-lg uppercase">{album.title}</h1>
             <a class="button-quiet" href={`?/library/artist/${encodeURIComponent(artist.id)}`}
               ><span class="label text-secondary">{album.displayArtist ?? artist.name}</span></a
             >
@@ -380,6 +384,8 @@
         </span>
       </button>
       <FavouriteButton
+        {favourites}
+        focusFallback={heading ?? section}
         overlayId={target}
         target={menuTrack
           ? { kind: "tracks", id: menuTrack.id }

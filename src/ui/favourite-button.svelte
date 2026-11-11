@@ -1,19 +1,29 @@
 <script lang="ts">
-  import { getContext, onMount } from "svelte";
+  import { onMount } from "svelte";
   import type { Favourites } from "../favourites.svelte";
   import type { FavouriteTarget } from "../schema";
   import Icon from "../icon.svelte";
   import Loader from "./loader.svelte";
 
-  let { target, overlayId }: { target: FavouriteTarget | undefined; overlayId: string } = $props();
+  let {
+    favourites,
+    target,
+    overlayId,
+    focusFallback,
+    onsettings,
+  }: {
+    favourites: Favourites;
+    target: FavouriteTarget | undefined;
+    overlayId: string;
+    focusFallback: HTMLElement | undefined;
+    onsettings?: () => void;
+  } = $props();
   const descriptionId = $props.id();
-  const favourites = getContext<Favourites | undefined>("favourites");
-  const selected = $derived(target ? (favourites?.has(target) ?? false) : false);
-  const pending = $derived(
-    target ? (favourites?.pending.has(favourites.key(target)) ?? false) : false,
-  );
+  const targetKey = $derived(target ? favourites.key(target) : undefined);
+  const selected = $derived(target ? favourites.has(target) : false);
+  const pending = $derived(target ? favourites.pending.has(favourites.key(target)) : false);
   const reason = $derived(
-    !favourites?.available
+    !favourites.available
       ? "Reconnect in Settings to edit favourites."
       : favourites.outcomeUnknown
         ? "Outcome unknown; refresh in Settings before editing favourites."
@@ -34,16 +44,15 @@
     else overlay?.hidePopover();
   }
   function restoreFocus() {
-    const fallback = document.querySelector<HTMLElement>("#library-search, main h1");
-    const destination = visible(invoker) ? invoker : fallback;
+    const destination = visible(invoker) ? invoker : focusFallback;
     if (destination && visible(destination)) {
       if (!destination.matches("input, button, a[href], [tabindex]")) destination.tabIndex = -1;
       destination.focus({ preventScroll: true });
     }
   }
   $effect(() => {
-    void target?.kind;
-    void target?.id;
+    void favourites;
+    void targetKey;
     lifetime++;
     error = "";
   });
@@ -65,7 +74,7 @@
     };
   });
   async function submit() {
-    if (!favourites || !target || pending || reason) return;
+    if (!target || pending || reason) return;
     const submitted = { ...target };
     const opening = lifetime;
     error = "";
@@ -86,7 +95,7 @@
   }
 </script>
 
-{#if favourites && target}
+{#if target}
   <button
     class="menu-item"
     aria-pressed={selected}
@@ -98,7 +107,7 @@
     {#if pending}<Loader />{:else}<Icon name="favourite" />{/if}
     <span
       >{pending
-        ? favourites.intentions.get(favourites.key(target))
+        ? favourites.pending.get(favourites.key(target))
           ? "Adding to favourites…"
           : "Removing from favourites…"
         : selected
@@ -118,8 +127,7 @@
         href="?/settings"
         onclick={() => {
           dismiss();
-          // Now Playing contains its Actions popover inside a modal dialog.
-          overlay?.parentElement?.closest("dialog")?.close();
+          onsettings?.();
         }}>Open settings</a
       >
     </p>

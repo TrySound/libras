@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
   import FavouriteButton from "./ui/favourite-button.svelte";
+  import type { Favourites } from "./favourites.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -17,10 +18,20 @@
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
+    favourites: Favourites;
     appName?: string;
   }
 
-  let { cache, covers, trackEngine, session, playback, appName = "Libras" }: Props = $props();
+  let {
+    cache,
+    covers,
+    trackEngine,
+    session,
+    playback,
+    favourites,
+    appName = "Libras",
+  }: Props = $props();
+  let section = $state<HTMLElement>();
 
   // Long-press focuses the primary target before opening the shared dialog.
   let menuArtistId = $state<string>();
@@ -74,7 +85,7 @@
     if (wasOpen) dismissActions();
     menuArtistId = undefined;
     if (!wasOpen) return;
-    const fallback = document.getElementById("library-heading")?.closest("section");
+    const fallback = section;
     if (fallback?.checkVisibility()) {
       fallback.tabIndex = -1;
       fallback.focus({ preventScroll: true });
@@ -84,7 +95,7 @@
 
 <svelte:head><title>Your library | {appName}</title></svelte:head>
 
-<section aria-labelledby="library-heading">
+<section bind:this={section} aria-labelledby="library-heading">
   <h1 class="visually-hidden" id="library-heading">Your library</h1>
   {#if session.loadingAfterConnect}
     <div class="library-loading" role="status">
@@ -294,6 +305,8 @@
         <span>Download</span>
       </button>
       <FavouriteButton
+        {favourites}
+        focusFallback={section}
         overlayId={id}
         target={menuArtist ? { kind: "artists", id: menuArtist.id } : undefined}
       />
