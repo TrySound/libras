@@ -78,7 +78,7 @@ test("top Close is idle ghost, retains keyboard feedback and shared centered cap
   }
 });
 
-test("all four bottom action consumers cap content, wrap long titles and leave popovers uncapped", async () => {
+test("all four action consumers share the container utility in drawers and open popovers", async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({
     viewport: { width: 1280, height: 900 },
@@ -119,8 +119,12 @@ test("all four bottom action consumers cap content, wrap long titles and leave p
               close = d.querySelector("header > button"),
               artwork = d.querySelector(".artwork");
             const c = close.getBoundingClientRect(),
-              a = artwork.getBoundingClientRect();
+              a = artwork.getBoundingClientRect(),
+              content = d.querySelector(":scope > .container-md");
             return (
+              content.classList.contains("container-md") &&
+              parseFloat(getComputedStyle(content).maxInlineSize) ===
+                22 * parseFloat(getComputedStyle(document.documentElement).fontSize) &&
               heading.scrollWidth <= heading.clientWidth + 1 &&
               c.width >= 44 &&
               a.width >= 48 &&
@@ -145,14 +149,45 @@ test("all four bottom action consumers cap content, wrap long titles and leave p
           `${id} Close and final action remain reachable at 200% text`,
         );
       }
-      await page.keyboard.press("Escape");
+      await drawer.getByRole("button", { name: "Close menu", exact: true }).click();
       await drawer.waitFor({ state: "hidden" });
-      const popover = page.locator(".popover > .stack-lg").first();
-      assert.equal(
-        await popover.evaluate((e) => getComputedStyle(e).maxInlineSize),
-        "none",
-        `${id} popover is not capped`,
-      );
+      const popover = page.locator(".popover").first();
+      await popover.locator("h2").evaluate((e) => (e.textContent = "Menu"));
+      for (const [width, font] of [
+        [1280, "100%"],
+        [390, "100%"],
+        [320, "200%"],
+      ]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate((font) => (document.documentElement.style.fontSize = font), font);
+        await popover.evaluate((e) => e.showPopover());
+        await popover.waitFor({ state: "visible" });
+        assert.equal(
+          await popover.evaluate((e) => {
+            const content = e.firstElementChild,
+              s = getComputedStyle(e),
+              r = e.getBoundingClientRect(),
+              c = content.getBoundingClientRect();
+            const available =
+              e.clientWidth - parseFloat(s.paddingInlineStart) - parseFloat(s.paddingInlineEnd);
+            const left = r.left + e.clientLeft + parseFloat(s.paddingInlineStart);
+            return (
+              e.matches(":popover-open") &&
+              content.classList.contains("container-md") &&
+              parseFloat(getComputedStyle(content).maxInlineSize) ===
+                22 * parseFloat(getComputedStyle(document.documentElement).fontSize) &&
+              Math.abs(c.width - available) < 1 &&
+              Math.abs(c.left + c.right - (2 * left + available)) < 1 &&
+              content.scrollWidth <= content.clientWidth + 1 &&
+              e.scrollWidth <= e.clientWidth + 1
+            );
+          }),
+          true,
+          `${id} open popover fills available content and remains centered without overflow at ${width}/${font}`,
+        );
+        await popover.getByRole("button", { name: "Close menu", exact: true }).click();
+        await popover.waitFor({ state: "hidden" });
+      }
       await page.evaluate(() => (document.documentElement.style.fontSize = "100%"));
     }
   } finally {
