@@ -53,7 +53,7 @@ for (const reducedMotion of ["reduce", "no-preference"]) {
       await open();
       const geometry = await drawer.evaluate((d) => {
         const rect = d.getBoundingClientRect(),
-          content = d.querySelector(".navigation-content").getBoundingClientRect(),
+          content = d.querySelector(".sheet-body").getBoundingClientRect(),
           group = d.querySelector(".container-md").getBoundingClientRect();
         const close = d.querySelector("button").getBoundingClientRect();
         return {
@@ -183,8 +183,9 @@ async function overflowJourney(page, drawer, menu, cdp) {
   await drawer.locator(".container-md").evaluate((e) => {
     const section = document.createElement("section");
     section.innerHTML =
-      '<p class="caption">' +
+      '<p class="caption wrap-anywhere">' +
       "Update failed. Retry when connected. ".repeat(30) +
+      "UnbrokenUpdateFailure".repeat(20) +
       '</p><button class="menu-item">Retry update fixture</button>';
     e.append(section);
   });
@@ -203,7 +204,7 @@ async function overflowJourney(page, drawer, menu, cdp) {
     true,
     "the dialog is the sole scrolling surface, with a reachable overflow start",
   );
-  const close = drawer.locator(".navigation-controls button"),
+  const close = drawer.locator(".sheet-header button"),
     brand = drawer.locator(".brand");
   assert.ok((await close.boundingBox()).y >= 0);
   for (const control of await drawer.locator("nav a, section button, .dialog-handle").all()) {
@@ -221,7 +222,7 @@ async function overflowJourney(page, drawer, menu, cdp) {
     await drawer.evaluate((d) => {
       const dash = d.querySelector(":scope > .dialog-handle").getBoundingClientRect();
       return (
-        d.querySelector(".navigation-controls").getBoundingClientRect().bottom < 0 &&
+        d.querySelector(".sheet-header").getBoundingClientRect().bottom < 0 &&
         d.querySelector(".brand").getBoundingClientRect().bottom < 0 &&
         d.getBoundingClientRect().bottom - dash.bottom >= 31
       );

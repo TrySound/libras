@@ -407,7 +407,11 @@
   .container-md {
     inline-size: 100%;
     max-inline-size: 22rem;
-    margin-inline: auto;
+    margin: auto;
+  }
+
+  .wrap-anywhere {
+    overflow-wrap: anywhere;
   }
 }
 
@@ -1384,20 +1388,16 @@
     }
   }
 
-  .navigation-controls {
+  .sheet-header {
     padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 16px;
   }
 
-  .navigation-content {
-    display: flex;
+  .sheet-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
   }
 
-  .navigation-content > .container-md {
-    margin-block: auto;
-    flex-shrink: 0;
-    overflow-wrap: anywhere;
-  }
   .notification-popover {
     box-shadow: var(--shadow-xl);
     box-sizing: border-box;
@@ -1629,16 +1629,6 @@
     max-block-size: calc(100dvh - var(--space-lg));
     padding-block-end: calc(var(--space-lg) + env(safe-area-inset-bottom));
     border-top: var(--border-width) solid var(--shell-border);
-  }
-
-  .bottom-sheet > .container-md > header {
-    & > .row-md {
-      min-inline-size: 0;
-    }
-    & h2 {
-      min-inline-size: 0;
-      overflow-wrap: anywhere;
-    }
   }
 
   .dialog-handle {

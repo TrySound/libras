@@ -259,7 +259,7 @@
         </button>
       {/if}
       {#if appUpdate.failed}
-        <p class="caption text-subtle">{appUpdate.message}</p>
+        <p class="caption text-subtle wrap-anywhere">{appUpdate.message}</p>
       {/if}
     </section>
   {/if}
@@ -373,7 +373,7 @@
           navigationOpen = navigationDrawer.open;
         }}
       >
-        <div class="navigation-controls row-sm row-end">
+        <div class="sheet-header row-sm row-end">
           <button
             class="button"
             data-variant="ghost"
@@ -385,7 +385,7 @@
             <Icon name="cross" />
           </button>
         </div>
-        <div class="navigation-content">
+        <div class="sheet-body">
           <div class="container-md stack-lg">
             <div class="row-sm row-center">{@render brand()}</div>
             {@render navigation()}
