@@ -36,7 +36,6 @@
   let { network, auth, updaterComponent: Updater, settingsContent, demo = false }: Props = $props();
 
   let navigationDrawer: HTMLDialogElement;
-  let navigationOpen = $state(false);
 
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
@@ -259,7 +258,7 @@
         </button>
       {/if}
       {#if appUpdate.failed}
-        <p class="caption text-subtle wrap-anywhere">{appUpdate.message}</p>
+        <p class="caption text-subtle">{appUpdate.message}</p>
       {/if}
     </section>
   {/if}
@@ -300,7 +299,6 @@
             aria-label="Open menu"
             aria-describedby={appUpdate?.hasUpdate ? "navigation-update-hint" : undefined}
             aria-controls="navigation-dialog"
-            aria-expanded={navigationOpen}
             commandfor="navigation-dialog"
             command="show-modal"
           >
@@ -369,9 +367,6 @@
         data-swipeup="close"
         aria-label="Navigation"
         bind:this={navigationDrawer}
-        ontoggle={() => {
-          navigationOpen = navigationDrawer.open;
-        }}
       >
         <div class="sheet-header row-sm row-end">
           <button

@@ -409,10 +409,6 @@
     max-inline-size: 22rem;
     margin: auto;
   }
-
-  .wrap-anywhere {
-    overflow-wrap: anywhere;
-  }
 }
 
 /* Shared utilities, typography and cards opt in at an explicit design-system

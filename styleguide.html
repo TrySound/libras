@@ -645,7 +645,6 @@
                   command="show-modal"
                   aria-label="Open navigation specimen"
                   aria-controls="guide-navigation"
-                  aria-expanded="false"
                   aria-describedby="guide-navigation-update-hint"
                 >
                   <span id="guide-navigation-update-hint" class="caption text-subtle">Update</span>
@@ -782,7 +781,7 @@
                     </svg>
                     <span class="label text-subtle">Update Libras</span>
                   </button>
-                  <p class="caption text-subtle wrap-anywhere">
+                  <p class="caption text-subtle">
                     The update is taking too long. Please try again or reopen the app.
                   </p>
                 </section>
@@ -804,7 +803,7 @@
                 </nav>
                 <hr class="separator" />
                 <section class="stack-sm" aria-label="App update">
-                  <p class="caption text-subtle wrap-anywhere">
+                  <p class="caption text-subtle">
                     Offline app setup failed. You can keep using the app online.
                   </p>
                 </section>
@@ -990,11 +989,6 @@
       import { installSwipeToDismiss } from "/src/swipe-to-dismiss.ts";
       installSwipeToDismiss();
       const navigation = document.querySelector("#guide-navigation");
-      navigation.addEventListener("toggle", () => {
-        document
-          .querySelector('[aria-controls="guide-navigation"]')
-          .setAttribute("aria-expanded", String(navigation.open));
-      });
       navigation.addEventListener("click", (event) => {
         if (event.target.closest("a[href]")) navigation.close();
       });

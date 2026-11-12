@@ -119,8 +119,8 @@ test("enlarged navigation scrolls as one surface before a new bottom-boundary sw
     await drawer.locator(".container-md").evaluate((e) => {
       const section = document.createElement("section");
       section.innerHTML =
-        '<p class="caption wrap-anywhere">' +
-        "UnbrokenUpdateFailure".repeat(30) +
+        '<p class="caption">' +
+        "The update could not be applied. Try Update Libras again. Reloading interrupts playback." +
         '</p><button class="menu-item">Retry update fixture</button>';
       e.append(section);
     });
