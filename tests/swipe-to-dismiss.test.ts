@@ -52,25 +52,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe.each(["down", "up"] as const)("global swipe %s to dismiss", (direction) => {
-  const setup = () => createDialog(direction);
-  it("delegates from descendants and only closes on release after the threshold", () => {
-    const { dialog, touch, close } = setup();
-    touch("touchstart", 10);
-    expect(touch("touchmove", 150).defaultPrevented).toBe(true);
-    expect(dialog.style.getPropertyValue("--swipe-offset")).toBe(
-      direction === "up" ? "-140px" : "140px",
-    );
-    expect(close).not.toHaveBeenCalled();
-    touch("touchend", 150);
-    expect(close).toHaveBeenCalledOnce();
-    expect(dialog.style.getPropertyValue("--swipe-offset")).toBe("");
-  });
+describe("shared swipe behavior", () => {
+  const setup = () => createDialog("down");
 
   it.each(["unmarked", "unsupported", "closed", "outside"])("ignores %s targets", (kind) => {
     const { dialog, button, touch, close } = setup();
-    if (kind === "unmarked") delete dialog.dataset[`swipe${direction}`];
-    if (kind === "unsupported") dialog.dataset[`swipe${direction}`] = "show-modal";
+    if (kind === "unmarked") delete dialog.dataset.swipedown;
+    if (kind === "unsupported") dialog.dataset.swipedown = "show-modal";
     if (kind === "closed") dialog.open = false;
     const target = kind === "outside" ? document.body : button;
     touch("touchstart", 0, 0, target);
@@ -135,24 +123,6 @@ describe.each(["down", "up"] as const)("global swipe %s to dismiss", (direction)
     expect(dialog.style.getPropertyValue("--swipe-offset")).toBe("");
   });
 
-  it.each(["dialog", "child"])(
-    "preserves scrolling when %s is not at its dismissal boundary",
-    (kind) => {
-      const { dialog, button, touch, close } = setup();
-      const scroller = kind === "dialog" ? dialog : button;
-      if (direction === "up")
-        Object.defineProperties(scroller, {
-          scrollHeight: { value: 500, configurable: true },
-          clientHeight: { value: 200, configurable: true },
-        });
-      scroller.scrollTop = 100;
-      touch("touchstart", 0);
-      expect(touch("touchmove", 200).defaultPrevented).toBe(false);
-      touch("touchend", 200);
-      expect(close).not.toHaveBeenCalled();
-    },
-  );
-
   it.each(["input", "textarea", "select", "[contenteditable]"])("preserves %s gestures", (kind) => {
     const { dialog, touch, close } = setup();
     const input = document.createElement(kind === "[contenteditable]" ? "div" : kind);
@@ -161,17 +131,6 @@ describe.each(["down", "up"] as const)("global swipe %s to dismiss", (direction)
     touch("touchstart", 0, 0, input);
     expect(touch("touchmove", 200, 0, input).defaultPrevented).toBe(false);
     touch("touchend", 200, 0, input);
-    expect(close).not.toHaveBeenCalled();
-  });
-
-  it("does not claim opposite or perpendicular gestures", () => {
-    const { touch, close } = setup();
-    touch("touchstart", 100);
-    expect(touch("touchmove", 50).defaultPrevented).toBe(false);
-    touch("touchend", 300);
-    touch("touchstart", 0);
-    expect(touch("touchmove", 20, 80).defaultPrevented).toBe(false);
-    touch("touchend", 300);
     expect(close).not.toHaveBeenCalled();
   });
 
@@ -237,22 +196,60 @@ describe.each(["down", "up"] as const)("global swipe %s to dismiss", (direction)
   });
 });
 
-describe("upward scroll ownership", () => {
-  it.each([298.8, 299, 299.6, 300])(
-    "allows only bottom-boundary rounding at offset %s",
-    (offset) => {
-      const { button, touch, close } = createDialog("up");
-      Object.defineProperties(button, {
+describe.each(["down", "up"] as const)("direction-sensitive swipe %s", (direction) => {
+  it("moves with a signed offset and closes only on release", () => {
+    const { dialog, touch, close } = createDialog(direction);
+    touch("touchstart", 10);
+    expect(touch("touchmove", 150).defaultPrevented).toBe(true);
+    expect(dialog.style.getPropertyValue("--swipe-offset")).toBe(
+      direction === "up" ? "-140px" : "140px",
+    );
+    expect(close).not.toHaveBeenCalled();
+    touch("touchend", 150);
+    expect(close).toHaveBeenCalledOnce();
+    expect(dialog.style.getPropertyValue("--swipe-offset")).toBe("");
+  });
+
+  it("rejects opposite and perpendicular movement without changing ownership later", () => {
+    const { touch, close } = createDialog(direction);
+    touch("touchstart", 100);
+    expect(touch("touchmove", 50).defaultPrevented).toBe(false);
+    touch("touchend", 300);
+    touch("touchstart", 0);
+    expect(touch("touchmove", 20, 80).defaultPrevented).toBe(false);
+    touch("touchend", 300);
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it.each(["dialog", "child"])("preserves scrolling when %s is away from its boundary", (kind) => {
+    const { dialog, button, touch, close } = createDialog(direction);
+    const scroller = kind === "dialog" ? dialog : button;
+    if (direction === "up")
+      Object.defineProperties(scroller, {
         scrollHeight: { value: 500 },
         clientHeight: { value: 200 },
       });
-      button.scrollTop = offset;
-      touch("touchstart", 0);
-      expect(touch("touchmove", 140).defaultPrevented).toBe(offset >= 299);
-      touch("touchend", 140);
-      expect(close).toHaveBeenCalledTimes(offset >= 299 ? 1 : 0);
-    },
-  );
+    scroller.scrollTop = 100;
+    touch("touchstart", 0);
+    expect(touch("touchmove", 200).defaultPrevented).toBe(false);
+    touch("touchend", 200);
+    expect(close).not.toHaveBeenCalled();
+  });
+});
+
+describe("upward scroll ownership", () => {
+  it.each([298.8, 299.6])("allows only bottom-boundary rounding at offset %s", (offset) => {
+    const { button, touch, close } = createDialog("up");
+    Object.defineProperties(button, {
+      scrollHeight: { value: 500 },
+      clientHeight: { value: 200 },
+    });
+    button.scrollTop = offset;
+    touch("touchstart", 0);
+    expect(touch("touchmove", 140).defaultPrevented).toBe(offset >= 299);
+    touch("touchend", 140);
+    expect(close).toHaveBeenCalledTimes(offset >= 299 ? 1 : 0);
+  });
 
   it("does not transfer a reading gesture at the bottom; a new gesture may dismiss", () => {
     const { button, touch, close } = createDialog("up");

@@ -412,6 +412,50 @@ test("Edgerunner foundations and native controls", async (t) => {
       assert.equal(await invoker.evaluate((element) => element === document.activeElement), true);
     });
 
+    await t.test("shared handle placement works in ordinary block flow", async () => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole("button", { name: "Open bottom drawer specimen", exact: true }).click();
+      const dialog = page.locator("#guide-bottom-drawer");
+      assert.equal(
+        await dialog.locator(".dialog-handle").evaluate((handle) => {
+          const r = handle.getBoundingClientRect(),
+            parent = handle.offsetParent;
+          return (
+            r.width === 40 &&
+            r.height === 6 &&
+            Math.abs(r.top - parent.getBoundingClientRect().top - parent.clientTop - 8) < 1
+          );
+        }),
+        true,
+        "ordinary overlay handles retain their top placement",
+      );
+      assert.deepEqual(
+        await dialog.evaluate((node) => {
+          const handle = node.querySelector(".dialog-handle"),
+            content = node.querySelector(".container-md");
+          handle.dataset.side = "bottom";
+          node.append(handle);
+          const after = document.createElement("div");
+          after.style.height = "1px";
+          node.append(after);
+          const r = handle.getBoundingClientRect(),
+            p = node.getBoundingClientRect();
+          return {
+            width: r.width,
+            height: r.height,
+            centered:
+              Math.abs((r.left + r.right) / 2 - (p.left + node.clientLeft + node.clientWidth / 2)) <
+              1,
+            before: r.top - content.getBoundingClientRect().bottom,
+            after: after.getBoundingClientRect().top - r.bottom,
+          };
+        }),
+        { width: 40, height: 6, centered: true, before: 24, after: 32 },
+      );
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+    });
+
     await t.test("loaders use square md, lg, and xl sizes", async () => {
       for (const [selector, size] of [
         ["#loading-heading + .caption + .control-example .button .loader", 24],

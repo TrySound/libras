@@ -20,7 +20,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
         ? "BADBADNOTGOOD"
         : i
           ? `Artist ${i}`
-          : "A very long artist name without artwork that should wrap naturally",
+          : `A long artist title with ${"UnbrokenArtistName".repeat(5)}`,
     coverArt: i === 1 ? "artist-cover" : undefined,
   }));
   const albums = artists.map((artist, i) => ({
@@ -88,6 +88,22 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       "none",
     );
     assert.equal(await popover.getByRole("heading").textContent(), artists[0].name);
+    assert.equal(
+      await popover.evaluate((node) => {
+        const content = node.firstElementChild.getBoundingClientRect(),
+          r = node.getBoundingClientRect(),
+          s = getComputedStyle(node);
+        const width =
+          node.clientWidth - parseFloat(s.paddingInlineStart) - parseFloat(s.paddingInlineEnd);
+        return (
+          Math.abs(content.width - width) < 1 &&
+          Math.abs(content.left + content.right - r.left - r.right) < 2 &&
+          node.scrollWidth <= node.clientWidth
+        );
+      }),
+      true,
+      "the open desktop popover fills and centers within its padded content width",
+    );
     assert.equal(await page.locator("#artist-menu").isVisible(), false);
     assert.equal(new URL(page.url()).search, "?/library");
     await page.keyboard.press("Escape");
@@ -109,6 +125,22 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     const sheet = page.locator("#artist-menu");
     await sheet.waitFor({ state: "visible" });
     assert.equal(await sheet.evaluate((node) => node.matches(":modal")), true);
+    await page.setViewportSize({ width: 1280, height: 852 });
+    assert.equal(
+      await sheet.evaluate((node) => {
+        const r = node.getBoundingClientRect(),
+          c = node.querySelector(".container-md").getBoundingClientRect();
+        return (
+          Math.abs(r.width - document.documentElement.getBoundingClientRect().width) < 1 &&
+          c.width > 300 &&
+          c.width <= 352 &&
+          Math.abs(c.left + c.right - r.left - r.right) < 2
+        );
+      }),
+      true,
+      "the wide drawer retains a full surface and centered capped content",
+    );
+    await page.setViewportSize({ width: 393, height: 852 });
     assert.notEqual(await sheet.evaluate((node) => getComputedStyle(node).backgroundImage), "none");
     const touch = await page.context().newCDPSession(page);
     const bounds = await sheet.boundingBox();
@@ -154,6 +186,43 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       }),
       true,
     );
+    await options.filter({ visible: true }).click();
+    assert.equal(
+      await sheet.evaluate((node) => {
+        const title = node.querySelector("h2"),
+          artwork = node.querySelector(".artwork").getBoundingClientRect();
+        const close = node.querySelector("header > button").getBoundingClientRect(),
+          text = title.getBoundingClientRect();
+        return (
+          node.scrollWidth <= node.clientWidth &&
+          title.scrollWidth <= title.clientWidth + 1 &&
+          artwork.width >= 48 &&
+          close.width >= 44 &&
+          artwork.right <= text.left &&
+          text.right <= close.left
+        );
+      }),
+      true,
+      "the unbroken action title wraps at 200% without hiding artwork or Close",
+    );
+    for (const control of [
+      sheet.getByRole("button", { name: "Close menu", exact: true }),
+      sheet.locator(".menu-item").last(),
+    ]) {
+      await control.scrollIntoViewIfNeeded();
+      assert.equal(
+        await control.evaluate((node) => {
+          const r = node.getBoundingClientRect();
+          return r.top >= 0 && r.bottom <= innerHeight;
+        }),
+        true,
+      );
+    }
+    // The preceding touch dismissal intentionally suppresses quick pointer
+    // activation in this same dialog; keyboard activation remains available.
+    await sheet.getByRole("button", { name: "Close menu", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await sheet.waitFor({ state: "hidden" });
     await page.evaluate(() => {
       document.documentElement.style.fontSize = "";
     });
