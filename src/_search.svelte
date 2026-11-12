@@ -3,6 +3,26 @@
   import type { Album, Artist, Track } from "./schema";
   import type { Immutable } from "./cache.svelte";
 
+  export const searchTypes = ["artist", "album", "track"] as const;
+  export type SearchType = (typeof searchTypes)[number];
+
+  export function parseSearch(parameters: URLSearchParams) {
+    const selected = parameters.getAll("type");
+    return {
+      query: parameters.get("q") ?? "",
+      types: searchTypes.filter((type) => selected.includes(type)),
+    };
+  }
+
+  /** Keep the route bare; encode only search criteria, never the full parameter collection. */
+  export function searchHref(query = "", types: readonly SearchType[] = []) {
+    const parameters = new URLSearchParams();
+    for (const type of searchTypes) if (types.includes(type)) parameters.append("type", type);
+    if (query) parameters.set("q", query);
+    const suffix = parameters.toString();
+    return `?/search${suffix ? `&${suffix}` : ""}`;
+  }
+
   const searchGroups = ["Artists", "Albums", "Tracks"] as const;
 
   type SearchGroup = (typeof searchGroups)[number];
@@ -15,12 +35,6 @@
     href?: string;
     artworkId?: string;
   }
-
-  export function createSearchState() {
-    return { query: "", limits: { Artists: 3, Albums: 3, Tracks: 3 } };
-  }
-
-  type SearchState = ReturnType<typeof createSearchState>;
 
   function availableTrackIds(
     tracks: readonly Immutable<Track>[],
@@ -87,6 +101,7 @@
         keys: ["title", "artist", "album"],
       });
     return {
+      records,
       Artists: snapshot("Artists"),
       Albums: snapshot("Albums"),
       Tracks: snapshot("Tracks"),
@@ -94,7 +109,11 @@
     };
   }
 
-  export function searchLibrary(index: ReturnType<typeof createSearchIndex>, query: string) {
+  export function searchLibrary(
+    index: ReturnType<typeof createSearchIndex>,
+    query: string,
+    browse = false,
+  ) {
     query = query.trim().replace(/\s+/g, " ");
     const groups = searchGroups.map((group) => {
       // Retrieve matches explicitly without a library limit so equal scores can be
@@ -113,8 +132,8 @@
         : [];
       return {
         group,
-        total: matches.length,
-        records: matches.map((result) => result.obj),
+        total: !query && browse ? index.records[group].length : matches.length,
+        records: !query && browse ? index.records[group] : matches.map((result) => result.obj),
       };
     });
     return { query, groups };
@@ -123,6 +142,8 @@
 
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import { getSearchParameters, navigate } from "./router.svelte";
+  import { onVisible } from "./viewport";
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -139,14 +160,12 @@
     session,
     playback,
     appName = "Libras",
-    state: searchState,
   }: {
     cache: Cache;
     covers: Covers;
     trackEngine: TrackEngine;
     session: Session;
     playback: Playback;
-    state: SearchState;
     appName?: string;
   } = $props();
 
@@ -159,7 +178,32 @@
     ),
   );
 
-  const matches = $derived(searchLibrary(index, searchState.query));
+  const parameters = $derived(getSearchParameters());
+  const criteria = $derived(parseSearch(parameters));
+  const selectedTypes = $derived(criteria.types);
+  const singleType = $derived(selectedTypes.length === 1);
+  const matches = $derived(searchLibrary(index, criteria.query, singleType));
+  // User increments override these derived limits until cache or URL criteria change.
+  // The void reads intentionally track those dependencies so recomputation resets pagination.
+  const pageSize = 48;
+  let limit = $derived.by(() => {
+    void cache;
+    void criteria;
+    return pageSize;
+  });
+  // Grouped previews reset on the same dependencies as the single-type batch limit.
+  let limits = $derived.by(() => {
+    void cache;
+    void criteria;
+    return { Artists: 3, Albums: 3, Tracks: 3 };
+  });
+
+  function toggleType(type: SearchType) {
+    const types = selectedTypes.includes(type)
+      ? selectedTypes.filter((value) => value !== type)
+      : [...selectedTypes, type];
+    navigate(searchHref(criteria.query, types).slice(1) + window.location.hash);
+  }
   const currentTrackId = $derived(cache.queue.tracks[cache.queue.index]);
   const libraryError = $derived(
     session.refreshError ||
@@ -168,10 +212,12 @@
   );
 
   const results = $derived(
-    matches.groups.map((result) => ({
-      ...result,
-      records: result.records.slice(0, searchState.limits[result.group]),
-    })),
+    matches.groups
+      .filter((_, i) => !selectedTypes.length || selectedTypes.includes(searchTypes[i]))
+      .map((result) => ({
+        ...result,
+        records: result.records.slice(0, singleType ? limit : limits[result.group]),
+      })),
   );
 
   function isAvailable(id: string) {
@@ -223,8 +269,8 @@
   let popover: HTMLDivElement;
 
   function dismissActions() {
-    sheet.close();
-    popover.hidePopover?.();
+    sheet?.close();
+    popover?.hidePopover?.();
   }
 
   function supportingText(group: SearchGroup, record: SearchRecord) {
@@ -273,23 +319,43 @@
 
 <section class="stack-lg scroll-runway">
   <h1 class="heading-lg uppercase">Search</h1>
-  <search class="stack-xs">
-    <label class="label" for="library-search">Search library</label>
-    <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
-    <input
-      class="input"
-      id="library-search"
-      type="search"
-      placeholder="Artists, albums, tracks"
-      autocomplete="off"
-      autocorrect="off"
-      autocapitalize="off"
-      spellcheck="false"
-      bind:value={searchState.query}
-      oninput={() => (searchState.limits = createSearchState().limits)}
-      autofocus
-    />
-  </search>
+  <div class="card stack-md">
+    <search class="stack-xs">
+      <label class="label" for="library-search">Search library</label>
+      <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
+      <input
+        class="input"
+        id="library-search"
+        type="search"
+        placeholder="Artists, albums, tracks"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        value={criteria.query}
+        oninput={(event) =>
+          navigate(
+            searchHref(event.currentTarget.value, selectedTypes).slice(1) + window.location.hash,
+            "replace",
+          )}
+        autofocus
+      />
+    </search>
+    <div class="row-sm row-wrap" role="group" aria-label="Result types">
+      {#each searchTypes as type}
+        <button
+          type="button"
+          class="button"
+          data-size="text"
+          data-variant={selectedTypes.includes(type) ? "primary" : "secondary"}
+          aria-pressed={selectedTypes.includes(type)}
+          onclick={() => toggleType(type)}
+        >
+          {#if type === "artist"}Artist{:else if type === "album"}Album{:else}Track{/if}
+        </button>
+      {/each}
+    </div>
+  </div>
   {#if libraryError}
     <div class="card stack-md">
       <h2 class="heading-sm">Library needs attention</h2>
@@ -303,40 +369,46 @@
     </div>
   {/if}
   <div class="stack-xl" aria-busy={!session.localReady}>
-    {#if index.size === 0}
-      {#if session.localReady}
-        <div class="stack-md">
-          <h2 class="heading-sm">
-            {cache.savedAt === undefined
-              ? "Connect your library"
-              : session.offlineMode
-                ? "No downloaded music to search."
-                : "Your library is empty."}
-          </h2>
-          <p class="body">
-            {cache.savedAt === undefined
-              ? "Add your music server to start searching."
-              : session.offlineMode
-                ? "Download music from the library to search offline."
-                : "Your music will appear here after synchronization."}
-          </p>
-          <div class="row-sm">
-            <a
-              class="button"
-              data-variant="secondary"
-              data-size="text"
-              href={cache.savedAt === undefined ? "?/settings" : "?/library"}
-              >{cache.savedAt === undefined ? "Open settings" : "Open library"}</a
-            >
-          </div>
+    {#if !session.localReady && index.size === 0}
+      <div class="row-sm">
+        <Loader />
+        <p class="body">Loading your library…</p>
+      </div>
+    {:else if index.size === 0}
+      <div class="stack-md">
+        <h2 class="heading-sm">
+          {cache.savedAt === undefined
+            ? "Connect your library"
+            : session.offlineMode
+              ? "No downloaded music to search."
+              : "Your library is empty."}
+        </h2>
+        <p class="body">
+          {cache.savedAt === undefined
+            ? "Add your music server to start searching."
+            : session.offlineMode
+              ? "Download music from the library to search offline."
+              : "Your music will appear here after synchronization."}
+        </p>
+        <div class="row-sm">
+          <a
+            class="button"
+            data-variant="secondary"
+            data-size="text"
+            href={cache.savedAt === undefined ? "?/settings" : "?/library"}
+            >{cache.savedAt === undefined ? "Open settings" : "Open library"}</a
+          >
         </div>
-      {/if}
-    {:else if !matches.query}
-      <p class="body text-secondary">Type to find music in your library.</p>
+      </div>
+    {:else if !matches.query && !singleType}
+      <p class="body text-secondary">
+        Type to find music in your library.
+        {#if selectedTypes.length > 1}Select one type to browse your library.{/if}
+      </p>
     {:else if results.every((result) => result.total === 0)}
       <div class="stack-md">
         <h2 class="heading-sm">No matches found.</h2>
-        <p class="body">Try another artist, album, or track name.</p>
+        <p class="body">Try another search or change the selected types.</p>
       </div>
     {:else}
       {#each results as { group, records, total }}
@@ -409,14 +481,23 @@
                 </div>
               {/each}
             </div>
-            {#if total > records.length}
+            {#if singleType && total > records.length}
+              {#key limit}
+                <div
+                  class="library-sentinel"
+                  aria-hidden="true"
+                  {@attach onVisible(() => (limit = Math.min(limit + pageSize, total)))}
+                ></div>
+              {/key}
+            {:else if total > records.length}
               <div class="row-sm">
                 <button
                   class="button"
                   data-size="text"
                   data-variant="secondary"
                   aria-label={`Show more ${group.toLowerCase()}`}
-                  onclick={() => (searchState.limits[group] += 10)}>Show more</button
+                  onclick={() => (limits = { ...limits, [group]: limits[group] + 10 })}
+                  >Show more</button
                 >
               </div>
             {/if}

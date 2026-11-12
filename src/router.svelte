@@ -1,5 +1,27 @@
 <script module lang="ts">
   import type { Snippet } from "svelte";
+  import { createSubscriber } from "svelte/reactivity";
+
+  const subscribe = createSubscriber((update) => {
+    const navigation = window.navigation;
+    navigation.addEventListener("currententrychange", update);
+    return () => navigation.removeEventListener("currententrychange", update);
+  });
+
+  let search: string | undefined;
+  let parameters = new URLSearchParams();
+
+  /** Complete committed query parameters. Treat the returned collection as read-only. */
+  export function getSearchParameters(): URLSearchParams {
+    subscribe();
+    const url = new URL(window.navigation.currentEntry?.url ?? window.location.href);
+    // Keep query identity across hash-only commits so local result batches do not reset.
+    if (url.search !== search) {
+      search = url.search;
+      parameters = url.searchParams;
+    }
+    return parameters;
+  }
 
   export type RouteParams = Record<string, string | undefined>;
 
@@ -41,13 +63,25 @@
     routes.map((route) => ({ route, pattern: new URLPattern({ pathname: route.pattern }) })),
   );
 
-  const initialMatch = resolve(new URL(window.location.href));
+  const initialUrl = new URL(window.location.href);
+  const initialMatch = resolve(initialUrl);
   let match = $state.raw(initialMatch);
   route.pattern = initialMatch.route.pattern;
 
+  function routePath(url: URL) {
+    // Match the first raw token, not a decoded searchParams key: IDs may contain
+    // encoded slashes/ampersands or literal plus signs. Only empty values are valid.
+    const token = url.search.slice(1).split("&", 1)[0];
+    const separator = token.indexOf("=");
+    if (separator < 0) return token;
+    return token.slice(separator + 1) === "" ? token.slice(0, separator) : undefined;
+  }
+
   function resolve(url: URL): { route: RenderRoute; params: RouteParams } {
+    const path = routePath(url);
+    if (path === undefined) return { route: defaultRoute, params: {} };
     for (const { route, pattern } of compiled) {
-      const result = pattern.exec({ pathname: url.search.slice(1) });
+      const result = pattern.exec({ pathname: path });
       if (!result) continue;
       return {
         route,
@@ -93,7 +127,10 @@
       )
         return;
 
+      const sameSearch = routePath(current) === "/search" && routePath(destination) === "/search";
       event.intercept({
+        // Keep typing/toggle focus; leave scrolling and history restoration native.
+        ...(sameSearch ? { focusReset: "manual" as const } : {}),
         handler: async () => {
           const update = async () => {
             if (event.signal.aborted) return;
@@ -101,6 +138,7 @@
             await tick();
           };
           if (
+            sameSearch ||
             destination.href === current.href ||
             !document.startViewTransition ||
             window.matchMedia("(prefers-reduced-motion: reduce)").matches

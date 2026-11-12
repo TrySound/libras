@@ -13,7 +13,7 @@
   import AlbumRoute from "./_album.svelte";
   import ArtistRoute from "./_artist.svelte";
   import LibraryRoute from "./_library.svelte";
-  import SearchRoute, { createSearchState } from "./_search.svelte";
+  import SearchRoute from "./_search.svelte";
   import type WebappUpdater from "./webapp-updater.svelte";
   import type { AuthStore } from "./auth";
   import { Covers } from "./covers.svelte";
@@ -44,15 +44,6 @@
   const emptyCache = new Cache();
   const cache = $derived(selection.cache ?? emptyCache);
   const appName = $derived(demo ? "Libras demo" : "Libras");
-  function newSearchState() {
-    const state = $state(createSearchState());
-    return state;
-  }
-  // Owned above the route so Back retains state; cache switches discard it.
-  const searchState = $derived.by(() => {
-    void cache;
-    return newSearchState();
-  });
   const hasNextTrack = $derived(
     cache.queue.index >= 0 && cache.queue.index < cache.queue.tracks.length - 1,
   );
@@ -161,7 +152,7 @@
 
 {#snippet searchRoute()}
   <Atmosphere />
-  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} {appName} state={searchState} />
+  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}

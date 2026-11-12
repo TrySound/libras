@@ -37,6 +37,14 @@ export function installNavigation(
   vi.stubGlobal("URLPattern", TestURLPattern);
   window.history.replaceState(null, "", `/?${path}`);
   const navigation = Object.assign(new EventTarget(), {
+    currentEntry: { url: window.location.href },
+    commit(href: string, updateLocation = true) {
+      const url = new URL(href, window.location.href).href;
+      navigation.currentEntry = { url };
+      navigation.dispatchEvent(new Event("currententrychange"));
+      if (updateLocation) window.history.replaceState(null, "", url);
+    },
+    // A navigation attempt is not a commit; tests explicitly choose when to commit.
     navigate: vi.fn((href: string, options: { history: string }) => {
       onNavigate(href.slice(1), options.history);
       return { finished: Promise.resolve() };
