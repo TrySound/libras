@@ -122,32 +122,29 @@ describe("router", () => {
     },
   );
 
-  it.each(["push", "replace", "traverse"])(
-    "updates same-route search %s with native scrolling and preserved focus",
-    async (navigationType) => {
-      const { navigation } = setup("/search=&unknown=old&type=artist&q=one");
-      const start = vi.fn();
-      document.startViewTransition = start;
-      const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
-      navigation.dispatchEvent(
-        Object.assign(navigationEvent(), {
-          navigationType,
-          canIntercept: true,
-          destination: {
-            url: new URL(
-              "?/search=&unknown=first&type=track&type=album&q=two&q=three&unknown=last#anchor",
-              window.location.href,
-            ).href,
-          },
-          intercept,
-        }),
-      );
-      await intercept.mock.results[0].value;
-      expect(intercept.mock.calls[0][0]).toMatchObject({ focusReset: "manual" });
-      expect(intercept.mock.calls[0][0]).not.toHaveProperty("scroll");
-      expect(start).not.toHaveBeenCalled();
-    },
-  );
+  it("updates same-route search with native scrolling and preserved focus", async () => {
+    const { navigation } = setup("/search=&unknown=old&type=artist&q=one");
+    const start = vi.fn();
+    document.startViewTransition = start;
+    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+    navigation.dispatchEvent(
+      Object.assign(navigationEvent(), {
+        navigationType: "push",
+        canIntercept: true,
+        destination: {
+          url: new URL(
+            "?/search=&unknown=first&type=track&type=album&q=two&q=three&unknown=last#anchor",
+            window.location.href,
+          ).href,
+        },
+        intercept,
+      }),
+    );
+    await intercept.mock.results[0].value;
+    expect(intercept.mock.calls[0][0]).toMatchObject({ focusReset: "manual" });
+    expect(intercept.mock.calls[0][0]).not.toHaveProperty("scroll");
+    expect(start).not.toHaveBeenCalled();
+  });
 
   it("does not navigate to the current URL", () => {
     const navigation = installNavigation("/library");

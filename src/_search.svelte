@@ -373,33 +373,31 @@
         <p class="body">Loading your library…</p>
       </div>
     {:else if index.size === 0}
-      {#if session.localReady}
-        <div class="stack-md">
-          <h2 class="heading-sm">
-            {cache.savedAt === undefined
-              ? "Connect your library"
-              : session.offlineMode
-                ? "No downloaded music to search."
-                : "Your library is empty."}
-          </h2>
-          <p class="body">
-            {cache.savedAt === undefined
-              ? "Add your music server to start searching."
-              : session.offlineMode
-                ? "Download music from the library to search offline."
-                : "Your music will appear here after synchronization."}
-          </p>
-          <div class="row-sm">
-            <a
-              class="button"
-              data-variant="secondary"
-              data-size="text"
-              href={cache.savedAt === undefined ? "?/settings" : "?/library"}
-              >{cache.savedAt === undefined ? "Open settings" : "Open library"}</a
-            >
-          </div>
+      <div class="stack-md">
+        <h2 class="heading-sm">
+          {cache.savedAt === undefined
+            ? "Connect your library"
+            : session.offlineMode
+              ? "No downloaded music to search."
+              : "Your library is empty."}
+        </h2>
+        <p class="body">
+          {cache.savedAt === undefined
+            ? "Add your music server to start searching."
+            : session.offlineMode
+              ? "Download music from the library to search offline."
+              : "Your music will appear here after synchronization."}
+        </p>
+        <div class="row-sm">
+          <a
+            class="button"
+            data-variant="secondary"
+            data-size="text"
+            href={cache.savedAt === undefined ? "?/settings" : "?/library"}
+            >{cache.savedAt === undefined ? "Open settings" : "Open library"}</a
+          >
         </div>
-      {/if}
+      </div>
     {:else if !matches.query && !singleType}
       <p class="body text-secondary">
         Type to find music in your library.

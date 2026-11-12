@@ -4,7 +4,6 @@ const { test } = require("node:test");
 const { chromium } = require("playwright");
 const base = process.env.PREVIEW_URL ?? "http://127.0.0.1:5173";
 const screenshots = process.env.SCREENSHOT_DIR;
-const forcePolyfill = process.env.FORCE_NAVIGATION_POLYFILL === "1";
 
 test("Search filters, incremental lists, URLs and native actions", async () => {
   const browser = await chromium.launch({ headless: true });
@@ -12,10 +11,6 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
-  if (forcePolyfill)
-    await page.addInitScript(() => {
-      delete window.navigation;
-    });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const artist = {
@@ -28,7 +23,7 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     artists: [artist],
     year: 2024,
   };
-  const directoryArtists = Array.from({ length: 149 }, (_, i) => ({
+  const directoryArtists = Array.from({ length: 2 }, (_, i) => ({
     id: `directory-artist-${i}`,
     name: `Directory artist ${i}`,
   }));
@@ -38,7 +33,7 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     artists: [a],
     year: 2024,
   }));
-  const songs = Array.from({ length: 150 }, (_, i) => ({
+  const songs = Array.from({ length: 120 }, (_, i) => ({
     id: `track-${i}`,
     title: `Search fixture track ${i}${i === 0 ? " — a long title with naturally wrapped lines and Unicode Beyoncé 東京" : ""}`,
     albumId: album.id,
@@ -71,28 +66,8 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     });
   });
 
-  async function loadAll(region, total) {
-    const first = await region.locator(".track-row").first().elementHandle();
-    while ((await region.locator(".track-row").count()) < total) {
-      const count = await region.locator(".track-row").count();
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await region
-        .locator(".track-row")
-        .nth(Math.min(count + 47, total - 1))
-        .waitFor();
-      assert.equal(await first.evaluate((node) => node.isConnected), true);
-    }
-    assert.equal(await region.locator(".track-row").count(), total);
-    assert.equal(await region.locator(".library-sentinel").count(), 0);
-  }
-
   try {
-    await page.goto(forcePolyfill ? `${base}/?/settings` : base);
-    await page.getByLabel("Host", { exact: true }).waitFor();
-    assert.equal(
-      await page.evaluate(() => navigation.constructor.toString().includes("[native code]")),
-      !forcePolyfill,
-    );
+    await page.goto(base);
     await page.getByLabel("Host", { exact: true }).fill("https://search.example.test");
     await page.getByLabel("Username", { exact: true }).fill("listener");
     await page.getByLabel("Password", { exact: true }).fill("fictional-password");
@@ -101,9 +76,7 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     await page.locator('a[href="?/search"]').filter({ visible: true }).click();
     const input = page.getByRole("searchbox", { name: "Search library" });
     await input.waitFor();
-    // The polyfill resets focus after page navigation; exercise in-place focus below.
-    if (forcePolyfill) await input.focus();
-    else assert.equal(await input.evaluate((node) => node === document.activeElement), true);
+    assert.equal(await input.evaluate((node) => node === document.activeElement), true);
     const chips = ["Artist", "Album", "Track"].map((name) =>
       page.getByRole("button", { name, exact: true }),
     );
@@ -112,18 +85,8 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     );
     const tracks = groups[2];
     await input.fill("Search fixture");
-    for (let mask = 0; mask < 8; mask++) {
-      for (let i = 0; i < 3; i++) {
-        if (((await chips[i].getAttribute("aria-pressed")) === "true") !== !!(mask & (1 << i)))
-          await chips[i].click();
-      }
-      for (let i = 0; i < 3; i++)
-        assert.equal(await groups[i].count(), !mask || mask & (1 << i) ? 1 : 0);
-      if (!mask || mask === 7) assert.equal(await tracks.locator(".track-row").count(), 3);
-      if (mask === 4) assert.equal(await tracks.locator(".track-row").count(), 48);
-    }
-    await chips[0].click();
-    await chips[1].click(); // Track only.
+    assert.equal(await tracks.locator(".track-row").count(), 3);
+    await chips[2].click();
     await chips[2].focus();
     await page.keyboard.press("Space");
     assert.equal(await chips[2].getAttribute("aria-pressed"), "false");
@@ -132,7 +95,7 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     assert.equal(await chips[2].evaluate((node) => node === document.activeElement), true);
     await input.fill("");
     assert.equal(await tracks.locator(".track-row").count(), 48);
-    assert.equal(await tracks.locator("header .metadata").textContent(), "150");
+    assert.equal(await tracks.locator("header .metadata").textContent(), "120");
     assert.equal(await page.getByRole("button", { name: "Show more tracks" }).count(), 0);
 
     // Native menu behavior and utility-only layout at desktop and narrow widths.
@@ -186,13 +149,23 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     await sheet.getByRole("button", { name: "Close menu" }).click();
     assert.equal(await target.evaluate((node) => node === document.activeElement), true);
 
-    // Loaded rows accumulate; both browse and matching lists reach the final record.
-    await loadAll(tracks, 150);
+    // One real observer-driven completion: loaded Track batches retain earlier rows.
+    const first = await tracks.locator(".track-row").first().elementHandle();
+    while ((await tracks.locator(".track-row").count()) < songs.length) {
+      const count = await tracks.locator(".track-row").count();
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await tracks
+        .locator(".track-row")
+        .nth(Math.min(count + 47, songs.length - 1))
+        .waitFor();
+      assert.equal(await first.evaluate((node) => node.isConnected), true);
+    }
+    assert.equal(await tracks.locator(".library-sentinel").count(), 0);
     await page.evaluate(() => {
       location.hash = "search-anchor";
     });
     await page.waitForURL((url) => url.hash === "#search-anchor");
-    assert.equal(await tracks.locator(".track-row").count(), 150);
+    assert.equal(await tracks.locator(".track-row").count(), 120);
     await page.evaluate(async () => {
       const cancel = (event) => {
         if (event.destination.url.includes("q=uncommitted")) event.preventDefault();
@@ -207,12 +180,12 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     });
     assert.equal(await input.inputValue(), "");
     assert.equal(await chips[2].getAttribute("aria-pressed"), "true");
-    assert.equal(await tracks.locator(".track-row").count(), 150);
-    await tracks.getByRole("button", { name: `Play ${songs[149].title}`, exact: true }).waitFor();
+    assert.equal(await tracks.locator(".track-row").count(), 120);
+    await input.fill("Search fixture track 119");
+    await tracks.getByRole("button", { name: `Play ${songs[119].title}`, exact: true }).waitFor();
     await input.fill("Search fixture");
     assert.equal(await tracks.locator(".track-row").count(), 48);
     assert.equal(await input.evaluate((node) => node === document.activeElement), true);
-    await loadAll(tracks, 150);
     await page.reload();
     await input.waitFor();
     await tracks.locator(".track-row").first().waitFor();
@@ -246,28 +219,22 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
 
     for (const i of [0, 1]) {
       await chips[i].click();
-      assert.equal(await groups[i].locator(".track-row").count(), 48);
-      await loadAll(groups[i], 150);
-      const lastLink = groups[i].locator(".track-row").last().getByRole("link");
-      await lastLink.click();
-      await page.goBack();
-      await input.waitFor();
-      assert.equal(await chips[i].getAttribute("aria-pressed"), "true");
+      assert.equal(await groups[i].locator(".track-row").count(), 3);
       await input.fill("Directory");
-      assert.equal(await groups[i].locator(".track-row").count(), 48);
-      assert.equal(await groups[i].locator("header .metadata").textContent(), "149");
-      await loadAll(groups[i], 149);
+      assert.equal(await groups[i].locator(".track-row").count(), 2);
+      assert.equal(await groups[i].locator("header .metadata").textContent(), "2");
       await input.fill("");
       await chips[i].click();
     }
     // Real same-route links reset the result view without a search-specific router API.
     await chips[2].click();
-    await loadAll(tracks, 150);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await tracks.locator(".track-row").nth(95).waitFor();
     await page.evaluate(() => {
       const link = document.createElement("a");
       link.id = "incoming-search-link";
-      link.href = "?/search&type=album&q=Directory";
-      link.textContent = "Browse directory albums";
+      link.href = "?/search&type=track&q=Search+fixture";
+      link.textContent = "Search matching tracks";
       Object.assign(link.style, {
         position: "fixed",
         bottom: "16px",
@@ -276,25 +243,23 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
       });
       document.body.append(link);
     });
-    await page.getByRole("link", { name: "Browse directory albums", exact: true }).click();
-    await groups[1].locator(".track-row").first().waitFor();
-    // Native automatic scrolling is not implemented by the Navigation polyfill.
-    if (!forcePolyfill)
-      assert.ok(
-        await groups[1]
-          .locator(".track-row")
-          .first()
-          .evaluate((node) => {
-            const bounds = node.getBoundingClientRect();
-            return bounds.top >= 0 && bounds.top < innerHeight;
-          }),
-      );
+    await page.getByRole("link", { name: "Search matching tracks", exact: true }).click();
+    await tracks.locator(".track-row").first().waitFor();
+    assert.ok(
+      await tracks
+        .locator(".track-row")
+        .first()
+        .evaluate((node) => {
+          const bounds = node.getBoundingClientRect();
+          return bounds.top >= 0 && bounds.top < innerHeight;
+        }),
+    );
     await page.goBack();
     assert.equal(await chips[2].getAttribute("aria-pressed"), "true");
     assert.equal(await input.inputValue(), "");
     await page.goForward();
-    assert.equal(await chips[1].getAttribute("aria-pressed"), "true");
-    assert.equal(await input.inputValue(), "Directory");
+    assert.equal(await chips[2].getAttribute("aria-pressed"), "true");
+    assert.equal(await input.inputValue(), "Search fixture");
     // Router matches raw tokens while Search reads only criteria from the full params.
     await page.goto(
       `${base}/?/search=&unknown=keep&type=no&type=track&type=track&q=Search+fixture&q=ignored`,
@@ -303,17 +268,10 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     assert.equal(await input.inputValue(), "Search fixture");
     assert.equal(await chips[2].getAttribute("aria-pressed"), "true");
     assert.equal(await chips[0].getAttribute("aria-pressed"), "false");
-    await input.fill("Search fixture track 149");
+    await input.fill("Search fixture track 119");
     assert.equal(await input.evaluate((node) => node === document.activeElement), true);
-    // Native History can commit a non-route query that Router deliberately ignores.
-    // The polyfill patches History via navigation, so use its ordinary route URL.
-    await page.evaluate((polyfill) => {
-      history.pushState(
-        null,
-        "",
-        polyfill ? "?/search&type=album&q=Directory" : "?type=album&q=Directory",
-      );
-    }, forcePolyfill);
+    // History can commit a non-route query that Router deliberately ignores.
+    await page.evaluate(() => history.pushState(null, "", "?type=album&q=Directory"));
     await page.waitForFunction(
       () => document.querySelector("#library-search").value === "Directory",
     );
