@@ -402,15 +402,6 @@
   view-transition-class: slide-left;
 }
 
-/* App/reference measure; marketing has its own heading container. */
-@scope (.app-root, .design-reference) {
-  .container-md {
-    inline-size: 100%;
-    max-inline-size: 22rem;
-    margin: auto;
-  }
-}
-
 /* Shared utilities, typography and cards opt in at an explicit design-system
  * boundary. App-only components and layout remain in their own scopes below. */
 @scope (.app-root, .design-reference, .website) {
@@ -535,7 +526,18 @@
     overflow: hidden;
     white-space: nowrap;
   }
+}
 
+/* App/reference measure; marketing has its own heading container. */
+@scope (.app-root, .design-reference) {
+  .container-md {
+    inline-size: 100%;
+    max-inline-size: 22rem;
+    margin: auto;
+  }
+}
+
+@scope (.app-root, .design-reference, .website) {
   /* Typography classes */
 
   /* Visual roles are independent of HTML heading level, layout, and casing. */
