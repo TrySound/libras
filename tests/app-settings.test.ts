@@ -395,18 +395,22 @@ describe("app settings", () => {
     expect(help()).not.toContain("Turn this on");
   });
 
-  it("keeps decorative status glyphs and loading aligned with the connection label", async () => {
+  it("keeps status glyphs and loading on the second line, outside the heading", async () => {
     const { target, session } = await setup(true);
     const expectStatus = (symbol: string | null, label: string) => {
       flushSync();
       const status = target.querySelector("#settings-connection-status")!;
+      expect(status.querySelector("h2 svg, h2 .loader")).toBeNull();
+      const secondLine = status.querySelector(":scope > p.row-sm")!;
+      expect(secondLine).not.toBeNull();
       if (symbol) {
+        expect(secondLine.querySelector("use")?.getAttribute("href")).toBe(`#icon-${symbol}`);
         expect(status.textContent).toContain(label);
         expect(status.querySelector("use")?.getAttribute("href")).toBe(`#icon-${symbol}`);
         expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
       } else {
         expect(status.textContent).toContain(label);
-        expect(status.querySelector(".loader")).not.toBeNull();
+        expect(secondLine.querySelector(".loader")).not.toBeNull();
       }
     };
     expectStatus("check", "listener@music.example");
