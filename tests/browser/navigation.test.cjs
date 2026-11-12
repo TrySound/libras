@@ -119,7 +119,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
           document.querySelectorAll(".app-page .atmosphere-frame").length === 1 &&
           getComputedStyle(
             document.querySelector(".app-page .atmosphere-lines"),
-          ).backgroundImage.includes("repeating-linear-gradient"),
+          ).backgroundImage.includes("linear-gradient"),
         routeTransparent:
           routeStyle.backgroundImage === "none" &&
           routeStyle.backgroundColor === "rgba(0, 0, 0, 0)",
@@ -178,10 +178,7 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
     const drawer = page.getByRole("dialog", { name: "Navigation", exact: true });
     await drawer.waitFor({ state: "visible" });
     assert.equal(await sidebar.isVisible(), false);
-    await page.waitForFunction(
-      () =>
-        document.querySelector('[aria-label="Open menu"]').getAttribute("aria-expanded") === "true",
-    );
+    assert.equal(await drawer.evaluate((element) => element.open), true);
     await page.keyboard.press("Escape");
     await drawer.waitFor({ state: "hidden" });
     assert.equal(await menu.evaluate((element) => element === document.activeElement), true);

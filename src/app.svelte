@@ -36,7 +36,6 @@
   let { network, auth, updaterComponent: Updater, settingsContent, demo = false }: Props = $props();
 
   let navigationDrawer: HTMLDialogElement;
-  let navigationOpen = $state(false);
 
   let updater = $state<ReturnType<typeof WebappUpdater>>();
   const appUpdate = $derived(updater?.getStatus());
@@ -309,7 +308,6 @@
             aria-label="Open menu"
             aria-describedby={appUpdate?.hasUpdate ? "navigation-update-hint" : undefined}
             aria-controls="navigation-dialog"
-            aria-expanded={navigationOpen}
             commandfor="navigation-dialog"
             command="show-modal"
           >
@@ -373,31 +371,31 @@
         </div>
       {/if}
       <dialog
-        class="right-sheet"
+        class="top-sheet"
         id="navigation-dialog"
-        data-swiperight="close"
+        data-swipeup="close"
         aria-label="Navigation"
-        closedby="any"
         bind:this={navigationDrawer}
-        ontoggle={() => {
-          navigationOpen = navigationDrawer.open;
-        }}
       >
-        <span class="dialog-handle" data-side="left" aria-hidden="true"></span>
-        <div class="stack-lg">
-          <header class="row-md row-justify">
-            {@render brand()}
-            <button
-              class="button"
-              aria-label="Close menu"
-              commandfor="navigation-dialog"
-              command="close"
-            >
-              <Icon name="cross" />
-            </button>
-          </header>
-          {@render navigation()}
+        <div class="sheet-header row-sm row-end">
+          <button
+            class="button"
+            data-variant="ghost"
+            aria-label="Close menu"
+            autofocus
+            commandfor="navigation-dialog"
+            command="close"
+          >
+            <Icon name="cross" />
+          </button>
         </div>
+        <div class="sheet-body">
+          <div class="container-md stack-lg">
+            <div class="row-sm row-center">{@render brand()}</div>
+            {@render navigation()}
+          </div>
+        </div>
+        <span class="dialog-handle" data-side="bottom" aria-hidden="true"></span>
       </dialog>
     </div>
   </div>

@@ -450,7 +450,7 @@
 </div>
 
 {#snippet actions(target: string, isPopover: boolean)}
-  <div class="stack-lg">
+  <div class="container-md stack-lg">
     <header class="row-md row-justify">
       <div class="row-md">
         <Artwork {covers} id={menuItem?.artworkId} size="lg" />

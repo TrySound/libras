@@ -127,7 +127,8 @@
         </p>
         <p class="caption text-secondary">
           Controls demonstrate native interaction only. No credentials are saved, files downloaded,
-          music played, or requests simulated. Long-press and swipe-to-dismiss are app features.
+          music played, or requests simulated. Long-press is an app feature; the navigation specimen
+          shares swipe dismissal.
         </p>
       </header>
 
@@ -619,9 +620,9 @@
           <h2 class="heading-md uppercase" id="navigation-heading">Navigation shell</h2>
           <p class="body">
             A 280px independently scrolling sidebar above 50rem; at or below that, a sticky header
-            and right-side native modal drawer. The document owns scrolling, and sidebar/content
-            clearance follows the player's actual height. The session, routes, and audio player
-            remain mounted through resizing.
+            and fullscreen top-edge native modal navigation. The document owns scrolling, and
+            sidebar/content clearance follows the player's actual height. The session, routes, and
+            audio player remain mounted through resizing.
           </p>
           <div class="topbar-example">
             <header class="topbar row-md row-justify">
@@ -643,6 +644,7 @@
                   commandfor="guide-navigation"
                   command="show-modal"
                   aria-label="Open navigation specimen"
+                  aria-controls="guide-navigation"
                   aria-describedby="guide-navigation-update-hint"
                 >
                   <span id="guide-navigation-update-hint" class="caption text-subtle">Update</span>
@@ -659,13 +661,29 @@
               </p>
               <p class="body">
                 The subtle Update cue and secondary menu button appear when an update is available.
-                Open the menu to inspect the same right-sheet used by the app.
+                Open the fullscreen menu used by the app. Swipe up anywhere to close; overflowing
+                content scrolls first. The whole dialog scrolls, including Close, with a decorative
+                dash after the content as a drag cue.
               </p>
               <p class="body">
                 Sidebar placement belongs to the app shell; the specimens below demonstrate its
                 shared appearance and update states. Only Your library is included for simplicity.
               </p>
             </div>
+          </div>
+          <div class="stack-sm">
+            <p class="body">
+              Top navigation and bottom action drawers share a centered 22rem content cap; their
+              surfaces remain full width.
+            </p>
+            <button
+              class="button"
+              data-size="text"
+              commandfor="guide-bottom-drawer"
+              command="show-modal"
+            >
+              Open bottom drawer specimen
+            </button>
           </div>
           <div class="sidebar-state-grid" aria-label="Sidebar update states">
             <div class="stack-sm">
@@ -967,30 +985,107 @@
       </div>
     </dialog>
 
+    <script type="module">
+      import { installSwipeToDismiss } from "/src/swipe-to-dismiss.ts";
+      installSwipeToDismiss();
+      const navigation = document.querySelector("#guide-navigation");
+      navigation.addEventListener("click", (event) => {
+        if (event.target.closest("a[href]")) navigation.close();
+      });
+    </script>
     <dialog
       id="guide-navigation"
-      class="right-sheet"
+      class="top-sheet"
       aria-label="Navigation specimen"
-      closedby="any"
+      data-swipeup="close"
     >
-      <div class="stack-lg">
+      <div class="sheet-header row-sm row-end">
+        <button
+          class="button"
+          commandfor="guide-navigation"
+          command="close"
+          data-variant="ghost"
+          aria-label="Close navigation specimen"
+          autofocus
+        >
+          <svg width="24" height="24" aria-hidden="true">
+            <use href="#icon-cross"></use>
+          </svg>
+        </button>
+      </div>
+      <div class="sheet-body">
+        <div class="container-md stack-lg">
+          <div class="row-sm row-center">
+            <svg width="32" height="32" aria-hidden="true" style="color: var(--accent)">
+              <use href="#icon-brand"></use></svg
+            ><span class="brand uppercase">Libras</span>
+          </div>
+          <nav class="stack-sm" aria-label="Specimen navigation">
+            <a class="menu-item" href="#navigation-heading" aria-current="page"
+              ><svg width="24" height="24" aria-hidden="true"><use href="#icon-disc"></use></svg
+              >Your library</a
+            >
+            <a class="menu-item" href="#navigation-heading"
+              ><svg width="24" height="24" aria-hidden="true">
+                <use href="#icon-search"></use></svg
+              >Search</a
+            >
+            <a class="menu-item" href="#navigation-heading"
+              ><svg width="24" height="24" aria-hidden="true">
+                <use href="#icon-download"></use></svg
+              >Downloads</a
+            >
+            <a class="menu-item" href="#navigation-heading"
+              ><svg width="24" height="24" aria-hidden="true">
+                <use href="#icon-settings"></use></svg
+              >Settings</a
+            >
+          </nav>
+        </div>
+      </div>
+      <span class="dialog-handle" data-side="bottom" aria-hidden="true"></span>
+    </dialog>
+    <dialog
+      id="guide-bottom-drawer"
+      class="bottom-sheet"
+      aria-labelledby="guide-bottom-title"
+      closedby="any"
+      data-swipedown="close"
+    >
+      <span class="dialog-handle" aria-hidden="true"></span>
+      <div class="container-md stack-lg">
         <header class="row-md row-justify">
-          <span class="brand uppercase">Libras</span>
+          <div class="row-md">
+            <span class="artwork" data-size="lg" aria-hidden="true"
+              ><svg width="24" height="24"><use href="#icon-music"></use></svg
+            ></span>
+            <h2 id="guide-bottom-title" class="heading-md">
+              A long album title with UnbrokenWordsThatShouldWrapNaturally
+            </h2>
+          </div>
           <button
             class="button"
-            commandfor="guide-navigation"
+            data-variant="ghost"
+            commandfor="guide-bottom-drawer"
             command="close"
-            aria-label="Close navigation specimen"
+            aria-label="Close bottom drawer specimen"
           >
-            <svg width="24" height="24" aria-hidden="true">
-              <use href="#icon-cross"></use>
-            </svg>
+            <svg width="24" height="24" aria-hidden="true"><use href="#icon-cross"></use></svg>
           </button>
         </header>
-        <p class="body">
-          The app and this reference share the right-sheet geometry, backdrop, scrolling, and
-          reduced-motion-aware entry and exit transitions.
-        </p>
+        <div class="stack-sm">
+          <button class="menu-item" commandfor="guide-bottom-drawer" command="close">
+            <svg width="24" height="24" aria-hidden="true"><use href="#icon-play"></use></svg>Play
+          </button>
+          <button class="menu-item" commandfor="guide-bottom-drawer" command="close">
+            <svg width="24" height="24" aria-hidden="true"><use href="#icon-next"></use></svg>Play
+            next
+          </button>
+          <button class="menu-item" commandfor="guide-bottom-drawer" command="close">
+            <svg width="24" height="24" aria-hidden="true"><use href="#icon-download"></use></svg
+            >Download
+          </button>
+        </div>
       </div>
     </dialog>
     <dialog id="guide-dialog" class="dialog" aria-labelledby="guide-dialog-title" closedby="any">

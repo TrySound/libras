@@ -526,7 +526,18 @@
     overflow: hidden;
     white-space: nowrap;
   }
+}
 
+/* App/reference measure; marketing has its own heading container. */
+@scope (.app-root, .design-reference) {
+  .container-md {
+    inline-size: 100%;
+    max-inline-size: 22rem;
+    margin: auto;
+  }
+}
+
+@scope (.app-root, .design-reference, .website) {
   /* Typography classes */
 
   /* Visual roles are independent of HTML heading level, layout, and casing. */
@@ -1287,7 +1298,7 @@
 
   /* Prototype overlay shells share appearance; sheets also share modal motion. */
   .bottom-sheet,
-  .right-sheet,
+  .top-sheet,
   .popover {
     box-shadow: var(--shadow-xl);
     box-sizing: border-box;
@@ -1303,8 +1314,14 @@
   }
 
   .bottom-sheet,
-  .right-sheet {
+  .top-sheet {
     border-radius: 0;
+    &[open] {
+      translate: 0 var(--swipe-offset, 0px);
+    }
+    &[data-dragging] {
+      transition: none;
+    }
     &:modal {
       /* Stop chaining and native rubber-band bounce at modal boundaries. */
       overscroll-behavior: none;
@@ -1334,7 +1351,6 @@
         transition-behavior: allow-discrete;
       }
       &[open] {
-        translate: 0;
         pointer-events: auto;
         transition-duration: var(--motion-duration-enter);
         transition-timing-function: var(--motion-ease-enter);
@@ -1356,44 +1372,28 @@
     }
   }
 
-  .bottom-sheet {
+  .top-sheet {
+    --sheet-closed-translate: 0 -100%;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    padding: 0;
     &[open] {
-      translate: 0 var(--swipe-offset, 0px);
-    }
-    &[data-dragging] {
-      transition: none;
-    }
-    @media (prefers-reduced-motion: no-preference) {
-      @starting-style {
-        &[open] {
-          translate: var(--sheet-closed-translate);
-        }
-      }
+      display: grid;
+      grid-template-rows: auto minmax(min-content, 1fr) auto;
     }
   }
 
-  .right-sheet {
-    &[open] {
-      translate: var(--swipe-offset, 0px) 0;
-    }
-    &[data-dragging] {
-      transition: none;
-    }
-    @media (prefers-reduced-motion: no-preference) {
-      @starting-style {
-        &[open] {
-          translate: var(--sheet-closed-translate);
-        }
-      }
-    }
-    --sheet-closed-translate: 100% 0;
-    inset: 0 0 0 auto;
-    width: min(360px, calc(100dvw - 2 * var(--space-md)));
-    height: 100dvh;
-    max-height: none;
-    padding-block-start: max(var(--space-lg), env(safe-area-inset-top));
-    padding-block-end: max(var(--space-lg), env(safe-area-inset-bottom));
-    padding-inline-end: max(var(--space-lg), env(safe-area-inset-right));
+  .sheet-header {
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 16px;
+  }
+
+  .sheet-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
   }
 
   .notification-popover {
@@ -1641,13 +1641,13 @@
     background: var(--text-secondary);
     pointer-events: none;
 
-    &[data-side="left"] {
-      inset-block-start: 50%;
-      inset-inline-start: var(--space-sm);
-      translate: 0 -50%;
-      inline-size: 6px;
-      block-size: 40px;
-      opacity: 0.5;
+    &[data-side="bottom"] {
+      display: block;
+      position: static;
+      inset: auto;
+      translate: none;
+      margin-inline: auto;
+      margin-block: 24px calc(32px + env(safe-area-inset-bottom));
     }
   }
 
