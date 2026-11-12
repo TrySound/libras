@@ -110,7 +110,7 @@ it.each(["/", "/libras/"])("shows a short demo identity with base %s", async (ba
     expect(document.querySelector("#settings-server-identity")?.textContent).toBe("demo@demo.test"),
   );
   expect(document.querySelector("#settings-server-title")?.textContent?.trim()).toBe(
-    "Music server · Connected",
+    "Music server",
   );
 });
 

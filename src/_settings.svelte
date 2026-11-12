@@ -149,10 +149,8 @@
 
     <div class="split-layout" data-ratio="3:2">
       <section class="card stack-md" id="settings-server" aria-labelledby="settings-server-title">
+        <h2 class="heading-md uppercase" id="settings-server-title">Music server</h2>
         <div class="stack-sm" role="status" aria-atomic="true" id="settings-connection-status">
-          <h2 class="heading-md uppercase" id="settings-server-title">
-            Music server · {connectionLabel}
-          </h2>
           <p class="row-sm label">
             <span class="row-sm">
               {#if connectionLoading}
@@ -179,8 +177,14 @@
                 {session.libraryProgress.albums.toLocaleString()} albums · {session.libraryProgress.tracks.toLocaleString()}
                 tracks
               </span>
-            {:else if session.auth && !connectionLoading}
-              <span id="settings-server-identity">{session.auth.username}@{serverAddress}</span>
+            {:else}
+              <span>
+                {connectionLabel}
+                {#if session.auth && !connectionLoading}
+                  ·
+                  <span id="settings-server-identity">{session.auth.username}@{serverAddress}</span>
+                {/if}
+              </span>
             {/if}
           </p>
           {#if session.error}
