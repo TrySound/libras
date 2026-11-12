@@ -179,9 +179,16 @@
               </span>
             {:else}
               <span>
-                {connectionLabel}
+                <span
+                  class:visually-hidden={connectionState === "connected" ||
+                    connectionState === "offline"}
+                >
+                  {connectionLabel}
+                  {#if session.auth && !connectionLoading}
+                    ·
+                  {/if}
+                </span>
                 {#if session.auth && !connectionLoading}
-                  ·
                   <span id="settings-server-identity">{session.auth.username}@{serverAddress}</span>
                 {/if}
               </span>
