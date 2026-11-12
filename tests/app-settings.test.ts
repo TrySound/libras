@@ -400,6 +400,18 @@ describe("app settings", () => {
     const expectStatus = (symbol: string | null, label: string) => {
       flushSync();
       const status = target.querySelector("#settings-connection-status")!;
+      const hiddenLabel = status.querySelector(".visually-hidden");
+      if (symbol === "check" || symbol === "offline") {
+        expect(hiddenLabel?.textContent).toContain(
+          symbol === "check" ? "Connected" : "Offline mode",
+        );
+        expect(
+          status.querySelector("#settings-server-identity")?.closest(".visually-hidden"),
+        ).toBeNull();
+        expect(status.querySelector("#settings-server-identity")).not.toBeNull();
+      } else {
+        expect(hiddenLabel).toBeNull();
+      }
       if (symbol) {
         expect(status.textContent).toContain(label);
         expect(status.querySelector("use")?.getAttribute("href")).toBe(`#icon-${symbol}`);

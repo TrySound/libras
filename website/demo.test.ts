@@ -103,6 +103,17 @@ it.each([
   expect(caption()).not.toContain("Unknown year");
 });
 
+it.each(["/", "/libras/"])("shows a short demo identity with base %s", async (base) => {
+  vi.stubEnv("BASE_URL", base);
+  render();
+  await vi.waitFor(() =>
+    expect(document.querySelector("#settings-server-identity")?.textContent).toBe("demo@demo.test"),
+  );
+  expect(document.querySelector("#settings-server-title")?.textContent?.trim()).toBe(
+    "Music server",
+  );
+});
+
 it("renders demo credits as an HTML card inside Settings, not above the app", async () => {
   render();
   await vi.waitFor(() =>
@@ -242,7 +253,7 @@ it("syncs and refreshes the snapshot even when live Deezer album responses would
   render();
   await vi.waitFor(() =>
     expect(document.querySelector("#settings-server-identity")?.textContent).toContain(
-      "deezer-preview-demo",
+      "demo@demo.test",
     ),
   );
   expect(document.querySelector("#settings-server form")).toBeNull();
