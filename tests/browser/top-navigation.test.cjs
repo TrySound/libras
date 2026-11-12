@@ -54,7 +54,7 @@ for (const reducedMotion of ["reduce", "no-preference"]) {
       const geometry = await drawer.evaluate((d) => {
         const rect = d.getBoundingClientRect(),
           content = d.querySelector(".navigation-content").getBoundingClientRect(),
-          group = d.querySelector(".drawer-content").getBoundingClientRect();
+          group = d.querySelector(".container-md").getBoundingClientRect();
         const close = d.querySelector("button").getBoundingClientRect();
         return {
           width: rect.width,
@@ -180,7 +180,7 @@ for (const reducedMotion of ["reduce", "no-preference"]) {
 }
 
 async function overflowJourney(page, drawer, menu, cdp) {
-  await drawer.locator(".drawer-content").evaluate((e) => {
+  await drawer.locator(".container-md").evaluate((e) => {
     const section = document.createElement("section");
     section.innerHTML =
       '<p class="caption">' +

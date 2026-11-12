@@ -218,7 +218,6 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 48px;
-  --drawer-content-max-inline-size: 22rem;
 
   /* All button primitives share a minimum target; content may grow beyond it. */
   --control-min-size: 44px;
@@ -401,6 +400,15 @@
 .view-slide-left {
   view-transition-name: match-element;
   view-transition-class: slide-left;
+}
+
+/* App/reference measure; marketing has its own heading container. */
+@scope (.app-root, .design-reference) {
+  .container-md {
+    inline-size: 100%;
+    max-inline-size: 22rem;
+    margin-inline: auto;
+  }
 }
 
 /* Shared utilities, typography and cards opt in at an explicit design-system
@@ -1385,15 +1393,7 @@
     padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
   }
 
-  .top-sheet > .dialog-handle {
-    position: static;
-    inset: auto;
-    translate: none;
-    justify-self: center;
-    margin-block: 24px calc(32px + env(safe-area-inset-bottom));
-  }
-
-  .navigation-content > .drawer-content {
+  .navigation-content > .container-md {
     margin-block: auto;
     flex-shrink: 0;
     overflow-wrap: anywhere;
@@ -1631,13 +1631,7 @@
     border-top: var(--border-width) solid var(--shell-border);
   }
 
-  :is(.top-sheet, .bottom-sheet) .drawer-content {
-    inline-size: 100%;
-    max-inline-size: var(--drawer-content-max-inline-size);
-    margin-inline: auto;
-  }
-
-  .bottom-sheet > .drawer-content > header {
+  .bottom-sheet > .container-md > header {
     & > .row-md {
       min-inline-size: 0;
     }
@@ -1656,6 +1650,15 @@
     block-size: 6px;
     background: var(--text-secondary);
     pointer-events: none;
+
+    &[data-side="bottom"] {
+      display: block;
+      position: static;
+      inset: auto;
+      translate: none;
+      margin-inline: auto;
+      margin-block: 24px calc(32px + env(safe-area-inset-bottom));
+    }
   }
 
   .popover {

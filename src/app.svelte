@@ -386,12 +386,12 @@
           </button>
         </div>
         <div class="navigation-content">
-          <div class="drawer-content stack-lg">
+          <div class="container-md stack-lg">
             <div class="row-sm row-center">{@render brand()}</div>
             {@render navigation()}
           </div>
         </div>
-        <span class="dialog-handle" aria-hidden="true"></span>
+        <span class="dialog-handle" data-side="bottom" aria-hidden="true"></span>
       </dialog>
     </div>
   </div>

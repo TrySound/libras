@@ -378,6 +378,7 @@ describe("app settings", () => {
     const drawer = target.querySelector("#navigation-dialog")!;
     expect(drawer.getAttribute("data-swipeup")).toBe("close");
     const dash = drawer.querySelector(":scope > .dialog-handle")!;
+    expect(dash.getAttribute("data-side")).toBe("bottom");
     expect(dash.getAttribute("aria-hidden")).toBe("true");
     expect(dash.hasAttribute("tabindex")).toBe(false);
   });

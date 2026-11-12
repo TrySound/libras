@@ -218,7 +218,7 @@
 </div>
 
 {#snippet artistActions(id: string, popover: boolean)}
-  <div class="stack-lg drawer-content">
+  <div class="stack-lg" class:container-md={!popover}>
     <header class="row-md row-justify">
       <div class="row-md">
         <Artwork {covers} id={menuArtist?.artworkId} size="lg" />

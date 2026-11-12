@@ -58,7 +58,7 @@ test("top Close is idle ghost, retains keyboard feedback and shared centered cap
     ]) {
       await page.setViewportSize({ width, height: 844 });
       await page.evaluate((font) => (document.documentElement.style.fontSize = font), font);
-      assert.deepEqual(await geometry(drawer, ".drawer-content"), {
+      assert.deepEqual(await geometry(drawer, ".container-md"), {
         fullWidth: true,
         centered: true,
         capped: true,
@@ -109,7 +109,7 @@ test("all four bottom action consumers cap content, wrap long titles and leave p
         await page.setViewportSize({ width, height: 900 });
         await page.evaluate((font) => (document.documentElement.style.fontSize = font), font);
         assert.deepEqual(
-          await geometry(drawer, ":scope > .drawer-content"),
+          await geometry(drawer, ":scope > .container-md"),
           { fullWidth: true, centered: true, capped: true, fits: true, bottom: true },
           `${id} at ${width}/${font}`,
         );
@@ -147,7 +147,7 @@ test("all four bottom action consumers cap content, wrap long titles and leave p
       }
       await page.keyboard.press("Escape");
       await drawer.waitFor({ state: "hidden" });
-      const popover = page.locator(".popover > .drawer-content").first();
+      const popover = page.locator(".popover > .stack-lg").first();
       assert.equal(
         await popover.evaluate((e) => getComputedStyle(e).maxInlineSize),
         "none",
@@ -155,6 +155,48 @@ test("all four bottom action consumers cap content, wrap long titles and leave p
       );
       await page.evaluate(() => (document.documentElement.style.fontSize = "100%"));
     }
+  } finally {
+    await browser.close();
+  }
+});
+
+test("bottom-sided handle has real dimensions, centering and spacing in block flow", async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: "reduce",
+  });
+  try {
+    await page.goto(`${base}/styleguide.html`);
+    await page.getByRole("button", { name: "Open bottom drawer specimen", exact: true }).click();
+    const geometry = await page.locator("#guide-bottom-drawer").evaluate((d) => {
+      const content = d.querySelector(".container-md"),
+        handle = d.querySelector(".dialog-handle");
+      handle.dataset.side = "bottom";
+      d.append(handle);
+      const next = document.createElement("div");
+      next.style.height = "1px";
+      d.append(next);
+      const r = handle.getBoundingClientRect(),
+        p = d.getBoundingClientRect();
+      return {
+        blockFlow: getComputedStyle(d).display === "block",
+        width: r.width,
+        height: r.height,
+        centered:
+          Math.abs((r.left + r.right) / 2 - (p.left + d.clientLeft + d.clientWidth / 2)) < 1,
+        before: r.top - content.getBoundingClientRect().bottom,
+        after: next.getBoundingClientRect().top - r.bottom,
+      };
+    });
+    assert.deepEqual(geometry, {
+      blockFlow: true,
+      width: 40,
+      height: 6,
+      centered: true,
+      before: 24,
+      after: 32,
+    });
   } finally {
     await browser.close();
   }
@@ -187,6 +229,22 @@ test("shared handles keep bottom-sheet and player overlay placement", async () =
         }),
         true,
         `${id} handle retains absolute top placement`,
+      );
+      assert.equal(
+        await dialog.locator(".dialog-handle").evaluate((e) => {
+          e.dataset.side = "top";
+          const top = getComputedStyle(e).position === "absolute";
+          e.dataset.side = "bottom";
+          const style = getComputedStyle(e);
+          const bottom =
+            style.position === "static" &&
+            style.marginBlockStart === "24px" &&
+            style.marginBlockEnd === "32px";
+          e.removeAttribute("data-side");
+          return top && bottom;
+        }),
+        true,
+        "handle placement follows its side attribute, not the dialog class",
       );
       await page.keyboard.press("Escape");
       await dialog.waitFor({ state: "hidden" });
