@@ -79,6 +79,11 @@ describe("independent search filters", () => {
         }
         expect(target.querySelector(".library-sentinel")).toBeNull();
         expect(target.textContent).toContain("119");
+        window.navigation.navigate(`?/search&type=${["artist", "album", "track"][type]}#anchor`, {
+          history: "push",
+        });
+        flushSync();
+        expect(target.querySelectorAll(".track-row")).toHaveLength(120);
         const input = target.querySelector("input")!;
         input.value = "Fixture";
         input.dispatchEvent(new Event("input", { bubbles: true }));

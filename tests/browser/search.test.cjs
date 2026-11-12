@@ -4,6 +4,7 @@ const { test } = require("node:test");
 const { chromium } = require("playwright");
 const base = process.env.PREVIEW_URL ?? "http://127.0.0.1:5173";
 const screenshots = process.env.SCREENSHOT_DIR;
+const forcePolyfill = process.env.FORCE_NAVIGATION_POLYFILL === "1";
 
 test("Search filters, incremental lists, URLs and native actions", async () => {
   const browser = await chromium.launch({ headless: true });
@@ -11,6 +12,10 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
+  if (forcePolyfill)
+    await page.addInitScript(() => {
+      delete window.navigation;
+    });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const artist = {
@@ -82,7 +87,12 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
   }
 
   try {
-    await page.goto(base);
+    await page.goto(forcePolyfill ? `${base}/?/settings` : base);
+    await page.getByLabel("Host", { exact: true }).waitFor();
+    assert.equal(
+      await page.evaluate(() => navigation.constructor.toString().includes("[native code]")),
+      !forcePolyfill,
+    );
     await page.getByLabel("Host", { exact: true }).fill("https://search.example.test");
     await page.getByLabel("Username", { exact: true }).fill("listener");
     await page.getByLabel("Password", { exact: true }).fill("fictional-password");
@@ -91,7 +101,9 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     await page.locator('a[href="?/search"]').filter({ visible: true }).click();
     const input = page.getByRole("searchbox", { name: "Search library" });
     await input.waitFor();
-    assert.equal(await input.evaluate((node) => node === document.activeElement), true);
+    // The polyfill resets focus after page navigation; exercise in-place focus below.
+    if (forcePolyfill) await input.focus();
+    else assert.equal(await input.evaluate((node) => node === document.activeElement), true);
     const chips = ["Artist", "Album", "Track"].map((name) =>
       page.getByRole("button", { name, exact: true }),
     );
@@ -176,6 +188,26 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
 
     // Loaded rows accumulate; both browse and matching lists reach the final record.
     await loadAll(tracks, 150);
+    await page.evaluate(() => {
+      location.hash = "search-anchor";
+    });
+    await page.waitForURL((url) => url.hash === "#search-anchor");
+    assert.equal(await tracks.locator(".track-row").count(), 150);
+    await page.evaluate(async () => {
+      const cancel = (event) => {
+        if (event.destination.url.includes("q=uncommitted")) event.preventDefault();
+      };
+      navigation.addEventListener("navigate", cancel);
+      try {
+        const result = navigation.navigate("?/search&type=album&q=uncommitted");
+        await Promise.allSettled([result.committed, result.finished]);
+      } finally {
+        navigation.removeEventListener("navigate", cancel);
+      }
+    });
+    assert.equal(await input.inputValue(), "");
+    assert.equal(await chips[2].getAttribute("aria-pressed"), "true");
+    assert.equal(await tracks.locator(".track-row").count(), 150);
     await tracks.getByRole("button", { name: `Play ${songs[149].title}`, exact: true }).waitFor();
     await input.fill("Search fixture");
     assert.equal(await tracks.locator(".track-row").count(), 48);
@@ -183,6 +215,7 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     await loadAll(tracks, 150);
     await page.reload();
     await input.waitFor();
+    await tracks.locator(".track-row").first().waitFor();
     assert.equal(await input.inputValue(), "Search fixture");
     assert.equal(await chips[2].getAttribute("aria-pressed"), "true");
     assert.equal(await tracks.locator(".track-row").count(), 48);
@@ -245,15 +278,17 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     });
     await page.getByRole("link", { name: "Browse directory albums", exact: true }).click();
     await groups[1].locator(".track-row").first().waitFor();
-    assert.ok(
-      await groups[1]
-        .locator(".track-row")
-        .first()
-        .evaluate((node) => {
-          const bounds = node.getBoundingClientRect();
-          return bounds.top >= 0 && bounds.top < innerHeight;
-        }),
-    );
+    // Native automatic scrolling is not implemented by the Navigation polyfill.
+    if (!forcePolyfill)
+      assert.ok(
+        await groups[1]
+          .locator(".track-row")
+          .first()
+          .evaluate((node) => {
+            const bounds = node.getBoundingClientRect();
+            return bounds.top >= 0 && bounds.top < innerHeight;
+          }),
+      );
     await page.goBack();
     assert.equal(await chips[2].getAttribute("aria-pressed"), "true");
     assert.equal(await input.inputValue(), "");
@@ -270,6 +305,19 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     assert.equal(await chips[0].getAttribute("aria-pressed"), "false");
     await input.fill("Search fixture track 149");
     assert.equal(await input.evaluate((node) => node === document.activeElement), true);
+    // Native History can commit a non-route query that Router deliberately ignores.
+    // The polyfill patches History via navigation, so use its ordinary route URL.
+    await page.evaluate((polyfill) => {
+      history.pushState(
+        null,
+        "",
+        polyfill ? "?/search&type=album&q=Directory" : "?type=album&q=Directory",
+      );
+    }, forcePolyfill);
+    await page.waitForFunction(
+      () => document.querySelector("#library-search").value === "Directory",
+    );
+    assert.equal(await chips[1].getAttribute("aria-pressed"), "true");
     // Use the browser's real URLPattern with encoded IDs and a literal route +.
     for (const [kind, item] of [
       ["artist", artist],

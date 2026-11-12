@@ -1,13 +1,32 @@
 <script module lang="ts">
   import type { Snippet } from "svelte";
+  import { createSubscriber } from "svelte/reactivity";
+
+  const subscribe = createSubscriber((update) => {
+    const navigation = window.navigation;
+    navigation.addEventListener("currententrychange", update);
+    return () => navigation.removeEventListener("currententrychange", update);
+  });
+
+  let search: string | undefined;
+  let parameters = new URLSearchParams();
+
+  /** Complete committed query parameters. Treat the returned collection as read-only. */
+  export function getSearchParameters(): URLSearchParams {
+    subscribe();
+    const url = new URL(window.navigation.currentEntry?.url ?? window.location.href);
+    // Keep query identity across hash-only commits so local result batches do not reset.
+    if (url.search !== search) {
+      search = url.search;
+      parameters = url.searchParams;
+    }
+    return parameters;
+  }
 
   export type RouteParams = Record<string, string | undefined>;
 
   /** Current route metadata, published reactively by the page's Router. */
-  export const route = $state<{ pattern: string | undefined; parameters: URLSearchParams }>({
-    pattern: undefined,
-    parameters: new URLSearchParams(),
-  });
+  export const route = $state<{ pattern: string | undefined }>({ pattern: undefined });
 
   /** Match a navigation destination to the resolved page or a parent section. */
   export function isCurrentPage(path: string): boolean {
@@ -48,7 +67,6 @@
   const initialMatch = resolve(initialUrl);
   let match = $state.raw(initialMatch);
   route.pattern = initialMatch.route.pattern;
-  route.parameters = initialUrl.searchParams;
 
   function routePath(url: URL) {
     // Match the first raw token, not a decoded searchParams key: IDs may contain
@@ -81,7 +99,6 @@
   function updateRoute(url: URL) {
     match = resolve(url);
     route.pattern = match.route.pattern;
-    route.parameters = url.searchParams;
   }
 
   onMount(() => {

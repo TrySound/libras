@@ -142,7 +142,7 @@
 
 <script lang="ts">
   import Icon from "./icon.svelte";
-  import { navigate, route } from "./router.svelte";
+  import { getSearchParameters, navigate } from "./router.svelte";
   import { onVisible } from "./viewport";
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
@@ -178,7 +178,8 @@
     ),
   );
 
-  const criteria = $derived(parseSearch(route.parameters));
+  const parameters = $derived(getSearchParameters());
+  const criteria = $derived(parseSearch(parameters));
   const selectedTypes = $derived(criteria.types);
   const singleType = $derived(selectedTypes.length === 1);
   const matches = $derived(searchLibrary(index, criteria.query, singleType));
