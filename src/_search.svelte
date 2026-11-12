@@ -183,13 +183,15 @@
   const selectedTypes = $derived(criteria.types);
   const singleType = $derived(selectedTypes.length === 1);
   const matches = $derived(searchLibrary(index, criteria.query, singleType));
-  // URL criteria and cache switches restart local batches and previews.
+  // User increments override these derived limits until cache or URL criteria change.
+  // The void reads intentionally track those dependencies so recomputation resets pagination.
   const pageSize = 48;
   let limit = $derived.by(() => {
     void cache;
     void criteria;
     return pageSize;
   });
+  // Grouped previews reset on the same dependencies as the single-type batch limit.
   let limits = $derived.by(() => {
     void cache;
     void criteria;
