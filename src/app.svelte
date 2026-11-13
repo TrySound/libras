@@ -208,6 +208,15 @@
 
 {#snippet navigation()}
   <nav class="stack-sm" aria-label="Main navigation">
+    <button
+      class="menu-item"
+      commandfor="player-dialog"
+      command="show-modal"
+      onclick={() => navigationDrawer?.close()}
+    >
+      <Icon name="queue" />
+      Queue
+    </button>
     <a
       class="menu-item"
       href="?/library"
@@ -339,7 +348,15 @@
           />
         {/if}
       </main>
-      <Player {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
+      <Player
+        {cache}
+        {covers}
+        {playback}
+        {trackEngine}
+        {offlineMode}
+        audio={player}
+        serverQueueExchange={!demo}
+      />
       {#if hasErrors}
         <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
           <div class="stack-sm">

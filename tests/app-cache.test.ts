@@ -206,7 +206,7 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   expect(replace).toHaveBeenCalledWith(["one", "two", "three"], 1);
 });
 
-it("keeps queue occurrence indexes when offline rows are filtered", async () => {
+it("keeps all queue occurrences including unavailable offline rows", async () => {
   installDisk();
   const cache = new Cache(getAccountKey({ host: "https://music.example", username: "listener" }));
   await cache.replaceLibrary({
@@ -233,13 +233,17 @@ it("keeps queue occurrence indexes when offline rows are filtered", async () => 
   flushSync();
   const playIndex = vi.spyOn(mocks.options!.playback, "playIndex").mockResolvedValue();
   const rows = [...target.querySelectorAll('[aria-label="Queue"] .track-row')];
-  expect(rows).toHaveLength(2);
-  expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual([null, "true"]);
+  expect(rows).toHaveLength(4);
+  expect(rows[0].textContent).toContain("Track unavailable");
+  expect(rows[2].querySelector("button")?.disabled).toBe(true);
+  expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual(
+    [null, undefined, undefined, "true"].map((value) => value ?? null),
+  );
   const toggle = vi.spyOn(mocks.options!.playback, "toggle").mockResolvedValue();
-  (rows[1].querySelector("button") as HTMLButtonElement).click();
+  (rows[3].querySelector("button") as HTMLButtonElement).click();
   expect(toggle).toHaveBeenCalledOnce();
   expect(playIndex).not.toHaveBeenCalled();
-  (rows[0].querySelector("button") as HTMLButtonElement).click();
+  (rows[1].querySelector("button") as HTMLButtonElement).click();
   expect(playIndex).toHaveBeenCalledWith(1);
   expect(cache.queue.tracks).toEqual(["missing", "one", "two", "one"]);
 });
