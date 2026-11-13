@@ -11,7 +11,9 @@ const { setTimeout: pollDelay } = require("node:timers/promises");
 const { chromium } = require("playwright");
 
 const root = path.resolve(__dirname, "../..");
-const route = "/webapp/?/settings#settings-heading";
+// First-run documents now start on Connect; use a route that survives reload
+// without requiring remembered credentials or a persistent account fixture.
+const route = "/webapp/?/connect#connection-help";
 const action = (page) =>
   page.locator(".app-sidebar").getByRole("button", { name: "Update Libras", exact: true });
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -172,7 +174,7 @@ async function loaded(page, marker) {
     (expected) => document.querySelector('meta[name="pwa-test-build"]')?.content === expected,
     marker,
   );
-  await page.locator("#settings-heading").waitFor();
+  await page.locator(".app-sidebar").waitFor();
 }
 
 async function identity(page) {
@@ -308,7 +310,7 @@ test("production PWA updates on one origin", { timeout: 240_000 }, async (t) => 
           const harness = await newPage(context);
           pages.push(harness);
           await harness.page.goto(server.origin + route);
-          await harness.page.locator("#settings-heading").waitFor();
+          await harness.page.locator(".app-sidebar").waitFor();
           await controlled(harness.page);
           return harness;
         };
@@ -363,6 +365,105 @@ test("production PWA updates on one origin", { timeout: 240_000 }, async (t) => 
       assert.equal(await action(page).count(), 0);
       assert.equal(log.navigations.length, 1);
     });
+
+    await scenario(
+      "approved update preserves local queue/resume without autoplay",
+      async ({ open, t }) => {
+        const h = await open();
+        const { page } = h;
+        const artist = { id: "artist", name: "Update artist" };
+        const album = { id: "album", name: "Update album", artists: [artist] };
+        const song = {
+          id: "song",
+          title: "Update song",
+          albumId: album.id,
+          artists: [artist],
+          duration: 60,
+        };
+        const exchanges = [];
+        await page.route("https://music.example.test/rest/**", async (request) => {
+          const url = new URL(request.request().url());
+          const method = url.pathname.split("/").pop().replace(".view", "");
+          let fields = {};
+          if (method === "ping")
+            fields = {
+              openSubsonic: true,
+              version: "1.16.1",
+              type: "test-server",
+              serverVersion: "1",
+            };
+          else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
+          else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
+          else if (method === "search3") {
+            const slice = (values, name) =>
+              values.slice(
+                Number(url.searchParams.get(`${name}Offset`) ?? 0),
+                Number(url.searchParams.get(`${name}Offset`) ?? 0) +
+                  Number(url.searchParams.get(`${name}Count`) ?? 500),
+              );
+            fields = {
+              searchResult3: {
+                artist: slice([artist], "artist"),
+                album: slice([album], "album"),
+                song: slice([song], "song"),
+              },
+            };
+          } else if (method === "getPlayQueue") {
+            exchanges.push(method);
+            fields = {
+              playQueue: {
+                entry: [song, { id: "missing" }, song],
+                current: song.id,
+                position: 23000,
+              },
+            };
+          } else throw new Error(`Unexpected endpoint: ${method}`);
+          await request.fulfill({
+            contentType: "application/json",
+            body: JSON.stringify({ "subsonic-response": { status: "ok", ...fields } }),
+          });
+        });
+        await page.getByLabel("Host", { exact: true }).fill("https://music.example.test");
+        await page.getByLabel("Username", { exact: true }).fill("listener");
+        await page.getByLabel("Password", { exact: true }).fill("fictional-password");
+        await page.getByRole("button", { name: "Connect", exact: true }).click();
+        await page.getByRole("radio", { name: "All music", exact: true }).check();
+        await page.getByRole("link", { name: artist.name, exact: true }).waitFor();
+        await page.getByRole("button", { name: "Queue", exact: true }).click();
+        const player = page.locator("#player-dialog");
+        await player.getByRole("button", { name: "Load server queue", exact: true }).click();
+        await page
+          .getByRole("dialog", { name: "Replace this device’s queue?", exact: true })
+          .getByRole("button", { name: "Load server queue", exact: true })
+          .click();
+        await player.getByRole("status").filter({ hasText: "Server queue loaded" }).waitFor();
+        const labels = await player.locator(".track-row .label").allTextContents();
+        await page.getByRole("button", { name: "Close player", exact: true }).click();
+        await page.getByRole("link", { name: "Settings", exact: true }).click();
+        const original = await identity(page);
+        server.select(builds.C);
+        await checkForUpdate(page);
+        await waiting(page);
+        assert.deepEqual(
+          await identity(page),
+          original,
+          "waiting update must not reload without approval",
+        );
+        await approve(h, "C", t);
+        await page.getByRole("button", { name: "Queue", exact: true }).click();
+        assert.deepEqual(await player.locator(".track-row .label").allTextContents(), labels);
+        assert.equal(
+          await player.getByRole("slider", { name: "Playback position" }).inputValue(),
+          "23",
+        );
+        assert.equal(await player.getByRole("button", { name: "Pause", exact: true }).count(), 0);
+        assert.deepEqual(
+          exchanges,
+          ["getPlayQueue"],
+          "update/reload must not exchange server queues",
+        );
+      },
+    );
 
     await scenario(
       "old-plugin A upgrades to native B without storage clearing",

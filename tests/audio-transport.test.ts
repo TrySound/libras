@@ -170,6 +170,70 @@ describe("AudioTransport without a mounted component", () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
+  it("ignores a delayed play rejection after interruption and retries only explicitly", async () => {
+    const { transport, audio, track, getSource, release } = setup();
+    const playing = deferred<void>();
+    audio.play.mockReturnValueOnce(playing.promise);
+    const pending = transport.play(track);
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledOnce());
+    transport.pause();
+    playing.reject(new DOMException("Interrupted", "AbortError"));
+    await pending;
+    expect(transport.status).toBe("ready");
+    expect(transport.error).toBeUndefined();
+    expect(transport.playing).toBe(false);
+    expect(release).toHaveBeenCalledOnce();
+    expect(getSource).toHaveBeenCalledOnce();
+    await transport.resume();
+    expect(transport.playing).toBe(true);
+    expect(getSource).toHaveBeenCalledTimes(2);
+    transport.dispose();
+    expect(release).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels a seek waiting for metadata and ignores late metadata and errors", async () => {
+    const { transport, audio, track, getSource, release } = setup();
+    getSource.mockResolvedValue({ url: "blob:stream", seekMode: "buffered", release });
+    await transport.play(track);
+    audio.readyState = 0;
+    const seeking = transport.seek(75);
+    await vi.waitFor(() => expect(audio.src).toBe("blob:stream"));
+    expect(transport.status).toBe("seeking");
+    transport.pause();
+    await seeking;
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    audio.dispatchEvent(new Event("error"));
+    expect(transport.position).toBe(75);
+    expect(transport.status).toBe("ready");
+    expect(transport.playing).toBe(false);
+    expect(audio.src).toBe("");
+    expect(release).toHaveBeenCalledTimes(2);
+    audio.readyState = 1;
+    await transport.resume();
+    expect(audio.currentTime).toBe(75);
+    expect(transport.playing).toBe(true);
+    transport.dispose();
+    expect(release).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not let a failed retired seek poison a replacement track", async () => {
+    const { transport, audio, track, getSource, release } = setup();
+    getSource.mockResolvedValueOnce({ url: "blob:stream", seekMode: "buffered", release });
+    await transport.play(track);
+    const source = deferred<PlayerSource>();
+    getSource.mockReturnValueOnce(source.promise);
+    const seeking = transport.seek(90);
+    const signal = getSource.mock.calls[1]![0].signal;
+    await transport.play({ ...track, metadata: { title: "Replacement" } });
+    source.reject(new Error("Retired account failed"));
+    await seeking;
+    expect(signal.aborted).toBe(true);
+    expect(transport.metadata?.title).toBe("Replacement");
+    expect(transport.error).toBeUndefined();
+    expect(transport.playing).toBe(true);
+    expect(audio.src).toBe("blob:track");
+  });
+
   it("does not restart if an idle notification disposes the transport during replacement", async () => {
     const { transport, track, getSource, onstatechange } = setup();
     await transport.play(track);
