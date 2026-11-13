@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { getAccountKey } from "../src/auth";
+import { AccountOwnershipError } from "../src/account-ownership";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Cache, downloadKey } from "../src/cache.svelte";
 import { DownloadError } from "../src/download-error";
@@ -29,6 +30,170 @@ afterEach(async () => {
 });
 
 const input = { host: credentials.host, username: credentials.username, password: "password" };
+
+describe("account ownership", () => {
+  it.each(["blocked", "unsupported"] as const)(
+    "blocks %s startup before hydration or network work",
+    async (reason) => {
+      const fixture = setup(true);
+      fixture.acquireOwnership.mockRejectedValue(new AccountOwnershipError(reason));
+      fixture.session.start();
+      await vi.waitFor(() => expect(fixture.session.ownershipIssue).toBe(reason));
+      expect(fixture.selection.cache).toBeUndefined();
+      expect(fixture.loadCache).not.toHaveBeenCalled();
+      expect(fixture.validate).not.toHaveBeenCalled();
+      expect(fixture.metadata.getModifiedAt).not.toHaveBeenCalled();
+      expect(fixture.session.localReady).toBe(false);
+    },
+  );
+
+  it.each(["blocked", "unsupported"] as const)(
+    "does not resume saved credentials through connection toggles after %s startup",
+    async (reason) => {
+      const fixture = setup(true);
+      const open = vi.spyOn(fixture.network, "open");
+      fixture.acquireOwnership.mockRejectedValue(new AccountOwnershipError(reason));
+      fixture.session.start();
+      await vi.waitFor(() => expect(fixture.session.ownershipIssue).toBe(reason));
+      expect(fixture.session.auth).toEqual(credentials);
+      const error = fixture.session.error;
+      const mode = fixture.network.mode;
+      await fixture.session.setOfflineMode(true);
+      await fixture.session.setOfflineMode(false);
+      expect(fixture.session.canResumeOnline).toBe(false);
+      expect(fixture.network.mode).toBe(mode);
+      expect(fixture.session.status).toBe("error");
+      expect(fixture.session.error).toBe(error);
+      expect(open).not.toHaveBeenCalled();
+      expect(fixture.validate).not.toHaveBeenCalled();
+      expect(fixture.metadata.getModifiedAt).not.toHaveBeenCalled();
+      expect(fixture.playback.setConnection.mock.calls.every(([connection]) => !connection)).toBe(
+        true,
+      );
+      expect(
+        fixture.tracks.setPlaybackConnection.mock.calls.every(([connection]) => !connection),
+      ).toBe(true);
+      expect(fixture.session.blockedAccount).toBeDefined();
+      fixture.session.chooseAnotherAccount();
+      expect(fixture.session.blockedAccount).toBeUndefined();
+      expect(fixture.session.auth).toBeNull();
+    },
+  );
+
+  it("retries explicitly, retains ownership across disconnect/reconnect and releases only on disposal", async () => {
+    const fixture = setup(true);
+    const release = vi.fn(async () => {});
+    fixture.acquireOwnership.mockRejectedValueOnce(new AccountOwnershipError("blocked"));
+    fixture.acquireOwnership.mockResolvedValue(release);
+    fixture.session.start();
+    await vi.waitFor(() => expect(fixture.session.ownershipIssue).toBe("blocked"));
+    expect(fixture.acquireOwnership).toHaveBeenCalledOnce();
+    await fixture.session.retryOwnership();
+    const cache = fixture.session.cache;
+    fixture.session.disconnect();
+    expect(await fixture.session.connect(input)).toBe(true);
+    expect(fixture.session.cache).toBe(cache);
+    expect(fixture.acquireOwnership).toHaveBeenCalledTimes(2);
+    expect(release).not.toHaveBeenCalled();
+    await fixture.session.destroy();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the original workspace when another account is blocked before authentication", async () => {
+    const fixture = await connected();
+    fixture.session.disconnect();
+    const cache = fixture.session.cache;
+    fixture.validate.mockClear();
+    fixture.acquireOwnership.mockRejectedValueOnce(new AccountOwnershipError("blocked"));
+    expect(await fixture.session.connect({ ...input, username: "other" })).toBe(false);
+    expect(fixture.session.cache).toBe(cache);
+    expect(fixture.session.blockedAccount).toBeUndefined();
+    expect(fixture.validate).not.toHaveBeenCalled();
+    expect(fixture.session.error).toContain("another tab");
+  });
+
+  it("releases a candidate after cancelled acquisition without hydrating or authenticating", async () => {
+    const fixture = setup();
+    const acquired = deferred<() => Promise<void>>();
+    const release = vi.fn(async () => {});
+    fixture.acquireOwnership.mockReturnValueOnce(acquired.promise);
+    const connecting = fixture.session.connect(input);
+    await vi.waitFor(() => expect(fixture.acquireOwnership).toHaveBeenCalledOnce());
+    fixture.session.cancelConnect();
+    acquired.resolve(release);
+    expect(await connecting).toBe(false);
+    expect(release).toHaveBeenCalledOnce();
+    expect(fixture.loadCache).not.toHaveBeenCalled();
+    expect(fixture.validate).not.toHaveBeenCalled();
+  });
+
+  it("releases failed candidate preparation but keeps the original lease until a successful switch", async () => {
+    const fixture = setup(true);
+    const originalRelease = vi.fn(async () => {});
+    const candidateRelease = vi.fn(async () => {});
+    fixture.acquireOwnership
+      .mockResolvedValueOnce(originalRelease)
+      .mockResolvedValue(candidateRelease);
+    fixture.session.start();
+    await vi.waitFor(() => expect(fixture.session.status).toBe("connected"));
+    fixture.session.disconnect();
+    const original = fixture.session.cache;
+    fixture.loadCache.mockRejectedValueOnce(new Error("Preparation failed"));
+    expect(await fixture.session.connect({ ...input, username: "other" })).toBe(false);
+    expect(fixture.session.cache).toBe(original);
+    expect(candidateRelease).toHaveBeenCalledOnce();
+    expect(originalRelease).not.toHaveBeenCalled();
+    expect(await fixture.session.connect({ ...input, username: "other" })).toBe(true);
+    expect(originalRelease).toHaveBeenCalledOnce();
+    expect(fixture.session.cache).not.toBe(original);
+  });
+
+  it("joins deletion on disposal and refuses an overlapping account activation", async () => {
+    const fixture = setup(true);
+    const release = vi.fn(async () => {});
+    fixture.acquireOwnership.mockResolvedValue(release);
+    fixture.session.start();
+    await vi.waitFor(() => expect(fixture.session.status).toBe("connected"));
+    const deletion = deferred();
+    vi.spyOn(fixture.session.cache!, "clear").mockReturnValueOnce(deletion.promise);
+    const clearing = fixture.session.clearLocalData();
+    await vi.waitFor(() => expect(fixture.session.cache!.clear).toHaveBeenCalledOnce());
+    const destroying = fixture.session.destroy();
+    try {
+      expect(await fixture.session.connect({ ...input, username: "other" })).toBe(false);
+      expect(release).not.toHaveBeenCalled();
+    } finally {
+      deletion.resolve();
+      await clearing;
+      await destroying;
+    }
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("holds the lease while deletion and final writes settle, including deletion failure", async () => {
+    const fixture = setup(true);
+    const release = vi.fn(async () => {});
+    fixture.acquireOwnership.mockResolvedValue(release);
+    fixture.session.start();
+    await vi.waitFor(() => expect(fixture.session.status).toBe("connected"));
+    const deletion = deferred();
+    vi.spyOn(fixture.session.cache!, "clear").mockReturnValueOnce(deletion.promise);
+    const clearing = fixture.session.clearLocalData();
+    await vi.waitFor(() => expect(fixture.session.cache!.clear).toHaveBeenCalledOnce());
+    expect(release).not.toHaveBeenCalled();
+    deletion.reject(new Error("Deletion denied"));
+    await expect(clearing).rejects.toThrow("Deletion denied");
+    expect(release).not.toHaveBeenCalled();
+    const drained = deferred();
+    vi.spyOn(fixture.session.cache!, "retire").mockReturnValueOnce(drained.promise);
+    const destroying = fixture.session.destroy();
+    await vi.waitFor(() => expect(fixture.session.cache!.retire).toHaveBeenCalledOnce());
+    expect(release).not.toHaveBeenCalled();
+    drained.resolve();
+    await destroying;
+    expect(release).toHaveBeenCalledOnce();
+  });
+});
 
 describe("disconnect and cache clear", () => {
   it("keeps identity and reconnects using the same cache after deletion is denied", async () => {
@@ -634,6 +799,7 @@ describe("session", () => {
       await load.call(this, signal);
     });
     session.start();
+    await vi.waitFor(() => expect(loadCache).toHaveBeenCalledOnce());
     const cache = selection.cache;
     const signal = loadCache.mock.calls[0][0]!;
     session.disconnect();
@@ -652,6 +818,7 @@ describe("session", () => {
     const loaded = deferred();
     loadCache.mockReturnValueOnce(loaded.promise);
     session.start();
+    await vi.waitFor(() => expect(loadCache).toHaveBeenCalledOnce());
     expect(selection.cache?.key).toBe(getAccountKey(credentials));
     expect(loadCache.mock.contexts[0]).toBe(selection.cache);
     expect(covers.activate).toHaveBeenCalledOnce();
@@ -679,9 +846,10 @@ describe("session", () => {
     const loaded = deferred();
     loadCache.mockReturnValueOnce(loaded.promise);
     session.start();
+    await vi.waitFor(() => expect(loadCache).toHaveBeenCalledOnce());
     const cache = selection.cache;
     const signal = loadCache.mock.calls[0][0]!;
-    session.destroy();
+    void session.destroy();
     expect(signal.aborted).toBe(true);
     loaded.reject(new DOMException("Stopped", "AbortError"));
     // Drain the rejected load, independent domain restoration and startup callback.

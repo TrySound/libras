@@ -73,7 +73,7 @@
     if (!deleteLocalData) return;
     cleaning = true;
     try {
-      await session.cache?.clear();
+      await session.clearLocalData();
     } catch {
       // Disconnect succeeds even if optional local deletion fails.
     } finally {
