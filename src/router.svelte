@@ -127,7 +127,9 @@
       )
         return;
 
-      const sameSearch = routePath(current) === "/search" && routePath(destination) === "/search";
+      const sameSearch =
+        ["/library", "/search"].includes(routePath(current) ?? "") &&
+        ["/library", "/search"].includes(routePath(destination) ?? "");
       event.intercept({
         // Keep typing/toggle focus; leave scrolling and history restoration native.
         ...(sameSearch ? { focusReset: "manual" as const } : {}),

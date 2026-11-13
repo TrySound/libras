@@ -12,6 +12,8 @@ test("query routes preserve native anchors and history", async () => {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(new URL("?/settings#settings-heading", base).href);
+    await page.locator("#connect-screen").waitFor();
+    await page.evaluate(() => navigation.navigate("?/settings#settings-heading").finished);
     await page.locator("#settings-heading").waitFor();
     assert.equal(new URL(page.url()).pathname, new URL(base).pathname);
     assert.equal(new URL(page.url()).hash, "#settings-heading");
@@ -71,11 +73,13 @@ test("query routes preserve native anchors and history", async () => {
       await context.setOffline(true);
       const response = await page.reload();
       assert.equal(response.fromServiceWorker(), true);
-      // A new user is redirected to Settings on a full startup, even offline.
-      await page.locator("#settings-heading").waitFor();
-      assert.equal(new URL(page.url()).search, "?/settings");
+      // A new user is redirected to Connect on a full startup, even offline.
+      await page.locator("#connect-screen").waitFor();
+      assert.equal(new URL(page.url()).search, "?/connect");
       const offline = await page.goto(new URL("index.html?/settings#settings-heading", base).href);
       assert.equal(offline.fromServiceWorker(), true);
+      await page.locator("#connect-screen").waitFor();
+      await page.evaluate(() => navigation.navigate("?/settings#settings-heading").finished);
       await page.locator("#settings-heading").waitFor();
       assert.equal(new URL(page.url()).hash, "#settings-heading");
     }
@@ -96,6 +100,8 @@ test("responsive navigation, native drawer, focus, and document scrolling", asyn
   page.on("pageerror", (error) => errors.push(error.message));
   try {
     await page.goto(base);
+    await page.locator("#connect-screen").waitFor();
+    await page.evaluate(() => navigation.navigate("?/settings").finished);
     await page.locator("[aria-labelledby=settings-heading]").waitFor();
     // Keep native page overscroll (including pull-to-refresh) enabled.
     // Headless Chromium can only verify the scroll owner's policy.
@@ -332,8 +338,8 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await page.getByRole("button", { name: `Actions for ${artist.name}`, exact: true }).click();
     await page
-      .locator("#artist-popover")
-      .getByRole("button", { name: "Play", exact: true })
+      .locator("#search-menu-popover")
+      .getByRole("button", { name: "Play now", exact: true })
       .click();
     await page.waitForFunction(
       () =>
@@ -525,6 +531,7 @@ test("navigation, resizing, and Now Playing retain real playback and the queue",
     await fullscreenSeek.focus();
     await page.keyboard.press("Home");
     await page.waitForFunction(() => document.querySelector(".mini-player progress").value === 0);
+    await fullscreenSeek.focus();
     await page.keyboard.press("ArrowRight");
     await page.waitForFunction(
       () =>

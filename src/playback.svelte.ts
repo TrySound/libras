@@ -64,6 +64,7 @@ export class Playback {
   #connection = $state.raw<QueueConnection>();
   #exchangeBusy = $state<"load" | "save" | undefined>();
   #exchangeMessage = $state("");
+  #queueMessage = $state("");
   #connectionVersion = 0;
   #activityVersion = 0;
   #queueError = $state.raw<unknown>();
@@ -80,6 +81,9 @@ export class Playback {
   }
   get #localQueue() {
     return this.#selection.cache?.queue ?? emptyQueue;
+  }
+  get queueMessage() {
+    return this.#queueMessage;
   }
   get queueError() {
     return this.#queueError;
@@ -103,6 +107,7 @@ export class Playback {
   /** Session calls this after selecting/loading local data. */
   activate() {
     if (this.#destroyed) return;
+    this.#queueMessage = "";
     this.#invalidateExchange();
     this.#activity = "inactive";
     this.#lastProgressFlush = 0;
@@ -257,16 +262,14 @@ export class Playback {
     if (Number.isInteger(index)) await this.play();
   }
   async enqueue(tracks: readonly string[], placement: "next" | "last") {
-    if (!tracks.length) return;
+    if (this.#destroyed || !tracks.length) return;
     const queue = this.#localQueue;
-    if (!queue.tracks.length) await this.replaceQueueAndPlay(tracks);
-    else {
-      const index = placement === "next" ? queue.index + 1 : queue.tracks.length;
-      this.setQueue({
-        ...queue,
-        tracks: [...queue.tracks.slice(0, index), ...tracks, ...queue.tracks.slice(index)],
-      });
-    }
+    const index = placement === "next" ? queue.index + 1 : queue.tracks.length;
+    this.setQueue({
+      ...queue,
+      tracks: [...queue.tracks.slice(0, index), ...tracks, ...queue.tracks.slice(index)],
+    });
+    this.#queueMessage = "Added to queue";
   }
   removeQueueIndex(index: number) {
     const queue = this.#localQueue;
@@ -312,6 +315,17 @@ export class Playback {
     // Seeking a restored queue edits its resume point without loading audio.
     if (this.#player?.status !== "idle") await this.#player?.seek(position);
   }
+  /** Removing saved bytes must release an active cached source without editing the queue. */
+  unloadDownloadedTrack(trackIds: ReadonlySet<string>) {
+    if (
+      this.track &&
+      trackIds.has(this.track.id) &&
+      (this.#sourceIsCached ||
+        this.#player?.status === "loading" ||
+        this.#player?.status === "seeking")
+    )
+      this.suspend();
+  }
   suspendNetwork() {
     if (
       !this.#sourceIsCached ||
@@ -333,6 +347,7 @@ export class Playback {
   }
 
   #changeQueue(state: QueueState, { restart = false } = {}) {
+    this.#queueMessage = "";
     const cache = this.#selection.cache;
     if (!cache || this.#destroyed) return;
     const requestedIndex = state.index ?? -1;

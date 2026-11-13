@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "../icon.svelte";
+  import { tick } from "svelte";
   import Artwork from "./artwork.svelte";
   import Atmosphere from "./atmosphere.svelte";
   import Loader from "./loader.svelte";
@@ -29,6 +30,15 @@
     offlineMode,
     serverQueueExchange = true,
   }: Props = $props();
+  let removalMessage = $state("");
+  async function removeOccurrence(index: number) {
+    const selected = index === cache.queue.index;
+    playback.removeQueueIndex(index);
+    removalMessage = selected ? "Track removed. Playback stopped." : "Track removed.";
+    await tick();
+    const next = Math.min(index, cache.queue.tracks.length - 1);
+    document.getElementById(next >= 0 ? `${id}-remove-${next}` : `${id}-queue`)?.focus();
+  }
   const canExchange = $derived(serverQueueExchange && playback.canExchangeQueue);
   const id = $props.id();
   const track = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
@@ -266,10 +276,10 @@
           {/if}
         </div>
       </div>
-      <div class="stack-lg scroll-runway" role="region" aria-label="Queue">
+      <div class="queue-panel stack-lg scroll-runway" role="region" aria-label="Queue">
         <div class="row-md row-justify">
           <div class="stack-xs">
-            <h2 id={`${id}-queue`} class="heading-lg uppercase">Up next</h2>
+            <h2 id={`${id}-queue`} class="heading-lg uppercase" tabindex="-1">Up next</h2>
             <p class="metadata text-subtle">{queue.length} track{queue.length === 1 ? "" : "s"}</p>
           </div>
           {#if cache.queue.tracks.length}
@@ -284,6 +294,16 @@
             </button>
           {/if}
         </div>
+        {#if cache.queue.index < 0 && queue.length}
+          <button
+            class="button"
+            data-size="text"
+            data-variant="primary"
+            disabled={offlineMode && !trackEngine.isDownloaded(queue[0].id)}
+            onclick={() => void playback.playIndex(0)}>Play</button
+          >
+        {/if}
+        {#if removalMessage}<p class="caption" role="status">{removalMessage}</p>{/if}
         <div class="stack-sm">
           <div class="row-sm row-wrap">
             <button
@@ -335,7 +355,7 @@
                       .filter(Boolean)
                       .join(", ")}
                   <div
-                    class="menu-item track-row"
+                    class="menu-item track-row queue-row"
                     aria-current={index === cache.queue.index ? "true" : undefined}
                   >
                     <span class="track-row-number metadata text-subtle">
@@ -357,7 +377,7 @@
                         {String(visibleIndex + 1).padStart(2, "0")}
                       {/if}
                     </span>
-                    <div class="row-sm">
+                    <div class="row-sm queue-metadata">
                       <Artwork {covers} id={track.artworkId} size="sm" />
                       <div>
                         <p class="label">{track.title}</p>
@@ -380,16 +400,15 @@
                         : undefined}
                       onclick={() => playback.toggleQueueIndex(index)}
                     ></button>
-                    <div class="row-sm">
-                      {#if offlineMode && !trackEngine.isDownloaded(track.id)}
-                        <button
-                          class="button"
-                          data-size="text"
-                          data-variant="secondary"
-                          aria-label={`Remove ${track.title}, queue item ${index + 1}`}
-                          onclick={() => playback.removeQueueIndex(index)}>Remove</button
-                        >
-                      {/if}
+                    <div class="row-sm queue-actions">
+                      <button
+                        id={`${id}-remove-${index}`}
+                        class="button"
+                        data-size="text"
+                        data-variant="secondary"
+                        aria-label={`Remove ${track.title}, queue item ${index + 1}`}
+                        onclick={() => void removeOccurrence(index)}>Remove</button
+                      >
                       <span class="metadata text-subtle">
                         {#if track.duration !== undefined}
                           {formatDuration(track.duration)}
@@ -398,9 +417,9 @@
                     </div>
                   </div>
                 {:else}
-                  <div class="menu-item track-row">
+                  <div class="menu-item track-row queue-row">
                     <span class="track-row-number metadata text-subtle">{index + 1}</span>
-                    <div class="row-sm">
+                    <div class="row-sm queue-metadata">
                       <Artwork {covers} size="sm" />
                       <div>
                         <p class="label">Track unavailable</p>
@@ -408,11 +427,12 @@
                       </div>
                     </div>
                     <button
-                      class="button"
+                      class="button queue-actions"
                       data-size="text"
                       data-variant="secondary"
+                      id={`${id}-remove-${index}`}
                       aria-label={`Remove unavailable track, queue item ${index + 1}`}
-                      onclick={() => playback.removeQueueIndex(index)}>Remove</button
+                      onclick={() => void removeOccurrence(index)}>Remove</button
                     >
                   </div>
                 {/if}
@@ -511,3 +531,24 @@
     </div>
   </div>
 </dialog>
+
+<style>
+  .queue-panel {
+    container: queue / inline-size;
+  }
+
+  @container queue (width <= 30rem) {
+    .queue-row.track-row:has(> .track-row-number) {
+      grid-template-columns: max(3ch, 24px) minmax(0, 1fr);
+    }
+
+    .queue-metadata {
+      grid-column: 2;
+    }
+
+    .queue-actions {
+      grid-column: 2;
+      justify-self: start;
+    }
+  }
+</style>

@@ -81,7 +81,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       exact: true,
     });
     await options.filter({ visible: true }).click();
-    const popover = page.locator("#artist-popover");
+    const popover = page.locator("#search-menu-popover");
     await popover.waitFor({ state: "visible" });
     assert.notEqual(
       await popover.evaluate((node) => getComputedStyle(node).backgroundImage),
@@ -104,7 +104,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       true,
       "the open desktop popover fills and centers within its padded content width",
     );
-    assert.equal(await page.locator("#artist-menu").isVisible(), false);
+    assert.equal(await page.locator("#search-menu").isVisible(), false);
     assert.equal(new URL(page.url()).search, "?/library");
     await page.keyboard.press("Escape");
     assert.equal(
@@ -122,7 +122,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       ["normal", "anywhere", "balance"],
     );
     await options.filter({ visible: true }).click();
-    const sheet = page.locator("#artist-menu");
+    const sheet = page.locator("#search-menu");
     await sheet.waitFor({ state: "visible" });
     assert.equal(await sheet.evaluate((node) => node.matches(":modal")), true);
     await page.setViewportSize({ width: 1280, height: 852 });
@@ -239,7 +239,8 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
         true,
       );
     }
-    await page.locator(".library-sentinel").scrollIntoViewIfNeeded();
+    if (await page.locator(".library-sentinel").count())
+      await page.locator(".library-sentinel").scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.querySelectorAll(".tile").length === 53);
     // This name sorts after the first lazy batch; check it only once loaded.
     const longName = page.getByRole("link", { name: "BADBADNOTGOOD", exact: true });
@@ -321,7 +322,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     const albumView = page.getByRole("region", { name: "Album details" });
     await albumView.getByRole("heading", { name: "Album 0", exact: true }).waitFor();
     assert.equal(
-      await albumView.getByRole("button", { name: "Play Track 0", exact: true }).count(),
+      await albumView.getByRole("button", { name: "Play now Track 0", exact: true }).count(),
       1,
     );
     await checkDetailLayout(albumView);
@@ -345,7 +346,7 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
       assert.equal(await panel.getByRole("heading").textContent(), "Track 0");
       await page.keyboard.press("Escape");
     }
-    const trackTarget = albumView.getByRole("button", { name: "Play Track 0", exact: true });
+    const trackTarget = albumView.getByRole("button", { name: "Play now Track 0", exact: true });
     await trackTarget.scrollIntoViewIfNeeded();
     const trackBox = await trackTarget.boundingBox();
     await page.mouse.move(trackBox.x + 8, trackBox.y + 8);
@@ -378,12 +379,17 @@ test("Library tiles, responsive actions, lazy batches, and navigation", async ()
     await page.locator("#album-detail-menu-popover").waitFor({ state: "visible" });
     await page
       .locator("#album-detail-menu-popover")
-      .getByRole("button", { name: "Play last", exact: true })
+      .getByRole("button", { name: "Add to queue", exact: true })
       .click();
     await page.locator("#album-detail-menu-popover").waitFor({ state: "hidden" });
-    await page.waitForFunction(
-      () => document.querySelector(".mini-player strong")?.textContent === "Track 0",
+    assert.equal(
+      await page.locator(".mini-player").count(),
+      0,
+      "enqueue never autoplays an inactive queue",
     );
+    await page.locator(".app-sidebar").getByRole("button", { name: "Queue", exact: true }).click();
+    assert.equal(await page.locator("#player-dialog .track-row").count(), 1);
+    await page.keyboard.press("Escape");
     await albumView.getByRole("link", { name: artists[0].name, exact: true }).click();
     await artistView.waitFor();
     await page.locator('a[href="?/library"]').filter({ visible: true }).first().click();

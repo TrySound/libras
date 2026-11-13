@@ -13,8 +13,8 @@
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
   import ArtistRoute from "./_artist.svelte";
+  import Connect from "./_connect.svelte";
   import LibraryRoute from "./_library.svelte";
-  import SearchRoute from "./_search.svelte";
   import type WebappUpdater from "./webapp-updater.svelte";
   import type { AuthStore } from "./auth";
   import { Covers } from "./covers.svelte";
@@ -124,11 +124,11 @@
 
   onMount(() => {
     const savedAuth = session.start();
-    if (!savedAuth && cache.key === undefined) {
+    if (!savedAuth && !session.hasLocalAccount && cache.key === undefined) {
       // Startup chooses the first page; it is not an animated navigation.
       const url = new URL(window.location.href);
-      if (url.search !== "?/settings") url.hash = "";
-      url.search = "/settings";
+      if (url.search !== "?/connect") url.hash = "";
+      url.search = "/connect";
       if (url.href !== window.location.href)
         window.history.replaceState(window.history.state, "", url);
     }
@@ -155,7 +155,7 @@
 
 {#snippet downloadsRoute()}
   <Atmosphere />
-  <Downloads {cache} {covers} {trackEngine} {loading} {appName} />
+  <Downloads {cache} {covers} {trackEngine} {playback} {loading} {appName} />
 {/snippet}
 
 {#snippet libraryRoute()}
@@ -163,9 +163,9 @@
   <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
 {/snippet}
 
-{#snippet searchRoute()}
+{#snippet connectRoute()}
   <Atmosphere />
-  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
+  <Connect {session} {demo} {appName} />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
@@ -220,20 +220,14 @@
     <a
       class="menu-item"
       href="?/library"
-      aria-current={isCurrentPage("/library") ? "page" : undefined}
+      aria-current={isCurrentPage("/library") || isCurrentPage("/search") ? "page" : undefined}
       onclick={() => navigationDrawer?.close()}
     >
-      <Icon name="disc" color={isCurrentPage("/library") ? "var(--accent)" : undefined} />
+      <Icon
+        name="disc"
+        color={isCurrentPage("/library") || isCurrentPage("/search") ? "var(--accent)" : undefined}
+      />
       Your library
-    </a>
-    <a
-      class="menu-item"
-      href="?/search"
-      aria-current={isCurrentPage("/search") ? "page" : undefined}
-      onclick={() => navigationDrawer?.close()}
-    >
-      <Icon name="search" color={isCurrentPage("/search") ? "var(--accent)" : undefined} />
-      Search
     </a>
     <a
       class="menu-item"
@@ -285,7 +279,7 @@
         >{offlineMode ? "Connect" : "Work offline"}</button
       >
     {:else}
-      <a class="menu-item" href="?/settings" onclick={() => navigationDrawer?.close()}>Connect</a>
+      <a class="menu-item" href="?/connect" onclick={() => navigationDrawer?.close()}>Connect</a>
     {/if}
     {#if offlineMode}<p class="caption text-secondary">
         Server access is off. Requested downloads are paused.
@@ -342,7 +336,7 @@
         {@render brand()}
         <div class="row-sm">
           {@render actions()}
-          <a class="button" href="?/search" aria-label="Search">
+          <a class="button" href="?/library#library-search" aria-label="Search">
             <Icon name="search" />
           </a>
           <button
@@ -418,7 +412,8 @@
           <Router
             routes={[
               { pattern: "/library", render: libraryRoute },
-              { pattern: "/search", render: searchRoute },
+              { pattern: "/search", render: libraryRoute },
+              { pattern: "/connect", render: connectRoute },
               { pattern: "/library/album/:albumId", render: albumRoute },
               { pattern: "/library/artist/:artistId", render: artistRoute },
               { pattern: "/settings", render: settingsRoute },

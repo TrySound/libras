@@ -120,7 +120,7 @@ it("keeps completed MP3 browsable and playable when a raw retry is paused by Wor
     });
     flushSync();
     const play = target.querySelector<HTMLButtonElement>(
-      `button[aria-label="Play ${song.title}"]`,
+      `button[aria-label="Play now ${song.title}"]`,
     )!;
     expect(play).not.toBeNull();
     expect(play.disabled).toBe(false);
