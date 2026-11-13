@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
-  import { onDestroy, onMount, untrack, type Snippet } from "svelte";
+  import { onDestroy, onMount, tick, untrack, type Snippet } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
   import { Playlists } from "./playlists.svelte";
@@ -262,16 +262,26 @@
   </nav>
   <section class="stack-sm" aria-label="Connection">
     <p class="caption text-secondary">
-      {session.busy ? "Connecting…" : offlineMode ? "Working offline" : "Connected"}
+      {session.blockedAccount
+        ? "Account not active"
+        : session.busy
+          ? "Connecting…"
+          : offlineMode
+            ? "Working offline"
+            : "Connected"}
     </p>
     {#if session.busy}
       <button
         class="menu-item"
+        disabled={!!session.blockedAccount}
         onclick={() => (session.auth ? void session.setOfflineMode(true) : session.cancelConnect())}
         >Cancel</button
       >
     {:else if session.auth}
-      <button class="menu-item" onclick={() => void session.setOfflineMode(!offlineMode)}
+      <button
+        class="menu-item"
+        disabled={!session.canResumeOnline}
+        onclick={() => void session.setOfflineMode(!offlineMode)}
         >{offlineMode ? "Connect" : "Work offline"}</button
       >
     {:else}
@@ -356,7 +366,55 @@
         <div class="row-sm app-status-actions">{@render actions()}</div>
       {/if}
       <main class="app-page">
-        {#if initialized}
+        {#if session.blockedAccount}
+          <div class="container-md stack-lg">
+            <section class="card stack-md" aria-labelledby="account-blocked-heading">
+              <h1 id="account-blocked-heading" class="heading-lg uppercase">
+                {session.ownershipIssue === "unsupported"
+                  ? "This browser cannot safely open this account’s local data."
+                  : "This account is open in another tab"}
+              </h1>
+              <p class="body" style="overflow-wrap: anywhere">
+                {session.blockedAccount.username} · {session.blockedAccount.host}
+              </p>
+              <p class="body">
+                {session.ownershipIssue === "unsupported"
+                  ? "Web Locks browser support is required to protect your local data."
+                  : "Close the other Libras tab, then retry."}
+              </p>
+              <p class="body" role="status">
+                {session.error.startsWith("This account is still") ? session.error : ""}
+              </p>
+              {#if session.ownershipIssue !== "unsupported"}
+                <button
+                  class="button"
+                  data-size="text"
+                  data-variant="primary"
+                  disabled={session.busy}
+                  onclick={async (event) => {
+                    const button = event.currentTarget;
+                    await session.retryOwnership();
+                    await tick();
+                    if (button.isConnected && document.activeElement === document.body)
+                      button.focus();
+                  }}
+                >
+                  {session.busy ? "Checking…" : "Retry"}
+                </button>
+              {/if}
+              <a
+                class="button"
+                data-size="text"
+                data-variant="secondary"
+                href="?/settings"
+                onclick={(event) => {
+                  if (session.busy) event.preventDefault();
+                  else session.chooseAnotherAccount();
+                }}>Use another account</a
+              >
+            </section>
+          </div>
+        {:else if initialized}
           <Router
             routes={[
               { pattern: "/library", render: libraryRoute },

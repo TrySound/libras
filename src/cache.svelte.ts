@@ -104,7 +104,7 @@ function serial() {
   };
 }
 
-async function hash(key: string) {
+export async function hashAccountKey(key: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -198,8 +198,12 @@ class Disk {
     }
   }
 
-  async removeBinary(fileName: string) {
-    await (await this.files()).removeEntry(fileName).catch(() => {});
+  removeBinary(fileName: string) {
+    return this.#observe(
+      (async () => {
+        await (await this.files()).removeEntry(fileName).catch(() => {});
+      })(),
+    );
   }
 
   /** Concrete byte I/O only. Successful close is the cancellation boundary. */
@@ -1147,7 +1151,7 @@ export class Cache {
    * Keys are opaque identities; hashing and storage addressing stay internal. */
   constructor(key?: string) {
     this.key = key;
-    this.#disk = key === undefined ? undefined : new Disk(hash(key));
+    this.#disk = key === undefined ? undefined : new Disk(hashAccountKey(key));
     this.#library = new CheckpointStore(this.#disk, {
       document: "library",
       initial: () => prepareLibrary(null),
@@ -1207,7 +1211,7 @@ export class Cache {
     return this.#library.value.savedAt;
   }
 
-  /** Clear only this account's OPFS data. Other tabs must be closed first. */
+  /** Clear only this account's OPFS data. Session retains ownership throughout. */
   clear(): Promise<void> {
     if (this.#clearing) return this.#clearing;
     const disk = this.#disk;
@@ -1276,6 +1280,22 @@ export class Cache {
       { ...queue, tracks: queue.tracks === tracks ? tracks : [...queue.tracks] },
       options.checkpoint ?? false,
     );
+  }
+
+  /** Queue durability is independent of every other domain. */
+  flushQueue(): Promise<void> {
+    return this.#queue.flush();
+  }
+
+  /** Stop disk publication after producers have stopped and final checkpoints settled. */
+  async retire() {
+    await this.#clearing?.catch(() => {});
+    try {
+      await this.flush();
+    } finally {
+      this.#disk?.cancel();
+      await this.#disk?.drain();
+    }
   }
 
   /** Checkpoint independent documents, waiting for every attempt before reporting failure. */

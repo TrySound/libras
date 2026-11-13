@@ -53,7 +53,11 @@ export function createStorage() {
   };
 }
 
-export function createSession(saved = false, storage = createStorage()) {
+export function createSession(
+  saved = false,
+  storage = createStorage(),
+  acquireOwnership = vi.fn(async (_key: string) => async () => {}),
+) {
   const selection = new TestSelection();
   const auth = new AuthStore(storage);
   if (saved) auth.save(credentials);
@@ -151,18 +155,20 @@ export function createSession(saved = false, storage = createStorage()) {
     tracks: trackEngine,
     playback: player,
     preferences: storage,
+    acquireOwnership,
   });
   return {
     async destroy() {
       expect(playback.readQueue).not.toHaveBeenCalled();
       expect(playback.writeQueue).not.toHaveBeenCalled();
-      session.destroy();
+      await session.destroy();
       await player.destroy();
       covers.activate.mockRestore();
       coverResources.destroy();
       trackEngine.destroy();
     },
     session,
+    acquireOwnership,
     network,
     selection,
     auth,
