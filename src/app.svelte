@@ -5,6 +5,7 @@
   import { Playback } from "./playback.svelte";
   import { Playlists } from "./playlists.svelte";
   import AudioPlayer from "./audio-player.svelte";
+  import { AudioTransport } from "./audio-transport.svelte";
   import Player from "./ui/player.svelte";
   import Atmosphere from "./ui/atmosphere.svelte";
   import Loader from "./ui/loader.svelte";
@@ -51,7 +52,7 @@
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
   const trackEngine = new TrackEngine({ selection });
-  let player = $state<ReturnType<typeof AudioPlayer>>();
+  let player = $state.raw<AudioTransport>();
   const playback: Playback = new Playback({
     selection,
     tracks: trackEngine,
@@ -98,7 +99,20 @@
 
   onMount(() => installLongPress());
   onMount(() => installSwipeToDismiss());
-  onMount(() => playback.attach(player!));
+  onMount(() => {
+    const transport = new AudioTransport({
+      onposition: (position) => playback.setPosition(position),
+      onended: () => playback.ended(),
+      onstatechange: (state) => playback.updatePlayerState(state),
+    });
+    player = transport;
+    const detach = playback.attach(transport);
+    return () => {
+      detach();
+      transport.dispose();
+      player = undefined;
+    };
+  });
 
   onDestroy(() => {
     session.destroy();
@@ -122,16 +136,15 @@
   });
 </script>
 
-<AudioPlayer
-  bind:this={player}
-  hasPrevious={hasPreviousTrack || (cache.queue.index >= 0 && cache.queue.position > 0)}
-  hasNext={hasNextTrack}
-  onprevious={() => playback.previous()}
-  onnext={() => playback.next()}
-  onposition={(position) => playback.setPosition(position)}
-  onended={() => playback.ended()}
-  onstatechange={(state) => playback.updatePlayerState(state)}
-/>
+{#if player}
+  <AudioPlayer
+    transport={player}
+    hasPrevious={hasPreviousTrack || (cache.queue.index >= 0 && cache.queue.position > 0)}
+    hasNext={hasNextTrack}
+    onprevious={() => playback.previous()}
+    onnext={() => playback.next()}
+  />
+{/if}
 
 {#snippet settingsRoute()}
   <Atmosphere />

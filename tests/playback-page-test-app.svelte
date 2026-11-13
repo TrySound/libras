@@ -3,15 +3,28 @@
   import Album from "../src/_album.svelte";
   import Artist from "../src/_artist.svelte";
   import AudioPlayer from "../src/audio-player.svelte";
+  import { AudioTransport } from "../src/audio-transport.svelte";
   import Player from "../src/ui/player.svelte";
 
   let { props }: { props: Omit<ComponentProps<typeof Album>, "params" | "playbackState"> } =
     $props();
   let albumId = $state<string | undefined>("album");
   let artistId = $state<string>();
-  let audio = $state<ReturnType<typeof AudioPlayer>>();
+  let audio = $state.raw<AudioTransport>();
   const loading = $derived(["loading", "buffering", "seeking"].includes(audio?.status ?? "idle"));
-  onMount(() => props.playback.attach(audio!));
+  onMount(() => {
+    const transport = new AudioTransport({
+      onposition: (position) => props.playback.setPosition(position),
+      onended: () => props.playback.ended(),
+      onstatechange: (state) => props.playback.updatePlayerState(state),
+    });
+    audio = transport;
+    const detach = props.playback.attach(transport);
+    return () => {
+      detach();
+      transport.dispose();
+    };
+  });
   export function navigate(id?: string) {
     albumId = id;
     artistId = undefined;
@@ -22,16 +35,15 @@
   }
 </script>
 
-<AudioPlayer
-  bind:this={audio}
-  hasNext={props.cache.queue.index < props.cache.queue.tracks.length - 1}
-  hasPrevious={props.cache.queue.index > 0}
-  onnext={() => props.playback.next()}
-  onprevious={() => props.playback.previous()}
-  onposition={(position) => props.playback.setPosition(position)}
-  onended={() => props.playback.ended()}
-  onstatechange={(state) => props.playback.updatePlayerState(state)}
-/>
+{#if audio}
+  <AudioPlayer
+    transport={audio}
+    hasNext={props.cache.queue.index < props.cache.queue.tracks.length - 1}
+    hasPrevious={props.cache.queue.index > 0}
+    onnext={() => props.playback.next()}
+    onprevious={() => props.playback.previous()}
+  />
+{/if}
 <Player
   cache={props.cache}
   covers={props.covers}
