@@ -2,7 +2,8 @@
 import { flushSync, mount, unmount } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import Player, { type PlayerTrack } from "../src/audio-player.svelte";
+import Player from "../src/audio-player.svelte";
+import { AudioTransport, type PlayerTrack } from "../src/audio-transport.svelte";
 
 const cleanups: (() => Promise<void>)[] = [];
 function setup(unsupported = false, available = true) {
@@ -59,9 +60,11 @@ function setup(unsupported = false, available = true) {
   );
   const onnext = vi.fn();
   const onprevious = vi.fn();
-  const player = mount(Player, {
+  const player = new AudioTransport();
+  const binding = mount(Player, {
     target: document.createElement("div"),
     props: {
+      transport: player,
       hasNext: true,
       hasPrevious: true,
       onnext,
@@ -69,7 +72,10 @@ function setup(unsupported = false, available = true) {
     },
   });
   flushSync();
-  const destroy = () => unmount(player);
+  const destroy = async () => {
+    player.dispose();
+    await unmount(binding);
+  };
   cleanups.push(destroy);
   const play = (metadata: PlayerTrack["metadata"], position = 0) =>
     player.play({
@@ -222,6 +228,7 @@ describe("Player Media Session integration", () => {
     audio.playbackRate = 0;
     audio.dispatchEvent(new Event("loadedmetadata"));
     audio.dispatchEvent(new Event("timeupdate"));
+    flushSync();
     expect(session.setPositionState).toHaveBeenLastCalledWith({
       duration: 100,
       position: 100,

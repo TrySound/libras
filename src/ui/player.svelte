@@ -7,7 +7,7 @@
   import type { Cache } from "../cache.svelte";
   import type { Playback } from "../playback.svelte";
   import type { TrackEngine } from "../track.svelte";
-  import type AudioPlayer from "../audio-player.svelte";
+  import type { AudioTransport } from "../audio-transport.svelte";
   import { formatDuration } from "../time";
 
   interface Props {
@@ -15,7 +15,7 @@
     covers: Covers;
     playback: Playback;
     trackEngine: TrackEngine;
-    audio: ReturnType<typeof AudioPlayer> | undefined;
+    audio: AudioTransport | undefined;
     offlineMode: boolean;
   }
 

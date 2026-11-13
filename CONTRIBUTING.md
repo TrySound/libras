@@ -37,7 +37,8 @@ The workspace contains the root app (`src/`, `tests/`) and `@libras/website` (`w
 | `Network` / `SubsonicClient` | Connection cancellation, normalized domain access / Subsonic protocol requests                   |
 | `Cache`                      | Account-scoped library, queue, images, downloads, playlists, and OPFS persistence                |
 | `Playback`                   | Queue commands, server synchronization, and playback orchestration                               |
-| `AudioPlayer`                | Audio transport, seeking, keyboard shortcuts, and Media Session                                  |
+| `AudioTransport`             | Native audio lifetime, source acquisition, reactive transport state, and seeking                 |
+| `AudioPlayer`                | Headless keyboard shortcuts and Media Session binding to the app-owned transport                 |
 | `Covers` / `TrackEngine`     | Resource acquisition, download scheduling, and browser URL lifetimes                             |
 | `Playlists`                  | Server-confirmed playlist operations and conflict detection; no offline outbox                   |
 | `Router`                     | Query routes, native fragment anchors, active navigation metadata, and optional view transitions |

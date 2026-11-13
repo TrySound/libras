@@ -2,12 +2,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushSync, mount, unmount } from "svelte";
 import { fromStore, writable } from "svelte/store";
-import Player, {
+import Player from "../src/audio-player.svelte";
+import {
+  AudioTransport,
   type PlayerTrack,
   type PlayerSource,
-  type PlayerProps,
   type PlayerState,
-} from "../src/audio-player.svelte";
+} from "../src/audio-transport.svelte";
 
 class AudioStub extends EventTarget {
   preload = "";
@@ -79,7 +80,7 @@ function setup() {
   const navigation = writable({ previous: true, next: true });
   const availability = fromStore(navigation);
   const onstatechange = vi.fn<(state: PlayerState) => void>();
-  const props: PlayerProps = {
+  const props = {
     onstatechange,
     get hasPrevious() {
       return availability.current.previous;
@@ -92,9 +93,31 @@ function setup() {
     onposition: vi.fn(),
     onended: vi.fn(),
   };
-  const player = mount(Player, { target: document.createElement("div"), props });
+  const player = new AudioTransport(props);
+  const binding = mount(Player, {
+    target: document.createElement("div"),
+    props: {
+      ...props,
+      transport: player,
+      get hasPrevious() {
+        return availability.current.previous;
+      },
+      get hasNext() {
+        return availability.current.next;
+      },
+    },
+  });
   flushSync();
-  const detach = () => unmount(player);
+  let bound = true;
+  const unbind = async () => {
+    if (!bound) return;
+    bound = false;
+    await unmount(binding);
+  };
+  const detach = async () => {
+    player.dispose();
+    await unbind();
+  };
   cleanups.push(detach);
   const item: PlayerTrack = { metadata: { title: "A", duration: 300 }, position: 0, getSource };
   return {
@@ -109,6 +132,7 @@ function setup() {
     detach,
     navigation,
     onstatechange,
+    unbind,
   };
 }
 
@@ -142,7 +166,26 @@ async function setupShortcuts() {
   return { toggle, dispatch, cleanup: detach };
 }
 
-describe("Player component", () => {
+describe("Player browser-control binding", () => {
+  it("removes global handlers without unloading the independently owned transport", async () => {
+    const { player, audio, item, unbind, session, handlers, release, getSource } = setup();
+    await player.play(item);
+    await unbind();
+    expect(session.metadata).toBeNull();
+    expect([...handlers.values()].every((handler) => handler === null)).toBe(true);
+    expect(player.playing).toBe(true);
+    expect(audio.src).toBe("blob:track");
+    expect(release).not.toHaveBeenCalled();
+    const event = new KeyboardEvent("keydown", { key: " ", cancelable: true });
+    document.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    player.pause();
+    await player.resume();
+    expect(player.playing).toBe(true);
+    expect(getSource).toHaveBeenCalledOnce();
+    player.dispose();
+    expect(release).toHaveBeenCalledOnce();
+  });
   it("emits complete transport states synchronously, including native pause and buffering", async () => {
     const { player, audio, item, getSource, onstatechange } = setup();
     const source = Promise.withResolvers<PlayerSource>();
@@ -667,6 +710,7 @@ describe("Player component", () => {
       vi.mocked(props.onposition!).mockClear();
       session.setPositionState.mockClear();
       await player.seek(60);
+      flushSync();
       expect(props.onposition).toHaveBeenCalledExactlyOnceWith(60);
       if (seekMode === "full") expect(session.setPositionState).toHaveBeenCalledOnce();
     },
@@ -696,6 +740,7 @@ describe("Player component", () => {
     audio.dispatchEvent(new Event("timeupdate"));
     audio.dispatchEvent(new Event("waiting"));
     audio.dispatchEvent(new Event("canplay"));
+    flushSync();
     expect(session.setActionHandler).not.toHaveBeenCalled();
     navigation.set({ previous: false, next: false });
     flushSync();
@@ -709,6 +754,7 @@ describe("Player component", () => {
     await player.play(item);
     player.unload();
     await player.resume();
+    flushSync();
     expect(player.status).toBe("idle");
     expect(player.position).toBe(0);
     expect(player.duration).toBe(0);
