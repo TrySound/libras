@@ -73,7 +73,7 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     await page.getByLabel("Password", { exact: true }).fill("fictional-password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await page.locator(".tile").first().waitFor();
-    await page.locator('a[href="?/search"]').filter({ visible: true }).click();
+    await page.locator("#library-search").focus();
     const input = page.getByRole("searchbox", { name: "Search library" });
     await input.waitFor();
     assert.equal(await input.evaluate((node) => node === document.activeElement), true);
@@ -137,7 +137,7 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     });
     await page.setViewportSize({ width: 1280, height: 900 });
     // Long press still opens the ordinary shared sheet.
-    const target = tracks.getByRole("button", { name: `Play ${songs[1].title}`, exact: true });
+    const target = tracks.getByRole("button", { name: `Play now ${songs[1].title}`, exact: true });
     await target.scrollIntoViewIfNeeded();
     const box = await target.boundingBox();
     await page.mouse.move(box.x + 8, box.y + 8);
@@ -182,7 +182,9 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     assert.equal(await chips[2].getAttribute("aria-pressed"), "true");
     assert.equal(await tracks.locator(".track-row").count(), 120);
     await input.fill("Search fixture track 119");
-    await tracks.getByRole("button", { name: `Play ${songs[119].title}`, exact: true }).waitFor();
+    await tracks
+      .getByRole("button", { name: `Play now ${songs[119].title}`, exact: true })
+      .waitFor();
     await input.fill("Search fixture");
     assert.equal(await tracks.locator(".track-row").count(), 48);
     assert.equal(await input.evaluate((node) => node === document.activeElement), true);
@@ -213,7 +215,7 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     await tracks.locator(".track-row").first().waitFor();
     assert.equal(await input.inputValue(), "Search fixture");
     assert.equal(new URL(page.url()).hash, "#search-anchor");
-    await page.locator('a[href="?/search"]').filter({ visible: true }).click();
+    await page.evaluate(() => navigation.navigate("?/library#library-search").finished);
     assert.equal(await input.inputValue(), "");
     assert.equal(await chips[2].getAttribute("aria-pressed"), "false");
 

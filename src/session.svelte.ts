@@ -173,6 +173,11 @@ export class Session {
     this.#options.tracks.activate();
   }
 
+  /** Remembered identity is known before its asynchronously owned workspace opens. */
+  get hasLocalAccount() {
+    return !!(this.#account ?? this.#restoreAccount);
+  }
+
   start(): Auth | null {
     if (this.#started || this.#destroyed) return this.auth;
     this.#started = true;
@@ -297,12 +302,18 @@ export class Session {
 
   /** No awaits: credentials, selection and engine connections commit in one turn.
    * Storage is not transactional; connect's failure path clears partial credentials. */
-  #commitWorkspace(cache: Cache, credentials: Auth, connection: NetworkConnection) {
+  #commitWorkspace(
+    cache: Cache,
+    credentials: Auth,
+    connection: NetworkConnection,
+    remember: boolean,
+  ) {
     connection.signal.throwIfAborted();
     if (this.#ownership?.key !== getAccountKey(connection.account))
       throw new Error("Activate this account’s local data before connecting.");
     const { auth, preferences, network, playback } = this.#options;
-    auth.save(credentials);
+    if (remember) auth.save(credentials);
+    else auth.clear();
     auth.saveAccount(connection.account);
     preferences.setItem(offlineModeStorageKey, "false");
     const active = network.accept(connection);
@@ -325,7 +336,7 @@ export class Session {
   }
 
   /** Authentication verifies; Session commits the workspace, then syncs in the background. */
-  async connect(input: PasswordAuth): Promise<boolean> {
+  async connect(input: PasswordAuth, remember = false): Promise<boolean> {
     if (this.auth || this.busy || this.#destroyed || this.#deleting) return false;
     const operationId = this.#beginOperation();
     const controller = new AbortController();
@@ -361,7 +372,7 @@ export class Session {
       const previousOwnership = this.#ownership;
       this.#ownership = candidate ?? previousOwnership;
       try {
-        this.#commitWorkspace(cache, auth, connection);
+        this.#commitWorkspace(cache, auth, connection, remember);
       } catch (error) {
         this.#ownership = previousOwnership;
         throw error;

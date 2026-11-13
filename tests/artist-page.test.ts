@@ -43,18 +43,37 @@ async function setup() {
   const { target, app } = fixture;
   app.navigateArtist("artist");
   flushSync();
-  const button = () =>
+  const header = () =>
     target.querySelector<HTMLButtonElement>(
       '[aria-label="Artist details"] button[data-variant="primary"]',
     )!;
+  // Use the actual player for transport controls; the header always replaces the scoped queue.
+  const button = () => {
+    flushSync();
+    const id = fixture.cache.queue.tracks[fixture.cache.queue.index];
+    const artist = [...fixture.cache.artists.values()].find(
+      (artist) =>
+        artist.name === target.querySelector('[aria-label="Artist details"] h1')?.textContent,
+    );
+    const member =
+      artist &&
+      (fixture.cache.artistAlbums.get(artist.id) ?? []).some((album) =>
+        (fixture.cache.albumTracks.get(album.id) ?? []).some((track) => track.id === id),
+      );
+    return member
+      ? (target.querySelector<HTMLButtonElement>('.mini-player button[data-variant="primary"]') ??
+          header())
+      : header();
+  };
   function state(expected: "playing" | "paused" | "loading", name = "Artist") {
     flushSync();
+    expect(header().getAttribute("aria-label")).toBe(`Play now ${name}`);
     expect(button().getAttribute("aria-label")).toBe(
-      `${expected === "paused" ? "Play" : "Pause"} ${name}`,
+      button() === header() ? `Play now ${name}` : expected === "paused" ? "Play" : "Pause",
     );
     expect(button().getAttribute("aria-busy")).toBe(String(expected === "loading"));
     expect(button().hasAttribute("aria-pressed")).toBe(false);
-    expect(button().hasAttribute("aria-describedby")).toBe(false);
+    expect(header().hasAttribute("aria-describedby")).toBe(false);
     if (expected !== "loading")
       expect(button().querySelector("use")?.getAttribute("href")).toBe(
         `#icon-${expected === "playing" ? "pause" : "play"}`,
@@ -129,7 +148,7 @@ it("starts the whole catalog in existing album/track order and leaves album link
   const sheet = target.querySelector<HTMLDialogElement>("#artist-detail-menu")!;
   sheet.close = vi.fn();
   const play = Array.from(menu.querySelectorAll("button")).find(
-    (control) => control.textContent?.trim() === "Play",
+    (control) => control.textContent?.trim() === "Play now",
   )!;
   play.click();
   await settle();

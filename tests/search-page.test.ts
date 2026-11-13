@@ -50,7 +50,7 @@ it("focuses the input, expands previews, retains URL criteria, and uses album pl
   try {
     let input = target.querySelector<HTMLInputElement>('input[type="search"]')!;
     expect(document.activeElement).toBe(input);
-    expect(target.textContent).toContain("Type to find music");
+    expect(target.querySelectorAll(".tile")).toHaveLength(1);
     expect(target.textContent).toContain("Synchronization failed.");
     input.value = "Song";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -69,20 +69,11 @@ it("focuses the input, expands previews, retains URL criteria, and uses album pl
     flushSync();
     expect(match).not.toHaveBeenCalled();
     expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(12);
-    button("Toggle playback for Song").click();
-    button("Toggle playback for Song").click();
-    expect(playback.toggleTrack).toHaveBeenCalledTimes(2);
-    expect(playback.toggleTrack).toHaveBeenLastCalledWith(
-      "0",
-      tracks.map((t) => t.id),
-    );
-    expect(playback.replaceQueueAndPlay).not.toHaveBeenCalled();
-    button("Play Song").click();
-    expect(playback.toggleTrack).toHaveBeenLastCalledWith(
-      "1",
-      tracks.map((t) => t.id),
-    );
-    expect(playback.replaceQueueAndPlay).not.toHaveBeenCalled();
+    button("Play now Song").click();
+    button("Play now Song").click();
+    expect(playback.toggleTrack).not.toHaveBeenCalled();
+    expect(playback.replaceQueueAndPlay).toHaveBeenCalledTimes(2);
+    expect(playback.replaceQueueAndPlay).toHaveBeenLastCalledWith(["0"]);
     const menuButton = button("Open menu for Song");
     const desktopMenu = target.querySelector<HTMLButtonElement>(
       '.only-desktop[aria-label="Open menu for Song"]',
@@ -97,18 +88,15 @@ it("focuses the input, expands previews, retains URL criteria, and uses album pl
     expect(button("Downloaded").disabled).toBe(true);
     button("Play next").click();
     expect(playback.enqueue).toHaveBeenLastCalledWith(["0"], "next");
-    button("Play last").click();
+    button("Add to queue").click();
     expect(playback.enqueue).toHaveBeenLastCalledWith(["0"], "last");
     // Long press focuses its invoker before opening the same shared dialog.
     const trackRows = target.querySelectorAll<HTMLButtonElement>(".track-row button.link-target");
     expect(trackRows[1].getAttribute("data-longpressfor")).toBe("search-menu");
     trackRows[1].focus();
     flushSync();
-    button("Play").click();
-    expect(playback.replaceQueueAndPlay).toHaveBeenLastCalledWith(
-      tracks.map((t) => t.id),
-      1,
-    );
+    button("Play now").click();
+    expect(playback.replaceQueueAndPlay).toHaveBeenLastCalledWith(["1"]);
     button("Play next").click();
     expect(playback.enqueue).toHaveBeenLastCalledWith(["1"], "next");
 
@@ -129,7 +117,7 @@ it("focuses the input, expands previews, retains URL criteria, and uses album pl
       expect(target.querySelector(`a[aria-label="${name}"]`)?.getAttribute("href")).toBe(
         name === "Artist" ? "?/library/artist/artist" : "?/library/album/album",
       );
-      button("Play").click();
+      button("Play now").click();
       expect(playback.replaceQueueAndPlay).toHaveBeenLastCalledWith(tracks.map((t) => t.id));
       button("Play next").click();
       expect(playback.enqueue).toHaveBeenLastCalledWith(
@@ -154,12 +142,15 @@ it("focuses the input, expands previews, retains URL criteria, and uses album pl
     input = target.querySelector<HTMLInputElement>('input[type="search"]')!;
     expect(input.value).toBe("Song");
     expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(3);
+    // Routine Library arrival focuses the heading; explicit typing keeps the input focused.
+    expect(document.activeElement).toBe(target.querySelector("h1"));
+    input.focus();
     // Native search cancellation emits an input event with an empty value.
     input.value = "";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flushSync();
     expect(input.value).toBe("");
-    expect(target.textContent).toContain("Type to find music");
+    expect(target.querySelectorAll(".tile")).toHaveLength(1);
     expect(document.activeElement).toBe(input);
     input.value = "Song";
     input.dispatchEvent(new Event("input", { bubbles: true }));

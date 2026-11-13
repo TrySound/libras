@@ -6,6 +6,7 @@ import Downloads from "../src/_downloads.svelte";
 import { Cache, downloadKey } from "../src/cache.svelte";
 import { Covers } from "../src/covers.svelte";
 import { TrackEngine } from "../src/track.svelte";
+import { Playback } from "../src/playback.svelte";
 import { getAccountKey } from "../src/auth";
 import { Network } from "../src/network.svelte";
 import { expectCompletedDownload, installDisk } from "./cache-test-helpers";
@@ -27,6 +28,7 @@ function setup(realJobs = false) {
   const selection = { cache };
   const covers = new Covers(selection);
   const trackEngine = new TrackEngine({ selection, concurrency: 1 });
+  const playback = new Playback({ selection, tracks: trackEngine, covers });
   const store = writable({ jobs: [] as Jobs, loading: false });
   const state = fromStore(store);
   if (!realJobs) {
@@ -39,6 +41,7 @@ function setup(realJobs = false) {
       cache,
       covers,
       trackEngine,
+      playback,
       get loading() {
         return state.current.loading;
       },
@@ -47,6 +50,7 @@ function setup(realJobs = false) {
   flushSync();
   cleanups.push(async () => {
     await unmount(component);
+    playback.destroy();
     trackEngine.destroy();
     covers.destroy();
   });
@@ -55,6 +59,7 @@ function setup(realJobs = false) {
     cache,
     covers,
     trackEngine,
+    playback,
     disk,
     set(patch: Partial<typeof state.current>) {
       store.update((value) => ({ ...value, ...patch }));
@@ -91,24 +96,65 @@ async function save(cache: Cache, id: string, timestamp: number, format: "mp3" |
   flushSync();
 }
 
+it("removes a single format only after durable catalog deletion and reports failure honestly", async () => {
+  const { target, cache, disk, playback } = setup();
+  await save(cache, "same", 1000, "raw");
+  await save(cache, "same", 2000, "mp3");
+  const unload = vi.spyOn(playback, "unloadDownloadedTrack");
+  const remove = () =>
+    target.querySelector<HTMLButtonElement>('button[aria-label="Remove same title (MP3)"]')!;
+  expect(target.textContent?.replace(/\s+/g, " ")).toContain("1 track downloaded");
+  const files = disk.blobs.size;
+  disk.state.failClose = true;
+  remove().click();
+  await vi.waitFor(() => expect(target.textContent).toContain("Could not remove downloaded music"));
+  expect(unload).toHaveBeenCalledWith(new Set(["same"]));
+  expect(cache.downloads.size).toBe(2);
+  expect(disk.blobs.size).toBe(files);
+  expect(remove().disabled).toBe(false);
+  disk.state.failClose = false;
+  remove().click();
+  await vi.waitFor(() => expect(cache.downloads.size).toBe(1));
+  flushSync();
+  expect(cache.downloads.has(downloadKey("same", "raw"))).toBe(true);
+  expect(disk.blobs.size).toBe(files - 1);
+  expect(target.textContent).toContain("Queue unchanged.");
+});
+
+it("bulk removal leaves queued jobs separate and uses safe native confirmation controls", async () => {
+  const { target, cache } = setup();
+  await save(cache, "saved", 1000);
+  await cache.enqueueDownload(
+    { id: "pending", title: "Pending", artist: "Artist", album: "Album" },
+    "mp3",
+    "audio/mpeg",
+  );
+  flushSync();
+  const dialog = target.querySelector<HTMLDialogElement>("#remove-downloads")!;
+  expect(
+    [...dialog.querySelectorAll("button")].find((button) => button.autofocus)?.textContent,
+  ).toBe("Cancel");
+  expect(dialog.textContent?.replace(/\s+/g, " ")).toContain("Pending downloads are not removed");
+  dialog.querySelector<HTMLButtonElement>('[data-variant="primary"]')!.click();
+  await vi.waitFor(() => expect(cache.downloads.size).toBe(1));
+  expect(cache.downloads.get(downloadKey("pending", "mp3"))?.status).toBe("queued");
+});
+
 it("restores silently with a native heading and shows the empty state only once ready", () => {
   const { target, set } = setup();
   expect(target.querySelector("section")?.getAttribute("aria-labelledby")).toBe(
     "downloads-heading",
   );
   expect(target.querySelector("h1")?.textContent).toBe("Downloads");
-  expect(target.querySelector("header p")?.textContent).toMatch(
-    /0\s+tracks available for offline listening, 0\s+pending/,
-  );
+  expect(target.querySelector("header")?.textContent).toMatch(/0\s+tracks downloaded/);
+  expect(target.textContent).toContain("0 pending");
   expect(target.textContent).toContain("No downloads yet");
   expect(target.querySelector('a[href="?/library"]')?.textContent).toBe("Open library");
   set({ loading: true });
   expect(target.textContent).not.toContain("No downloads yet");
   expect(target.textContent).not.toContain("Restoring local library");
   expect(target.textContent).not.toContain("Loading downloads");
-  expect(target.querySelector("header p")?.textContent).toMatch(
-    /0\s+tracks available for offline listening, 0\s+pending/,
-  );
+  expect(target.querySelector("header")?.textContent).toMatch(/0\s+tracks downloaded/);
   expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
   set({ loading: false });
   expect(target.querySelector('[role="status"]')).toBeNull();
@@ -122,9 +168,8 @@ it("preserves active-job precedence and newest-first saved files, including orph
   await save(cache, "newer", 2000, "raw");
   await save(cache, "active", 3000);
   set({ jobs: [job(cache, "active", "downloading"), job(cache, "waiting", "queued")] });
-  expect(target.querySelector("header p")?.textContent).toMatch(
-    /3\s+tracks available for offline listening, 2\s+pending/,
-  );
+  expect(target.querySelector("header")?.textContent).toMatch(/3\s+tracks downloaded/);
+  expect(target.textContent).toContain("2 pending");
   const rows = [...target.querySelectorAll('[role="listitem"]')];
   expect(rows.map((row) => row.querySelector(".label")?.textContent)).toEqual([
     "active title",
@@ -155,7 +200,7 @@ it("preserves active-job precedence and newest-first saved files, including orph
   );
   expect(cache.tracks.size).toBe(0);
   expect(ensure).not.toHaveBeenCalled();
-  expect(rows.every((row) => row.querySelector("button, a, [tabindex]") === null)).toBe(true);
+  expect(rows.filter((row) => row.querySelector('button[aria-label^="Remove"]'))).toHaveLength(2);
 });
 
 it("counts unique pending tracks across jobs, durable intent and formats with overlapping availability", async () => {
@@ -171,10 +216,12 @@ it("counts unique pending tracks across jobs, durable intent and formats with ov
       { ...job(cache, "both", "queued"), key: downloadKey("both", "raw"), format: "raw" },
     ],
   });
-  const summary = target.querySelector("header p")!;
-  expect(summary.textContent).toMatch(/1\s+track available for offline listening, 3\s+pending/);
+  const summary = target.querySelector("header")!;
+  expect(summary.textContent).toMatch(/1\s+track downloaded/);
+  expect(summary.textContent).toContain("2 pending");
+  expect(summary.textContent).toContain("1 failed");
   set({ jobs: [] });
-  expect(summary.textContent).toMatch(/1\s+track available for offline listening, 2\s+pending/);
+  expect(summary.textContent).toContain("1 pending");
 });
 
 it("preserves a saved track name verbatim without adding badges", async () => {

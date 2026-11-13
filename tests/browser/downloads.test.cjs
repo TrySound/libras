@@ -142,9 +142,11 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
   });
   const navigate = (path) => page.goto(new URL(`?${path}`, base).href);
   const connect = async (username = "listener") => {
+    await page.evaluate(() => navigation.navigate("?/connect").finished);
     await page.getByLabel("Host", { exact: true }).fill("https://music.example.test");
     await page.getByLabel("Username", { exact: true }).fill(username);
     await page.getByLabel("Password", { exact: true }).fill("fictional-password");
+    await page.getByLabel("Remember this device", { exact: true }).check();
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await page.getByRole("radio", { name: "All music", exact: true }).check();
     await page
@@ -159,6 +161,8 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     await page.getByRole("button", { name: "Disconnect", exact: true }).click();
     await page.getByRole("dialog").getByRole("switch").check();
     await page.getByRole("dialog").getByRole("button", { name: "Disconnect", exact: true }).click();
+    await page.locator("#settings-connect").waitFor();
+    await page.evaluate(() => navigation.navigate("?/connect").finished);
     await page.locator("#server-host").waitFor();
   };
   const artistAction = async (action, name = artist.name) => {
@@ -167,10 +171,10 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     await page.mouse.down();
     await page.waitForTimeout(600);
     await page.mouse.up();
-    await page.locator("#artist-menu").getByRole("button", { name: action, exact: true }).click();
+    await page.locator("#search-menu").getByRole("button", { name: action, exact: true }).click();
   };
   const playCached = async (name = artist.name) => {
-    await artistAction("Play", name);
+    await artistAction("Play now", name);
     await page.waitForFunction(() => {
       const audio = window.testAudio;
       return audio && !audio.paused && audio.currentSrc.startsWith("blob:");
@@ -295,7 +299,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
         );
         const before = requests;
         await evidence("offline-paused-downloads");
-        await page.locator('.app-sidebar a[href="?/search"]').click();
+        await navigate("/library#library-search");
         await page.locator('input[type="search"]').fill("long music");
         await page.locator(".track-row").first().waitFor();
         assert.equal(await page.getByText("Unavailable offline", { exact: true }).count(), 3);

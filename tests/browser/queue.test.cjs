@@ -96,6 +96,7 @@ test("local queue and native explicit exchange", async () => {
     await page.getByLabel("Host", { exact: true }).fill("music.example.test");
     await page.getByLabel("Username", { exact: true }).fill("listener");
     await page.getByLabel("Password", { exact: true }).fill("password");
+    await page.getByLabel("Remember this device", { exact: true }).check();
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
     await page.getByRole("link", { name: "Settings", exact: true }).click();

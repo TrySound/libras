@@ -20,7 +20,7 @@
     for (const type of searchTypes) if (types.includes(type)) parameters.append("type", type);
     if (query) parameters.set("q", query);
     const suffix = parameters.toString();
-    return `?/search${suffix ? `&${suffix}` : ""}`;
+    return `?/library${suffix ? `&${suffix}` : ""}`;
   }
 
   const searchGroups = ["Artists", "Albums", "Tracks"] as const;
@@ -142,6 +142,14 @@
 
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import { onMount } from "svelte";
+  onMount(() => {
+    const target =
+      window.location.hash === "#library-search" || window.location.search.startsWith("?/search")
+        ? "library-search"
+        : "library-heading";
+    document.getElementById(target)?.focus({ preventScroll: true });
+  });
   import LibraryScope from "./ui/library-scope.svelte";
   import { getSearchParameters, navigate } from "./router.svelte";
   import { onVisible } from "./viewport";
@@ -182,20 +190,22 @@
   const parameters = $derived(getSearchParameters());
   const criteria = $derived(parseSearch(parameters));
   const selectedTypes = $derived(criteria.types);
-  const singleType = $derived(selectedTypes.length === 1);
+  const defaultBrowse = $derived(!criteria.query.trim() && selectedTypes.length === 0);
+  const singleType = $derived(selectedTypes.length === 1 || defaultBrowse);
   const matches = $derived(searchLibrary(index, criteria.query, singleType));
+  const criteriaKey = $derived(JSON.stringify(criteria));
   // User increments override these derived limits until cache or URL criteria change.
   // The void reads intentionally track those dependencies so recomputation resets pagination.
   const pageSize = 48;
   let limit = $derived.by(() => {
     void cache;
-    void criteria;
+    void criteriaKey;
     return pageSize;
   });
   // Grouped previews reset on the same dependencies as the single-type batch limit.
   let limits = $derived.by(() => {
     void cache;
-    void criteria;
+    void criteriaKey;
     return { Artists: 3, Albums: 3, Tracks: 3 };
   });
 
@@ -214,7 +224,9 @@
 
   const results = $derived(
     matches.groups
-      .filter((_, i) => !selectedTypes.length || selectedTypes.includes(searchTypes[i]))
+      .filter((_, i) =>
+        defaultBrowse ? i === 0 : !selectedTypes.length || selectedTypes.includes(searchTypes[i]),
+      )
       .map((result) => ({
         ...result,
         records: result.records.slice(0, singleType ? limit : limits[result.group]),
@@ -304,27 +316,19 @@
     else void playback.replaceQueueAndPlay(menuTrackIds);
   }
 
-  function trackContext(id: string) {
-    const track = cache.tracks.get(id);
-    return track ? availableTrackIds(cache.albumTracks.get(track.albumId) ?? [], isAvailable) : [];
-  }
-
   function play(id: string) {
-    const ids = trackContext(id);
-    const index = ids.indexOf(id);
-    if (index >= 0) void playback.replaceQueueAndPlay(ids, index);
+    void playback.replaceQueueAndPlay([id]);
   }
 </script>
 
-<svelte:head><title>Search | {appName}</title></svelte:head>
+<svelte:head><title>Library | {appName}</title></svelte:head>
 
-<section class="stack-lg scroll-runway">
+<section class="stack-lg scroll-runway" aria-labelledby="library-heading">
+  <h1 id="library-heading" class="heading-lg uppercase" tabindex="-1">Library</h1>
   <LibraryScope {session} />
-  <h1 class="heading-lg uppercase">Search</h1>
   <div class="card stack-md">
     <search class="stack-xs">
       <label class="label" for="library-search">Search library</label>
-      <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
       <input
         class="input"
         id="library-search"
@@ -340,7 +344,6 @@
             searchHref(event.currentTarget.value, selectedTypes).slice(1) + window.location.hash,
             "replace",
           )}
-        autofocus
       />
     </search>
     <div class="row-sm row-wrap" role="group" aria-label="Result types">
@@ -358,6 +361,7 @@
       {/each}
     </div>
   </div>
+  {#if playback.queueMessage}<p class="caption" role="status">{playback.queueMessage}</p>{/if}
   {#if libraryError}
     <div class="card stack-md">
       <h2 class="heading-sm">Library needs attention</h2>
@@ -371,7 +375,15 @@
     </div>
   {/if}
   <div class="stack-xl" aria-busy={!session.localReady}>
-    {#if !session.localReady && index.size === 0}
+    {#if session.loadingAfterConnect}
+      <div class="library-loading" role="status">
+        <Loader size="xl" />
+        <p class="heading-md">Loading your library…</p>
+        <p class="metadata text-subtle">
+          {session.libraryProgress?.albums ?? 0} albums · {session.libraryProgress?.tracks ?? 0} tracks
+        </p>
+      </div>
+    {:else if !session.localReady && index.size === 0}
       <div class="row-sm">
         <Loader />
         <p class="body">Loading your library…</p>
@@ -418,78 +430,112 @@
           <section class="stack-lg" aria-label={group}>
             <header class="row-md row-justify">
               <h2 class="heading-lg uppercase">{group}</h2>
-              <span class="metadata text-subtle">{total}</span>
+              <span class="metadata text-subtle">{total}{defaultBrowse ? " artists" : ""}</span>
             </header>
-            <div class="stack-sm">
+            <div class={defaultBrowse ? "tile-grid" : "stack-sm"}>
               {#each records as record (record.id)}
-                {@const track = group === "Tracks" ? cache.tracks.get(record.id) : undefined}
-                <div
-                  class="menu-item track-row"
-                  aria-current={track && currentTrackId === track.id ? "true" : undefined}
-                >
-                  <div class="row-sm">
-                    <Artwork {covers} id={record.artworkId} size="sm" />
-                    <div>
-                      <p class="label">{record.title}</p>
-                      {#if track && session.offlineMode && !trackEngine.isDownloaded(track.id)}
-                        <p class="caption text-secondary" id={`unavailable-${record.id}`}>
-                          Unavailable offline
-                        </p>
-                      {/if}
-                      <p class="caption text-secondary">{supportingText(group, record)}</p>
+                {#if defaultBrowse}
+                  <article class="tile tile-grid-item">
+                    <Artwork {covers} id={record.artworkId} size="fill" class="tile-artwork" />
+                    <div class="tile-content stack-sm">
+                      <h3 class="heading-sm">{record.title}</h3>
                     </div>
-                  </div>
-                  {#if record.href}
                     <a
-                      class="button-quiet link-target"
+                      class="link-target"
                       href={record.href}
                       aria-label={record.title}
                       data-longpressfor="search-menu"
                       data-longpress="show-modal"
                       onfocus={() => selectMenu(group, record.id)}
                     ></a>
-                  {:else}
-                    <button
-                      class="button-quiet link-target"
-                      aria-label={currentTrackId === record.id
-                        ? `Toggle playback for ${record.title}`
-                        : `Play ${record.title}`}
-                      data-longpressfor="search-menu"
-                      data-longpress="show-modal"
-                      onfocus={() => selectMenu(group, record.id)}
-                      disabled={session.offlineMode && !trackEngine.isDownloaded(record.id)}
-                      aria-describedby={session.offlineMode && !trackEngine.isDownloaded(record.id)
-                        ? `unavailable-${record.id}`
-                        : undefined}
-                      onclick={() => playback.toggleTrack(record.id, trackContext(record.id))}
-                    ></button>
-                  {/if}
-                  <div class="row-sm">
-                    {#if track?.duration !== undefined}
-                      <span class="metadata text-subtle">{formatDuration(track.duration)}</span>
+                    <div class="row-sm tile-actions">
+                      <button
+                        class="button only-mobile"
+                        data-variant="secondary"
+                        commandfor="search-menu"
+                        command="show-modal"
+                        aria-label={`Actions for ${record.title}`}
+                        onclick={() => selectMenu(group, record.id)}><Icon name="menu" /></button
+                      >
+                      <button
+                        class="button only-desktop"
+                        data-variant="secondary"
+                        commandfor="search-menu-popover"
+                        command="toggle-popover"
+                        aria-label={`Actions for ${record.title}`}
+                        onclick={() => selectMenu(group, record.id)}><Icon name="menu" /></button
+                      >
+                    </div>
+                  </article>
+                {:else}
+                  {@const track = group === "Tracks" ? cache.tracks.get(record.id) : undefined}
+                  <div
+                    class="menu-item track-row"
+                    aria-current={track && currentTrackId === track.id ? "true" : undefined}
+                  >
+                    <div class="row-sm">
+                      <Artwork {covers} id={record.artworkId} size="sm" />
+                      <div>
+                        <p class="label">{record.title}</p>
+                        {#if track && session.offlineMode && !trackEngine.isDownloaded(track.id)}
+                          <p class="caption text-secondary" id={`unavailable-${record.id}`}>
+                            Unavailable offline
+                          </p>
+                        {/if}
+                        <p class="caption text-secondary">{supportingText(group, record)}</p>
+                      </div>
+                    </div>
+                    {#if record.href}
+                      <a
+                        class="button-quiet link-target"
+                        href={record.href}
+                        aria-label={record.title}
+                        data-longpressfor="search-menu"
+                        data-longpress="show-modal"
+                        onfocus={() => selectMenu(group, record.id)}
+                      ></a>
+                    {:else}
+                      <button
+                        class="button-quiet link-target"
+                        aria-label={`Play now ${record.title}`}
+                        data-longpressfor="search-menu"
+                        data-longpress="show-modal"
+                        onfocus={() => selectMenu(group, record.id)}
+                        disabled={session.offlineMode && !trackEngine.isDownloaded(record.id)}
+                        aria-describedby={session.offlineMode &&
+                        !trackEngine.isDownloaded(record.id)
+                          ? `unavailable-${record.id}`
+                          : undefined}
+                        onclick={() => play(record.id)}
+                      ></button>
                     {/if}
-                    <button
-                      class="button only-mobile"
-                      data-variant="secondary"
-                      commandfor="search-menu"
-                      command="show-modal"
-                      aria-label={`Open menu for ${record.title}`}
-                      onclick={() => selectMenu(group, record.id)}
-                    >
-                      <Icon name="menu" />
-                    </button>
-                    <button
-                      class="button only-desktop"
-                      data-variant="secondary"
-                      commandfor="search-menu-popover"
-                      command="toggle-popover"
-                      aria-label={`Open menu for ${record.title}`}
-                      onclick={() => selectMenu(group, record.id)}
-                    >
-                      <Icon name="menu" />
-                    </button>
+                    <div class="row-sm">
+                      {#if track?.duration !== undefined}
+                        <span class="metadata text-subtle">{formatDuration(track.duration)}</span>
+                      {/if}
+                      <button
+                        class="button only-mobile"
+                        data-variant="secondary"
+                        commandfor="search-menu"
+                        command="show-modal"
+                        aria-label={`Open menu for ${record.title}`}
+                        onclick={() => selectMenu(group, record.id)}
+                      >
+                        <Icon name="menu" />
+                      </button>
+                      <button
+                        class="button only-desktop"
+                        data-variant="secondary"
+                        commandfor="search-menu-popover"
+                        command="toggle-popover"
+                        aria-label={`Open menu for ${record.title}`}
+                        onclick={() => selectMenu(group, record.id)}
+                      >
+                        <Icon name="menu" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                {/if}
               {/each}
             </div>
             {#if singleType && total > records.length}
@@ -560,14 +606,15 @@
     <div class="stack-sm">
       <button
         class="menu-item"
-        disabled={!menuTrackIds.length}
+        disabled={!menuTrackIds.length ||
+          (session.offlineMode && !trackEngine.isDownloaded(menuTrackIds[0]))}
         onclick={() => {
           playMenu();
           dismissActions();
         }}
       >
         <Icon name="play" />
-        <span>Play</span>
+        <span>Play now</span>
       </button>
       <button
         class="menu-item"
@@ -589,7 +636,7 @@
         }}
       >
         <Icon name="plus" />
-        <span>Play last</span>
+        <span>Add to queue</span>
       </button>
       <button
         class="menu-item"

@@ -45,8 +45,10 @@ describe("Session token/password login", () => {
     expect(await session.connect(input)).toBe(true);
     expect(validate).toHaveBeenCalledOnce();
     expect(network.prepare).toHaveBeenCalledOnce();
-    expect(auth.load()?.credentials.method).toBe("token");
-    expect(JSON.stringify(auth.load())).not.toContain(input.password);
+    expect(session.auth?.credentials.method).toBe("token");
+    expect(auth.load()).toBeNull();
+    expect(auth.loadAccount()).toEqual({ host: input.host, username: input.username });
+    expect(JSON.stringify(session.auth)).not.toContain(input.password);
   });
 
   it.each([41, 42])(
@@ -74,7 +76,7 @@ describe("Session token/password login", () => {
       vi.stubGlobal("fetch", fetcher);
       const prepare = vi.mocked(network.prepare);
       const before = prepare.mock.calls.length;
-      expect(await session.connect(input)).toBe(true);
+      expect(await session.connect(input, true)).toBe(true);
       expect(fetcher).toHaveBeenCalledTimes(2);
       expect(prepare.mock.calls.slice(before).map(([auth]) => auth.credentials.method)).toEqual([
         "token",
@@ -92,6 +94,36 @@ describe("Session token/password login", () => {
       expect(selection.cache).toBe(cache);
     },
   );
+
+  it("reloads a memory-only connection as credential-free offline identity", async () => {
+    const first = setup();
+    expect(await first.session.connect(input)).toBe(true);
+    expect(first.auth.load()).toBeNull();
+    await first.destroy();
+    fixtures.splice(fixtures.indexOf(first), 1);
+    const restored = createSession(false, first.storage);
+    fixtures.push(restored);
+    expect(restored.session.start()).toBeNull();
+    await vi.waitFor(() => expect(restored.session.localReady).toBe(true));
+    expect(restored.selection.cache?.key).toBe(getAccountKey(input));
+    expect(restored.session.offlineMode).toBe(true);
+    expect(restored.network.prepare).not.toHaveBeenCalled();
+  });
+
+  it("persists remembered credentials only after verification and workspace acceptance", async () => {
+    const { session, validate, loadCache, auth } = setup();
+    const pending = deferred();
+    validate.mockReturnValueOnce(pending.promise);
+    const connecting = session.connect(input, true);
+    await vi.waitFor(() => expect(validate).toHaveBeenCalledOnce());
+    expect(auth.load()).toBeNull();
+    expect(loadCache).not.toHaveBeenCalled();
+    pending.resolve();
+    expect(await connecting).toBe(true);
+    expect(auth.load()).toEqual(session.auth);
+    session.disconnect();
+    expect(auth.load()).toBeNull();
+  });
 
   it("rejects a malformed wire response without retrying or storing credentials", async () => {
     const { session, validate, network, auth } = setup();
@@ -138,13 +170,14 @@ describe("Session token/password login", () => {
       session.cancelConnect();
       expect(candidate.signal.aborted).toBe(true);
       expect(await session.connect(input)).toBe(true);
-      const accepted = auth.load();
+      const accepted = session.auth;
       if (result === "success") pending.resolve();
       else pending.reject(new SubsonicError(result === "fallback" ? 41 : 40, "Old failure"));
       expect(await first).toBe(false);
       expect(network.prepare).toHaveBeenCalledTimes(2);
       expect(session.status).toBe("connected");
-      expect(auth.load()).toEqual(accepted);
+      expect(session.auth).toEqual(accepted);
+      expect(auth.load()).toBeNull();
     },
   );
 
@@ -168,7 +201,8 @@ describe("Session token/password login", () => {
       expect(
         vi.mocked(network.prepare).mock.calls.map(([auth]) => auth.credentials.method),
       ).toEqual(["token", "password", "token"]);
-      expect(auth.load()?.credentials.method).toBe("token");
+      expect(session.auth?.credentials.method).toBe("token");
+      expect(auth.load()).toBeNull();
       expect(session.status).toBe("connected");
     },
   );
@@ -186,7 +220,8 @@ describe("Session token/password login", () => {
     expect(await first).toBe(false);
     expect(selection.cache).toBe(cache);
     expect(cache?.key).toBe(getAccountKey(input));
-    expect(auth.load()?.username).toBe(input.username);
+    expect(session.auth?.username).toBe(input.username);
+    expect(auth.load()).toBeNull();
   });
 
   it("restores saved password credentials without token derivation or changing cache identity", async () => {
@@ -202,6 +237,7 @@ describe("Session token/password login", () => {
     await vi.waitFor(() => expect(session.status).toBe("connected"));
     expect(vi.mocked(network.prepare).mock.calls[0][0].credentials.method).toBe("password");
     expect(selection.cache?.key).toBe(getAccountKey(input));
+    expect(auth.load()).toEqual(session.auth); // Existing remembered credentials are not silently deleted.
   });
 
   it("restores the offline account but blocks an insecure saved password before server access", async () => {

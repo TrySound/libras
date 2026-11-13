@@ -211,8 +211,8 @@ it("explains the fixed demo account and offers reload instead of an unusable log
 });
 
 it.each([
-  ["/library", "Your library"],
-  ["/search", "Search"],
+  ["/library", "Library"],
+  ["/search", "Library"],
   ["/settings", "Settings"],
   ["/downloads", "Downloads"],
   ["/library/artist/702", "A Perfect Circle"],
@@ -233,7 +233,7 @@ it("renders supplied track names verbatim without UI badges", async () => {
   const judith = rows.find((row) => row.textContent?.includes("Judith"))!;
   expect(judith.querySelector(".label")?.textContent).toBe("Judith — Preview [Explicit]");
   expect(
-    judith.querySelector('button[aria-label="Play Judith — Preview [Explicit]"]'),
+    judith.querySelector('button[aria-label="Play now Judith — Preview [Explicit]"]'),
   ).not.toBeNull();
 });
 

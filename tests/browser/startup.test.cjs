@@ -5,7 +5,7 @@ const { chromium } = require("playwright");
 const base = process.env.PREVIEW_URL ?? "http://127.0.0.1:5173";
 
 for (const query of ["", "?/library", "?/settings"]) {
-  test(`new user starts directly in Settings at ${query || "the root"}`, async () => {
+  test(`new user starts directly in Connect at ${query || "the root"}`, async () => {
     const browser = await chromium.launch({ headless: true });
     try {
       const page = await browser.newPage({ reducedMotion: "no-preference" });
@@ -30,8 +30,8 @@ for (const query of ["", "?/library", "?/settings"]) {
         }).observe(document, { childList: true, subtree: true });
       });
       await page.goto(`${base.replace(/\/$/, "")}/${query}`);
-      await page.locator("#settings-heading").waitFor();
-      assert.equal(new URL(page.url()).search, "?/settings");
+      await page.locator("#connect-screen h1").waitFor();
+      assert.equal(new URL(page.url()).search, "?/connect");
       assert.deepEqual(
         await page.evaluate(() => ({
           transitions: window.startupTransitions,
@@ -40,7 +40,7 @@ for (const query of ["", "?/library", "?/settings"]) {
         { transitions: 0, library: false },
       );
       await page.reload();
-      await page.locator("#settings-heading").waitFor();
+      await page.locator("#connect-screen h1").waitFor();
       assert.deepEqual(
         await page.evaluate(() => ({
           transitions: window.startupTransitions,
@@ -55,7 +55,7 @@ for (const query of ["", "?/library", "?/settings"]) {
         () => !document.documentElement.matches(":active-view-transition"),
       );
       await page.goBack();
-      await page.locator("#settings-heading").waitFor();
+      await page.locator("#connect-screen h1").waitFor();
       assert.equal(await page.evaluate(() => window.startupTransitions), 2);
     } finally {
       await browser.close();
