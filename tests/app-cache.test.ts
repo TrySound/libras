@@ -194,7 +194,11 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   expect(albumRows[0].getAttribute("aria-current")).toBe("true");
   for (const row of [albumRows[0], queueRows[0]]) {
     expect(row.querySelector('use[href="#icon-play"]')).not.toBeNull();
-    expect(row.querySelector('button[aria-label="Play First track"]')).not.toBeNull();
+    expect(
+      row.querySelector(
+        'button[aria-label="Play First track"], button[aria-label="Play now First track"]',
+      ),
+    ).not.toBeNull();
     expect(row.querySelector('[aria-label="Current track, not playing"]')).toBeNull();
   }
   for (const row of queueRows) expect(row.textContent).not.toContain("Album title");
@@ -203,10 +207,11 @@ it("shows compact track credits, durations, and padded numbers in albums and que
   const replace = vi.spyOn(mocks.options!.playback, "replaceQueueAndPlay").mockResolvedValue();
   (albumRows[0].querySelector("button.link-target") as HTMLButtonElement).click();
   (albumRows[0].querySelector("button.link-target") as HTMLButtonElement).click();
-  expect(toggle).toHaveBeenCalledTimes(2);
-  expect(replace).not.toHaveBeenCalled();
+  expect(toggle).not.toHaveBeenCalled();
+  expect(replace).toHaveBeenCalledTimes(2);
+  expect(replace).toHaveBeenCalledWith(["one"]);
   (albumRows[1].querySelector("button.link-target") as HTMLButtonElement).click();
-  expect(replace).toHaveBeenCalledWith(["one", "two", "three"], 1);
+  expect(replace).toHaveBeenCalledWith(["two"]);
 });
 
 it("keeps all queue occurrences including unavailable offline rows", async () => {
@@ -312,7 +317,7 @@ it.each(["", "/library", "/settings"])(
     const component = mount(App, { target });
     cleanups.push(() => unmount(component));
     flushSync();
-    expect(window.location.search).toBe("?/settings");
+    expect(window.location.search).toBe("?/connect");
     expect(target.querySelector('input[name="host"]')).not.toBeNull();
     expect(target.querySelector("#library-heading")).toBeNull();
     expect(mocks.navigate).not.toHaveBeenCalled();
@@ -328,7 +333,7 @@ it("uses the empty fallback when visiting Library without an account and when se
   cleanups.push(() => unmount(component));
   flushSync();
   expect(mocks.options!.selection.cache).toBeUndefined();
-  expect(window.location.search).toBe("?/settings");
+  expect(window.location.search).toBe("?/connect");
   // The user can still explicitly visit Library after the startup redirect.
   const url = new URL("?/library", window.location.href);
   window.history.replaceState(window.history.state, "", url);
@@ -366,7 +371,6 @@ it("uses the empty fallback when visiting Library without an account and when se
     ]),
   ).toEqual([
     ["Your library", "?/library"],
-    ["Search", "?/search"],
     ["Downloads", "?/downloads"],
     ["Settings", "?/settings"],
   ]);
@@ -440,7 +444,7 @@ it("automatically loads another batch each time the new sentinel is nearby", asy
   flushSync();
   const assertCount = (count: number) => {
     expect(target.querySelectorAll(".tile-grid > .tile")).toHaveLength(count);
-    expect(target.querySelectorAll("#artist-menu")).toHaveLength(1);
+    expect(target.querySelectorAll("#search-menu")).toHaveLength(1);
   };
   assertCount(48);
   expect(target.textContent).toContain("100 artists");
@@ -507,9 +511,9 @@ it("automatically loads another batch each time the new sentinel is nearby", asy
   await other.replaceLibrary({ ...snapshot, savedAt: 2 });
   mocks.options!.selection.cache = other;
   flushSync();
-  assertCount(100); // Changing the cache does not reset local pagination state.
+  assertCount(48); // A new account resets the shared Library/search batch.
   await visit("/library", "home", 0, "traverse");
-  assertCount(100);
+  assertCount(48);
 });
 
 it("preserves artist pagination when offline eligibility changes", async () => {
@@ -623,10 +627,10 @@ it("renders the cache stress fixture with unique tiles and one shared menu", asy
   expect(cache.albums.size).toBe(0);
   expect(cache.tracks.size).toBe(0);
   expect(new Set(tiles.map((tile) => tile.getAttribute("href"))).size).toBe(48);
-  expect(target.querySelectorAll("#artist-menu")).toHaveLength(1);
+  expect(target.querySelectorAll("#search-menu")).toHaveLength(1);
   tiles[47].focus();
   flushSync();
-  expect(target.querySelector("#artist-menu-title")?.textContent).toBe("Artist (47)");
+  expect(target.querySelector("#search-menu-title")?.textContent).toBe("Artist (47)");
 });
 
 it("restores the large player slider when queue hydration finishes before metadata", async () => {
@@ -701,7 +705,10 @@ it.each([
   expect(target.querySelectorAll("#player-dialog .atmosphere-frame")).toHaveLength(1);
   expect(target.querySelectorAll("#player-dialog .atmosphere-lines")).toHaveLength(1);
   const links = topbar.querySelectorAll("a");
-  expect([...links].map((link) => link.getAttribute("href"))).toEqual(["?/library", "?/search"]);
+  expect([...links].map((link) => link.getAttribute("href"))).toEqual([
+    "?/library",
+    "?/library#library-search",
+  ]);
   for (const nav of target.querySelectorAll('nav[aria-label="Main navigation"]')) {
     expect(nav.querySelector('[aria-current="page"]')?.getAttribute("href")).toBe(
       route.startsWith("/library") ? "?/library" : `?${route}`,
@@ -731,7 +738,7 @@ it.each([
 });
 
 it.each([
-  { route: "/library", selector: ".tile > a.link-target", menu: "artist-menu" },
+  { route: "/library", selector: ".tile > a.link-target", menu: "search-menu" },
   { route: "/library/artist/artist", selector: "a.link-target", menu: "artist-detail-menu" },
   {
     route: "/library/album/album",
@@ -794,7 +801,7 @@ it.each([true, false])(
     const component = mount(App, { target });
     cleanups.push(() => unmount(component));
     flushSync();
-    expect(target.textContent).toContain(saved ? "Library needs attention" : "Library unavailable");
+    expect(target.textContent).toContain("Library needs attention");
     expect(target.querySelectorAll(".tile")).toHaveLength(saved ? 1 : 0);
     expect(target.textContent).not.toContain("No artists found.");
     expect(
@@ -827,7 +834,7 @@ it("reuses one library menu for the long-pressed artist", async () => {
   cleanups.push(() => unmount(component));
   flushSync();
   expect(target.querySelectorAll("dialog.bottom-sheet")).toHaveLength(1);
-  const menu = target.querySelector<HTMLDialogElement>("#artist-menu")!;
+  const menu = target.querySelector<HTMLDialogElement>("#search-menu")!;
   const tiles = target.querySelectorAll<HTMLElement>(".tile > a.link-target");
   for (const [index, id] of ["one", "two"].entries()) {
     expect(tiles[index].dataset.longpressfor).toBe(menu.id);

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from "vitest";
-import { flushSync, mount, unmount } from "svelte";
+import { flushSync, mount, unmount, tick } from "svelte";
 import Player from "../src/ui/player.svelte";
 import { Cache } from "../src/cache.svelte";
 import { getAccountKey } from "../src/auth";
@@ -55,6 +55,38 @@ function setup(serverQueueExchange = true) {
     ) as HTMLButtonElement;
   return { target, playback, connection, cache, button };
 }
+it("removes duplicate and unknown occurrences by original index and restores removal focus", async () => {
+  const { target, cache, playback } = setup();
+  await cache.replaceLibrary({
+    savedAt: 1,
+    lastModified: 1,
+    artists: [],
+    albums: [],
+    tracks: [{ id: "same", title: "Same", albumId: "", artistIds: [], genres: [] }],
+  });
+  playback.setQueue({ tracks: ["same", "missing", "same"], index: 2, position: 12 });
+  flushSync();
+  target.querySelector<HTMLDialogElement>("#player-dialog")!.showModal();
+  const remove = (number: number) =>
+    target.querySelector<HTMLButtonElement>(`button[aria-label$="queue item ${number}"]`)!;
+  remove(1).click();
+  await tick();
+  flushSync();
+  expect(cache.queue).toMatchObject({ tracks: ["missing", "same"], index: 1, position: 12 });
+  await vi.waitFor(() => expect(document.activeElement).toBe(remove(1)));
+  remove(2).click();
+  await tick();
+  flushSync();
+  expect(cache.queue).toMatchObject({ tracks: ["missing"], index: -1, position: 0 });
+  expect(target.textContent).toContain("Track removed. Playback stopped.");
+  await vi.waitFor(() => expect(document.activeElement).toBe(remove(1)));
+  remove(1).click();
+  await tick();
+  flushSync();
+  expect(cache.queue.tracks).toEqual([]);
+  await vi.waitFor(() => expect(document.activeElement?.textContent).toBe("Up next"));
+});
+
 it("keeps empty queue exchange actions visible, disabled until connected and confirms every load", () => {
   const { target, playback, connection, button } = setup();
   expect(target.textContent).toContain("Your queue is empty.");

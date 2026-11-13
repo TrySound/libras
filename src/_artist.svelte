@@ -47,9 +47,6 @@
       ? playbackState
       : undefined,
   );
-  const artistCanPause = $derived(
-    artistPlaybackState === "playing" || artistPlaybackState === "loading",
-  );
   const visibleTrackIds = $derived(availableTrackIds(tracks));
   const visibleAlbums = $derived(
     offlineMode
@@ -87,6 +84,7 @@
 
 <Atmosphere src={libraryAvailable && artist ? atmosphere?.source : undefined} />
 <LibraryScope {session} />
+{#if playback.queueMessage}<p class="caption" role="status">{playback.queueMessage}</p>{/if}
 <section class="split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
     <div class="detail-panel view-slide-up">
@@ -104,18 +102,16 @@
             <button
               class="button"
               data-variant="primary"
-              aria-label={`${artistCanPause ? "Pause" : "Play"} ${artist.name}`}
+              aria-label={`Play now ${artist.name}`}
               aria-busy={artistPlaybackState === "loading"}
-              disabled={!artistPlaybackState && !visibleTrackIds.length}
-              onclick={() => {
-                if (artistPlaybackState) void playback.toggle();
-                else void playback.replaceQueueAndPlay(visibleTrackIds);
-              }}
+              disabled={!visibleTrackIds.length ||
+                (session.offlineMode && !trackEngine.isDownloaded(visibleTrackIds[0]))}
+              onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
             >
               {#if artistPlaybackState === "loading"}
                 <Loader />
               {:else}
-                <Icon name={artistCanPause ? "pause" : "play"} />
+                <Icon name="play" />
               {/if}
             </button>
             <button
@@ -268,14 +264,15 @@
     <div class="stack-sm">
       <button
         class="menu-item"
-        disabled={!menuTrackIds.length}
+        disabled={!menuTrackIds.length ||
+          (session.offlineMode && !trackEngine.isDownloaded(menuTrackIds[0]))}
         onclick={() => {
           void playback.replaceQueueAndPlay(menuTrackIds);
           dismissActions();
         }}
       >
         <Icon name="play" />
-        <span>Play</span>
+        <span>Play now</span>
       </button>
       <button
         class="menu-item"
@@ -297,7 +294,7 @@
         }}
       >
         <Icon name="plus" />
-        <span>Play last</span>
+        <span>Add to queue</span>
       </button>
       <button
         class="menu-item"

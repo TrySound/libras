@@ -44,9 +44,6 @@
   const albumPlaybackState = $derived(
     album && currentTrack?.albumId === album.id ? playbackState : undefined,
   );
-  const albumCanPause = $derived(
-    albumPlaybackState === "playing" || albumPlaybackState === "loading",
-  );
   const artist = $derived(album ? cache.artists.get(album.artistIds[0]) : undefined);
   const atmosphere = $derived(album?.artworkId ? covers.ensureCover(album.artworkId) : undefined);
   const visibleTracks = $derived(
@@ -61,7 +58,7 @@
   const visibleTrackIds = $derived(visibleTracks.map((track) => track.id));
 
   function playTrack(track: Immutable<Track>) {
-    void playback.replaceQueueAndPlay(visibleTrackIds, visibleTrackIds.indexOf(track.id));
+    void playback.replaceQueueAndPlay([track.id]);
   }
 
   let menuTrackId = $state<string>();
@@ -88,6 +85,7 @@
 
 <Atmosphere src={libraryAvailable && artist && album ? atmosphere?.source : undefined} />
 <LibraryScope {session} />
+{#if playback.queueMessage}<p class="caption" role="status">{playback.queueMessage}</p>{/if}
 <section class="split-layout" aria-label="Album details">
   {#if libraryAvailable && artist && album}
     <div class="detail-panel view-slide-up">
@@ -104,18 +102,16 @@
             <button
               class="button"
               data-variant="primary"
-              aria-label={`${albumCanPause ? "Pause" : "Play"} ${album.title}`}
+              aria-label={`Play now ${album.title}`}
               aria-busy={albumPlaybackState === "loading"}
-              disabled={!albumPlaybackState && !visibleTrackIds.length}
-              onclick={() => {
-                if (albumPlaybackState) void playback.toggle();
-                else void playback.replaceQueueAndPlay(visibleTrackIds);
-              }}
+              disabled={!visibleTrackIds.length ||
+                (session.offlineMode && !trackEngine.isDownloaded(visibleTrackIds[0]))}
+              onclick={() => void playback.replaceQueueAndPlay(visibleTrackIds)}
             >
               {#if albumPlaybackState === "loading"}
                 <Loader />
               {:else}
-                <Icon name={albumCanPause ? "pause" : "play"} />
+                <Icon name="play" />
               {/if}
             </button>
             <button
@@ -201,12 +197,12 @@
             </div>
             <button
               class="button-quiet link-target"
-              aria-label={`${currentTrack?.id === track.id && playbackState !== "paused" ? "Pause" : "Play"} ${track.title}`}
+              aria-label={`Play now ${track.title}`}
               disabled={session.offlineMode && !trackEngine.isDownloaded(track.id)}
               aria-describedby={session.offlineMode && !trackEngine.isDownloaded(track.id)
                 ? `unavailable-${index}`
                 : undefined}
-              onclick={() => playback.toggleTrack(track.id, visibleTrackIds)}
+              onclick={() => playTrack(track)}
               data-longpressfor="album-detail-menu"
               data-longpress="show-modal"
               onfocus={() => (menuTrackId = track.id)}
@@ -302,7 +298,8 @@
     <div class="stack-sm">
       <button
         class="menu-item"
-        disabled={!menuTrackIds.length}
+        disabled={!menuTrackIds.length ||
+          (session.offlineMode && !trackEngine.isDownloaded(menuTrackIds[0]))}
         onclick={() => {
           if (menuTrack) playTrack(menuTrack);
           else void playback.replaceQueueAndPlay(menuTrackIds);
@@ -310,7 +307,7 @@
         }}
       >
         <Icon name="play" />
-        <span>Play</span>
+        <span>Play now</span>
       </button>
       <button
         class="menu-item"
@@ -332,7 +329,7 @@
         }}
       >
         <Icon name="plus" />
-        <span>Play last</span>
+        <span>Add to queue</span>
       </button>
       <button
         class="menu-item"

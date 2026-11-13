@@ -1,536 +1,401 @@
-// Native validation, keyboard/focus, responsive layout, and real OPFS persistence.
-// State/rendering and async navigation races live in app-settings.test.ts.
+// Focused connection, Settings/account management, and the connected listening flow.
+// Uses real App, Web Locks, OPFS, native dialogs and decodable cached audio.
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
+const { mkdir } = require("node:fs/promises");
 const { chromium } = require("playwright");
-
 const base = `${(process.env.PREVIEW_URL ?? "http://127.0.0.1:5173").replace(/\/$/, "")}/`;
-const host = "music.example.test/music/library";
-const username = `listener-${"long-name-".repeat(12)}`;
-const artist = { id: "artist", name: "Settings test artist" };
-const album = { id: "album", name: "Settings test album", artists: [artist] };
-const track = { id: "track", title: "Settings test track", albumId: album.id, artists: [artist] };
+const artifacts = process.env.ARTIFACT_DIR;
 
-test("Settings native controls, layout, and persistence", async (t) => {
+function wav() {
+  const data = Buffer.alloc(44 + 16000 * 30);
+  data.write("RIFF");
+  data.writeUInt32LE(data.length - 8, 4);
+  data.write("WAVEfmt ", 8);
+  data.writeUInt32LE(16, 16);
+  data.writeUInt16LE(1, 20);
+  data.writeUInt16LE(1, 22);
+  data.writeUInt32LE(8000, 24);
+  data.writeUInt32LE(16000, 28);
+  data.writeUInt16LE(2, 32);
+  data.writeUInt16LE(16, 34);
+  data.write("data", 36);
+  data.writeUInt32LE(data.length - 44, 40);
+  return data;
+}
+
+test("focused connection and remembered/offline listening management", async () => {
+  if (artifacts) await mkdir(artifacts, { recursive: true });
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
-    viewport: { width: 1280, height: 900 },
+    viewport: { width: 1440, height: 900 },
     reducedMotion: "reduce",
   });
-  page.setDefaultTimeout(10_000);
-  const releases = [];
-  const gate = () => {
-    let resolve;
-    const promise = new Promise((done) => {
-      resolve = done;
+  page.setDefaultTimeout(10000);
+  await page.addInitScript(() => {
+    window.Audio = new Proxy(window.Audio, {
+      construct(target, args) {
+        const audio = Reflect.construct(target, args);
+        window.listeningAudio = audio;
+        return audio;
+      },
     });
-    releases.push(resolve);
-    return { promise, resolve };
-  };
-  let pingGate;
-  let tailGate;
-  let pingFailure = false;
-  let pingCode;
-  let passwordRequests = 0;
-  const pingMethods = [];
-  const calls = [];
+  });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  let releasePing;
+  let pingGate;
+  let failPing = false;
+  let pings = 0;
+  const artist = { id: "artist", name: "Listening fixture artist" };
+  const album = { id: "album", name: "Listening fixture album", artists: [artist] };
+  const song = {
+    id: "song",
+    title: "Listening fixture song",
+    albumId: "album",
+    artists: [artist],
+    contentType: "audio/wav",
+    duration: 2,
+  };
   await page.route("https://music.example.test/**", async (route) => {
     const url = new URL(route.request().url());
     const method = url.pathname.split("/").pop().replace(".view", "");
-    calls.push(method);
-    const body = new URLSearchParams(route.request().postData() ?? "");
-    if (url.searchParams.has("p") || body.has("p")) passwordRequests++;
+    if (["stream", "download"].includes(method)) {
+      await route.fulfill({ contentType: "audio/wav", body: wav() });
+      return;
+    }
     let fields;
     if (method === "ping") {
-      const direct = url.searchParams.has("p");
-      pingMethods.push(direct ? "password" : "token");
-      const fail = pingFailure && !direct;
-      if (pingGate) await pingGate.promise;
-      fields = fail
-        ? { status: "failed", error: { code: pingCode, message: "Unauthorized" } }
-        : { version: "1.16.1", type: "test-server", serverVersion: "1", openSubsonic: true };
+      pings++;
+      if (pingGate) await pingGate;
+      fields = failPing
+        ? { status: "failed", error: { code: 40, message: "Sign-in rejected" } }
+        : { openSubsonic: true, version: "1.16.1", type: "fixture", serverVersion: "1" };
     } else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
-    else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
-    else if (method === "search3") {
-      if (tailGate && Number(url.searchParams.get("songOffset")) > 0) await tailGate.promise;
-      const slice = (values, name) => {
-        const offset = Number(url.searchParams.get(`${name}Offset`) ?? 0);
-        return values.slice(offset, offset + Number(url.searchParams.get(`${name}Count`) ?? 500));
+    else if (method === "getPlayQueue")
+      fields = {
+        playQueue: { entry: [song, { id: "missing" }, song], current: "song", position: 0 },
       };
+    else if (method === "search3") {
+      const values = (name, rows) =>
+        Number(url.searchParams.get(`${name}Offset`)) === 0 ? rows : [];
       fields = {
         searchResult3: {
-          artist: slice([artist], "artist"),
-          album: slice([album], "album"),
-          song: slice([track], "song"),
+          artist: values("artist", [artist]),
+          album: values("album", [album]),
+          song: values("song", [song]),
         },
       };
-    } else throw new Error(`Unexpected endpoint: ${method}`);
+    } else throw new Error(`Unexpected fixture endpoint: ${method}`);
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ "subsonic-response": { status: "ok", ...fields } }),
     });
   });
-  const waitConnected = () =>
-    page.waitForFunction(
-      () =>
-        !!document.querySelector("#settings-server-identity") &&
-        document.querySelector("#settings-offline-card button")?.textContent === "Work offline" &&
-        document.querySelector("#settings-refresh")?.getAttribute("aria-busy") === "false",
-    );
-
+  const navigate = async (path) => {
+    await page.evaluate((path) => navigation.navigate(`?${path}`).finished, path);
+  };
+  const settled = async () => {
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForFunction(() => !document.documentElement.matches(":active-view-transition"));
+  };
+  const capture = async (state) => {
+    for (const width of [1440, 390, 320]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await settled();
+      if (state === "duplicate-queue") {
+        await player
+          .getByRole("heading", { name: "Up next" })
+          .evaluate((node) => node.scrollIntoView({ block: "start" }));
+        const geometry = await player.locator(".queue-row").evaluateAll((rows) =>
+          rows.map((row) => {
+            const metadata = row.querySelector(".queue-metadata").getBoundingClientRect();
+            const action = row.querySelector(".queue-actions").getBoundingClientRect();
+            const remove = row
+              .querySelector('button[aria-label^="Remove"]')
+              .getBoundingClientRect();
+            return {
+              unavailable:
+                row.querySelector(".queue-metadata .label").textContent === "Track unavailable",
+              textWidth: row.querySelector(".queue-metadata .label").getBoundingClientRect().width,
+              metadataBottom: metadata.bottom,
+              actionTop: action.top,
+              targetWidth: remove.width,
+              targetHeight: remove.height,
+              fits: row.scrollWidth <= row.clientWidth,
+            };
+          }),
+        );
+        for (const row of geometry) {
+          assert.equal(row.fits, true);
+          assert.ok(row.targetWidth >= 44 && row.targetHeight >= 44);
+          if (width <= 390) {
+            assert.ok(
+              row.textWidth >= (row.unavailable ? 120 : 140),
+              `queue metadata width ${row.textWidth}`,
+            );
+            assert.ok(row.actionTop >= row.metadataBottom, "queue actions sit below metadata");
+          }
+        }
+        console.log(JSON.stringify({ queueWidth: width, geometry }));
+      }
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        true,
+        `${state} ${width}px overflow`,
+      );
+      if (artifacts) await page.screenshot({ path: `${artifacts}/${width}-${state}.png` });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+  };
+  const fill = async () => {
+    await page.getByLabel("Host", { exact: true }).fill("music.example.test");
+    await page.getByLabel("Username", { exact: true }).fill("listener");
+    await page.getByLabel("Password", { exact: true }).fill("fictional-password");
+  };
+  const submit = () => page.locator("#connection-submit").click();
+  const hasStoredAuth = () => page.evaluate(() => localStorage.getItem("navidrome-auth") !== null);
+  const player = page.locator("#player-dialog");
+  const openQueue = async () => {
+    await page.locator(".app-sidebar").getByRole("button", { name: "Queue", exact: true }).click();
+    await player.waitFor();
+  };
   try {
     await page.goto(base);
-    await page.locator("[aria-labelledby=settings-heading]").waitFor();
-    await t.test("browser validation blocks submission without shifting the card", async () => {
-      await page.evaluate(() => document.fonts.ready);
-      const connect = page.locator("#settings-connect");
-      assert.equal(await connect.getAttribute("data-variant"), "primary");
-      assert.ok((await connect.boundingBox()).height >= 44);
-      const box = await page.locator("#settings-server").boundingBox();
-      await page.getByRole("button", { name: "Connect", exact: true }).click();
-      assert.equal(
-        await page
-          .locator("#server-host")
-          .evaluate(
-            (input) =>
-              input === document.activeElement &&
-              input.validity.valueMissing &&
-              !!input.validationMessage,
-          ),
-        true,
-      );
-      assert.deepEqual(await page.locator("#settings-server").boundingBox(), box);
-      assert.equal(calls.length, 0);
-    });
-
-    await t.test(
-      "keyboard submission and repeated Enter do not duplicate authentication",
-      async () => {
-        await page.getByLabel("Host", { exact: true }).fill(host);
-        await page.getByLabel("Username", { exact: true }).fill(username);
-        await page.getByLabel("Password", { exact: true }).fill("password");
-        pingFailure = true;
-        pingGate = gate();
-        await page.keyboard.press("Enter");
-        const connect = page.locator("#settings-connect");
-        await page.waitForFunction(() => document.querySelector("#server-password")?.disabled);
-        await connect.focus();
-        await page.keyboard.press("Enter");
-        pingGate.resolve();
-        await page.locator("#settings-server-error").waitFor();
-        assert.equal(calls.filter((method) => method === "ping").length, 1);
-      },
+    await page.locator("#connect-screen").waitFor();
+    assert.equal(await page.getByLabel("Remember this device").isChecked(), false);
+    await capture("connection-form");
+    await submit();
+    assert.equal(pings, 0);
+    assert.equal(
+      await page.locator("#server-host").evaluate((node) => node === document.activeElement),
+      true,
     );
+    await fill();
+    failPing = true;
+    await submit();
+    await page.getByText("Sign-in rejected", { exact: true }).first().waitFor();
+    assert.equal(await page.getByLabel("Password", { exact: true }).inputValue(), "");
+    assert.equal(await hasStoredAuth(), false);
+    await capture("connection-error");
+    failPing = false;
 
-    await t.test("error controls work on desktop and mobile", async () => {
-      for (const width of [1280, 375]) {
-        await page.setViewportSize({ width, height: 900 });
-        await page.getByRole("button", { name: "Show errors", exact: true }).click();
-        await page.locator("#error-popover").waitFor();
-        await page.getByRole("button", { name: "Close errors", exact: true }).click();
-      }
-      await page.setViewportSize({ width: 1280, height: 900 });
+    // Leaving the focused screen while verification is pending must not redirect back.
+    await fill();
+    pingGate = new Promise((resolve) => {
+      releasePing = resolve;
     });
-
-    // Connect once to exercise the populated card and persist a real library snapshot.
-    pingFailure = false;
+    await submit();
+    await page
+      .locator("#connection-form")
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+    releasePing();
     pingGate = undefined;
-    await page.getByLabel("Password", { exact: true }).fill("password");
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
-    await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
-    await page.getByRole("link", { name: "Settings", exact: true }).click();
-    await waitConnected();
-
-    await t.test("cards respond to page width and controls fit at 200% text size", async () => {
-      for (const [width, ratio] of [
-        [320, null],
-        [1024, null],
-        [1280, 1],
-        [1440, 3 / 2],
-      ]) {
-        await page.setViewportSize({ width, height: 900 });
-        const geometry = await page
-          .locator("[aria-labelledby=settings-heading]")
-          .evaluate((element) => {
-            const server = element.querySelector("#settings-server").getBoundingClientRect();
-            const offline = element.querySelector("#settings-offline-card").getBoundingClientRect();
-            return {
-              stacked: offline.top >= server.bottom,
-              separated: offline.left >= server.right,
-              ratio: server.width / offline.width,
-              fits: element.scrollWidth <= element.clientWidth,
-            };
-          });
-        assert.equal(ratio === null ? geometry.stacked : geometry.separated, true);
-        if (ratio !== null) assert.ok(Math.abs(geometry.ratio - ratio) < 0.02);
-        assert.equal(geometry.fits, true);
-      }
-      await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
-      await page.setViewportSize({ width: 320, height: 900 });
-      assert.equal(
-        await page.locator("[aria-labelledby=settings-heading]").evaluate(
-          (element) =>
-            element.scrollWidth <= element.clientWidth &&
-            [...element.querySelectorAll("button, a")]
-              .filter((control) => control.getClientRects().length)
-              .every((control) => {
-                const card = control.closest(".card").getBoundingClientRect();
-                const box = control.getBoundingClientRect();
-                return box.left >= card.left && box.right <= card.right;
-              }),
-        ),
-        true,
-      );
-      await page.evaluate(() => document.documentElement.style.removeProperty("font-size"));
-      await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForFunction(() => !document.querySelector("#connection-submit").disabled);
+    assert.equal(await hasStoredAuth(), false);
+    await fill();
+    pingGate = new Promise((resolve) => {
+      releasePing = resolve;
     });
+    await page.getByLabel("Remember this device").check();
+    await submit();
+    assert.equal(await hasStoredAuth(), false);
+    await navigate("/settings");
+    releasePing();
+    pingGate = undefined;
+    await page.locator("#settings-server-identity").waitFor();
+    assert.equal(new URL(page.url()).search, "?/settings");
+    assert.equal(await hasStoredAuth(), true);
+    assert.equal(await page.locator("#settings-server form").count(), 0);
+    await page.reload();
+    await page.locator("#settings-server-identity").waitFor();
+    assert.equal(await hasStoredAuth(), true, "legacy/remembered auth is retained across startup");
+    await navigate("/library&type=track&q=Listening");
+    await page.getByRole("region", { name: "Tracks", exact: true }).waitFor();
+    await capture("library-filters");
+    await navigate("/search&type=track&q=Listening");
+    assert.equal(await page.locator("#library-search").inputValue(), "Listening");
+    await page.locator("#library-search").fill("fixture");
+    await page.waitForURL((url) => url.search.startsWith("?/library&"));
+    assert.equal(new URL(page.url()).searchParams.get("type"), "track");
 
-    await t.test(
-      "Refresh retains keyboard focus and Enter cannot submit duplicate work",
-      async () => {
-        tailGate = gate();
-        const refresh = page.locator("#settings-refresh");
-        const requested = page.waitForRequest((request) => {
-          const url = new URL(request.url());
-          return (
-            url.pathname.endsWith("/search3.view") && Number(url.searchParams.get("songOffset")) > 0
-          );
-        });
-        await refresh.click();
-        await requested;
-        await page.locator("#settings-library-progress").waitFor();
-        assert.equal(await refresh.evaluate((element) => element === document.activeElement), true);
-        const searches = calls.filter((method) => method === "search3").length;
-        await page.keyboard.press("Enter");
-        tailGate.resolve();
-        tailGate = undefined;
-        await waitConnected();
-        assert.equal(calls.filter((method) => method === "search3").length, searches);
-        assert.equal(await refresh.evaluate((element) => element === document.activeElement), true);
-      },
+    // Enqueue into an empty queue does not start audio or select a track.
+    await page.locator('.only-desktop[aria-label="Open menu for Listening fixture song"]').click();
+    await page
+      .locator("#search-menu-popover")
+      .getByRole("button", { name: "Add to queue", exact: true })
+      .click();
+    await openQueue();
+    assert.equal(await player.getByText("Nothing playing", { exact: true }).isVisible(), true);
+    const load = player.getByRole("button", { name: "Load server queue", exact: true });
+    await load.click();
+    await page
+      .getByRole("dialog", { name: "Replace this device’s queue?" })
+      .getByRole("button", { name: "Load server queue", exact: true })
+      .click();
+    await player.getByText("Server queue loaded. Playback is stopped.", { exact: true }).waitFor();
+    await player.getByRole("heading", { name: "Up next" }).scrollIntoViewIfNeeded();
+    await capture("duplicate-queue");
+    await player
+      .getByRole("button", { name: "Remove unavailable track, queue item 2", exact: true })
+      .click();
+    await page.waitForFunction(
+      () =>
+        document.activeElement?.getAttribute("aria-label") ===
+        "Remove Listening fixture song, queue item 2",
     );
+    await player
+      .getByRole("button", { name: "Remove Listening fixture song, queue item 1", exact: true })
+      .click();
+    await player.getByText("Track removed. Playback stopped.", { exact: true }).waitFor();
+    assert.equal(await player.locator(".track-row").count(), 1);
+    await player
+      .getByRole("button", { name: "Remove Listening fixture song, queue item 1", exact: true })
+      .click();
+    await page.waitForFunction(() => document.activeElement?.textContent === "Up next");
+    await page.keyboard.press("Escape");
 
-    await t.test("keyboard Work offline persists through reload without reconnecting", async () => {
-      const control = page.locator("#settings-offline-card button");
-      await control.focus();
-      await page.keyboard.press("Space");
-      await page.waitForFunction(() =>
-        document.querySelector("#settings-connection-status")?.textContent.includes("Offline mode"),
-      );
-      const pings = calls.filter((method) => method === "ping").length;
-      await page.reload();
-      await page.waitForFunction(() =>
-        document.querySelector("#settings-connection-status")?.textContent.includes("Offline mode"),
-      );
-      assert.equal(await control.textContent(), "Connect");
-      assert.equal(calls.filter((method) => method === "ping").length, pings);
-      const searches = calls.filter((method) => method === "search3").length;
-      await control.focus();
-      await page.keyboard.press("Space");
-      await waitConnected();
-      assert.equal(await control.textContent(), "Work offline");
-      assert.equal(calls.filter((method) => method === "search3").length, searches);
-      await page.getByRole("link", { name: "Libras home", exact: true }).click();
-      await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
-      await page.getByRole("link", { name: "Settings", exact: true }).click();
-      await waitConnected();
-    });
-
-    await t.test(
-      "native invokers dismiss without disconnecting, reset the switch, and preserve data",
-      async () => {
-        await page.getByRole("button", { name: "Disconnect", exact: true }).click();
-        assert.equal(
-          await page.locator("#settings-disconnect").getAttribute("command"),
-          "show-modal",
-        );
-        assert.equal(
-          await page.locator("#settings-disconnect").getAttribute("commandfor"),
-          "disconnect-dialog",
-        );
-        const dialog = page.getByRole("dialog", { name: "Disconnect from server", exact: true });
-        const checkbox = dialog.getByRole("switch", { name: "Clear data on device", exact: true });
-        assert.equal(await checkbox.isChecked(), false);
-        assert.equal(await checkbox.getAttribute("aria-describedby"), "disconnect-dialog-scope");
-        assert.equal(
-          (await dialog.locator("#disconnect-dialog-scope").textContent())
-            .trim()
-            .replace(/\s+/g, " "),
-          "Would you also like to clear this account’s data and downloads from this device? Server data won’t be affected.",
-        );
-        assert.equal(await dialog.getByRole("button").count(), 2);
-        assert.equal(await dialog.locator("form").getAttribute("method"), "dialog");
-        assert.equal(
-          await dialog
-            .getByRole("button", { name: "Disconnect", exact: true })
-            .getAttribute("type"),
-          "submit",
-        );
-        assert.equal(
-          await dialog.getByRole("button", { name: "Cancel", exact: true }).getAttribute("type"),
-          "button",
-        );
-        await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-        for (const [width, enlarged] of [
-          [1280, false],
-          [320, false],
-          [390, false],
-          [320, true],
-        ]) {
-          await page.setViewportSize({ width, height: 740 });
-          await page.evaluate((enlarged) => {
-            document.documentElement.style.fontSize = enlarged ? "200%" : "";
-          }, enlarged);
-          const trigger = page.locator(
-            width === 1280 ? "#settings-disconnect" : "#settings-disconnect-mobile",
-          );
-          await trigger.click();
-          const id = width === 1280 ? "disconnect-dialog" : "disconnect-sheet";
-          assert.equal(await trigger.getAttribute("commandfor"), id);
-          assert.equal(await dialog.getAttribute("id"), id);
-          assert.equal(await checkbox.isChecked(), false);
-          assert.equal(await checkbox.getAttribute("aria-describedby"), `${id}-scope`);
-          assert.equal(
-            await dialog
-              .getByRole("button", { name: "Cancel", exact: true })
-              .getAttribute("commandfor"),
-            id,
-          );
-          const geometry = await dialog.evaluate((node) => {
-            node.scrollTop = 0;
-            const box = node.getBoundingClientRect();
-            const label = node.querySelector("label").getBoundingClientRect();
-            const control = node.querySelector('[role="switch"]').getBoundingClientRect();
-            const handle = node.querySelector(".dialog-handle")?.getBoundingClientRect();
-            return {
-              padding: getComputedStyle(node).padding,
-              radius: getComputedStyle(node).borderRadius,
-              cornersMatchCard:
-                getComputedStyle(node).cornerShape ===
-                getComputedStyle(document.querySelector(".card")).cornerShape,
-              bottom: box.bottom,
-              left: box.left,
-              width: box.width,
-              switchLeft: control.right <= label.left,
-              fits: node.scrollWidth <= node.clientWidth,
-              handleClear:
-                !handle || handle.bottom < node.querySelector("h2").getBoundingClientRect().top,
-            };
-          });
-          assert.equal(geometry.switchLeft, true);
-          assert.equal(geometry.fits, true);
-          assert.equal(geometry.handleClear, true);
-          if (width === 1280) {
-            assert.equal(geometry.padding, "24px");
-            assert.equal(geometry.radius, "24px");
-            assert.equal(geometry.cornersMatchCard, true);
-          } else {
-            assert.equal(geometry.radius, "0px");
-            assert.equal(geometry.bottom, 740);
-            assert.equal(geometry.left, 0);
-            assert.equal(geometry.width, await page.evaluate(() => document.body.clientWidth));
-            // Other shared dialogs retain their baseline padding on mobile too.
-            assert.equal(
-              await page
-                .locator("#disconnect-dialog")
-                .evaluate((node) => getComputedStyle(node).padding),
-              "24px",
-            );
-          }
-          if (process.env.ARTIFACT_DIR) {
-            require("node:fs").mkdirSync(process.env.ARTIFACT_DIR, { recursive: true });
-            await page.screenshot({
-              path: `${process.env.ARTIFACT_DIR}/disconnect-${width}${enlarged ? "-enlarged" : ""}.png`,
-            });
-          }
-          await checkbox.check();
-          if (enlarged) {
-            await dialog
-              .getByRole("button", { name: "Disconnect", exact: true })
-              .scrollIntoViewIfNeeded();
-            const actionsFit = await dialog.evaluate((node) => {
-              const box = node.getBoundingClientRect();
-              return [...node.querySelectorAll("button")].every((button) => {
-                const action = button.getBoundingClientRect();
-                return (
-                  action.left >= box.left &&
-                  action.right <= box.right &&
-                  action.top >= box.top &&
-                  action.bottom <= box.bottom
-                );
-              });
-            });
-            assert.equal(actionsFit, true);
-            if (process.env.ARTIFACT_DIR) {
-              await page.screenshot({
-                path: `${process.env.ARTIFACT_DIR}/disconnect-320-enlarged-actions.png`,
-              });
+    // Download real bytes, play cached audio, then remove it without editing membership.
+    await page.locator('.only-desktop[aria-label="Open menu for Listening fixture song"]').click();
+    await page
+      .locator("#search-menu-popover")
+      .getByRole("button", { name: "Download", exact: true })
+      .click();
+    await navigate("/downloads");
+    await page.locator('[aria-label="Downloaded"]').waitFor();
+    // Native desktop dialog and mobile sheet dismissals must not act like confirmation,
+    // even with the destructive local-data switch checked.
+    const savedFiles = () =>
+      page.evaluate(async () => {
+        const accounts = await (
+          await navigator.storage.getDirectory()
+        ).getDirectoryHandle("accounts");
+        const files = [];
+        for await (const [account, directory] of accounts) {
+          for await (const [name, handle] of directory) {
+            if (name === "downloads.json")
+              files.push(`${account}/${name}:${(await handle.getFile()).size}`);
+            if (name === "files" && handle.kind === "directory") {
+              for await (const [fileName, fileHandle] of handle)
+                files.push(`${account}/files/${fileName}:${(await fileHandle.getFile()).size}`);
             }
           }
-          await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
         }
-        await page.evaluate(() => document.documentElement.style.removeProperty("font-size"));
-        await page.setViewportSize({ width: 390, height: 740 });
-        await page.locator("#settings-disconnect-mobile").click();
-        assert.equal(await checkbox.isChecked(), false);
-        await checkbox.check();
-        await page.keyboard.press("Escape");
-        assert.equal(await page.locator("dialog:modal").count(), 0);
-        await page.locator("#settings-disconnect-mobile").click();
-        assert.equal(await checkbox.isChecked(), false);
-        const touch = await page.context().newCDPSession(page);
-        const bounds = await dialog.boundingBox();
-        const point = { x: bounds.x + 20, y: bounds.y + 20 };
-        await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
-        for (const offset of [15, 40, 80, 120]) {
-          await touch.send("Input.dispatchTouchEvent", {
-            type: "touchMove",
-            touchPoints: [{ ...point, y: point.y + offset }],
-          });
-        }
-        assert.equal(await dialog.getAttribute("data-dragging"), "");
-        await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-        await dialog.waitFor({ state: "hidden" });
-        await touch.detach();
-        assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-auth")));
-        await page.setViewportSize({ width: 1280, height: 900 });
-        await page.locator("#settings-disconnect").click();
-        await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-        assert.equal(await page.locator("dialog:modal").count(), 0);
-        assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-auth")));
-        await page.locator("#settings-disconnect").click();
-        await checkbox.focus();
-        await page.keyboard.press("Space");
-        assert.equal(await checkbox.isChecked(), true);
-        await page.keyboard.press("Escape");
-        assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-auth")));
-        await page.getByRole("button", { name: "Disconnect", exact: true }).click();
-        assert.equal(await checkbox.isChecked(), false);
-        await checkbox.check();
-        await page.mouse.click(2, 2);
-        assert.equal(await page.locator("dialog:modal").count(), 0);
-        assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-auth")));
-        await page.setViewportSize({ width: 390, height: 740 });
-        await page.locator("#settings-disconnect-mobile").click();
-        assert.equal(await checkbox.isChecked(), false);
-        // Keyboard activation also avoids the swipe installer's brief synthetic-click guard.
-        await dialog.getByRole("button", { name: "Disconnect", exact: true }).focus();
-        await page.keyboard.press("Enter");
-        await page.locator("#server-host").waitFor();
-        assert.equal(await page.locator("dialog:modal").count(), 0);
-        await page.setViewportSize({ width: 1280, height: 900 });
-      },
-    );
-    await t.test("automatic password fallback survives reload until disconnect", async () => {
-      pingFailure = true;
-      pingCode = 41;
-      await page.getByLabel("Host", { exact: true }).fill(host);
-      await page.getByLabel("Username", { exact: true }).fill(username);
-      await page.getByLabel("Password", { exact: true }).fill("enc:literal-password");
-      assert.equal(passwordRequests, 0);
-      const before = pingMethods.length;
-      await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
-      assert.deepEqual(pingMethods.slice(before), ["token", "password"]);
-      assert.ok(passwordRequests > 0);
-      assert.equal(
-        await page.evaluate(
-          () => JSON.parse(localStorage.getItem("navidrome-auth")).credentials.method,
-        ),
-        "password",
+        return files.sort();
+      });
+    const beforeDismissal = await savedFiles();
+    assert.ok(beforeDismissal.some((file) => file.includes("/files/")));
+    await navigate("/settings");
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      const id = width === 1440 ? "disconnect-dialog" : "disconnect-sheet";
+      const invoker = page.locator(
+        width === 1440 ? "#settings-disconnect" : "#settings-disconnect-mobile",
       );
-      await page.getByRole("link", { name: "Settings", exact: true }).click();
-      await waitConnected();
-      await page.reload();
-      await waitConnected();
-      await page.getByRole("button", { name: "Disconnect", exact: true }).click();
-      await page
-        .getByRole("dialog")
-        .getByRole("button", { name: "Disconnect", exact: true })
-        .click();
-      assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-auth")), null);
-      assert.ok(await page.evaluate(() => localStorage.getItem("navidrome-account")));
-    });
-    await t.test(
-      "cleanup removes real OPFS account data without changing identity or unrelated data",
-      async () => {
-        await page.getByLabel("Host", { exact: true }).fill(host);
-        await page.getByLabel("Username", { exact: true }).fill(username);
-        await page.getByLabel("Password", { exact: true }).fill("password");
-        await page.getByRole("button", { name: "Connect", exact: true }).click();
-        await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
-        await page.getByRole("link", { name: "Settings", exact: true }).click();
-        await waitConnected();
-        await page.waitForTimeout(600);
-        await page.evaluate(async () => {
-          const root = await navigator.storage.getDirectory();
-          const accounts = await root.getDirectoryHandle("accounts");
-          const unrelated = await accounts.getDirectoryHandle("unrelated", { create: true });
-          const marker = await unrelated.getFileHandle("keep", { create: true });
-          const writer = await marker.createWritable();
-          await writer.write("preserve");
-          await writer.close();
-        });
-        await page.getByRole("button", { name: "Disconnect", exact: true }).click();
-        const artifacts = process.env.ARTIFACT_DIR;
-        if (artifacts) require("node:fs").mkdirSync(artifacts, { recursive: true });
-        const before = calls.length;
-        await page.evaluate(() => {
-          window.cacheClearMarker = true;
-          localStorage.setItem("unrelated-preference", "keep");
-        });
-        const remembered = await page.evaluate(() => localStorage.getItem("navidrome-account"));
-        await page.getByRole("dialog").getByRole("switch").check();
-        await page
-          .getByRole("dialog")
-          .getByRole("button", { name: "Disconnect", exact: true })
-          .click();
-        await page.locator("#server-host").waitFor();
-        assert.equal(await page.locator("dialog:modal").count(), 0);
-        assert.equal(await page.evaluate(() => localStorage.getItem("navidrome-auth")), null);
-        assert.equal(
-          await page.evaluate(() => localStorage.getItem("navidrome-account")),
-          remembered,
-        );
-        assert.equal(await page.evaluate(() => window.cacheClearMarker), true);
-        assert.equal(
-          await page.evaluate(() => localStorage.getItem("unrelated-preference")),
-          "keep",
-        );
-        assert.deepEqual(calls.slice(before), []);
-        const accountDirectories = () =>
-          page.evaluate(async () => {
-            const accounts = await (
-              await navigator.storage.getDirectory()
-            ).getDirectoryHandle("accounts");
-            return Array.fromAsync(accounts.keys());
-          });
-        assert.deepEqual(await accountDirectories(), ["unrelated"]);
-        await page.getByRole("link", { name: "Libras home", exact: true }).click();
-        await page.locator("[aria-labelledby=library-heading]").waitFor();
-        assert.equal(await page.locator("[aria-labelledby=library-heading] .tile").count(), 0);
-        if (artifacts) {
-          await page.setViewportSize({ width: 320, height: 740 });
-          await page.screenshot({ path: `${artifacts}/empty-library-mobile.png` });
-          await page.setViewportSize({ width: 1280, height: 900 });
+      const dialog = page.locator(`#${id}`);
+      for (const dismissal of ["Cancel", "Escape"]) {
+        await invoker.click();
+        assert.equal(await invoker.getAttribute("commandfor"), id);
+        assert.equal(await dialog.evaluate((node) => node.matches(":modal")), true);
+        assert.equal(await dialog.locator("form").getAttribute("method"), "dialog");
+        const clear = dialog.getByRole("switch", { name: "Clear data on device", exact: true });
+        assert.equal(await clear.isChecked(), false, "reopening resets the destructive option");
+        await clear.check();
+        if (width === 390) {
+          const box = await dialog.boundingBox();
+          assert.equal(Math.round(box.y + box.height), 844);
+          assert.equal(box.x, 0);
         }
-        await page.waitForTimeout(700);
-        assert.deepEqual(await accountDirectories(), ["unrelated"]);
-        await page.getByRole("link", { name: "Settings", exact: true }).click();
-        await page.getByLabel("Host", { exact: true }).fill(host);
-        await page.getByLabel("Username", { exact: true }).fill(username);
-        await page.getByLabel("Password", { exact: true }).fill("password");
-        await page.getByRole("button", { name: "Connect", exact: true }).click();
-        await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
-        assert.equal(await page.evaluate(() => window.cacheClearMarker), true);
-      },
+        if (dismissal === "Cancel")
+          await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+        else await page.keyboard.press("Escape");
+        await dialog.waitFor({ state: "hidden" });
+        assert.equal(await invoker.evaluate((node) => node === document.activeElement), true);
+        assert.equal(await hasStoredAuth(), true);
+        assert.equal(
+          await page.locator("#settings-server-identity").textContent(),
+          "listener@music.example.test",
+        );
+        assert.deepEqual(await savedFiles(), beforeDismissal);
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await navigate("/downloads");
+    assert.equal(await page.locator('[aria-label="Downloaded"]').count(), 1);
+    await capture("downloads");
+    await page.getByRole("button", { name: "Remove all downloaded music", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Remove all downloaded music?" });
+    assert.equal(
+      await confirmation
+        .getByRole("button", { name: "Cancel", exact: true })
+        .evaluate((node) => node === document.activeElement),
+      true,
     );
+    await capture("download-confirmation");
+    await page.keyboard.press("Escape");
+    await navigate("/library&type=track&q=Listening");
+    await page
+      .getByRole("button", { name: "Play now Listening fixture song", exact: true })
+      .click();
+    await page.waitForFunction(
+      () =>
+        window.listeningAudio &&
+        !window.listeningAudio.paused &&
+        window.listeningAudio.currentSrc.startsWith("blob:"),
+    );
+    await navigate("/downloads");
+    await page.getByRole("button", { name: /^Remove Listening fixture song/ }).click();
+    await page.getByText("Downloaded music removed. Queue unchanged.", { exact: true }).waitFor();
+    assert.equal(
+      await page.evaluate(
+        () => window.listeningAudio.paused && window.listeningAudio.getAttribute("src") === null,
+      ),
+      true,
+    );
+    await openQueue();
+    assert.equal(await player.locator(".track-row").count(), 1);
+    assert.equal(await player.getByRole("button", { name: "Pause", exact: true }).count(), 0);
+    await page.keyboard.press("Escape");
+
+    // Explicit disconnect removes credentials but retains identity and local library.
+    await navigate("/settings");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator("#settings-disconnect-mobile").click();
+    assert.equal(await page.locator("#disconnect-sheet").getByRole("switch").isChecked(), false);
+    await page
+      .locator("#disconnect-sheet")
+      .getByRole("button", { name: "Disconnect", exact: true })
+      .click();
+    assert.equal(await hasStoredAuth(), false);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await navigate("/connect");
+    assert.equal(await page.getByLabel("Remember this device").isChecked(), false);
+    await fill();
+    await submit();
+    await page.locator("#library-heading").waitFor();
+    assert.equal(await hasStoredAuth(), false);
+    const beforeReload = pings;
+    await page.reload();
+    await page.locator("#library-heading").waitFor();
+    assert.equal(pings, beforeReload, "memory-only reload does not authenticate");
+    assert.equal(await page.locator(".tile").count(), 1);
     assert.deepEqual(errors, []);
+    console.log(
+      JSON.stringify({
+        browser: browser.version(),
+        overflow: [320, 390, 1440],
+        nativeValidationCancelFocus: "passed",
+        nativeDisconnectDismissals: 4,
+        mobileDisconnectConfirmed: true,
+        rememberedAndMemoryOnly: "passed",
+        downloadedAudioBytes: wav().length,
+        screenshots: artifacts,
+      }),
+    );
   } finally {
-    for (const release of releases) release();
+    if (releasePing) releasePing();
     await browser.close();
   }
 });

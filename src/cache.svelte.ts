@@ -860,6 +860,25 @@ class DownloadStore {
     );
   }
 
+  /** Commit catalog deletion before reclaiming registered completed bytes. Pending intent is separate. */
+  removeDownloads(keys: readonly string[]) {
+    return this.#downloadOperation(() =>
+      this.#downloadSerial(async () => {
+        await this.#loadDownloads();
+        const records = new Map(this.downloads);
+        const files: string[] = [];
+        for (const key of keys) {
+          const record = records.get(key);
+          if (record?.status !== "completed") continue;
+          files.push(record.fileName);
+          records.delete(key);
+        }
+        await this.#writeDownloads(records);
+        for (const fileName of files) await this.#requireDisk().removeBinary(fileName);
+      }),
+    );
+  }
+
   /** Caller freezes, aborts and joins workers before removing all unfinished intent. */
   cancelPendingDownloads() {
     return this.#downloadOperation(() =>
@@ -1435,6 +1454,10 @@ export class Cache {
 
   get downloads(): ReadonlyMap<string, DownloadEntry> {
     return this.#downloads.downloads;
+  }
+
+  removeDownloads(keys: readonly string[]) {
+    return this.#downloads.removeDownloads(keys);
   }
 
   readDownload(
