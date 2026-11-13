@@ -51,7 +51,9 @@ Installation options vary by browser and device. Offline storage and background 
 
 ## Listen offline
 
-Download music while online, then switch to **Offline Library** to listen without a connection.
+Download music while connected, then choose **Work offline** in navigation or Settings. This turns off all server access, stops remote playback and pauses requested downloads while retaining their queued intent. Cached playback can continue. Choose **Connect** to resume queued downloads; failed jobs require Retry. Reconnecting never loads or saves the server queue.
+
+**Library scope → All music / Downloaded** is independent of the connection. Downloaded filters browsing and search without disconnecting or changing your queue, position or active audio. All music can browse saved metadata offline; uncached tracks remain visible as unavailable.
 
 - **Manage downloads:** Settings → Downloads.
 - **Refresh library:** Automatic when opening online, or via Settings → Refresh library.

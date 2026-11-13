@@ -37,7 +37,7 @@ function fixture(count = 120) {
     },
     session: { localReady: true, offlineMode: false },
     covers: {},
-    trackEngine: { getStatus: () => "downloaded" },
+    trackEngine: { getStatus: () => "downloaded", isDownloaded: () => true },
     playback: { toggleTrack: vi.fn(), replaceQueueAndPlay: vi.fn(), enqueue: vi.fn() },
   } as unknown as ComponentProps<typeof Search>;
 }
@@ -80,7 +80,7 @@ describe("independent search filters", () => {
       window.navigation.navigate("?/search&type=track#anchor", { history: "push" });
       flushSync();
       expect(target.querySelectorAll(".track-row")).toHaveLength(120);
-      const input = target.querySelector("input")!;
+      const input = target.querySelector<HTMLInputElement>('input[type="search"]')!;
       input.value = "Fixture";
       input.dispatchEvent(new Event("input", { bubbles: true }));
       flushSync();
@@ -94,8 +94,11 @@ describe("independent search filters", () => {
     const props = fixture(3);
     const offlineProps = {
       ...props,
-      session: { localReady: true, offlineMode: true },
-      trackEngine: { getStatus: (id: string) => (id === "t2" ? "downloaded" : "idle") },
+      session: { localReady: true, offlineMode: true, downloadedOnly: true },
+      trackEngine: {
+        getStatus: (id: string) => (id === "t2" ? "downloaded" : "idle"),
+        isDownloaded: (id: string) => id === "t2",
+      },
     } as unknown as ComponentProps<typeof Search>;
     const target = document.createElement("main");
     document.body.append(target);
@@ -113,7 +116,7 @@ describe("independent search filters", () => {
       expect(play.getAttribute("aria-label")).toBe("Play Fixture track 2");
       play.click();
       expect(props.playback.toggleTrack).toHaveBeenCalledWith("t2", ["t2"]);
-      const input = target.querySelector("input")!;
+      const input = target.querySelector<HTMLInputElement>('input[type="search"]')!;
       input.value = "Fixture track 0";
       input.dispatchEvent(new Event("input", { bubbles: true }));
       flushSync();
@@ -151,7 +154,7 @@ describe("independent search filters", () => {
           expect(target.querySelector("section[aria-label] header")?.textContent).toContain("120");
           expect(target.textContent).not.toContain("Show more");
         } else expect(target.textContent).toContain("Type to find music");
-        const input = target.querySelector("input")!;
+        const input = target.querySelector<HTMLInputElement>('input[type="search"]')!;
         input.value = "Fixture";
         input.dispatchEvent(new Event("input", { bubbles: true }));
         flushSync();

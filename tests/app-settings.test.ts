@@ -113,7 +113,7 @@ async function setup(
         (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label &&
         (label !== "Disconnect" || button.id === "settings-disconnect"),
     )!;
-  const offline = () => target.querySelector<HTMLInputElement>("#settings-offline")!;
+  const offline = () => ({ checked: fixture.session.offlineMode, disabled: !fixture.session.auth });
   const confirmDisconnect = (cleanup = false) => {
     const dialog = target.querySelector<HTMLDialogElement>("#disconnect-dialog")!;
     const checkbox = dialog.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
@@ -370,14 +370,9 @@ describe("app settings", () => {
     );
     expect(server.querySelector("#server-password")?.getAttribute("type")).toBe("password");
     expect(offline.classList.contains("card")).toBe(true);
-    const control = offline.querySelector('input[role="switch"]')!;
-    expect(control.classList.contains("switch")).toBe(true);
-    expect(target.querySelector('label[for="settings-offline"]')?.textContent).toBe(
-      "Offline library",
-    );
-    expect(control.id).toBe("settings-offline");
-    expect(target.querySelector("#settings-offline-title")?.textContent).toContain("is on");
-    expect(control.getAttribute("aria-describedby")).toBe("settings-offline-help");
+    expect(offline.querySelector('input[role="switch"]')).toBeNull();
+    expect(target.querySelector("#settings-offline-title")?.textContent).toBe("Connection");
+    expect(offline.textContent).toContain("Working offline");
     expect(target.querySelector("select")).toBeNull();
   });
 
@@ -385,14 +380,12 @@ describe("app settings", () => {
     const { target, session } = await setup(true);
     const help = () =>
       target.querySelector("#settings-offline-help")!.textContent!.replace(/\s+/g, " ").trim();
-    expect(help()).toContain("Browse your full library and stream from your server.");
-    expect(help()).toContain("Turn this on to show downloaded music only.");
-    expect(help()).not.toContain("Turn this off");
+    expect(help()).toContain("Server access is on.");
+    expect(help()).toContain("without disconnecting.");
     await session.setOfflineMode(true);
     flushSync();
-    expect(help()).toContain("Showing downloaded music only.");
-    expect(help()).toContain("Turn this off to browse and stream from your server.");
-    expect(help()).not.toContain("Turn this on");
+    expect(help()).toContain("Server access is off. Requested downloads are paused.");
+    expect(target.querySelector("#settings-offline-card button")?.textContent).toBe("Connect");
   });
 
   it("keeps decorative status glyphs and loading aligned with the connection label", async () => {
@@ -468,7 +461,7 @@ describe("app settings", () => {
       for (const owner of [".app-sidebar", "#navigation-dialog"]) {
         const notice = target.querySelector(`${owner} [aria-label="App update"]`)!;
         expect(notice.previousElementSibling?.matches("hr.separator")).toBe(true);
-        expect(notice.previousElementSibling?.previousElementSibling?.tagName).toBe("NAV");
+        expect(target.querySelector(`${owner} nav`)).not.toBeNull();
         const action = notice.querySelector("button")!;
         expect(action.title).toContain("A new version of Libras is available.");
         expect(action.title).toContain("interrupts playback");

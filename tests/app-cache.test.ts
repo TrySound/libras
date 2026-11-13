@@ -35,6 +35,9 @@ vi.mock("../src/session.svelte", () => ({
     get offlineMode() {
       return mocks.isOffline();
     }
+    get downloadedOnly() {
+      return mocks.isOffline();
+    }
     localReady = mocks.localReady;
     loadingAfterConnect = mocks.loadingAfterConnect;
     constructor(options: NonNullable<typeof mocks.options>) {
@@ -226,6 +229,7 @@ it("keeps all queue occurrences including unavailable offline rows", async () =>
   vi.spyOn(TrackEngine.prototype, "getStatus").mockImplementation((id) =>
     id === "one" ? "downloaded" : "idle",
   );
+  vi.spyOn(TrackEngine.prototype, "isDownloaded").mockImplementation((id) => id === "one");
   const target = document.createElement("main");
   document.body.append(target);
   const component = mount(App, { target });
@@ -516,6 +520,7 @@ it("preserves artist pagination when offline eligibility changes", async () => {
   vi.spyOn(TrackEngine.prototype, "getStatus").mockImplementation((id) =>
     downloaded.has(id) ? "downloaded" : "idle",
   );
+  vi.spyOn(TrackEngine.prototype, "isDownloaded").mockImplementation((id) => downloaded.has(id));
   let callback: IntersectionObserverCallback;
   const observed = new Set<Element>();
   vi.stubGlobal(
@@ -582,7 +587,7 @@ it("preserves artist pagination when offline eligibility changes", async () => {
   downloaded.clear();
   flushSync();
   expect(count()).toBe(0);
-  expect(target.textContent).toContain("No downloaded artists.");
+  expect(target.textContent).toContain("No downloaded music.");
   flags.clear();
   flushSync();
   expect(count()).toBe(96);

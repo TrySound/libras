@@ -54,7 +54,6 @@ export class Session {
   #restoration: Promise<void> = Promise.resolve();
   #loadController?: AbortController;
   #authController?: AbortController;
-  #downloadController?: AbortController;
   #operationId = 0;
   #started = false;
   #destroyed = false;
@@ -63,13 +62,12 @@ export class Session {
     this.#options = options;
   }
 
-  #openDownloadAccess() {
-    if (!this.auth) return;
-    this.#downloadController?.abort();
-    const controller = new AbortController();
-    const connection = this.#options.network.open(this.auth, controller.signal);
-    this.#downloadController = controller;
-    this.#options.tracks.setDownloadConnection(connection.audio);
+  /** Browsing preference only; never changes playback or connection ownership. */
+  downloadedOnly = $state(false);
+
+  setDownloadedOnly(enabled: boolean) {
+    this.downloadedOnly = enabled;
+    this.#options.preferences.setItem("libras-downloaded-only", String(enabled));
   }
 
   get libraryProgress() {
@@ -119,7 +117,7 @@ export class Session {
     this.status = this.error ? "error" : "disconnected";
   }
 
-  /** Detach browsing and playback; requested downloads have a separate lifetime. */
+  /** Detach all server access; durable queued download intent remains paused. */
   #detach() {
     this.#authController?.abort();
     this.#authController = undefined;
@@ -141,6 +139,7 @@ export class Session {
     playback.setConnection(connection?.queue);
     covers.setConnection(connection?.artwork);
     tracks.setPlaybackConnection(connection?.audio);
+    tracks.setDownloadConnection(connection?.audio);
     this.#options.playlists?.setConnection(connection?.playlists);
   }
 
@@ -158,6 +157,7 @@ export class Session {
     this.#started = true;
     const operationId = this.#beginOperation();
     try {
+      this.downloadedOnly = this.#options.preferences.getItem("libras-downloaded-only") === "true";
       this.auth = this.#loadSavedAuth();
       const account = this.auth
         ? { host: this.auth.host, username: this.auth.username }
@@ -194,7 +194,6 @@ export class Session {
   async #finishStartup(operationId: number) {
     await this.#restoration;
     if (!this.#isCurrentOperation(operationId)) return;
-    this.#openDownloadAccess();
     if (!this.auth || this.offlineMode) {
       this.status = "disconnected";
       return;
@@ -283,7 +282,6 @@ export class Session {
     playback.activate();
     this.auth = credentials;
     this.#setConnection(active);
-    this.#openDownloadAccess();
     this.localReady = true;
   }
 
@@ -343,9 +341,6 @@ export class Session {
     const operationId = this.#beginOperation();
     this.auth = null;
     this.#detach();
-    this.#downloadController?.abort();
-    this.#downloadController = undefined;
-    this.#options.tracks.setDownloadConnection(undefined);
     this.status = "disconnected";
     try {
       this.#options.auth.clear();
@@ -464,8 +459,5 @@ export class Session {
     this.#loadController?.abort();
     this.#loadController = undefined;
     this.#detach();
-    this.#downloadController?.abort();
-    this.#downloadController = undefined;
-    this.#options.tracks.setDownloadConnection(undefined);
   }
 }

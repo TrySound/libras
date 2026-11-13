@@ -54,6 +54,28 @@ describe("disconnect and cache clear", () => {
 });
 
 describe("session", () => {
+  it("keeps browsing scope independent of connection, duplicate queue occurrences and resume", async () => {
+    const { session, selection, tracks, playback } = await connected();
+    const cache = selection.cache!;
+    cache.setQueue({ tracks: ["missing", "same", "same"], index: 2, position: 17 });
+    const queue = cache.queue;
+    const audio = tracks.setPlaybackConnection.mock.calls.at(-1)![0];
+    playback.suspendNetwork.mockClear();
+    session.setDownloadedOnly(true);
+    expect(session.downloadedOnly).toBe(true);
+    expect(session.offlineMode).toBe(false);
+    expect(audio!.signal.aborted).toBe(false);
+    expect(cache.queue).toEqual(queue);
+    expect(playback.suspendNetwork).not.toHaveBeenCalled();
+    await session.setOfflineMode(true);
+    expect(session.downloadedOnly).toBe(true);
+    session.setDownloadedOnly(false);
+    expect(cache.queue).toEqual(queue);
+    expect(session.offlineMode).toBe(true);
+    await session.setOfflineMode(false);
+    expect(cache.queue).toEqual(queue);
+    expect(session.downloadedOnly).toBe(false);
+  });
   it("reports failed metadata restoration without preventing offline queue restoration", async () => {
     const { session, metadata, playback, storage, loadCache } = setup(true);
     storage.setItem("navidrome-offline-mode", "true");
@@ -833,7 +855,7 @@ describe("session", () => {
     expect(previous.queueDirty).toBe(false);
   });
 
-  it("keeps three active and three queued downloads across both offline toggles", async () => {
+  it("pauses all server requests offline and resumes queued downloads on reconnect", async () => {
     installDisk();
     const { session, trackEngine, metadata, playback } = await connected();
     const first = deferred();
@@ -851,20 +873,20 @@ describe("session", () => {
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
     expect(trackEngine.downloadCount).toBe(6);
     await session.setOfflineMode(true);
-    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
     expect(trackEngine.downloadCount).toBe(6);
     first.resolve();
-    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(4));
+    release.resolve();
+    await Promise.allSettled(work);
+    await session.refresh();
+    expect(fetcher).toHaveBeenCalledTimes(3);
     expect(session.offlineMode).toBe(true);
-    expect(trackEngine.downloadCount).toBe(5);
     await session.setOfflineMode(false);
-    expect(signals.every((signal) => !signal.aborted)).toBe(true);
     expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
     expect(playback.refreshQueue).not.toHaveBeenCalled();
     release.resolve();
-    await Promise.all(work);
-    expect(fetcher).toHaveBeenCalledTimes(6);
-    expect(trackEngine.downloadCount).toBe(0);
+    await vi.waitFor(() => expect(trackEngine.downloadCount).toBe(0));
+    expect(fetcher).toHaveBeenCalledTimes(9);
   });
 
   it("closes download access when the session is destroyed", async () => {
@@ -877,19 +899,18 @@ describe("session", () => {
     expect(connection.signal.aborted).toBe(true);
   });
 
-  it("retains download access on offline startup without browsing sync or restoring cleared credentials", async () => {
+  it("opens no server access on offline startup or after clearing credentials", async () => {
     const { session, storage, network, metadata, auth } = setup(true);
     storage.setItem("navidrome-offline-mode", "true");
     const open = vi.spyOn(network, "open");
     session.start();
-    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(session.localReady).toBe(true));
+    expect(open).not.toHaveBeenCalled();
     expect(metadata.getModifiedAt).not.toHaveBeenCalled();
-    const connection = open.mock.results[0].value;
     session.disconnect();
-    expect(connection.signal.aborted).toBe(true);
     expect(auth.load()).toBeNull();
     await session.setOfflineMode(false);
-    expect(open).toHaveBeenCalledOnce();
+    expect(open).not.toHaveBeenCalled();
     expect(session.auth).toBeNull();
   });
 
