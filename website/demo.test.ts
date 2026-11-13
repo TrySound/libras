@@ -5,6 +5,10 @@ import { flushSync, mount, unmount } from "svelte";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Demo from "./demo.svelte";
 import { readDeezer } from "./deezer-api";
+vi.mock("../src/account-ownership", () => ({
+  acquireAccountOwnership: async () => async () => {},
+  AccountOwnershipError: class extends Error {},
+}));
 vi.mock("./deezer-api", () => ({ readDeezer: vi.fn() }));
 const read = vi.mocked(readDeezer);
 import { installDisk } from "../tests/cache-test-helpers";

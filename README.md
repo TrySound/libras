@@ -31,7 +31,7 @@ You'll need a reachable **HTTPS server with a Subsonic-compatible API**, such as
 
 ### Browser support
 
-Safari 26.0 or newer is required; older Safari versions are not supported. The app uses native URLPattern and OPFS writable files. Safari 26.0–26.1 load Navigation API and invoker commands polyfills on demand; Safari 26.2+ use the native APIs. The dialog `closedby` polyfill and relative `rgb()` colors remain necessary for Safari 26. The standalone styleguide uses native browser features without polyfills.
+Safari 26.0 or newer is required; older Safari versions are not supported. The app uses native URLPattern, OPFS writable files, and Web Locks. Without Web Locks, account activation is blocked rather than risking conflicting writes. Safari 26.0–26.1 load Navigation API and invoker commands polyfills on demand; Safari 26.2+ use the native APIs. The dialog `closedby` polyfill and relative `rgb()` colors remain necessary for Safari 26. The standalone styleguide uses native browser features without polyfills.
 
 ### Authentication and device storage
 
@@ -57,7 +57,7 @@ Download music while connected, then choose **Work offline** in navigation or Se
 
 - **Manage downloads:** Settings → Downloads.
 - **Refresh library:** Automatic when opening online, or via Settings → Refresh library.
-- **Disconnect:** Clears credentials and optionally deletes this account’s local cache and downloads. Remembered identity, preferences, other accounts and server data are unchanged. Close other Libras tabs before deleting local data.
+- **Disconnect:** Clears credentials and optionally deletes this account’s local cache and downloads. Remembered identity, preferences, other accounts and server data are unchanged. Only one tab can open an account’s local data at a time, including while deleting it. A second tab is blocked: close the owning tab, then select **Retry**. There is no automatic takeover or live cross-tab queue replication.
 - **Storage:** Each server/account has its own offline library, saved only in this browser on this device. **Clearing site data deletes it.**
 
 ## App updates
