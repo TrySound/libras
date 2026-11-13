@@ -15,9 +15,15 @@ function setup(unsupported = false, available = true) {
     },
   );
   const handlers = new Map<string, MediaSessionActionHandler | null>();
+  let playbackState = "none";
   const session = {
     metadata: null,
-    playbackState: "none",
+    get playbackState() {
+      return playbackState;
+    },
+    set playbackState(value: string) {
+      playbackState = value;
+    },
     setPositionState: vi.fn(),
     setActionHandler: vi.fn((action: string, handler: MediaSessionActionHandler | null) => {
       if (unsupported && action === "seekto") throw new Error("Unsupported action");
@@ -50,7 +56,7 @@ function setup(unsupported = false, available = true) {
       audio.src = "";
     },
   });
-  Object.defineProperty(audio, "currentSrc", { get: () => audio.src });
+  Object.defineProperty(audio, "currentSrc", { configurable: true, get: () => audio.src });
   vi.stubGlobal(
     "Audio",
     vi.fn(function () {
@@ -59,6 +65,9 @@ function setup(unsupported = false, available = true) {
   );
   const onnext = vi.fn();
   const onprevious = vi.fn();
+  const onposition = vi.fn();
+  const onstatechange = vi.fn();
+  const playbackWrites = vi.spyOn(session, "playbackState", "set");
   const player = mount(Player, {
     target: document.createElement("div"),
     props: {
@@ -66,6 +75,8 @@ function setup(unsupported = false, available = true) {
       hasPrevious: true,
       onnext,
       onprevious,
+      onposition,
+      onstatechange,
     },
   });
   flushSync();
@@ -77,7 +88,19 @@ function setup(unsupported = false, available = true) {
       position,
       getSource: async () => ({ url: "blob:audio", seekMode: "full", release() {} }),
     });
-  return { player, session, handlers, audio, onnext, onprevious, play, destroy };
+  return {
+    player,
+    session,
+    handlers,
+    audio,
+    onnext,
+    onprevious,
+    onposition,
+    onstatechange,
+    playbackWrites,
+    play,
+    destroy,
+  };
 }
 
 afterEach(async () => {
@@ -213,6 +236,218 @@ describe("Player Media Session integration", () => {
     expect(player.position).toBe(0);
   });
 
+  it("updates progress callbacks without any Media Session writes", async () => {
+    const { play, player, audio, session, playbackWrites, onposition } = setup();
+    await play({ title: "Song", duration: 100 });
+    session.setPositionState.mockClear();
+    playbackWrites.mockClear();
+    onposition.mockClear();
+    for (const seconds of [10, 20, 30]) {
+      audio.currentTime = seconds;
+      audio.dispatchEvent(new Event("timeupdate"));
+    }
+    expect(player.position).toBe(30);
+    expect(onposition.mock.calls).toEqual([[10], [20], [30]]);
+    expect(session.setPositionState).not.toHaveBeenCalled();
+    expect(playbackWrites).not.toHaveBeenCalled();
+  });
+
+  it("freezes buffering through canplay and rate changes until actual playing", async () => {
+    const { play, player, audio, session, onstatechange } = setup();
+    await play({ title: "Song", duration: 100 });
+    onstatechange.mockClear();
+    audio.currentTime = 12;
+    audio.dispatchEvent(new Event("waiting"));
+    audio.dispatchEvent(new Event("waiting"));
+    expect(player.playing).toBe(true);
+    expect(session.playbackState).toBe("paused");
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 100,
+      position: 12,
+      playbackRate: 1,
+    });
+    audio.playbackRate = 2;
+    audio.dispatchEvent(new Event("ratechange"));
+    audio.dispatchEvent(new Event("canplay"));
+    expect(session.playbackState).toBe("paused");
+    audio.currentTime = 13;
+    audio.dispatchEvent(new Event("playing"));
+    expect(session.playbackState).toBe("playing");
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 100,
+      position: 13,
+      playbackRate: 2,
+    });
+    expect(onstatechange.mock.calls.map(([state]) => state)).toEqual([
+      { status: "buffering", playing: true },
+      { status: "ready", playing: true },
+    ]);
+    audio.dispatchEvent(new Event("waiting"));
+    player.pause();
+    audio.dispatchEvent(new Event("canplay"));
+    expect(session.playbackState).toBe("paused");
+    expect(player.playing).toBe(false);
+  });
+
+  it("distinguishes stalled downloads from an insufficient-data stall", async () => {
+    const { play, audio, session } = setup();
+    await play({ title: "Song", duration: 100 });
+    audio.readyState = 3;
+    session.setPositionState.mockClear();
+    audio.dispatchEvent(new Event("stalled"));
+    expect(session.playbackState).toBe("playing");
+    expect(session.setPositionState).not.toHaveBeenCalled();
+    audio.readyState = 2;
+    audio.currentTime = 17;
+    audio.dispatchEvent(new Event("stalled"));
+    expect(session.playbackState).toBe("paused");
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 100,
+      position: 17,
+      playbackRate: 1,
+    });
+    audio.dispatchEvent(new Event("canplay"));
+    expect(session.playbackState).toBe("paused");
+  });
+
+  it("anchors explicit and native seeks, pause, metadata, and end without progress events", async () => {
+    const { play, player, audio, session, onposition } = setup();
+    await play({ title: "Song", duration: 100 });
+    await player.seek(25);
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 100,
+      position: 25,
+      playbackRate: 1,
+    });
+    onposition.mockClear();
+    audio.currentTime = 40;
+    audio.dispatchEvent(new Event("seeking"));
+    expect(session.playbackState).toBe("paused");
+    audio.dispatchEvent(new Event("seeked"));
+    expect(session.playbackState).toBe("playing");
+    expect(onposition).not.toHaveBeenCalled();
+    audio.currentTime = 41;
+    audio.paused = true;
+    audio.dispatchEvent(new Event("pause"));
+    expect(session.playbackState).toBe("paused");
+    audio.duration = 90;
+    audio.dispatchEvent(new Event("durationchange"));
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 90,
+      position: 41,
+      playbackRate: 1,
+    });
+    await player.seek(45);
+    expect(session.playbackState).toBe("paused");
+    await player.resume();
+    audio.currentTime = 90;
+    audio.dispatchEvent(new Event("ended"));
+    expect(session.playbackState).toBe("paused");
+    expect(session.metadata).toMatchObject({ title: "Song" });
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 90,
+      position: 90,
+      playbackRate: 1,
+    });
+  });
+
+  it("uses requested replacement anchors, ignores retired media, and cancels late sources", async () => {
+    const { play, player, audio, session } = setup();
+    await play({ title: "Old", duration: 100 });
+    audio.currentTime = 80;
+    audio.duration = 150;
+    audio.dispatchEvent(new Event("durationchange"));
+    audio.dispatchEvent(new Event("waiting"));
+    let resolve!: (source: {
+      url: string;
+      offset: number;
+      seekMode: "full";
+      release: () => void;
+    }) => void;
+    // Some browsers retain currentSrc after clearing src.
+    Object.defineProperty(audio, "currentSrc", { configurable: true, get: () => "blob:retired" });
+    const pending = player.play({
+      metadata: { title: "New", duration: 300 },
+      position: 200,
+      getSource: () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    });
+    expect(session.playbackState).toBe("paused");
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 300,
+      position: 200,
+      playbackRate: 1,
+    });
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 300,
+      position: 200,
+      playbackRate: 1,
+    });
+    const release = vi.fn();
+    player.unload();
+    session.setPositionState.mockClear();
+    resolve({ url: "blob:late", offset: 190, seekMode: "full", release });
+    await pending;
+    expect(release).toHaveBeenCalledOnce();
+    expect(session.setPositionState).not.toHaveBeenCalled();
+    expect(session.playbackState).toBe("none");
+  });
+
+  it("publishes offset-adjusted reacquisition completion and paused seeks", async () => {
+    const { player, audio, session } = setup();
+    await player.play({
+      metadata: { title: "Stream", duration: 300 },
+      position: 200,
+      getSource: async ({ position }) => ({
+        url: "blob:stream",
+        offset: position - 10,
+        seekMode: "buffered",
+        release() {},
+      }),
+    });
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 300,
+      position: 200,
+      playbackRate: 1,
+    });
+    player.pause();
+    audio.duration = 5;
+    await player.seek(250);
+    expect(audio.currentTime).toBe(5);
+    expect(player.position).toBe(245);
+    expect(session.playbackState).toBe("paused");
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 300,
+      position: 245,
+      playbackRate: 1,
+    });
+  });
+
+  it("isolates missing or throwing optional position and playback APIs", async () => {
+    const { play, player, session } = setup();
+    session.setPositionState.mockImplementation(() => {
+      throw new Error("Unsupported");
+    });
+    await play({ title: "Song", duration: 100 });
+    expect(session.playbackState).toBe("playing");
+    player.pause();
+    expect(session.playbackState).toBe("paused");
+    Object.defineProperty(session, "setPositionState", { value: undefined });
+    Object.defineProperty(session, "playbackState", {
+      set() {
+        throw new Error("Unsupported");
+      },
+    });
+    await play({ title: "Next" });
+    expect(player.playing).toBe(true);
+    expect(session.metadata).toMatchObject({ title: "Next" });
+    player.unload();
+    expect(session.metadata).toBeNull();
+  });
+
   it("clears unavailable position and sanitizes invalid values", async () => {
     const { play, session, audio } = setup();
     await play({ title: "Song", duration: Infinity });
@@ -221,13 +456,72 @@ describe("Player Media Session integration", () => {
     audio.currentTime = 200;
     audio.playbackRate = 0;
     audio.dispatchEvent(new Event("loadedmetadata"));
-    audio.dispatchEvent(new Event("timeupdate"));
     expect(session.setPositionState).toHaveBeenLastCalledWith({
       duration: 100,
       position: 100,
       playbackRate: 1,
     });
   });
+
+  it("freezes errors at actual time and ignores events after destruction", async () => {
+    const { play, audio, session, destroy } = setup();
+    await play({ title: "Song", duration: 100 });
+    audio.currentTime = 29;
+    audio.dispatchEvent(new Event("error"));
+    expect(session.playbackState).toBe("paused");
+    expect(session.metadata).toMatchObject({ title: "Song" });
+    expect(session.setPositionState).toHaveBeenLastCalledWith({
+      duration: 100,
+      position: 29,
+      playbackRate: 1,
+    });
+    await destroy();
+    expect(session.setPositionState).toHaveBeenLastCalledWith(undefined);
+    session.setPositionState.mockClear();
+    for (const event of [
+      "timeupdate",
+      "playing",
+      "waiting",
+      "stalled",
+      "seeking",
+      "seeked",
+      "ratechange",
+      "loadedmetadata",
+    ]) {
+      audio.dispatchEvent(new Event(event));
+    }
+    expect(session.setPositionState).not.toHaveBeenCalled();
+    expect(session.playbackState).toBe("none");
+  });
+
+  it("does not restore a timeline when a synchronous state callback unloads", async () => {
+    const { play, player, audio, session, onstatechange } = setup();
+    await play({ title: "Song", duration: 100 });
+    onstatechange.mockImplementation(({ status }) => {
+      if (status === "buffering") player.unload();
+    });
+    audio.currentTime = 50;
+    audio.dispatchEvent(new Event("waiting"));
+    expect(session.playbackState).toBe("none");
+    expect(session.metadata).toBeNull();
+    expect(session.setPositionState).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it.each([NaN, Infinity, -1, 0])(
+    "sanitizes playback rate %s at a fresh boundary",
+    async (rate) => {
+      const { play, audio, session } = setup();
+      await play({ title: "Song", duration: 100 });
+      audio.playbackRate = rate;
+      audio.currentTime = -5;
+      audio.dispatchEvent(new Event("ratechange"));
+      expect(session.setPositionState).toHaveBeenLastCalledWith({
+        duration: 100,
+        position: 0,
+        playbackRate: 1,
+      });
+    },
+  );
 
   it("tolerates unsupported actions and cleans up", async () => {
     const { play, destroy, session, handlers } = setup(true);

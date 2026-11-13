@@ -904,10 +904,11 @@ describe("playback", () => {
     expect(audio.play).toHaveBeenCalledTimes(count);
   });
 
-  it("updates queue position and media session from audio events", async () => {
+  it("updates queue progress without republishing the media session timeline", async () => {
     const { player, getPlayer, queuePosition, audio, session, tracks, selection } = setup();
     await player.play();
     audio.dispatchEvent(new Event("loadedmetadata"));
+    session.setPositionState.mockClear();
     audio.currentTime = 32;
     audio.dispatchEvent(new Event("timeupdate"));
     expect(selection.cache!.queue.position).toBe(32);
@@ -915,6 +916,8 @@ describe("playback", () => {
     expect(getPlayer().duration).toBe(120);
     expect(getPlayer().playing).toBe(true);
     expect(session.playbackState).toBe("playing");
+    expect(session.setPositionState).not.toHaveBeenCalled();
+    audio.dispatchEvent(new Event("ratechange"));
     expect(session.setPositionState).toHaveBeenLastCalledWith({
       duration: 120,
       position: 32,
