@@ -90,6 +90,8 @@
   let forced = false;
   let generation = 0;
   let abort: AbortController | undefined;
+  let mediaSuspended = false;
+  let nativeSeeking = false;
 
   let publishedState: PlayerState = { status: "idle", playing: false };
   function publishState() {
@@ -106,7 +108,6 @@
   function setPosition(seconds: number) {
     currentPosition = seconds;
     onposition?.(seconds);
-    syncMediaSession();
   }
   function release(result: PlayerSource | undefined) {
     try {
@@ -117,10 +118,10 @@
     }
   }
   function clearSource() {
-    audio?.removeAttribute("src");
-    audio?.load();
     const previous = source;
     source = undefined;
+    audio?.removeAttribute("src");
+    audio?.load();
     release(previous);
   }
   function setMediaAction(action: MediaSessionAction, handler: MediaSessionActionHandler | null) {
@@ -170,10 +171,21 @@
       // Unavailable artwork or metadata support must not affect playback.
     }
   }
-  function syncMediaSession() {
+  function syncMediaSession(anchor?: number) {
     if (!media) return;
+    // currentSrc can still name a retired resource during acquisition. Only an
+    // owned source supplies a fresh anchor; otherwise use the requested position.
+    const seconds =
+      anchor ??
+      (source && audio?.currentSrc
+        ? (source.offset ?? 0) + (Number.isFinite(audio.currentTime) ? audio.currentTime : 0)
+        : position);
     try {
-      media.playbackState = !track ? "none" : playing ? "playing" : "paused";
+      media.playbackState = !track
+        ? "none"
+        : playing && !mediaSuspended && !nativeSeeking
+          ? "playing"
+          : "paused";
     } catch {
       /* Optional browser API. */
     }
@@ -184,7 +196,7 @@
         length
           ? {
               duration: length,
-              position: Number.isFinite(position) ? Math.min(length, Math.max(0, position)) : 0,
+              position: Number.isFinite(seconds) ? Math.min(length, Math.max(0, seconds)) : 0,
               playbackRate: Number.isFinite(rate) && rate > 0 ? rate : 1,
             }
           : undefined,
@@ -232,15 +244,16 @@
     const element = new Audio();
     audio = element;
     element.preload = "metadata";
+    void syncMetadata();
     syncMediaSession();
     const onTime = () => {
-      if (!track || !element.currentSrc) return;
+      if (!track || !source || !element.currentSrc) return;
       setPosition(
         (source?.offset ?? 0) + (Number.isFinite(element.currentTime) ? element.currentTime : 0),
       );
     };
     const onMetadata = () => {
-      if (!track || !element.currentSrc) return;
+      if (!track || !source || !element.currentSrc) return;
       const offset = source?.offset ?? 0;
       measuredDuration =
         offset > 0
@@ -255,12 +268,27 @@
       timeupdate: onTime,
       loadedmetadata: onMetadata,
       durationchange: onMetadata,
-      ratechange: syncMediaSession,
+      ratechange: () => {
+        if (source) syncMediaSession();
+      },
+      seeking: () => {
+        if (!source) return;
+        nativeSeeking = true;
+        syncMediaSession();
+      },
+      seeked: () => {
+        if (!source) return;
+        nativeSeeking = false;
+        syncMediaSession();
+      },
       playing: () => {
+        if (!source) return;
         if (!intent) {
           element.pause();
           return;
         }
+        mediaSuspended = false;
+        nativeSeeking = false;
         isPlaying = true;
         currentStatus = "ready";
         publishState();
@@ -273,15 +301,23 @@
         syncMediaSession();
       },
       waiting: () => {
+        if (!source) return;
+        if (intent) mediaSuspended = true;
         if (intent && status === "ready") currentStatus = "buffering";
         publishState();
+        syncMediaSession();
+      },
+      stalled: () => {
+        if (!source || !intent || element.paused || element.readyState >= 3) return;
+        mediaSuspended = true;
+        syncMediaSession();
       },
       canplay: () => {
         if (status === "buffering") currentStatus = "ready";
         publishState();
       },
       ended: () => {
-        if (!element.currentSrc || !intent) return;
+        if (!source || !element.currentSrc || !intent) return;
         intent = false;
         isPlaying = false;
         currentStatus = "ended";
@@ -290,7 +326,7 @@
         syncMediaSession();
       },
       error: () => {
-        if (!element.currentSrc || status === "loading" || status === "seeking") return;
+        if (!source || !element.currentSrc || status === "loading" || status === "seeking") return;
         if (element.error?.code === 4 && !forced) {
           void load(position, intent, true);
         } else fail(new Error(element.error?.message || "The track could not be played."));
@@ -382,6 +418,9 @@
     invalidate();
     pauseAudio();
     clearSource();
+    measuredDuration = 0;
+    mediaSuspended = true;
+    nativeSeeking = false;
     const request = generation;
     const controller = new AbortController();
     abort = controller;
@@ -393,6 +432,7 @@
     if (!valid()) return;
     setPosition(position);
     if (!valid()) return;
+    syncMediaSession(position);
     const prepare = async (transcode: boolean) => {
       const nextSource = await current.getSource({
         forceTranscode: transcode,
@@ -437,6 +477,9 @@
         )
           throw error;
         clearSource();
+        measuredDuration = 0;
+        mediaSuspended = true;
+        syncMediaSession(position);
         await prepare(true);
       }
       if (!valid()) return;
@@ -530,8 +573,10 @@
       status !== "seeking"
     ) {
       try {
+        const request = generation;
         element.currentTime = target - offset;
         setPosition(target);
+        if (request === generation) syncMediaSession(target);
         return;
       } catch (error) {
         if (seekMode === "full") {
@@ -550,6 +595,8 @@
     pauseAudio();
     clearSource();
     forced = false;
+    mediaSuspended = false;
+    nativeSeeking = false;
     measuredDuration = 0;
     currentStatus = "idle";
     track = undefined;
