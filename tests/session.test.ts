@@ -106,13 +106,13 @@ describe("session", () => {
     expect(session.status).toBe("connected");
   });
 
-  it("still refreshes the queue when metadata refresh fails", async () => {
+  it("never exchanges queues when metadata refresh fails", async () => {
     const { session, metadata, playback, covers } = await connected();
     playback.refreshQueue.mockClear();
     covers.refresh.mockClear();
     metadata.getModifiedAt.mockRejectedValueOnce(new Error("Library unavailable"));
     await session.refresh();
-    expect(playback.refreshQueue).toHaveBeenCalledOnce();
+    expect(playback.refreshQueue).not.toHaveBeenCalled();
     expect(covers.refresh).not.toHaveBeenCalled();
     expect(session.refreshError).toContain("Library unavailable");
     expect(session.status).toBe("connected");
@@ -134,7 +134,7 @@ describe("session", () => {
     expect(session.syncing).toBe(false);
   });
 
-  it("does no refresh offline and orders metadata before covers and queue", async () => {
+  it("does no refresh offline and never exchanges the queue", async () => {
     const offline = setup();
     await offline.session.refresh();
     expect(offline.metadata.getModifiedAt).not.toHaveBeenCalled();
@@ -151,10 +151,7 @@ describe("session", () => {
     await refresh;
     expect(covers.refresh).toHaveBeenCalledOnce();
     expect(covers.refresh).toHaveBeenCalledWith(true);
-    expect(playback.refreshQueue).toHaveBeenCalledOnce();
-    expect(covers.refresh.mock.invocationCallOrder[0]).toBeLessThan(
-      playback.refreshQueue.mock.invocationCallOrder[0],
-    );
+    expect(playback.refreshQueue).not.toHaveBeenCalled();
   });
 
   it("coalesces overlapping refreshes and permits a later refresh", async () => {
@@ -293,7 +290,7 @@ describe("session", () => {
     expect(metadata.getModifiedAt).toHaveBeenCalledTimes(2);
     expect(loadCache).toHaveBeenCalledOnce();
     expect(tracks.setPlaybackConnection.mock.calls.at(-1)![0]).toBe(client);
-    expect(playback.refreshQueue).toHaveBeenCalledTimes(2);
+    expect(playback.refreshQueue).not.toHaveBeenCalled();
     expect(await session.connect(input)).toBe(false);
     expect(validate).not.toHaveBeenCalled();
   });
@@ -863,7 +860,7 @@ describe("session", () => {
     await session.setOfflineMode(false);
     expect(signals.every((signal) => !signal.aborted)).toBe(true);
     expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
-    expect(playback.refreshQueue).toHaveBeenCalledOnce();
+    expect(playback.refreshQueue).not.toHaveBeenCalled();
     release.resolve();
     await Promise.all(work);
     expect(fetcher).toHaveBeenCalledTimes(6);
@@ -908,11 +905,11 @@ describe("session", () => {
     expect(loadCache).toHaveBeenCalledOnce();
     expect(metadata.getModifiedAt).toHaveBeenCalledOnce();
     expect(metadata.readLibrary).not.toHaveBeenCalled();
-    expect(playback.refreshQueue).toHaveBeenCalledOnce();
+    expect(playback.refreshQueue).not.toHaveBeenCalled();
     expect(session.status).toBe("connected");
     await session.refresh();
     expect(metadata.readLibrary).toHaveBeenCalledOnce();
-    expect(playback.refreshQueue).toHaveBeenCalledTimes(2);
+    expect(playback.refreshQueue).not.toHaveBeenCalled();
   });
 });
 

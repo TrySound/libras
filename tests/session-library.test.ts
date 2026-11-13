@@ -157,7 +157,7 @@ describe("session library workflow", () => {
     expect(session.refreshError).toContain("Library unavailable");
     expect(auth.load()).not.toBeNull();
     expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
-    expect(playback.refreshQueue).toHaveBeenCalledOnce();
+    expect(playback.refreshQueue).not.toHaveBeenCalled();
     expect(disk.writes).toBe(0);
   });
 

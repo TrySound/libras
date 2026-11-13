@@ -208,7 +208,7 @@ afterEach(async () => {
 
 describe("playback", () => {
   it("flushes progress on a native pause through the explicit Player event", async () => {
-    const { player, audio } = setup();
+    const { player, audio, selection } = setup();
     vi.setSystemTime(0);
     const write = vi.fn(async () => {});
     player.setConnection({
@@ -225,11 +225,9 @@ describe("playback", () => {
     expect(write).not.toHaveBeenCalled();
     audio.pause();
     await vi.advanceTimersByTimeAsync(0);
-    expect(write).toHaveBeenCalledExactlyOnceWith({
-      trackIds: ["a", "b"],
-      currentTrackId: "a",
-      position: 12,
-    });
+    expect(write).not.toHaveBeenCalled();
+    expect(selection.cache!.queue.position).toBe(12);
+    expect(selection.cache!.queueDirty).toBe(false);
   });
 
   it.each(["replace", "select", "replay", "duplicate", "stop", "clear"] as const)(
@@ -381,7 +379,7 @@ describe("playback", () => {
   });
 
   it.each([false, true])(
-    "keeps a playback session when refreshing the server queue (paused: %s)",
+    "explicit load replaces a playback session without autoplay (paused: %s)",
     async (paused) => {
       const { player, audio, selection } = setup();
       const account = { host: "https://music.example.com", username: "listener" };
@@ -397,17 +395,11 @@ describe("playback", () => {
       player.setConnection(connection);
       await player.play();
       if (paused) player.pause();
-      const source = audio.src;
-      const loads = audio.load.mock.calls.length;
       save.mockClear();
-      await player.refreshQueue();
-      expect(selection.cache!.queue.tracks).toEqual(local.tracks);
-      expect(player.track?.id).toBe("a");
-      expect(audio.src).toBe(source);
-      expect(audio.load).toHaveBeenCalledTimes(loads);
-      expect(save).not.toHaveBeenCalled();
-      player.suspend();
-      await player.refreshQueue();
+      await player.loadServerQueue();
+      expect(selection.cache!.queue.tracks).not.toEqual(local.tracks);
+      expect(audio.src).toBe("");
+      expect(save).toHaveBeenCalledOnce();
       expect(player.track?.id).toBe("c");
       expect(selection.cache!.queue.position).toBe(25);
     },
@@ -442,7 +434,7 @@ describe("playback", () => {
     await selection.cache!.flush();
     player.activate();
     player.setConnection(active.queue);
-    await player.refreshQueue();
+    await player.loadServerQueue();
     await player.flushQueue();
     expect(selection.cache!.queue.tracks).toEqual(["a", "fresh"]);
     expect(selection.cache!.queue.index).toBe(1);

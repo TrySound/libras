@@ -582,11 +582,10 @@ describe("app settings", () => {
   it.each([false, true])(
     "shows album/track counters during background refresh (saved: %s)",
     async (saved) => {
-      const { target, metadata, session, playback } = await setup(saved);
+      const { target, metadata, session, playback, covers } = await setup(saved);
       const pending = deferred();
-      const queue = deferred();
-      const queueCalls = playback.refreshQueue.mock.calls.length;
-      playback.refreshQueue.mockReturnValueOnce(queue.promise);
+      const coversPending = deferred();
+      covers.refresh.mockReturnValueOnce(coversPending.promise);
       metadata.getModifiedAt.mockResolvedValue(20);
       metadata.readLibrary.mockImplementationOnce(async (_signal, onProgress) => {
         onProgress?.({ albums: 500, tracks: 1000 });
@@ -627,7 +626,8 @@ describe("app settings", () => {
       );
       expect(target.querySelector("#settings-connection-status .loader")).not.toBeNull();
       pending.resolve();
-      await vi.waitFor(() => expect(playback.refreshQueue).toHaveBeenCalledTimes(queueCalls + 1));
+      await vi.waitFor(() => expect(covers.refresh).toHaveBeenCalled());
+      expect(playback.refreshQueue).not.toHaveBeenCalled();
       flushSync();
       const status = target.querySelector("#settings-connection-status")!;
       expect(
@@ -646,7 +646,7 @@ describe("app settings", () => {
         String(saved),
       );
       expect(target.querySelector("#settings-refresh")?.getAttribute("aria-disabled")).toBe("true");
-      queue.resolve();
+      coversPending.resolve();
       await loading;
       await vi.waitFor(() => expect(session.syncing).toBe(false));
       flushSync();

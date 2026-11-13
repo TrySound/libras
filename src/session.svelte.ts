@@ -403,7 +403,7 @@ export class Session {
   #refresh(force: boolean): Promise<void> {
     if (this.#refreshPending) return this.#refreshPending;
     const operationId = this.#operationId;
-    const { covers, playback } = this.#options;
+    const { covers } = this.#options;
     this.#syncState = force ? "manual" : "automatic";
     this.#libraryProgress = undefined;
     this.#refreshError = undefined;
@@ -413,7 +413,7 @@ export class Session {
           await this.#refreshLibrary(force, operationId);
         } finally {
           // Only the owning operation can reveal content after an explicit connect.
-          // Artwork, playlists and queue synchronization must not block the library.
+          // Artwork and playlists must not block the library.
           if (this.#isCurrentOperation(operationId)) this.loadingAfterConnect = false;
         }
         if (!this.#isCurrentOperation(operationId)) return;
@@ -425,12 +425,6 @@ export class Session {
       if (!this.#isCurrentOperation(operationId)) return;
       try {
         await this.#options.playlists?.refresh();
-      } catch (error) {
-        if (this.#isCurrentOperation(operationId)) this.#refreshError ??= error;
-      }
-      if (!this.#isCurrentOperation(operationId)) return;
-      try {
-        await playback.refreshQueue();
       } catch (error) {
         if (this.#isCurrentOperation(operationId)) this.#refreshError ??= error;
       }

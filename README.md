@@ -15,7 +15,8 @@ Libras is a browser-based minimalistic music player that connects to your own mu
 - Browse artists, albums, and tracks.
 - Stream music from your own server.
 - Download music for offline playback and manage it in Settings → Downloads.
-- Restore your playback queue and position between sessions.
+- Restore this device’s playback queue and position between sessions, without autoplay.
+- Explicitly Load server queue or Save queue to server from Queue in navigation. Startup, reconnect, library refresh and playback never exchange server queues. Loading confirms replacement and stops playback only after a valid result arrives; failed/stale loads leave local state intact. Saving an empty queue confirms clearing the server queue. Duplicate and unavailable IDs are retained; Subsonic selection uses a track ID, so duplicate occurrences are ambiguous (the local occurrence is retained when membership matches, otherwise the first match is selected). The demo has no server queue exchange.
 - Install as a standalone web app.
 
 ## Get started

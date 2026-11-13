@@ -17,9 +17,19 @@
     trackEngine: TrackEngine;
     audio: AudioTransport | undefined;
     offlineMode: boolean;
+    serverQueueExchange?: boolean;
   }
 
-  let { cache, covers, playback, trackEngine, audio, offlineMode }: Props = $props();
+  let {
+    cache,
+    covers,
+    playback,
+    trackEngine,
+    audio,
+    offlineMode,
+    serverQueueExchange = true,
+  }: Props = $props();
+  const canExchange = $derived(serverQueueExchange && playback.canExchangeQueue);
   const id = $props.id();
   const track = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const artist = $derived(track && cache.artists.get(track.artistIds[0]));
@@ -27,12 +37,7 @@
   const album = $derived(track && cache.albums.get(track.albumId));
   const atmosphere = $derived(track?.artworkId ? covers.ensureCover(track.artworkId) : undefined);
   const queue = $derived(
-    cache.queue.tracks.flatMap((id, index) => {
-      const track = cache.tracks.get(id);
-      return track && (!offlineMode || trackEngine.getStatus(id) === "downloaded")
-        ? [{ track, index }]
-        : [];
-    }),
+    cache.queue.tracks.map((id, index) => ({ id, track: cache.tracks.get(id), index })),
   );
   // Batch layout work while retaining every queue occurrence and its original playback index.
   const queueGroupSize = 40;
@@ -281,74 +286,171 @@
           {/if}
         </div>
         <div class="stack-sm">
+          <div class="row-sm row-wrap">
+            <button
+              class="button"
+              data-size="text"
+              data-variant="secondary"
+              disabled={!canExchange || !!playback.exchangeBusy}
+              commandfor={`${id}-load-confirmation`}
+              command="show-modal"
+            >
+              {playback.exchangeBusy === "load" ? "Loading…" : "Load server queue"}
+            </button>
+            <button
+              class="button"
+              data-size="text"
+              data-variant="secondary"
+              disabled={!canExchange || !!playback.exchangeBusy}
+              onclick={() => {
+                if (cache.queue.tracks.length) void playback.saveServerQueue();
+                else
+                  document
+                    .getElementById(`${id}-save-confirmation`)
+                    ?.closest("dialog")
+                    ?.showModal();
+              }}
+            >
+              {playback.exchangeBusy === "save" ? "Saving…" : "Save queue to server"}
+            </button>
+          </div>
+          <p class="caption text-secondary">Server queues change only when you load or save.</p>
+          {#if !canExchange}
+            <p class="caption text-secondary">
+              {serverQueueExchange
+                ? "Connect to exchange server queues."
+                : "Server queue exchange is unavailable in the demo."}
+            </p>
+          {/if}
+          <p class="caption" role="status">{playback.exchangeMessage}</p>
           {#each queueGroups as group, groupIndex (groupIndex)}
             <div class="stack-sm track-group" style:--track-group-rows={group.length}>
-              {#each group as { track, index }, rowIndex (index)}
-                {@const visibleIndex = groupIndex * queueGroupSize + rowIndex}
-                {@const downloadStatus = trackEngine.getStatus(track.id)}
-                {@const credit =
-                  track.displayArtist?.trim() ||
-                  track.artistIds
-                    .map((id) => cache.artists.get(id)?.name)
-                    .filter(Boolean)
-                    .join(", ")}
-                <div
-                  class="menu-item track-row"
-                  aria-current={index === cache.queue.index ? "true" : undefined}
-                >
-                  <span class="track-row-number metadata text-subtle">
-                    {#if index === cache.queue.index && loading}
-                      <Loader />
-                    {:else if index === cache.queue.index && playing}
-                      <Icon name="sound-bars" color="var(--accent)" />
-                    {:else if index === cache.queue.index}
-                      <Icon name="play" color="var(--accent)" />
-                    {:else if downloadStatus === "downloading"}
-                      <span role="img" aria-label="Downloading">
+              {#each group as { track, index, id: trackId }, rowIndex (index)}
+                {#if track}
+                  {@const visibleIndex = groupIndex * queueGroupSize + rowIndex}
+                  {@const downloadStatus = trackEngine.getStatus(track.id)}
+                  {@const credit =
+                    track.displayArtist?.trim() ||
+                    track.artistIds
+                      .map((id) => cache.artists.get(id)?.name)
+                      .filter(Boolean)
+                      .join(", ")}
+                  <div
+                    class="menu-item track-row"
+                    aria-current={index === cache.queue.index ? "true" : undefined}
+                  >
+                    <span class="track-row-number metadata text-subtle">
+                      {#if index === cache.queue.index && loading}
                         <Loader />
-                      </span>
-                    {:else if downloadStatus === "queued"}
-                      <span role="img" aria-label="Queued for download">
-                        <Icon name="clock" />
-                      </span>
-                    {:else}
-                      {String(visibleIndex + 1).padStart(2, "0")}
-                    {/if}
-                  </span>
-                  <div class="row-sm">
-                    <Artwork {covers} id={track.artworkId} size="sm" />
-                    <div>
-                      <p class="label">{track.title}</p>
-                      {#if credit}
-                        <p class="caption text-secondary">{credit}</p>
-                      {/if}
-                    </div>
-                  </div>
-                  <button
-                    class="button-quiet link-target"
-                    aria-label={`${index === cache.queue.index && (playing || loading) ? "Pause" : "Play"} ${track.title}`}
-                    onclick={() => playback.toggleQueueIndex(index)}
-                  ></button>
-                  <div class="row-sm">
-                    <span class="metadata text-subtle">
-                      {#if track.duration !== undefined}
-                        {formatDuration(track.duration)}
+                      {:else if index === cache.queue.index && playing}
+                        <Icon name="sound-bars" color="var(--accent)" />
+                      {:else if index === cache.queue.index}
+                        <Icon name="play" color="var(--accent)" />
+                      {:else if downloadStatus === "downloading"}
+                        <span role="img" aria-label="Downloading">
+                          <Loader />
+                        </span>
+                      {:else if downloadStatus === "queued"}
+                        <span role="img" aria-label="Queued for download">
+                          <Icon name="clock" />
+                        </span>
+                      {:else}
+                        {String(visibleIndex + 1).padStart(2, "0")}
                       {/if}
                     </span>
+                    <div class="row-sm">
+                      <Artwork {covers} id={track.artworkId} size="sm" />
+                      <div>
+                        <p class="label">{track.title}</p>
+                        {#if credit}
+                          <p class="caption text-secondary">{credit}</p>
+                        {/if}
+                      </div>
+                    </div>
+                    <button
+                      class="button-quiet link-target"
+                      aria-label={`${index === cache.queue.index && (playing || loading) ? "Pause" : "Play"} ${track.title}`}
+                      disabled={offlineMode && downloadStatus !== "downloaded"}
+                      onclick={() => playback.toggleQueueIndex(index)}
+                    ></button>
+                    <div class="row-sm">
+                      <span class="metadata text-subtle">
+                        {#if track.duration !== undefined}
+                          {formatDuration(track.duration)}
+                        {/if}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                {:else}
+                  <div class="menu-item track-row">
+                    <span class="track-row-number metadata text-subtle">{index + 1}</span>
+                    <div class="row-sm">
+                      <Artwork {covers} size="sm" />
+                      <div>
+                        <p class="label">Track unavailable</p>
+                        <p class="caption text-secondary">{trackId}</p>
+                      </div>
+                    </div>
+                  </div>
+                {/if}
               {/each}
             </div>
           {:else}
-            <p class="body">
-              {cache.queue.tracks.length ? "No available tracks." : "The queue is empty."}
-            </p>
+            <p class="body">Your queue is empty.</p>
           {/each}
         </div>
       </div>
     </section>
   </div>
 </dialog>
+
+{#each ["load", "save"] as action}
+  <dialog
+    id={`${id}-${action}-confirmation`}
+    class="dialog"
+    closedby="any"
+    aria-labelledby={`${id}-${action}-title`}
+    aria-describedby={`${id}-${action}-description`}
+  >
+    <div class="stack-lg">
+      <h2 id={`${id}-${action}-title`} class="heading-md">
+        {action === "load" ? "Replace this device’s queue?" : "Clear the server queue?"}
+      </h2>
+      <p id={`${id}-${action}-description`} class="body">
+        {action === "load"
+          ? "Loads the server queue without playing it. Your current queue will be replaced. Any active playback will stop."
+          : "This device’s queue is empty. Saving it will replace the server queue with an empty queue."}
+      </p>
+      <div class="row-md row-end row-wrap">
+        <!-- svelte-ignore a11y_autofocus (Safe initial action for a destructive confirmation.) -->
+        <button
+          class="button"
+          data-size="text"
+          data-variant="secondary"
+          commandfor={`${id}-${action}-confirmation`}
+          command="close"
+          autofocus>Cancel</button
+        >
+        <button
+          class="button"
+          data-size="text"
+          data-variant="primary"
+          disabled={!canExchange ||
+            !!playback.exchangeBusy ||
+            (action === "save" && !!cache.queue.tracks.length)}
+          onclick={(event) => {
+            // Close before publishing busy state disables this invoker.
+            event.currentTarget.closest("dialog")?.close();
+            if (action === "load") void playback.loadServerQueue();
+            else void playback.saveServerQueue();
+          }}
+        >
+          {action === "load" ? "Load server queue" : "Clear server queue"}
+        </button>
+      </div>
+    </div>
+  </dialog>
+{/each}
 
 <dialog
   id={`${id}-clear-confirmation`}
