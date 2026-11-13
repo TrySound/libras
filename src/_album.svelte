@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import LibraryScope from "./ui/library-scope.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -35,7 +36,7 @@
     appName = "Libras",
   }: Props = $props();
 
-  const offlineMode = $derived(session.offlineMode);
+  const offlineMode = $derived(session.downloadedOnly);
   const loading = $derived(!session.localReady);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
   const currentTrack = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
@@ -51,8 +52,8 @@
   const visibleTracks = $derived(
     album
       ? offlineMode
-        ? (cache.albumTracks.get(album.id) ?? []).filter(
-            (track) => trackEngine.getStatus(track.id) === "downloaded",
+        ? (cache.albumTracks.get(album.id) ?? []).filter((track) =>
+            trackEngine.isDownloaded(track.id),
           )
         : (cache.albumTracks.get(album.id) ?? [])
       : [],
@@ -86,6 +87,7 @@
 <svelte:head><title>{album?.title ?? "Album"} | {appName}</title></svelte:head>
 
 <Atmosphere src={libraryAvailable && artist && album ? atmosphere?.source : undefined} />
+<LibraryScope {session} />
 <section class="split-layout" aria-label="Album details">
   {#if libraryAvailable && artist && album}
     <div class="detail-panel view-slide-up">
@@ -188,6 +190,11 @@
             </span>
             <div>
               <p class="label">{track.title}</p>
+              {#if session.offlineMode && !trackEngine.isDownloaded(track.id)}
+                <p class="caption text-secondary" id={`unavailable-${index}`}>
+                  Unavailable offline
+                </p>
+              {/if}
               {#if credit && credit !== (album.displayArtist ?? artist.name).trim()}
                 <p class="caption text-secondary">{credit}</p>
               {/if}
@@ -195,6 +202,10 @@
             <button
               class="button-quiet link-target"
               aria-label={`${currentTrack?.id === track.id && playbackState !== "paused" ? "Pause" : "Play"} ${track.title}`}
+              disabled={session.offlineMode && !trackEngine.isDownloaded(track.id)}
+              aria-describedby={session.offlineMode && !trackEngine.isDownloaded(track.id)
+                ? `unavailable-${index}`
+                : undefined}
               onclick={() => playback.toggleTrack(track.id, visibleTrackIds)}
               data-longpressfor="album-detail-menu"
               data-longpress="show-modal"

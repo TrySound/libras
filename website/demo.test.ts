@@ -234,17 +234,18 @@ it("renders supplied track names verbatim without UI badges", async () => {
 });
 
 it("resets preferences on a new mount without writing to localStorage", async () => {
-  const toggle = () => document.querySelector<HTMLInputElement>("#settings-offline");
+  const toggle = () => document.querySelector<HTMLButtonElement>("#settings-offline-card button");
   render();
-  await vi.waitFor(() => expect(toggle()?.disabled).toBe(false));
-  expect(toggle()!.checked).toBe(false);
+  await vi.waitFor(() => {
+    expect(toggle()?.textContent).toBe("Work offline");
+    expect(toggle()?.disabled).toBe(false);
+  });
   toggle()!.click();
-  await vi.waitFor(() => expect(toggle()!.checked).toBe(true));
+  await vi.waitFor(() => expect(toggle()?.textContent).toBe("Connect"));
   await unmount(component!);
   component = undefined;
   render();
-  await vi.waitFor(() => expect(toggle()?.disabled).toBe(false));
-  expect(toggle()!.checked).toBe(false);
+  await vi.waitFor(() => expect(toggle()?.textContent).toBe("Work offline"));
   expect(localStorage.length).toBe(0);
 });
 

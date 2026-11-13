@@ -58,7 +58,7 @@ export async function setupPlaybackPage(library: Parameters<Cache["replaceLibrar
     selection,
     tracks,
     covers,
-    isAvailable: (id) => !offlineState.current || tracks.getStatus(id) === "downloaded",
+    isAvailable: (id) => !offlineState.current || tracks.isDownloaded(id),
   });
   const replace = vi.spyOn(playback, "replaceQueueAndPlay");
   const target = document.createElement("div");

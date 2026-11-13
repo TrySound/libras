@@ -268,6 +268,18 @@ export class Playback {
       });
     }
   }
+  removeQueueIndex(index: number) {
+    const queue = this.#localQueue;
+    if (!Number.isInteger(index) || index < 0 || index >= queue.tracks.length) return;
+    this.#changeQueue(
+      {
+        tracks: queue.tracks.filter((_, occurrence) => occurrence !== index),
+        index: index === queue.index ? -1 : index < queue.index ? queue.index - 1 : queue.index,
+        position: index === queue.index ? 0 : queue.position,
+      },
+      { restart: index === queue.index },
+    );
+  }
   clearQueue() {
     this.#changeQueue({ tracks: [], position: 0 }, { restart: true });
   }

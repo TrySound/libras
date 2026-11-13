@@ -674,12 +674,12 @@ describe("TrackEngine using Cache", () => {
     const fetcher = vi.fn(async () => new Response(body));
     vi.stubGlobal("fetch", fetcher);
     const network = new Network();
-    const controller = new AbortController();
+    network.setMode("online");
     const { engine, cache } = setup({ concurrency: 1 });
-    engine.setDownloadConnection(network.open(auth, controller.signal).audio);
+    engine.setDownloadConnection(network.open(auth).audio);
     const results = Promise.allSettled([engine.download("active"), engine.download("queued")]);
     await wrote.promise;
-    controller.abort();
+    network.setMode("offline");
     expect((await results).map((result) => result.status)).toEqual(["rejected", "rejected"]);
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     expect(fetcher).toHaveBeenCalledOnce();
@@ -906,7 +906,7 @@ describe("durable download scheduling", () => {
     },
   );
 
-  it("restores queued and failed work on reopen without fetching completed files again", async () => {
+  it("restores queued work on reopen but leaves failed jobs for explicit retry", async () => {
     install();
     const first = setup({ online: true, concurrency: 1 });
     const fetcher = vi.fn(async () => new Response("bad", { status: 500 }));
@@ -922,10 +922,12 @@ describe("durable download scheduling", () => {
     const next = setup({ cache: restored, concurrency: 1 });
     fetcher.mockImplementation(async () => new Response("audio"));
     next.engine.setDownloadConnection(connection());
-    await vi.waitFor(() => expect(completedDownloadCount(restored)).toBe(4));
-    expect(next.engine.getStatus("bad")).toBe("downloaded");
+    await vi.waitFor(() => expect(completedDownloadCount(restored)).toBe(3));
+    expect(next.engine.getStatus("bad")).toBe("failed");
     await next.engine.restoreDownloads();
-    expect(fetcher.mock.calls).toHaveLength(4);
+    expect(fetcher.mock.calls).toHaveLength(3);
+    await next.engine.download("bad");
+    expect(completedDownloadCount(restored)).toBe(4);
   });
 
   it("joins close before confirmed cancellation, preserves committed files, and retires all unfinished intent", async () => {
@@ -1173,6 +1175,8 @@ describe("reviewed download failure boundaries", () => {
       disk.state.beforeClose = async () => {};
       const current = reopen ? setup({ cache: new Cache(first.cache.key), online: true }) : first;
       await current.engine.restoreDownloads();
+      expect(current.engine.getStatus("recoverable")).toBe("failed");
+      await current.engine.download("recoverable");
       await vi.waitFor(() => expect(current.engine.getStatus("recoverable")).toBe("downloaded"));
       expect(expectCompletedDownload(current.cache, key).size).toBe(14);
       expect(current.engine.getStatus("recoverable")).toBe("downloaded");
@@ -1233,7 +1237,6 @@ describe("reviewed download failure boundaries", () => {
     };
     const next = new Cache(getAccountKey(other));
     await next.enqueueDownload({ ...track, id: "b" }, "mp3", "audio/mpeg");
-    await next.failDownload(downloadKey("b", "mp3"));
     selection.cache = next;
     engine.activate();
     engine.setDownloadConnection(connection(other));
@@ -1244,7 +1247,7 @@ describe("reviewed download failure boundaries", () => {
   });
 });
 
-it("retries failed formats in one restore batch without a self-retry loop", async () => {
+it("leaves failed formats paused on restore and retries only on explicit Download", async () => {
   install();
   const { engine, cache } = setup();
   for (const format of ["raw", "mp3"] as const) {
@@ -1255,6 +1258,9 @@ it("retries failed formats in one restore batch without a self-retry loop", asyn
   const fetcher = vi.fn(async () => new Response("bad", { status: 500 }));
   vi.stubGlobal("fetch", fetcher);
   engine.setDownloadConnection(connection());
+  await engine.restoreDownloads();
+  expect(fetcher).not.toHaveBeenCalled();
+  engine.downloadMany([track.id]);
   await vi.waitFor(() => {
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(engine.getStatus(track.id)).toBe("failed");

@@ -33,7 +33,7 @@ it("focuses the input, expands previews, retains URL criteria, and uses album pl
       artistAlbums: new Map([["artist", [{ id: "album" }]]]),
     },
     session: { localReady: true, offlineMode: false, refreshError: "Synchronization failed." },
-    trackEngine: { getStatus: () => "downloaded", downloadMany },
+    trackEngine: { getStatus: () => "downloaded", isDownloaded: () => true, downloadMany },
     covers: {
       ensureCover: () => cover,
     },
@@ -48,7 +48,7 @@ it("focuses the input, expands previews, retains URL criteria, and uses album pl
       (b) => (b.getAttribute("aria-label") ?? b.textContent?.trim()) === label,
     )!;
   try {
-    let input = target.querySelector("input")!;
+    let input = target.querySelector<HTMLInputElement>('input[type="search"]')!;
     expect(document.activeElement).toBe(input);
     expect(target.textContent).toContain("Type to find music");
     expect(target.textContent).toContain("Synchronization failed.");
@@ -151,7 +151,7 @@ it("focuses the input, expands previews, retains URL criteria, and uses album pl
     flushSync();
     button("Toggle route").click();
     flushSync();
-    input = target.querySelector("input")!;
+    input = target.querySelector<HTMLInputElement>('input[type="search"]')!;
     expect(input.value).toBe("Song");
     expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(3);
     // Native search cancellation emits an input event with an empty value.
@@ -181,7 +181,7 @@ it.each([
   { localReady: false, savedAt: undefined, offlineMode: false, heading: undefined },
   { localReady: true, savedAt: undefined, offlineMode: false, heading: "Connect your library" },
   { localReady: true, savedAt: 1, offlineMode: false, heading: "Your library is empty." },
-  { localReady: true, savedAt: 1, offlineMode: true, heading: "No downloaded music to search." },
+  { localReady: true, savedAt: 1, offlineMode: true, heading: "No downloaded music." },
 ])(
   "represents library availability: $heading",
   async ({ localReady, savedAt, offlineMode, heading }) => {
@@ -197,8 +197,8 @@ it.each([
         artistAlbums: new Map(),
         albumTracks: new Map(),
       },
-      session: { localReady, offlineMode },
-      trackEngine: { getStatus: () => "idle" },
+      session: { localReady, offlineMode, downloadedOnly: offlineMode },
+      trackEngine: { getStatus: () => "idle", isDownloaded: () => false },
       covers: {},
       playback: {},
     } as unknown as ComponentProps<typeof Search>;

@@ -77,7 +77,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
     page.waitForFunction(
       () =>
         !!document.querySelector("#settings-server-identity") &&
-        !document.querySelector("#settings-offline")?.checked &&
+        document.querySelector("#settings-offline-card button")?.textContent === "Work offline" &&
         document.querySelector("#settings-refresh")?.getAttribute("aria-busy") === "false",
     );
 
@@ -213,8 +213,8 @@ test("Settings native controls, layout, and persistence", async (t) => {
       },
     );
 
-    await t.test("keyboard offline mode persists through reload without reconnecting", async () => {
-      const control = page.getByRole("switch", { name: "Offline library", exact: true });
+    await t.test("keyboard Work offline persists through reload without reconnecting", async () => {
+      const control = page.locator("#settings-offline-card button");
       await control.focus();
       await page.keyboard.press("Space");
       await page.waitForFunction(() =>
@@ -225,25 +225,13 @@ test("Settings native controls, layout, and persistence", async (t) => {
       await page.waitForFunction(() =>
         document.querySelector("#settings-connection-status")?.textContent.includes("Offline mode"),
       );
-      assert.equal(await control.isChecked(), true);
-      const onThumb = await control.evaluate(
-        (node) => getComputedStyle(node, "::before").backgroundColor,
-      );
-      assert.equal(onThumb, "rgb(239, 191, 4)");
-      assert.equal(
-        await control.evaluate((node) => getComputedStyle(node).backgroundColor),
-        "rgb(129, 0, 0)",
-      );
+      assert.equal(await control.textContent(), "Connect");
       assert.equal(calls.filter((method) => method === "ping").length, pings);
       const searches = calls.filter((method) => method === "search3").length;
       await control.focus();
       await page.keyboard.press("Space");
       await waitConnected();
-      assert.equal(await control.isChecked(), false);
-      assert.notEqual(
-        await control.evaluate((node) => getComputedStyle(node, "::before").backgroundColor),
-        onThumb,
-      );
+      assert.equal(await control.textContent(), "Work offline");
       assert.equal(calls.filter((method) => method === "search3").length, searches);
       await page.getByRole("link", { name: "Libras home", exact: true }).click();
       await page.locator("[aria-labelledby=library-heading] .tile").waitFor();
