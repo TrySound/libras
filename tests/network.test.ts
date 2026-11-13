@@ -240,20 +240,15 @@ describe("Network connection lifecycle", () => {
     other.setMode("offline");
   });
 
-  it("keeps caller-owned access independent of browsing mode and login candidates", () => {
+  it("blocks new access offline and aborts every domain in the shared lifetime", () => {
     const network = new Network();
-    const candidate = network.prepare(auth);
-    const controller = new AbortController();
-    const independent = network.open(auth, controller.signal);
-    expect(network.mode).toBe("offline");
-    const browsing = network.accept(candidate);
+    expect(() => network.open(auth)).toThrow("Network access is offline.");
+    network.setMode("online");
+    const connection = network.open(auth);
     network.setMode("offline");
-    expect(browsing.signal.aborted).toBe(true);
-    expect(independent.signal.aborted).toBe(false);
-    controller.abort();
-    expect(independent.signal.aborted).toBe(true);
-    expect(() => independent.audio.url("track", { format: "raw" })).toThrowError(/abort/i);
-    expect(() => network.open(auth, controller.signal)).toThrowError(/abort/i);
+    expect(connection.signal.aborted).toBe(true);
+    expect(() => connection.audio.url("track", { format: "raw" })).toThrowError(/abort/i);
+    expect(() => network.open(auth)).toThrow("Network access is offline.");
   });
 
   it("exposes only frozen, credential-free connection identity", () => {

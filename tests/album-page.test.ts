@@ -339,6 +339,7 @@ it("keeps pause/cancel available offline but never substitutes another track for
   vi.spyOn(tracks, "getStatus").mockImplementation((id) =>
     id === "first" ? "downloaded" : "idle",
   );
+  vi.spyOn(tracks, "isDownloaded").mockImplementation((id) => id === "first");
   await playback.replaceQueueAndPlay(["unrelated", "second", "second"], 2);
   await playback.seek(25);
   replace.mockClear();
@@ -392,7 +393,7 @@ it("keeps pause/cancel available offline but never substitutes another track for
   button().click();
   await settle();
   state("playing");
-  expect(replace).toHaveBeenCalledExactlyOnceWith(["first"]);
+  expect(replace).toHaveBeenCalledExactlyOnceWith(["first", "second"]);
 });
 
 it("shows playing indicators only on selected track rows and labels pending transports Pause", async () => {

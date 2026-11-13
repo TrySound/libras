@@ -195,8 +195,7 @@
                 max={maximum}
                 step="0.1"
                 {value}
-                disabled={!maximum ||
-                  (offlineMode && track && trackEngine.getStatus(track.id) !== "downloaded")}
+                disabled={!maximum || (offlineMode && track && !trackEngine.isDownloaded(track.id))}
                 style:--progress={`${maximum ? (value / maximum) * 100 : 0}%`}
                 aria-label="Playback position"
                 aria-valuetext={`${formatDuration(position)} of ${formatDuration(duration)}`}
@@ -362,6 +361,11 @@
                       <Artwork {covers} id={track.artworkId} size="sm" />
                       <div>
                         <p class="label">{track.title}</p>
+                        {#if offlineMode && !trackEngine.isDownloaded(track.id)}
+                          <p class="caption text-secondary" id={`${id}-unavailable-${index}`}>
+                            Unavailable offline
+                          </p>
+                        {/if}
                         {#if credit}
                           <p class="caption text-secondary">{credit}</p>
                         {/if}
@@ -370,10 +374,22 @@
                     <button
                       class="button-quiet link-target"
                       aria-label={`${index === cache.queue.index && (playing || loading) ? "Pause" : "Play"} ${track.title}`}
-                      disabled={offlineMode && downloadStatus !== "downloaded"}
+                      disabled={offlineMode && !trackEngine.isDownloaded(track.id)}
+                      aria-describedby={offlineMode && !trackEngine.isDownloaded(track.id)
+                        ? `${id}-unavailable-${index}`
+                        : undefined}
                       onclick={() => playback.toggleQueueIndex(index)}
                     ></button>
                     <div class="row-sm">
+                      {#if offlineMode && !trackEngine.isDownloaded(track.id)}
+                        <button
+                          class="button"
+                          data-size="text"
+                          data-variant="secondary"
+                          aria-label={`Remove ${track.title}, queue item ${index + 1}`}
+                          onclick={() => playback.removeQueueIndex(index)}>Remove</button
+                        >
+                      {/if}
                       <span class="metadata text-subtle">
                         {#if track.duration !== undefined}
                           {formatDuration(track.duration)}
@@ -391,6 +407,13 @@
                         <p class="caption text-secondary">{trackId}</p>
                       </div>
                     </div>
+                    <button
+                      class="button"
+                      data-size="text"
+                      data-variant="secondary"
+                      aria-label={`Remove unavailable track, queue item ${index + 1}`}
+                      onclick={() => playback.removeQueueIndex(index)}>Remove</button
+                    >
                   </div>
                 {/if}
               {/each}

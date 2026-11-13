@@ -2,6 +2,8 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { chromium } = require("playwright");
+const fs = require("node:fs/promises");
+const path = require("node:path");
 
 const base = `${(process.env.PREVIEW_URL ?? "http://127.0.0.1:5173").replace(/\/$/, "")}/`;
 const artist = { id: "artist", name: "Download test artist" };
@@ -47,6 +49,28 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     release = resolve;
   });
   let streams = 0;
+  let requests = 0;
+  const evidence = async (name) => {
+    for (const [width, height] of [
+      [390, 844],
+      [1440, 900],
+      [320, 844],
+    ]) {
+      await page.setViewportSize({ width, height });
+      assert.ok(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        `${name}: ${width}px overflow`,
+      );
+      if (process.env.ARTIFACT_DIR && width !== 320) {
+        await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
+        await page.screenshot({
+          path: path.join(process.env.ARTIFACT_DIR, `${name}-${width}.png`),
+          fullPage: true,
+        });
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+  };
   let retrySucceeds = false;
   let libraryGate = Promise.resolve();
   let releaseLibrary = () => {};
@@ -68,6 +92,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
   const unexpected = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("https://music.example.test/rest/**", async (route) => {
+    requests++;
     const url = new URL(route.request().url());
     const method = url.pathname.split("/").pop().replace(".view", "");
     if (method === "stream") {
@@ -121,6 +146,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     await page.getByLabel("Username", { exact: true }).fill(username);
     await page.getByLabel("Password", { exact: true }).fill("fictional-password");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page.getByRole("radio", { name: "All music", exact: true }).check();
     await page
       .getByRole("link", {
         name: username === "other" ? otherArtist.name : artist.name,
@@ -256,6 +282,40 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
     );
 
     await t.test(
+      "Work offline makes zero server requests and reconnect resumes queued jobs",
+      async () => {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page
+          .locator(".app-sidebar")
+          .getByRole("button", { name: "Work offline", exact: true })
+          .click();
+        await page.getByText("Paused while working offline", { exact: true }).waitFor();
+        await page.waitForFunction(
+          () => document.querySelectorAll('[aria-label="Downloading"]').length === 0,
+        );
+        const before = requests;
+        await evidence("offline-paused-downloads");
+        await page.locator('.app-sidebar a[href="?/search"]').click();
+        await page.locator('input[type="search"]').fill("long music");
+        await page.locator(".track-row").first().waitFor();
+        assert.equal(await page.getByText("Unavailable offline", { exact: true }).count(), 3);
+        assert.equal(await page.locator(".track-row button.link-target:disabled").count(), 3);
+        await evidence("offline-all-unavailable");
+        await page.locator('.app-sidebar a[href="?/downloads"]').click();
+        assert.equal(requests, before, "Work offline must not access any server domain");
+        streams = 0; // Count the resumed attempt separately from the aborted transfers.
+        await page
+          .locator(".app-sidebar")
+          .getByRole("button", { name: "Connect", exact: true })
+          .click();
+        await page.waitForFunction(
+          () => document.querySelectorAll('[aria-label="Downloading"]').length === 3,
+        );
+        assert.equal(streams, 3);
+      },
+    );
+
+    await t.test(
       "Cancel downloads retires real active and queued intent across reload",
       async () => {
         await page.getByRole("button", { name: "Cancel downloads", exact: true }).click();
@@ -353,54 +413,82 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       },
     );
 
-    await t.test(
-      "online reopen automatically retries failures once; row Retry and Retry all still work",
-      async () => {
-        const automaticRetry = page.waitForResponse((response) => {
-          const url = new URL(response.url());
-          return (
-            /\/stream(?:\.view)?$/.test(url.pathname) && url.searchParams.get("id") === "track-6"
-          );
-        });
-        await page.reload();
-        await automaticRetry;
-        await page.getByRole("button", { name: /^Retry download of 6/ }).waitFor();
-        await page.waitForFunction(
-          () => document.querySelectorAll("[aria-labelledby=downloads-heading] time").length === 5,
+    await t.test("online reopen leaves failures for explicit row Retry and Retry all", async () => {
+      await page
+        .locator(".app-sidebar")
+        .getByRole("link", { name: "Your library", exact: true })
+        .click();
+      await page.getByRole("radio", { name: "Downloaded", exact: true }).check();
+      await evidence("connected-downloaded");
+      assert.equal(
+        await page
+          .locator(".app-sidebar")
+          .getByRole("button", { name: "Work offline", exact: true })
+          .isVisible(),
+        true,
+      );
+      await page.locator('.app-sidebar a[href="?/downloads"]').click();
+      await page.reload();
+      await page.getByRole("button", { name: /^Retry download of 6/ }).waitFor();
+      await page.waitForFunction(
+        () => document.querySelectorAll("[aria-labelledby=downloads-heading] time").length === 5,
+      );
+      assert.equal(streams, 6);
+      assert.equal(await page.getByRole("button", { name: "Show errors", exact: true }).count(), 0);
+      const retried = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          /\/stream(?:\.view)?$/.test(url.pathname) && url.searchParams.get("id") === "track-6"
         );
-        assert.equal(streams, 7);
-        assert.equal(
-          await page.getByRole("button", { name: "Show errors", exact: true }).count(),
-          0,
-        );
-        const retried = page.waitForResponse((response) => {
-          const url = new URL(response.url());
-          return (
-            /\/stream(?:\.view)?$/.test(url.pathname) && url.searchParams.get("id") === "track-6"
-          );
-        });
-        await page.getByRole("button", { name: /^Retry download of 6/ }).click();
-        await retried;
-        await page.getByRole("button", { name: /^Retry download of 6/ }).waitFor();
-        await page.waitForFunction(() =>
-          document.querySelector(
-            '[aria-labelledby=downloads-heading] [aria-label="Download failed"]',
-          ),
-        );
-        assert.equal(streams, 8);
-        retrySucceeds = true;
-        await page.getByRole("button", { name: "Retry all", exact: true }).click();
-        await page.waitForFunction(
-          () => document.querySelectorAll("[aria-labelledby=downloads-heading] time").length === 6,
-        );
-        assert.equal(streams, 9);
-        assert.equal(await page.getByRole("button", { name: /^Retry download of 6/ }).count(), 0);
-      },
-    );
+      });
+      await page.getByRole("button", { name: /^Retry download of 6/ }).click();
+      await retried;
+      await page.getByRole("button", { name: /^Retry download of 6/ }).waitFor();
+      await page.waitForFunction(() =>
+        document.querySelector(
+          '[aria-labelledby=downloads-heading] [aria-label="Download failed"]',
+        ),
+      );
+      assert.equal(streams, 7);
+      retrySucceeds = true;
+      await page.getByRole("button", { name: "Retry all", exact: true }).click();
+      await page.waitForFunction(
+        () => document.querySelectorAll("[aria-labelledby=downloads-heading] time").length === 6,
+      );
+      assert.equal(streams, 8);
+      assert.equal(await page.getByRole("button", { name: /^Retry download of 6/ }).count(), 0);
+    });
 
     await t.test("unchecked disconnect retains cached playback and offline downloads", async () => {
       await navigate("/library");
       await playCached();
+      const source = await page.evaluate(() => window.testAudio.currentSrc);
+      const queue = await page.locator("#player-dialog .track-row .label").allTextContents();
+      const selected = await page
+        .locator('#player-dialog .track-row[aria-current="true"] .label')
+        .textContent();
+      await page.getByRole("radio", { name: "All music", exact: true }).check();
+      await page.getByRole("radio", { name: "Downloaded", exact: true }).check();
+      assert.deepEqual(
+        await page.locator("#player-dialog .track-row .label").allTextContents(),
+        queue,
+      );
+      assert.equal(
+        await page.locator('#player-dialog .track-row[aria-current="true"] .label').textContent(),
+        selected,
+      );
+      assert.equal(
+        await page.evaluate(() => !window.testAudio.paused && window.testAudio.currentSrc),
+        source,
+      );
+      await page
+        .locator(".app-sidebar")
+        .getByRole("button", { name: "Work offline", exact: true })
+        .click();
+      assert.equal(
+        await page.evaluate(() => !window.testAudio.paused && window.testAudio.currentSrc),
+        source,
+      );
       await page.getByRole("link", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: "Disconnect", exact: true }).click();
       await page
@@ -422,7 +510,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       );
       assert.equal(await page.locator("[aria-labelledby=downloads-heading] time").count(), 6);
       assert.equal(await page.getByRole("heading", { name: "No downloads yet" }).count(), 0);
-      assert.equal(streams, 9);
+      assert.equal(streams, 8);
       assert.equal(await page.getByRole("button", { name: /^Retry download of 6/ }).count(), 0);
       assert.equal(await page.getByRole("button", { name: "Show errors", exact: true }).count(), 0);
     });

@@ -215,7 +215,10 @@ test("local queue and native explicit exchange", async () => {
       .filter({ visible: true })
       .click();
     const beforeOffline = calls.filter((m) => /PlayQueue/.test(m)).length;
-    await page.locator("#settings-offline").check();
+    await page
+      .locator("#settings-offline-card")
+      .getByRole("button", { name: "Work offline", exact: true })
+      .click();
     await openQueue();
     assert.equal(
       await player.getByRole("button", { name: "Load server queue" }).isDisabled(),

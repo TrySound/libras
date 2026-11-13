@@ -291,6 +291,7 @@ it("uses unfiltered membership offline, allowing pause/cancel but never substitu
   vi.spyOn(tracks, "getStatus").mockImplementation((id) =>
     id === "first" ? "downloaded" : "idle",
   );
+  vi.spyOn(tracks, "isDownloaded").mockImplementation((id) => id === "first");
   await playback.replaceQueueAndPlay(["unrelated", "later", "later"], 2);
   await playback.seek(25);
   replace.mockClear();
@@ -344,5 +345,5 @@ it("uses unfiltered membership offline, allowing pause/cancel but never substitu
   button().click();
   await settle();
   state("playing");
-  expect(replace).toHaveBeenCalledExactlyOnceWith(["first"]);
+  expect(replace).toHaveBeenCalledExactlyOnceWith(["first", "second", "later", "cameo"]);
 });

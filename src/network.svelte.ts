@@ -647,15 +647,8 @@ export class Network {
     return result;
   }
 
-  /** Open authenticated access. A supplied signal owns an independent lifetime,
-   * including while browsing is offline; otherwise Network owns browsing access. */
-  open(auth: Auth, signal?: AbortSignal) {
-    if (signal) {
-      signal.throwIfAborted();
-      const connection = this.#createConnection(auth);
-      signal.addEventListener("abort", () => connection.client.abort(), { once: true });
-      return this.#access(connection);
-    }
+  /** Open authenticated access within the single Network-owned lifetime. */
+  open(auth: Auth) {
     if (this.#mode === "offline") throw new Error("Network access is offline.");
     const connection = this.prepare(auth);
     return this.accept(connection);

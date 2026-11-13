@@ -88,6 +88,9 @@
         {counts.downloaded === 1 ? "track" : "tracks"} available for offline listening, {counts.pending}
         pending
       </p>
+      {#if trackEngine.waitingForConnection && trackEngine.downloadCount}
+        <p class="body">Paused while working offline</p>
+      {/if}
       <div class="row-sm row-wrap">
         <button
           class="button"

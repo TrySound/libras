@@ -57,7 +57,7 @@
     selection,
     tracks: trackEngine,
     covers,
-    isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
+    isAvailable: (id) => !offlineMode || trackEngine.isDownloaded(id),
   });
   const session = untrack(
     () =>
@@ -260,6 +260,27 @@
       Settings
     </a>
   </nav>
+  <section class="stack-sm" aria-label="Connection">
+    <p class="caption text-secondary">
+      {session.busy ? "Connecting…" : offlineMode ? "Working offline" : "Connected"}
+    </p>
+    {#if session.busy}
+      <button
+        class="menu-item"
+        onclick={() => (session.auth ? void session.setOfflineMode(true) : session.cancelConnect())}
+        >Cancel</button
+      >
+    {:else if session.auth}
+      <button class="menu-item" onclick={() => void session.setOfflineMode(!offlineMode)}
+        >{offlineMode ? "Connect" : "Work offline"}</button
+      >
+    {:else}
+      <a class="menu-item" href="?/settings" onclick={() => navigationDrawer?.close()}>Connect</a>
+    {/if}
+    {#if offlineMode}<p class="caption text-secondary">
+        Server access is off. Requested downloads are paused.
+      </p>{/if}
+  </section>
   {#if appUpdate?.message}
     <hr class="separator" />
     <section class="stack-sm" aria-label="App update">

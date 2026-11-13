@@ -82,6 +82,18 @@ afterEach(async () => {
 });
 
 describe("local authoritative queue", () => {
+  it("removes an unavailable original occurrence without dropping duplicates or shifting playback", async () => {
+    const { playback, cache, audio, connection } = await setup();
+    await playback.play();
+    playback.removeQueueIndex(1);
+    expect(cache.queue).toEqual({ tracks: ["a", "a"], index: 1, position: 12.5 });
+    expect(audio.paused).toBe(false);
+    playback.removeQueueIndex(1);
+    expect(cache.queue).toEqual({ tracks: ["a"], index: -1, position: 0 });
+    expect(audio.paused).toBe(true);
+    expect(connection.read).not.toHaveBeenCalled();
+    expect(connection.write).not.toHaveBeenCalled();
+  });
   it("never exchanges automatically on activation, reconnect, edits, progress, pause, visibility or flush", async () => {
     const { playback, connection, cache } = await setup();
     playback.activate();
