@@ -115,6 +115,8 @@ Select suites for the behavior being changed:
 
 `cache-downloads.test.cjs` exercises native OPFS close/publication boundaries and restart-from-scratch behavior by importing the owning modules. Run it against the app **dev** server; Downloads, Settings, and navigation checks can run against production preview.
 
+`downloads.test.cjs` also decodes a small WAV fixture through the real audio element: cached seeking, durable pause/resume across reload without autoplay, browser-network-offline playback/seek, and explicit retry after a native pause. The shell reload itself is online so the suite also works against dev; offline app-shell navigation/update is covered by the production worker suites. Set `BROWSER=webkit` to run this same suite with an externally installed WebKit runtime; failures/unavailable prerequisites are not passes. Neither automation engine establishes physical iPhone background behavior. Use the [physical iPhone protocol](docs/iphone-validation.md) for Safari and installed mode.
+
 Run the website suite against the website server, not the app:
 
 ```sh
@@ -137,7 +139,7 @@ This suite owns its server and temporary `/webapp/` production builds; no previe
 NODE_PATH=/path/to/external/node_modules node --test tests/browser/pwa-updates.test.cjs
 ```
 
-It uses real generated workers, pre-hash fixture-only document markers, and native events/UI approval. It checks fresh installation, two-tab consent, C/D discovery in an unreloaded B document, offline application, failed-precache recovery, and preexisting waiting updates without clearing storage between versions. Temporary builds, contexts, browser, and server are cleaned up; root/website outputs are untouched. Logs include document tokens, preserved URLs, worker hashes, and native transitions.
+It uses real generated workers, pre-hash fixture-only document markers, and native events/UI approval. It checks fresh installation, two-tab consent, C/D discovery in an unreloaded B document, offline application, failed-precache recovery, preexisting waiting updates, and local queue/resume preservation without autoplay after an approved update, without clearing storage between versions. Temporary builds, contexts, browser, and server are cleaned up; root/website outputs are untouched. Logs include document tokens, preserved URLs, worker hashes, and native transitions.
 
 Old-plugin migration is explicitly skipped unless `PWA_OLD_DIST` points to an untouched production artifact built at `/webapp/`. To reproduce the original baseline without changing this checkout:
 
