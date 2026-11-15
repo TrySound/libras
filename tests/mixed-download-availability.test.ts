@@ -74,6 +74,7 @@ it("keeps completed MP3 browsable and playable when a raw retry is paused by Wor
     tracks,
     playback,
     preferences: storage,
+    acquireOwnership: async () => async () => {},
   });
   vi.spyOn(network, "validate").mockResolvedValue(undefined);
   const accept = network.accept.bind(network);

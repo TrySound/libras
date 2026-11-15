@@ -1,4 +1,11 @@
-import { authenticate, getAccountKey, type Auth, type AuthStore, type PasswordAuth } from "./auth";
+import {
+  authenticate,
+  getAccountKey,
+  normalizeAndValidateServerHost,
+  type Auth,
+  type AuthStore,
+  type PasswordAuth,
+} from "./auth";
 import type { Covers } from "./covers.svelte";
 import {
   NetworkTransportError,
@@ -14,6 +21,8 @@ import type { TrackEngine } from "./track.svelte";
 import { Cache } from "./cache.svelte";
 import { withoutDownloadErrors } from "./download-error";
 
+import { acquireAccountOwnership, AccountOwnershipError } from "./account-ownership";
+
 const offlineModeStorageKey = "navidrome-offline-mode";
 
 interface SessionOptions {
@@ -25,6 +34,7 @@ interface SessionOptions {
   playback: Playback;
   playlists?: Playlists;
   preferences: Storage;
+  acquireOwnership?: typeof acquireAccountOwnership;
 }
 
 function connectionError(error: unknown): string {
@@ -42,6 +52,9 @@ export class Session {
   status = $state<ConnectionStatus>("disconnected");
   error = $state("");
   localReady = $state(false);
+  ownershipIssue = $state<"blocked" | "unsupported">();
+  #ownership?: { key: string; release: () => Promise<void> };
+  #restoreAccount?: Account;
   loadingAfterConnect = $state(false);
 
   #options: SessionOptions;
@@ -57,6 +70,7 @@ export class Session {
   #operationId = 0;
   #started = false;
   #destroyed = false;
+  #deleting?: Promise<void>;
 
   constructor(options: SessionOptions) {
     this.#options = options;
@@ -113,6 +127,7 @@ export class Session {
 
   #fail(error: unknown, operationId: number) {
     if (!this.#isCurrentOperation(operationId)) return;
+    if (error instanceof AccountOwnershipError) this.ownershipIssue = error.reason;
     this.error = connectionError(error);
     this.status = this.error ? "error" : "disconnected";
   }
@@ -134,6 +149,12 @@ export class Session {
 
   /** Publish connection changes in one place; Network owns their shared abort signal. */
   #setConnection(connection: ActiveNetworkConnection | undefined) {
+    if (
+      connection &&
+      (this.#ownership?.key !== getAccountKey(connection.account) ||
+        this.cache?.key !== this.#ownership.key)
+    )
+      throw new Error("Activate this account’s local data before connecting.");
     this.#connection = connection;
     const { playback, covers, tracks } = this.#options;
     playback.setConnection(connection?.queue);
@@ -173,7 +194,8 @@ export class Session {
       }
       // Migrate existing installations before credentials can be removed.
       this.#options.auth.saveAccount(account);
-      this.#restoration = this.#restore(account);
+      this.#restoreAccount = account;
+      this.#restoration = this.#restore(account).catch((error) => this.#fail(error, operationId));
       if (this.auth) this.status = "connecting";
       void this.#finishStartup(operationId).catch((error) => this.#fail(error, operationId));
     } catch (error) {
@@ -193,7 +215,7 @@ export class Session {
 
   async #finishStartup(operationId: number) {
     await this.#restoration;
-    if (!this.#isCurrentOperation(operationId)) return;
+    if (!this.#isCurrentOperation(operationId) || !this.#ownership) return;
     if (!this.auth || this.offlineMode) {
       this.status = "disconnected";
       return;
@@ -204,7 +226,15 @@ export class Session {
 
   async #restore(account: Account) {
     const { covers, playback, selection } = this.#options;
-    const cache = new Cache(getAccountKey(account));
+    const key = getAccountKey(account);
+    const release = await (this.#options.acquireOwnership ?? acquireAccountOwnership)(key);
+    if (this.#destroyed) {
+      await release();
+      return;
+    }
+    this.#ownership = { key, release };
+    this.ownershipIssue = undefined;
+    const cache = new Cache(key);
     this.#select(cache, account);
     this.#loadController?.abort();
     const controller = new AbortController();
@@ -232,10 +262,7 @@ export class Session {
 
   /** Load local data for verified credentials, without selecting the account.
    * Same-account reconnects reuse the live writer to retain queue edits. */
-  async #prepareWorkspace(connection: NetworkConnection) {
-    const previous = this.#options.selection.cache;
-    const key = getAccountKey(connection.account);
-    const cache = previous?.key === key ? previous : new Cache(key);
+  async #prepareWorkspace(connection: NetworkConnection, cache: Cache) {
     // Independent cache failures remain visible after acceptance; a background
     // refresh can repair the library without making login depend on its availability.
     await cache.load(connection.signal).catch((error) => {
@@ -272,6 +299,8 @@ export class Session {
    * Storage is not transactional; connect's failure path clears partial credentials. */
   #commitWorkspace(cache: Cache, credentials: Auth, connection: NetworkConnection) {
     connection.signal.throwIfAborted();
+    if (this.#ownership?.key !== getAccountKey(connection.account))
+      throw new Error("Activate this account’s local data before connecting.");
     const { auth, preferences, network, playback } = this.#options;
     auth.save(credentials);
     auth.saveAccount(connection.account);
@@ -297,24 +326,53 @@ export class Session {
 
   /** Authentication verifies; Session commits the workspace, then syncs in the background. */
   async connect(input: PasswordAuth): Promise<boolean> {
-    if (this.auth || this.busy || this.#destroyed) return false;
+    if (this.auth || this.busy || this.#destroyed || this.#deleting) return false;
     const operationId = this.#beginOperation();
     const controller = new AbortController();
+    let candidate: { key: string; release: () => Promise<void> } | undefined;
+    let candidateCache: Cache | undefined;
     this.#authController = controller;
     this.status = "connecting";
     try {
+      await this.#restoration;
+      const key = getAccountKey({ ...input, host: normalizeAndValidateServerHost(input.host) });
+      if (this.#ownership?.key !== key) {
+        const release = await (this.#options.acquireOwnership ?? acquireAccountOwnership)(key);
+        candidate = { key, release };
+      }
+      controller.signal.throwIfAborted();
+      if (!this.#isCurrentOperation(operationId)) return false;
       const verified = await authenticate(input, this.#options.network, controller.signal);
       if (!this.#isCurrentOperation(operationId)) return false;
       const { auth, connection } = verified;
       await this.#restoration;
       if (!this.#isCurrentOperation(operationId)) return false;
       connection.signal.throwIfAborted();
-      const cache = await this.#prepareWorkspace(connection);
+      const workspaceKey = getAccountKey(connection.account);
+      const previous = this.cache;
+      const cache = previous?.key === workspaceKey ? previous : new Cache(workspaceKey);
+      candidateCache = cache;
+      await this.#prepareWorkspace(connection, cache);
       connection.signal.throwIfAborted();
       if (!this.#isCurrentOperation(operationId)) return false;
       await this.#retireWorkspace(cache, connection.signal);
       if (!this.#isCurrentOperation(operationId)) return false;
-      this.#commitWorkspace(cache, auth, connection);
+      const previousCache = this.cache;
+      const previousOwnership = this.#ownership;
+      this.#ownership = candidate ?? previousOwnership;
+      try {
+        this.#commitWorkspace(cache, auth, connection);
+      } catch (error) {
+        this.#ownership = previousOwnership;
+        throw error;
+      }
+      if (candidate) {
+        candidate = undefined;
+        if (previousCache && previousCache !== cache) await previousCache.retire().catch(() => {});
+        await previousOwnership?.release();
+      }
+      if (!this.#isCurrentOperation(operationId)) return false;
+      this.ownershipIssue = undefined;
       this.status = "connected";
       this.loadingAfterConnect = true;
       void this.#refresh(false);
@@ -326,10 +384,19 @@ export class Session {
       }
       return false;
     } finally {
+      if (candidate) {
+        if (candidateCache && candidateCache !== this.cache)
+          await candidateCache.retire().catch(() => {});
+        await candidate.release();
+      }
       if (this.#authController === controller) this.#authController = undefined;
       if (this.#isCurrentOperation(operationId) && this.status === "connecting")
         this.status = "disconnected";
     }
+  }
+
+  get blockedAccount() {
+    return !this.#ownership && this.ownershipIssue ? this.#restoreAccount : undefined;
   }
 
   get cache() {
@@ -353,8 +420,18 @@ export class Session {
     }
   }
 
+  get canResumeOnline() {
+    const key = this.auth ? getAccountKey(this.auth) : undefined;
+    return (
+      !this.#destroyed &&
+      key !== undefined &&
+      this.#ownership?.key === key &&
+      this.cache?.key === key
+    );
+  }
+
   #resumeOnline() {
-    if (!this.auth) return;
+    if (!this.auth || !this.canResumeOnline) return;
     this.#setConnection(this.#options.network.open(this.auth));
     this.status = "connected";
   }
@@ -433,7 +510,7 @@ export class Session {
   }
 
   async setOfflineMode(enabled: boolean) {
-    if (!this.auth || this.#destroyed) return;
+    if (!this.auth || !this.canResumeOnline) return;
     if (enabled === this.offlineMode) return;
     const operationId = this.#beginOperation();
     try {
@@ -453,11 +530,56 @@ export class Session {
     }
   }
 
-  destroy() {
+  /** Leave a blocked startup for the connection form, without opening or deleting its data. */
+  chooseAnotherAccount() {
+    if (this.#ownership || this.busy) return;
+    this.disconnect();
+    this.ownershipIssue = undefined;
+    this.#restoreAccount = undefined;
+    this.localReady = true;
+  }
+
+  async retryOwnership() {
+    if (this.busy || this.#destroyed || this.#ownership || !this.#restoreAccount) return;
+    const operationId = this.#beginOperation();
+    this.status = "connecting";
+    this.#restoration = this.#restore(this.#restoreAccount).catch((error) =>
+      this.#fail(error, operationId),
+    );
+    await this.#finishStartup(operationId);
+    if (this.ownershipIssue === "blocked")
+      this.error = "This account is still open in another tab.";
+  }
+
+  /** Stop producers before deletion; a failed deletion retains the active lease. */
+  clearLocalData(): Promise<void> {
+    if (this.#deleting) return this.#deleting;
+    const cache = this.cache;
+    if (!this.#ownership || !cache || this.#destroyed || this.busy) return Promise.resolve();
+    if (!this.disconnect()) return Promise.reject(new Error(this.error));
+    this.#options.playback.suspend();
+    this.#options.covers.activate();
+    return (this.#deleting = (async () => {
+      await this.#options.tracks.activate();
+      await cache.clear();
+    })().finally(() => {
+      this.#deleting = undefined;
+    }));
+  }
+
+  async destroy() {
     this.#destroyed = true;
     this.#operationId++;
     this.#loadController?.abort();
     this.#loadController = undefined;
     this.#detach();
+    this.#options.playback.suspend();
+    this.#options.covers.destroy();
+    await this.#options.tracks.activate();
+    await this.#restoration;
+    await this.#deleting?.catch(() => {});
+    await this.cache?.retire().catch(() => {});
+    await this.#ownership?.release();
+    this.#ownership = undefined;
   }
 }

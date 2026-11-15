@@ -404,7 +404,7 @@ export class Playback {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
     try {
-      await this.#selection.cache?.flush();
+      await this.#selection.cache?.flushQueue();
     } catch {
       // Cache retains checkpoint errors and dirty data for retry.
     }

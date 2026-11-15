@@ -35,7 +35,7 @@ describe("Session token/password login", () => {
     validate.mockReturnValueOnce(pending.promise);
     const first = session.connect(input);
     expect(await session.connect(input)).toBe(false);
-    expect(network.prepare).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(network.prepare).toHaveBeenCalledOnce());
     pending.resolve();
     expect(await first).toBe(true);
   });

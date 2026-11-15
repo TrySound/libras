@@ -167,6 +167,56 @@ describe("general checkpoints", () => {
     expect(JSON.parse([...disk.files.values()][0]).position).toBe(101);
   });
 
+  it("does not join an unrelated pending checkpoint when flushing the queue", async () => {
+    const disk = installDisk();
+    const cache = new Cache(getAccountKey(account));
+    await edit(cache);
+    const entered = deferred();
+    const release = deferred();
+    disk.state.beforeClose = async (path) => {
+      if (path.endsWith("/images.json")) {
+        entered.resolve();
+        await release.promise;
+      }
+    };
+    const global = cache.flush();
+    try {
+      await entered.promise;
+      cache.setQueue({ ...queue, position: 99 });
+      await cache.flushQueue();
+      expect(cache.queueDirty).toBe(false);
+      expect(
+        JSON.parse([...disk.files.entries()].find(([path]) => path.endsWith("/queue.json"))![1])
+          .position,
+      ).toBe(99);
+    } finally {
+      release.resolve();
+      await global;
+    }
+  });
+
+  it("flushes only the queue without attempting failing unrelated domains", async () => {
+    const disk = installDisk();
+    const cache = new Cache(getAccountKey(account));
+    await edit(cache);
+    const attempted: string[] = [];
+    disk.state.beforeClose = async (path) => {
+      attempted.push(path);
+      if (!path.endsWith("/queue.json")) throw new Error("Unrelated domain unavailable");
+    };
+    await cache.flushQueue();
+    expect(attempted).toHaveLength(1);
+    expect(attempted[0]).toMatch(/\/queue\.json$/);
+    expect(cache.queueDirty).toBe(false);
+    cache.setQueue({ tracks: ["duplicate", "duplicate", "unknown"], index: 1, position: 42 });
+    await cache.flushQueue();
+    const restored = new Cache(cache.key);
+    await restored.load();
+    expect(restored.queue).toEqual(cache.queue);
+    disk.state.beforeClose = async () => {};
+    await cache.flush();
+  });
+
   it("flushes independent domains even when one fails, and queue durability stays independent", async () => {
     const disk = installDisk();
     const cache = new Cache(getAccountKey(account));
