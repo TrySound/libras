@@ -1,7 +1,7 @@
 // Real app/engines/OPFS, with only the Subsonic transport intercepted.
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { chromium } = require("playwright");
+const { chromium, webkit } = require("playwright");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
@@ -15,6 +15,7 @@ const tracks = Array.from({ length: 6 }, (_, i) => ({
   album: album.name,
   artists: [artist],
   contentType: "audio/mpeg",
+  duration: 60,
   ...(i === 0 ? { coverArt: "cover" } : {}),
 }));
 
@@ -32,12 +33,21 @@ const otherTracks = [
 ];
 
 test("Downloads redesign preserves real transfer states and offline files", async (t) => {
-  const browser = await chromium.launch({ headless: true });
+  const browserType = process.env.BROWSER === "webkit" ? webkit : chromium;
+  const browser = await browserType.launch({ headless: true });
+  console.log(`Playback/download recovery: ${browserType.name()} ${browser.version()}`);
   const page = await browser.newPage({
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
   await page.addInitScript(() => {
+    const NativeAudio = window.Audio;
+    window.Audio = class extends NativeAudio {
+      constructor(...args) {
+        super(...args);
+        window.testAudio = this;
+      }
+    };
     const play = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function (...args) {
       window.testAudio = this;
@@ -462,6 +472,111 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
       assert.equal(streams, 8);
       assert.equal(await page.getByRole("button", { name: /^Retry download of 6/ }).count(), 0);
     });
+
+    await t.test(
+      "decoded cached audio seeks offline and restores local resume without autoplay",
+      async () => {
+        await navigate("/library");
+        await playCached();
+        await page.waitForFunction(() => window.testAudio.currentTime > 0);
+        assert.equal(await page.evaluate(() => window.testAudio.duration), 60);
+        await page
+          .locator(".app-sidebar")
+          .getByRole("button", { name: "Work offline", exact: true })
+          .click();
+        const before = requests;
+        // Native input event drives the real Playback/transport seek, not a parallel model.
+        await page
+          .getByRole("slider", { name: "Playback position" })
+          .filter({ visible: true })
+          .evaluate((input) => {
+            input.value = "23";
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+          });
+        await page.waitForFunction(() => window.testAudio.currentTime >= 23);
+        await page
+          .locator(".mini-player")
+          .getByRole("button", { name: "Pause", exact: true })
+          .click();
+        const savedQueue = await page.locator("#player-dialog .track-row .label").allTextContents();
+        const savedPosition = await page
+          .getByRole("slider", { name: "Playback position" })
+          .filter({ visible: true })
+          .inputValue();
+        // Observe the actual queue checkpoint before simulating termination/reload.
+        await page.waitForFunction(async (position) => {
+          const accounts = await (
+            await navigator.storage.getDirectory()
+          ).getDirectoryHandle("accounts");
+          for await (const [, directory] of accounts.entries()) {
+            const file = await (await directory.getFileHandle("queue.json")).getFile();
+            if (Math.abs(JSON.parse(await file.text()).position - Number(position)) < 1)
+              return true;
+          }
+          return false;
+        }, savedPosition);
+        // Reload the shell online (also supports the dev server); Work offline persists.
+        // Native network-offline playback is checked below after hydration.
+        await page.reload();
+        await page.getByRole("radio", { name: "Downloaded", exact: true }).waitFor();
+        assert.equal(await page.evaluate(() => window.testAudio.paused), true);
+        assert.equal(await page.evaluate(() => window.testAudio.currentSrc), "");
+        assert.deepEqual(
+          await page.locator("#player-dialog .track-row .label").allTextContents(),
+          savedQueue,
+        );
+        assert.ok(
+          Math.abs(
+            Number(
+              await page
+                .getByRole("slider", { name: "Playback position" })
+                .filter({ visible: true })
+                .inputValue(),
+            ) - Number(savedPosition),
+          ) < 1,
+        );
+        await page.context().setOffline(true);
+        await page
+          .locator(".mini-player")
+          .getByRole("button", { name: "Play", exact: true })
+          .click();
+        await page.waitForFunction(
+          () =>
+            !window.testAudio.paused &&
+            window.testAudio.currentTime >= 23 &&
+            window.testAudio.currentSrc.startsWith("blob:"),
+        );
+        await page
+          .getByRole("slider", { name: "Playback position" })
+          .filter({ visible: true })
+          .evaluate((input) => {
+            input.value = "35";
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+          });
+        await page.waitForFunction(() => window.testAudio.currentTime >= 35);
+        // A native pause models foreground interruption only, not iOS/OS integration.
+        await page.evaluate(() => window.testAudio.pause());
+        await page
+          .locator(".mini-player")
+          .getByRole("button", { name: "Play", exact: true })
+          .click();
+        await page.waitForFunction(() => !window.testAudio.paused);
+        assert.equal(requests, before, "cached seek/reload/retry must not contact the server");
+        await page.context().setOffline(false);
+        await page
+          .locator(".mini-player")
+          .getByRole("button", { name: "Pause", exact: true })
+          .click();
+        await page
+          .locator(".app-sidebar")
+          .getByRole("button", { name: "Connect", exact: true })
+          .click();
+        await page
+          .locator(".app-sidebar")
+          .getByRole("button", { name: "Work offline", exact: true })
+          .waitFor();
+      },
+    );
 
     await t.test("unchecked disconnect retains cached playback and offline downloads", async () => {
       await navigate("/library");

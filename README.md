@@ -51,7 +51,7 @@ You can use Libras in your browser or install it as a standalone web app:
 - **Android:** Choose **Install app / Add to home screen** from the browser menu.
 - **Desktop:** Use the browser's install option, where available.
 
-Installation options vary by browser and device. Offline storage and background playback have not yet been verified on iOS.
+Installation options vary by browser and device. Offline storage and background playback have not yet been verified on iOS. Physical iPhone validation is **NOT PERFORMED / PENDING DEVICE ACCESS**; see the [Safari and installed-mode validation protocol](docs/iphone-validation.md).
 
 ## Listen offline
 
