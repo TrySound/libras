@@ -10,6 +10,10 @@ import { Cache, type LibrarySnapshot } from "../src/cache.svelte";
 import { installDisk } from "./cache-test-helpers";
 import { TrackEngine } from "../src/track.svelte";
 import { Covers } from "../src/covers.svelte";
+import { AudioTransport } from "../src/audio-transport.svelte";
+import { Playback } from "../src/playback.svelte";
+import { Session } from "../src/session.svelte";
+import { AudioStub } from "./audio-test-helpers";
 
 function mount(component: typeof App, { target }: { target: HTMLElement }) {
   return mountComponent(component, {
@@ -72,6 +76,99 @@ afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+});
+
+it("owns an independent transport per App and detaches before disposing on unmount", async () => {
+  mocks.cache = new Cache();
+  const audio: AudioStub[] = [];
+  vi.stubGlobal(
+    "Audio",
+    vi.fn(function () {
+      const element = new AudioStub();
+      audio.push(element);
+      return element;
+    }),
+  );
+  const mediaSession = {
+    metadata: null,
+    playbackState: "none",
+    setActionHandler:
+      vi.fn<(action: MediaSessionAction, handler: MediaSessionActionHandler | null) => void>(),
+    setPositionState: vi.fn(),
+  };
+  vi.stubGlobal("navigator", { mediaSession });
+  const events: string[] = [];
+  const transports: AudioTransport[] = [];
+  const attach = Playback.prototype.attach;
+  vi.spyOn(Playback.prototype, "attach").mockImplementation(function (this: Playback, player) {
+    const id = transports.push(player);
+    events.push(`attach ${id}`);
+    const detach = attach.call(this, player);
+    return () => {
+      events.push(`detach ${id}`);
+      detach();
+    };
+  });
+  const start = Session.prototype.start;
+  vi.spyOn(Session.prototype, "start").mockImplementation(function (this: Session) {
+    events.push(`start ${transports.length}`);
+    return start.call(this);
+  });
+  const dispose = AudioTransport.prototype.dispose;
+  vi.spyOn(AudioTransport.prototype, "dispose").mockImplementation(function (this: AudioTransport) {
+    events.push(`dispose ${transports.indexOf(this) + 1}`);
+    dispose.call(this);
+  });
+  const create = () => {
+    const target = document.createElement("main");
+    document.body.append(target);
+    const component = mount(App, { target });
+    const cleanup = () => unmount(component);
+    cleanups.push(cleanup);
+    flushSync();
+    return { target, cleanup };
+  };
+  const first = create();
+  const second = create();
+  expect(transports).toHaveLength(2);
+  expect(transports[0]).not.toBe(transports[1]);
+  expect(audio).toHaveLength(2);
+  expect(events).toEqual(["attach 1", "start 1", "attach 2", "start 2"]);
+  expect(mediaSession.playbackState).toBe("none");
+  expect(mediaSession.setActionHandler).toHaveBeenCalledWith("play", expect.any(Function));
+
+  audio[0].src = "blob:test";
+  audio[0].error = { code: 2, message: "Lifecycle playback error" };
+  audio[0].dispatchEvent(new Event("error"));
+  flushSync();
+  expect(first.target.textContent).toContain("Lifecycle playback error");
+  expect(second.target.textContent).not.toContain("Lifecycle playback error");
+
+  await first.cleanup();
+  cleanups.splice(cleanups.indexOf(first.cleanup), 1);
+  await second.cleanup();
+  cleanups.splice(cleanups.indexOf(second.cleanup), 1);
+  const third = create();
+  expect(transports[2]).not.toBe(transports[0]);
+  expect(audio).toHaveLength(3);
+  await third.cleanup();
+  cleanups.splice(cleanups.indexOf(third.cleanup), 1);
+  expect(events).toEqual([
+    "attach 1",
+    "start 1",
+    "attach 2",
+    "start 2",
+    "detach 1",
+    "dispose 1",
+    "detach 2",
+    "dispose 2",
+    "attach 3",
+    "start 3",
+    "detach 3",
+    "dispose 3",
+  ]);
+  const remainingHandlers = new Map(mediaSession.setActionHandler.mock.calls);
+  expect([...remainingHandlers.values()].every((handler) => handler === null)).toBe(true);
 });
 
 function library(name: string, savedAt: number): LibrarySnapshot {
