@@ -2,8 +2,7 @@ import { getAccountKey } from "./auth";
 import type { Covers } from "./covers.svelte";
 import type { Cache, CachedQueue, CacheSelection, Immutable } from "./cache.svelte";
 import type { QueueConnection, RemoteQueue } from "./network.svelte";
-import type AudioPlayer from "./audio-player.svelte";
-import type { PlayerState, PlayerTrack } from "./audio-player.svelte";
+import type { AudioTransport, PlayerState, PlayerTrack } from "./audio-transport.svelte";
 import type { TrackEngine } from "./track.svelte";
 
 type PlaybackActivity = "active" | "paused" | "inactive";
@@ -51,13 +50,13 @@ function toRemoteQueue(local: Immutable<CachedQueue>): RemoteQueue {
   };
 }
 
-/** Owns queue commands, Player coordination and server synchronization.
- * Cache remains the authoritative queue and owns local durability; Player owns audio. */
+/** Owns queue commands, transport coordination and server synchronization.
+ * Cache remains the authoritative queue and owns local durability; AudioTransport owns audio. */
 export class Playback {
   #selection: CacheSelection;
   #covers: Covers;
   #tracks: TrackEngine;
-  #player?: ReturnType<typeof AudioPlayer>;
+  #player?: AudioTransport;
   #isAvailable: (id: string) => boolean;
   #cleanup?: () => void;
   #selectedTrackId?: string;
@@ -136,7 +135,7 @@ export class Playback {
     void this.next();
   }
 
-  attach(player: ReturnType<typeof AudioPlayer>) {
+  attach(player: AudioTransport) {
     if (this.#destroyed) return () => {};
     this.#cleanup?.();
     this.#player = player;

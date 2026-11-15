@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Playback } from "../src/playback.svelte";
 import { TrackEngine } from "../src/track.svelte";
 import { Covers } from "../src/covers.svelte";
-import Player from "../src/audio-player.svelte";
-import { flushSync, mount, unmount } from "svelte";
+import { AudioTransport } from "../src/audio-transport.svelte";
+import { flushSync } from "svelte";
 import { AudioStub } from "./audio-test-helpers";
 import { Cache, type CachedQueue } from "../src/cache.svelte";
 import { TestSelection, playbackLibrary } from "./cache-selection-test-helpers.svelte";
@@ -39,28 +39,17 @@ function createPlayback(selection: TestSelection) {
   vi.stubGlobal("Audio", function () {
     return audio;
   });
-  const component = mount(Player, {
-    target: document.createElement("div"),
-    props: {
-      hasNext: true,
-      hasPrevious: true,
-      onnext: () => {
-        void playback.next();
-      },
-      onprevious: () => {
-        void playback.previous();
-      },
-      onposition: (position) => playback.setPosition(position),
-      onended: () => playback.ended(),
-      onstatechange: (state) => playback.updatePlayerState(state),
-    },
+  const component = new AudioTransport({
+    onposition: (position) => playback.setPosition(position),
+    onended: () => playback.ended(),
+    onstatechange: (state) => playback.updatePlayerState(state),
   });
   flushSync();
   playback.attach(component);
   flushSync();
   cleanups.push(async () => {
     await playback.destroy();
-    await unmount(component);
+    component.dispose();
     tracks.destroy();
     covers.destroy();
   });
@@ -130,7 +119,7 @@ describe("playback queue synchronization", () => {
   it("publishes a complete normalized queue before unloading the previous selection", async () => {
     const { playback, selection, component } = await setup();
     const seen: unknown[] = [];
-    const unload = component.unload;
+    const unload = component.unload.bind(component);
     vi.spyOn(component, "unload").mockImplementation(() => {
       seen.push(selection.cache!.queue);
       unload();
@@ -373,7 +362,7 @@ describe("playback queue synchronization", () => {
     await seed();
     const { playback, cache, component } = await setup();
     playback.setConnection(client());
-    const unload = component.unload;
+    const unload = component.unload.bind(component);
     const reconcile = vi.spyOn(component, "unload").mockImplementation(() => {
       expect(cache.queue.tracks).toEqual(["remote"]);
       expect(playback.track?.id).toBe("remote");

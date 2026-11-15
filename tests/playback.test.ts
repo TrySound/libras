@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Playback } from "../src/playback.svelte";
 import { flushSync, mount as mountComponent, unmount } from "svelte";
 import Player from "../src/audio-player.svelte";
+import { AudioTransport } from "../src/audio-transport.svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { observePlayback } from "./playback-reactivity.test.svelte";
 import { Cache } from "../src/cache.svelte";
@@ -112,15 +113,21 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
     covers: coverEngine,
   });
   player.setQueue({ tracks: ["a", "b"], index: 0, position: 0 });
-  let mountedPlayer: ReturnType<typeof Player>;
+  let mountedPlayer: AudioTransport;
   const getPlayer = () => mountedPlayer;
   const queuePosition = () => selection.cache?.queue.position ?? 0;
   let detachMounted: (() => void) | undefined;
   const mountPlayer = () => {
     detachMounted?.();
+    const transport = new AudioTransport({
+      onposition: (position) => player.setPosition(position),
+      onended: () => player.ended(),
+      onstatechange: (state) => player.updatePlayerState(state),
+    });
     const component = mountComponent(Player, {
       target: document.createElement("div"),
       props: {
+        transport,
         get hasNext() {
           const queue = selection.cache?.queue;
           return !!queue && queue.index >= 0 && queue.index < queue.tracks.length - 1;
@@ -135,20 +142,18 @@ function setup(mount = true, isAvailable: (id: string) => boolean = () => true) 
         onprevious: () => {
           void player.previous();
         },
-        onposition: (position) => player.setPosition(position),
-        onended: () => player.ended(),
-        onstatechange: (state) => player.updatePlayerState(state),
       },
     });
-    mountedPlayer = component;
+    mountedPlayer = transport;
     flushSync();
-    const detachEngine = player.attach(component);
+    const detachEngine = player.attach(transport);
     flushSync();
     let disposed = false;
     const detach = () => {
       if (disposed) return;
       disposed = true;
       detachEngine();
+      transport.dispose();
       void unmount(component);
     };
     detachMounted = detach;
@@ -248,7 +253,7 @@ describe("playback", () => {
             };
       const publish = vi.spyOn(selection.cache!, "setQueue");
       const component = getPlayer();
-      const unload = component.unload;
+      const unload = component.unload.bind(component);
       const stop = vi.spyOn(component, "unload").mockImplementation(() => {
         expect(selection.cache!.queue).toEqual(expected);
         unload();
@@ -371,6 +376,7 @@ describe("playback", () => {
     expect(selection.cache!.queue.position).toBe(0);
     expect(getPlayer().playing).toBe(false);
     expect(audio.src).toBe("");
+    flushSync();
     expect(session.metadata).toBeNull();
   });
 
@@ -910,6 +916,7 @@ describe("playback", () => {
     audio.dispatchEvent(new Event("loadedmetadata"));
     audio.currentTime = 32;
     audio.dispatchEvent(new Event("timeupdate"));
+    flushSync();
     expect(selection.cache!.queue.position).toBe(32);
     expect(queuePosition()).toBe(32);
     expect(getPlayer().duration).toBe(120);
@@ -1286,6 +1293,7 @@ describe("playback", () => {
     player.setQueue({ tracks: [], position: 0 });
     expect(audio.src).toBe("");
     expect(getPlayer().status).toBe("idle");
+    flushSync();
     expect(session.metadata).toBeNull();
   });
 });
