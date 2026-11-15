@@ -596,7 +596,7 @@ describe("session", () => {
     expect(tracks.activate).toHaveBeenCalledTimes(3);
     expect(playback.activate).toHaveBeenCalledTimes(2);
     expect(session.auth).toMatchObject(next);
-    expect(auth.load()).toEqual(session.auth);
+    expect(auth.load()).toBeNull();
     expect(auth.loadAccount()).toEqual(next);
     expect(session.offlineMode).toBe(false);
     expect(session.status).toBe("connected");
@@ -663,7 +663,7 @@ describe("session", () => {
         expect(selection.cache).toBe(previous);
         throw new Error("Storage full");
       });
-      expect(await session.connect({ ...input, username })).toBe(false);
+      expect(await session.connect({ ...input, username }, true)).toBe(false);
       expect(playback.suspend).toHaveBeenCalledOnce();
       expect(session.error).toBe("Storage full");
       expect(selection.cache).toBe(previous);
@@ -744,7 +744,7 @@ describe("session", () => {
           if (key === "navidrome-offline-mode" && value === "false") fail();
         });
       }
-      expect(await session.connect({ ...input, username: "other" })).toBe(false);
+      expect(await session.connect({ ...input, username: "other" }, true)).toBe(false);
       expect(session.error).toBe("Commit failed");
       expect(selection.cache).toBe(previous);
       expect(session.auth).toBeNull();

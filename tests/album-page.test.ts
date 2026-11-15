@@ -38,14 +38,27 @@ async function setup() {
     })),
   });
   const { target } = fixture;
-  const button = () =>
+  const header = () =>
     target.querySelector<HTMLButtonElement>(
       '[aria-label="Album details"] button[data-variant="primary"]',
     )!;
+  // Transport toggling now lives in the player, not the explicit collection Play now action.
+  const button = () => {
+    flushSync();
+    const id = fixture.cache.queue.tracks[fixture.cache.queue.index];
+    const title = target.querySelector('[aria-label="Album details"] h1')?.textContent;
+    return fixture.cache.tracks.get(id)?.albumId === (title === "Other" ? "other" : "album")
+      ? (target.querySelector<HTMLButtonElement>('.mini-player button[data-variant="primary"]') ??
+          header())
+      : header();
+  };
   function state(expected?: "loading" | "playing" | "paused") {
     flushSync();
     const active = expected === "playing" || expected === "loading";
-    expect(button().getAttribute("aria-label")).toBe(`${active ? "Pause" : "Play"} Album`);
+    expect(header().getAttribute("aria-label")).toMatch(/^Play now /);
+    expect(button().getAttribute("aria-label")).toBe(
+      button() === header() ? header().getAttribute("aria-label") : active ? "Pause" : "Play",
+    );
     if (expected !== "loading") {
       expect(button().querySelector("use")?.getAttribute("href")).toBe(
         `#icon-${active ? "pause" : "play"}`,
@@ -61,7 +74,11 @@ it("presents header playback through its action, icon and busy state without red
   for (const playing of [false, true]) {
     if (playing) await playback.replaceQueueAndPlay(["first"]);
     state(playing ? "playing" : "paused");
-    expect(button().hasAttribute("aria-describedby")).toBe(false);
+    expect(
+      target
+        .querySelector('[aria-label="Album details"] button[data-variant="primary"]')
+        ?.hasAttribute("aria-describedby"),
+    ).toBe(false);
     expect(button().hasAttribute("aria-pressed")).toBe(false);
     const details = target.querySelector('[aria-label="Album details"]')!;
     for (const text of ["Loading playback…", "Playback paused", "Playing"])
@@ -108,14 +125,16 @@ it("reacquires real streaming sources after header cancellation and selection ch
 });
 
 it("immediately exposes startup, then actual playing, paused, resumed, buffering and seeking state", async () => {
-  const { button, state, audio, playback, getSource, cache, replace } = await setup();
+  const { button, state, audio, playback, getSource, cache, replace, target } = await setup();
   state();
   const pending = deferred<TrackSource>();
   getSource.mockReturnValueOnce(pending.promise);
   button().focus();
   button().click();
   state("loading");
-  expect(document.activeElement).toBe(button());
+  expect(document.activeElement).toBe(
+    target.querySelector('[aria-label="Album details"] button[data-variant="primary"]'),
+  );
   expect(replace).toHaveBeenCalledExactlyOnceWith(["first", "second"]);
   expect(cache.queue).toMatchObject({ tracks: ["first", "second"], index: 0, position: 0 });
   pending.resolve(source());
@@ -275,7 +294,7 @@ it("keeps rapid replacements and navigation tied to the current selected album, 
   expect(late.release).toHaveBeenCalledOnce();
   app.navigate("other");
   flushSync();
-  expect(target.querySelector('button[aria-label="Pause Other"]')).not.toBeNull();
+  expect(target.querySelector('button[aria-label="Play now Other"]')).not.toBeNull();
   app.navigate("album");
   state();
 });
@@ -302,10 +321,14 @@ it("uses selected-track membership for external mixed queues, rows, next/previou
   state("playing");
   await playback.replaceQueueAndPlay(["unrelated"]);
   state();
-  target.querySelector<HTMLButtonElement>('button[aria-label="Play second"]')!.click();
+  target
+    .querySelector<HTMLButtonElement>(
+      '[aria-label="Album details"] button[aria-label="Play now second"]',
+    )!
+    .click();
   await settle();
   state("playing");
-  expect(cache.queue).toMatchObject({ tracks: ["first", "second"], index: 1 });
+  expect(cache.queue).toMatchObject({ tracks: ["second"], index: 0 });
   app.navigate();
   flushSync();
   playback.pause();
@@ -406,7 +429,11 @@ it("shows playing indicators only on selected track rows and labels pending tran
   const albumScope = '[aria-label="Album details"]';
   const queueScope = "#player-dialog";
   for (const scope of [albumScope, queueScope]) {
-    expect(row(scope).querySelector('button[aria-label="Pause second"]')).not.toBeNull();
+    expect(
+      row(scope).querySelector(
+        `button[aria-label="${scope === albumScope ? "Play now" : "Pause"} second"]`,
+      ),
+    ).not.toBeNull();
     expect(row(scope).querySelector('[aria-label="Loading playback"]')).toBeNull();
     expect(row(scope).querySelector('use[href="#icon-sound-bars"]')).toBeNull();
     expect(row(scope).querySelector('[aria-hidden="true"]')).not.toBeNull();
@@ -417,7 +444,8 @@ it("shows playing indicators only on selected track rows and labels pending tran
   expect(
     transportButtons().every(
       (control) =>
-        control.getAttribute("aria-label")?.startsWith("Pause") &&
+        (control.getAttribute("aria-label")?.startsWith("Pause") ||
+          control.getAttribute("aria-label") === "Play now Album") &&
         control.getAttribute("aria-busy") === "true",
     ),
   ).toBe(true);
@@ -426,7 +454,11 @@ it("shows playing indicators only on selected track rows and labels pending tran
   state("playing");
   for (const scope of [albumScope, queueScope]) {
     expect(row(scope).querySelector('use[href="#icon-sound-bars"]')).not.toBeNull();
-    expect(row(scope).querySelector('button[aria-label="Pause second"]')).not.toBeNull();
+    expect(
+      row(scope).querySelector(
+        `button[aria-label="${scope === albumScope ? "Play now" : "Pause"} second"]`,
+      ),
+    ).not.toBeNull();
     expect(row(scope).querySelector('[role="img"]')).toBeNull();
   }
   const queueRows = target.querySelectorAll("#player-dialog .track-row");
@@ -439,7 +471,11 @@ it("shows playing indicators only on selected track rows and labels pending tran
   for (const scope of [albumScope, queueScope]) {
     expect(row(scope).querySelector('use[href="#icon-play"]')).not.toBeNull();
     expect(row(scope).querySelector('use[href="#icon-sound-bars"]')).toBeNull();
-    expect(row(scope).querySelector('button[aria-label="Play second"]')).not.toBeNull();
+    expect(
+      row(scope).querySelector(
+        `button[aria-label="${scope === albumScope ? "Play now" : "Play"} second"]`,
+      ),
+    ).not.toBeNull();
   }
 });
 

@@ -144,7 +144,8 @@ describe("session library workflow", () => {
     expect(session.busy).toBe(false);
     expect(session.syncing).toBe(true);
     expect(session.refreshing).toBe(false);
-    expect(auth.load()).not.toBeNull();
+    expect(auth.load()).toBeNull();
+    expect(session.auth).not.toBeNull();
     expect(selection.cache).toBe(prepared);
     expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
     const refreshing = session.refresh();
@@ -155,7 +156,8 @@ describe("session library workflow", () => {
     expect(session.status).toBe("connected");
     expect(session.error).toBe("");
     expect(session.refreshError).toContain("Library unavailable");
-    expect(auth.load()).not.toBeNull();
+    expect(auth.load()).toBeNull();
+    expect(session.auth).not.toBeNull();
     expect(selection.cache!.tracks.get("song")).toEqual(snapshot().tracks[0]);
     expect(playback.refreshQueue).not.toHaveBeenCalled();
     expect(disk.writes).toBe(0);
@@ -167,7 +169,8 @@ describe("session library workflow", () => {
     expect(await session.connect(input)).toBe(true);
     await vi.waitFor(() => expect(session.syncing).toBe(false));
     expect(session.status).toBe("connected");
-    expect(auth.load()).not.toBeNull();
+    expect(auth.load()).toBeNull();
+    expect(session.auth).not.toBeNull();
     expect(session.localReady).toBe(true);
     expect(selection.cache!.tracks.size).toBe(0);
     expect(session.refreshError).toContain("Library unavailable");

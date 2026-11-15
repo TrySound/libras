@@ -13,8 +13,8 @@ describe("shareable search URLs", () => {
     const types = searchTypes.filter((_, i) => mask & (1 << i));
     for (const query of ["", "  ", "Beyoncé 東京 + & % / ? #"]) {
       const url = new URL(searchHref(query, types), "https://example.test/demo/");
-      expect(url.search.startsWith("?/search")).toBe(true);
-      expect(url.searchParams.get("/search")).toBe("");
+      expect(url.search.startsWith("?/library")).toBe(true);
+      expect(url.searchParams.get("/library")).toBe("");
       expect(parseSearch(url.searchParams)).toEqual({ query, types });
       expect(url.pathname).toBe("/demo/");
       expect(url.hash).toBe("");
@@ -30,9 +30,9 @@ describe("shareable search URLs", () => {
     expect(criteria).toEqual({ query: "first", types: ["artist", "track"] });
     expect([...parameters]).toEqual(entries);
     expect(searchHref(criteria.query, criteria.types)).toBe(
-      "?/search&type=artist&type=track&q=first",
+      "?/library&type=artist&type=track&q=first",
     );
-    expect(searchHref("lemonade", ["album", "album"])).toBe("?/search&type=album&q=lemonade");
+    expect(searchHref("lemonade", ["album", "album"])).toBe("?/library&type=album&q=lemonade");
     expect(parseSearch(new URLSearchParams("/search&type=unknown"))).toEqual({
       query: "",
       types: [],
@@ -41,7 +41,7 @@ describe("shareable search URLs", () => {
       query: "",
       types: [],
     });
-    expect(searchHref()).toBe("?/search");
+    expect(searchHref()).toBe("?/library");
   });
 
   it("does not read search criteria from an anchor", () => {

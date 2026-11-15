@@ -12,7 +12,7 @@ Libras is a browser-based minimalistic music player that connects to your own mu
 
 ## Features
 
-- Browse artists, albums, and tracks.
+- Browse and search artists, albums, and tracks together in Library, with shareable multi-select type filters. Older Search links keep their criteria.
 - Stream music from your own server.
 - Download music for offline playback and manage it in Settings → Downloads.
 - Restore this device’s playback queue and position between sessions, without autoplay.
@@ -23,7 +23,9 @@ Libras is a browser-based minimalistic music player that connects to your own mu
 
 1. Open [Libras](https://libras-music.app/webapp/).
 2. Connect to your music server with your server address, username, and password.
-3. Browse your library and start listening.
+3. Browse or search Library and start listening. Settings links back to the focused connection screen for sign-in.
+
+**Play now** replaces the queue with that track only, or the chosen collection in its current scope. **Play next** inserts after the selected occurrence; **Add to queue** appends. Neither starts an inactive queue. Queue removal preserves other occurrences (including duplicates and unavailable tracks); removing the selected occurrence stops playback without choosing a replacement.
 
 Just trying it out? Connect to the [Navidrome demo server](https://demo.navidrome.org/) using `https://demo.navidrome.org` as the server address and `demo` as both the username and password.
 
@@ -37,7 +39,9 @@ Safari 26.0 or newer is required; older Safari versions are not supported. The a
 
 Libras tries salted token authentication first; your password stays in the browser for that attempt. Only a structured server rejection of token authentication (Subsonic code 41 or 42) automatically retries the same username and password over HTTPS, including on localhost. Invalid credentials, connection failures, and other errors never trigger a password retry.
 
-Credentials persist in **localStorage** until you disconnect. Token login saves the username, token, and salt, not your password. Successfully verified direct-password login saves the actual password and sends it with subsequent requests, including artwork and streaming URLs. HTTPS encrypts transport, not localStorage; scripts running on the app's origin and anyone with access to your browser profile can read saved credentials. Use a trusted device and server, and disconnect on shared devices. Disconnect removes credentials but retains your offline account, music, and queue.
+New connections keep credentials **in memory only** by default. Reloading retains your credential-free offline identity, music, and queue, but requires signing in again for server access. Select **Remember this device** only on a trusted device to save verified credentials in localStorage after the account workspace is accepted. Existing remembered credentials remain recognized until you disconnect or explicitly opt out; they are not silently deleted on startup. This choice controls Libras storage, not your browser’s password manager.
+
+Remembered token login saves username/token/salt, not your password. Verified direct-password fallback saves the actual password and sends it with subsequent requests, including artwork and streaming URLs. HTTPS encrypts transport, not localStorage; same-origin scripts and anyone with access to your browser profile can read saved credentials. Disconnect removes credentials but retains offline identity/data unless you also choose local deletion.
 
 ## Install
 
@@ -55,7 +59,7 @@ Download music while connected, then choose **Work offline** in navigation or Se
 
 **Library scope → All music / Downloaded** is independent of the connection. Downloaded filters browsing and search without disconnecting or changing your queue, position or active audio. All music can browse saved metadata offline; uncached tracks remain visible as unavailable.
 
-- **Manage downloads:** Settings → Downloads.
+- **Manage downloads:** Downloads in navigation (also linked from Settings). Totals count registered completed audio bytes, not total browser storage. Remove individual formats, or confirm **Remove all downloaded music** for this account. Queue membership and server files stay unchanged; pending jobs use the separate Cancel downloads action. Removing an active cached source stops/unloads it. Catalog deletion must succeed before bytes are reclaimed; failures remain visible for retry.
 - **Refresh library:** Automatic when opening online, or via Settings → Refresh library.
 - **Disconnect:** Clears credentials and optionally deletes this account’s local cache and downloads. Remembered identity, preferences, other accounts and server data are unchanged. Only one tab can open an account’s local data at a time, including while deleting it. A second tab is blocked: close the owning tab, then select **Retry**. There is no automatic takeover or live cross-tab queue replication.
 - **Storage:** Each server/account has its own offline library, saved only in this browser on this device. **Clearing site data deletes it.**

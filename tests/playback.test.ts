@@ -518,18 +518,45 @@ describe("playback", () => {
   );
 
   it.each(["next", "last"] as const)(
-    "starts playback when enqueuing %s into an empty queue",
+    "does not autoplay when enqueuing %s into an empty queue",
     async (placement) => {
       const { player, selection, audio } = setup();
       player.setQueue({ tracks: [], position: 0 });
       await player.enqueue([], placement);
       expect(audio.play).not.toHaveBeenCalled();
       await player.enqueue(["b", "a"], placement);
-      expect(selection.cache!.queue).toEqual({ tracks: ["b", "a"], index: 0, position: 0 });
-      expect(audio.src).toBe("blob:b");
-      expect(audio.play).toHaveBeenCalledOnce();
+      expect(selection.cache!.queue).toEqual({ tracks: ["b", "a"], index: -1, position: 0 });
+      expect(audio.src).toBe("");
+      expect(audio.play).not.toHaveBeenCalled();
     },
   );
+
+  it("removes original duplicate occurrences without disturbing other audio, and stops selected removal", async () => {
+    const { player, selection, audio, getPlayer } = setup();
+    await player.replaceQueueAndPlay(["a", "missing", "a", "b"], 2);
+    player.setPosition(12);
+    const source = audio.src;
+    const plays = audio.play.mock.calls.length;
+    player.removeQueueIndex(0);
+    expect(selection.cache!.queue).toEqual({
+      tracks: ["missing", "a", "b"],
+      index: 1,
+      position: 12,
+    });
+    expect(audio.src).toBe(source);
+    expect(getPlayer().playing).toBe(true);
+    player.removeQueueIndex(2);
+    expect(selection.cache!.queue.index).toBe(1);
+    expect(audio.src).toBe(source);
+    expect(audio.play).toHaveBeenCalledTimes(plays);
+    player.removeQueueIndex(1);
+    expect(selection.cache!.queue).toEqual({ tracks: ["missing"], index: -1, position: 0 });
+    expect(getPlayer().playing).toBe(false);
+    expect(audio.src).toBe("");
+    expect(audio.play).toHaveBeenCalledTimes(plays);
+    player.removeQueueIndex(0);
+    expect(selection.cache!.queue.tracks).toEqual([]);
+  });
 
   it("does not autoplay when inserting into an unselected nonempty queue", async () => {
     const { player, selection, audio } = setup();
@@ -1122,6 +1149,43 @@ describe("playback", () => {
     });
     expect(getPlayer().error).toBeUndefined();
     expect(getPlayer().playing).toBe(true);
+  });
+
+  it("invalidates a pending cached seek when removing downloaded bytes without editing the queue", async () => {
+    const { player, getPlayer, audio, tracks, selection } = setup();
+    const remoteRelease = vi.fn();
+    tracks.getSource.mockResolvedValueOnce({
+      cached: false,
+      release: remoteRelease,
+      url: "https://server/stream",
+    });
+    await player.play();
+    const pending = Promise.withResolvers<TrackSource>();
+    tracks.getSource.mockReturnValueOnce(pending.promise);
+    const seek = player.seek(45);
+    expect(getPlayer().status).toBe("seeking");
+    const queue = { ...selection.cache!.queue, tracks: [...selection.cache!.queue.tracks] };
+    const signal = tracks.getSource.mock.calls.at(-1)![1]?.signal;
+    expect(signal).toBeDefined();
+    const plays = audio.play.mock.calls.length;
+    player.unloadDownloadedTrack(new Set(["a"]));
+    expect(signal?.aborted).toBe(true);
+    expect(getPlayer().status).toBe("idle");
+    expect(audio.src).toBe("");
+    expect(remoteRelease).toHaveBeenCalledOnce();
+    expect(selection.cache!.queue).toEqual(queue);
+    const lateRelease = vi.fn();
+    pending.resolve({ cached: true, release: lateRelease, url: "blob:deleted-download" });
+    await seek;
+    expect(lateRelease).toHaveBeenCalledOnce();
+    expect(getPlayer().status).toBe("idle");
+    expect(getPlayer().playing).toBe(false);
+    expect(audio.src).toBe("");
+    expect(audio.play).toHaveBeenCalledTimes(plays);
+    expect(selection.cache!.queue).toEqual(queue);
+    expect(selection.cache!.queue.position).toBe(45);
+    player.suspend();
+    expect(lateRelease).toHaveBeenCalledOnce();
   });
 
   it("preserves pause when seeking to an offset stream without downloading", async () => {

@@ -90,7 +90,7 @@ describe("independent search filters", () => {
       target.remove();
     }
   });
-  it("filters offline browse eligibility before counting and retains album playback context", async () => {
+  it("filters offline browse eligibility before counting and plays only the explicitly chosen track", async () => {
     const props = fixture(3);
     const offlineProps = {
       ...props,
@@ -113,9 +113,9 @@ describe("independent search filters", () => {
         "1",
       );
       const play = target.querySelector<HTMLButtonElement>(".track-row button.link-target")!;
-      expect(play.getAttribute("aria-label")).toBe("Play Fixture track 2");
+      expect(play.getAttribute("aria-label")).toBe("Play now Fixture track 2");
       play.click();
-      expect(props.playback.toggleTrack).toHaveBeenCalledWith("t2", ["t2"]);
+      expect(props.playback.replaceQueueAndPlay).toHaveBeenCalledWith(["t2"]);
       const input = target.querySelector<HTMLInputElement>('input[type="search"]')!;
       input.value = "Fixture track 0";
       input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -153,7 +153,8 @@ describe("independent search filters", () => {
           expect(target.querySelector(".library-sentinel")).not.toBeNull();
           expect(target.querySelector("section[aria-label] header")?.textContent).toContain("120");
           expect(target.textContent).not.toContain("Show more");
-        } else expect(target.textContent).toContain("Type to find music");
+        } else if (selected === 0) expect(target.querySelectorAll(".tile")).toHaveLength(48);
+        else expect(target.textContent).toContain("Type to find music");
         const input = target.querySelector<HTMLInputElement>('input[type="search"]')!;
         input.value = "Fixture";
         input.dispatchEvent(new Event("input", { bubbles: true }));

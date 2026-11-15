@@ -307,7 +307,7 @@ test("standalone demo errors remain usable on desktop and mobile", async () => {
   try {
     await page.goto(`${base}demo/`);
     await page.locator(".tile a").first().click();
-    await page.getByRole("button", { name: "Play A Perfect Circle", exact: true }).click();
+    await page.getByRole("button", { name: "Play now A Perfect Circle", exact: true }).click();
     for (const width of [1440, 375]) {
       await page.setViewportSize({ width, height: 812 });
       await page.getByRole("button", { name: "Show errors", exact: true }).click();
