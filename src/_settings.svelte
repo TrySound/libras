@@ -360,37 +360,32 @@
         id="settings-offline-card"
         aria-labelledby="settings-offline-title"
       >
-        <div class="row-md row-justify">
-          <h2 class="heading-md uppercase" id="settings-offline-title">
-            <label for="settings-offline">Offline library</label> is {session.offlineMode
-              ? "on"
-              : "off"}
-          </h2>
-          <input
-            class="switch"
-            id="settings-offline"
-            type="checkbox"
-            role="switch"
+        <h2 class="heading-md uppercase" id="settings-offline-title">Connection</h2>
+        <p class="label">
+          {session.busy ? "Connecting…" : session.offlineMode ? "Working offline" : "Connected"}
+        </p>
+        {#if session.auth}
+          <button
+            class="button"
+            data-size="text"
+            data-variant="secondary"
+            disabled={session.busy}
             aria-describedby="settings-offline-help"
-            checked={session.offlineMode}
-            disabled={!session.auth || session.busy}
-            onchange={(event) => void session.setOfflineMode(event.currentTarget.checked)}
-          />
-        </div>
+            onclick={() => void session.setOfflineMode(!session.offlineMode)}
+            >{session.offlineMode ? "Connect" : "Work offline"}</button
+          >
+        {/if}
         <p class="body" id="settings-offline-help">
           {#if !session.auth}
             {demo
               ? "Reload the demo to browse online. Any previews you kept remain available."
               : "Connect to a server to browse online. Any music you kept remains available."}
           {:else if session.offlineMode}
-            Showing downloaded music only. Turn this off to browse and stream {demo
-              ? "demo previews"
-              : "from your server"}.
+            Server access is off. Requested downloads are paused.
           {:else}
-            Browse your full library and stream {demo ? "demo previews" : "from your server"}. Turn
-            this on to show downloaded music only.
+            Server access is on. Choose Downloaded in Library scope to browse saved music without
+            disconnecting.
           {/if}
-          Requested downloads continue when connected, including with Offline library on.
         </p>
         <div class="row-sm">
           <a class="button" data-size="text" data-variant="secondary" href="?/downloads"

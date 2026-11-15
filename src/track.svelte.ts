@@ -104,6 +104,7 @@ export class TrackEngine {
     return this.downloadJobs.length;
   }
   get waitingForConnection() {
+    this.#version;
     return (
       !this.#downloadConnection ||
       this.#downloadConnection.signal.aborted ||
@@ -115,7 +116,7 @@ export class TrackEngine {
     void operation.finally(() => this.#operations.delete(operation)).catch(() => {});
     return operation;
   }
-  /** Session hydration and connection attachment restore queued and failed intent. */
+  /** Session hydration and connection attachment resume queued intent, never failed jobs. */
   async restoreDownloads() {
     const cache = this.#selection.cache;
     const lifetime = this.#lifetime;
@@ -138,7 +139,6 @@ export class TrackEngine {
       )
         return;
       const entries = [...cache.downloads];
-      const failed = new Set<string>();
       for (const [key, intent] of entries) {
         if (this.#jobs.has(key)) {
           continue;
@@ -149,11 +149,8 @@ export class TrackEngine {
             { key, cacheKey: cache.key!, format: intent.format, contentType: intent.contentType },
             true,
           );
-        } else if (intent.status === "failed") {
-          failed.add(intent.track.id);
         }
       }
-      this.downloadMany(failed);
       this.#drain();
     } catch {
       /* Unreadable download storage stays intact and blocks this domain only. */
@@ -488,6 +485,13 @@ export class TrackEngine {
       if (mp3) return { file: mp3, contentType: "audio/mpeg" };
     }
     return null;
+  }
+  /** Registered completed bytes remain usable while another format is queued or failing. */
+  isDownloaded(trackId: string): boolean {
+    const cache = this.#selection.cache;
+    return (["raw", "mp3"] as const).some(
+      (format) => cache?.downloads.get(downloadKey(trackId, format))?.status === "completed",
+    );
   }
   getStatus(trackId: string): TrackStatus {
     this.#version;

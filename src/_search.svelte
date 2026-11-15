@@ -142,6 +142,7 @@
 
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import LibraryScope from "./ui/library-scope.svelte";
   import { getSearchParameters, navigate } from "./router.svelte";
   import { onVisible } from "./viewport";
   import type { Cache } from "./cache.svelte";
@@ -174,7 +175,7 @@
       cache.artists,
       cache.albums,
       cache.tracks,
-      session.offlineMode ? isAvailable : undefined,
+      session.downloadedOnly ? isAvailable : undefined,
     ),
   );
 
@@ -221,7 +222,7 @@
   );
 
   function isAvailable(id: string) {
-    return !session.offlineMode || trackEngine.getStatus(id) === "downloaded";
+    return !session.downloadedOnly || trackEngine.isDownloaded(id);
   }
 
   let menuSelection = $state.raw<{
@@ -277,7 +278,7 @@
     if (group === "Artists") {
       const albums = (cache.artistAlbums.get(record.id) ?? []).filter(
         (album) =>
-          !session.offlineMode ||
+          !session.downloadedOnly ||
           (cache.albumTracks.get(album.id) ?? []).some((track) => isAvailable(track.id)),
       );
       const count = albums.reduce(
@@ -318,6 +319,7 @@
 <svelte:head><title>Search | {appName}</title></svelte:head>
 
 <section class="stack-lg scroll-runway">
+  <LibraryScope {session} />
   <h1 class="heading-lg uppercase">Search</h1>
   <div class="card stack-md">
     <search class="stack-xs">
@@ -379,15 +381,15 @@
         <h2 class="heading-sm">
           {cache.savedAt === undefined
             ? "Connect your library"
-            : session.offlineMode
-              ? "No downloaded music to search."
+            : session.downloadedOnly
+              ? "No downloaded music."
               : "Your library is empty."}
         </h2>
         <p class="body">
           {cache.savedAt === undefined
             ? "Add your music server to start searching."
-            : session.offlineMode
-              ? "Download music from the library to search offline."
+            : session.downloadedOnly
+              ? "Choose All music to browse all saved metadata."
               : "Your music will appear here after synchronization."}
         </p>
         <div class="row-sm">
@@ -429,6 +431,11 @@
                     <Artwork {covers} id={record.artworkId} size="sm" />
                     <div>
                       <p class="label">{record.title}</p>
+                      {#if track && session.offlineMode && !trackEngine.isDownloaded(track.id)}
+                        <p class="caption text-secondary" id={`unavailable-${record.id}`}>
+                          Unavailable offline
+                        </p>
+                      {/if}
                       <p class="caption text-secondary">{supportingText(group, record)}</p>
                     </div>
                   </div>
@@ -450,6 +457,10 @@
                       data-longpressfor="search-menu"
                       data-longpress="show-modal"
                       onfocus={() => selectMenu(group, record.id)}
+                      disabled={session.offlineMode && !trackEngine.isDownloaded(record.id)}
+                      aria-describedby={session.offlineMode && !trackEngine.isDownloaded(record.id)
+                        ? `unavailable-${record.id}`
+                        : undefined}
                       onclick={() => playback.toggleTrack(record.id, trackContext(record.id))}
                     ></button>
                   {/if}

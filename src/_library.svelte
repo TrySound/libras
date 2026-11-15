@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import LibraryScope from "./ui/library-scope.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -34,12 +35,12 @@
   const tracks = $derived(menuArtist ? artistTracks(menuArtist) : []);
   const availableTrackIds = $derived(
     tracks
-      .filter((track) => !offlineMode || trackEngine.getStatus(track.id) === "downloaded")
+      .filter((track) => !offlineMode || trackEngine.isDownloaded(track.id))
       .map((track) => track.id),
   );
 
   const loading = $derived(!session.localReady);
-  const offlineMode = $derived(session.offlineMode);
+  const offlineMode = $derived(session.downloadedOnly);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
   const libraryError = $derived(
     session.refreshError ||
@@ -50,7 +51,7 @@
   const visibleArtists = $derived(
     offlineMode
       ? artists.filter((artist) =>
-          artistTracks(artist).some((track) => trackEngine.getStatus(track.id) === "downloaded"),
+          artistTracks(artist).some((track) => trackEngine.isDownloaded(track.id)),
         )
       : artists,
   );
@@ -71,6 +72,7 @@
 
 <section aria-labelledby="library-heading">
   <h1 class="visually-hidden" id="library-heading">Your library</h1>
+  <LibraryScope {session} />
   {#if session.loadingAfterConnect}
     <div class="library-loading" role="status">
       <Loader size="xl" />
@@ -161,7 +163,7 @@
       {:else if !loading}
         <div class="stack-md">
           <h3 class="heading-sm">
-            {offlineMode ? "No downloaded artists." : "No artists found."}
+            {offlineMode ? "No downloaded music." : "No artists found."}
           </h3>
           <p class="body">
             {offlineMode
@@ -180,7 +182,7 @@
         {libraryError || "Add your music server to start listening."}
       </p>
       <div class="row-sm">
-        {#if libraryError && session.auth && !offlineMode}
+        {#if libraryError && session.auth && !session.offlineMode}
           <button
             class="button"
             data-size="text"

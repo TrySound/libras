@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import LibraryScope from "./ui/library-scope.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -34,7 +35,7 @@
   }: Props = $props();
 
   const loading = $derived(!session.localReady);
-  const offlineMode = $derived(session.offlineMode);
+  const offlineMode = $derived(session.downloadedOnly);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
   const artist = $derived(params.artistId ? cache.artists.get(params.artistId) : undefined);
   const atmosphere = $derived(artist?.artworkId ? covers.ensureCover(artist.artworkId) : undefined);
@@ -53,8 +54,8 @@
   const visibleAlbums = $derived(
     offlineMode
       ? albums.filter((album) =>
-          (cache.albumTracks.get(album.id) ?? []).some(
-            (track) => trackEngine.getStatus(track.id) === "downloaded",
+          (cache.albumTracks.get(album.id) ?? []).some((track) =>
+            trackEngine.isDownloaded(track.id),
           ),
         )
       : albums,
@@ -63,7 +64,7 @@
 
   function availableTrackIds(items: readonly Immutable<Track>[]) {
     return items
-      .filter((track) => !offlineMode || trackEngine.getStatus(track.id) === "downloaded")
+      .filter((track) => !offlineMode || trackEngine.isDownloaded(track.id))
       .map((track) => track.id);
   }
 
@@ -85,6 +86,7 @@
 <svelte:head><title>{artist?.name ?? "Artist"} | {appName}</title></svelte:head>
 
 <Atmosphere src={libraryAvailable && artist ? atmosphere?.source : undefined} />
+<LibraryScope {session} />
 <section class="split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
     <div class="detail-panel view-slide-up">
