@@ -52,12 +52,16 @@
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
   const trackEngine = new TrackEngine({ selection });
-  let player = $state.raw<AudioTransport>();
   const playback: Playback = new Playback({
     selection,
     tracks: trackEngine,
     covers,
     isAvailable: (id) => !offlineMode || trackEngine.getStatus(id) === "downloaded",
+  });
+  const player = new AudioTransport({
+    onposition: (position) => playback.setPosition(position),
+    onended: () => playback.ended(),
+    onstatechange: (state) => playback.updatePlayerState(state),
   });
   const session = untrack(
     () =>
@@ -75,15 +79,9 @@
   const offlineMode = $derived(session.offlineMode);
   const error = $derived(session.error);
   const refreshError = $derived(session.refreshError);
-  let playbackLoading = $derived(
-    ["loading", "buffering", "seeking"].includes(player?.status ?? "idle"),
-  );
+  let playbackLoading = $derived(["loading", "buffering", "seeking"].includes(player.status));
   let playbackError = $derived(
-    player?.error instanceof Error
-      ? player?.error.message
-      : player?.error
-        ? String(player?.error)
-        : "",
+    player.error instanceof Error ? player.error.message : player.error ? String(player.error) : "",
   );
   let initialized = $state(false);
   let loading = $derived(!session.localReady);
@@ -100,17 +98,10 @@
   onMount(() => installLongPress());
   onMount(() => installSwipeToDismiss());
   onMount(() => {
-    const transport = new AudioTransport({
-      onposition: (position) => playback.setPosition(position),
-      onended: () => playback.ended(),
-      onstatechange: (state) => playback.updatePlayerState(state),
-    });
-    player = transport;
-    const detach = playback.attach(transport);
+    const detach = playback.attach(player);
     return () => {
       detach();
-      transport.dispose();
-      player = undefined;
+      player.dispose();
     };
   });
 
@@ -136,15 +127,13 @@
   });
 </script>
 
-{#if player}
-  <AudioPlayer
-    transport={player}
-    hasPrevious={hasPreviousTrack || (cache.queue.index >= 0 && cache.queue.position > 0)}
-    hasNext={hasNextTrack}
-    onprevious={() => playback.previous()}
-    onnext={() => playback.next()}
-  />
-{/if}
+<AudioPlayer
+  transport={player}
+  hasPrevious={hasPreviousTrack || (cache.queue.index >= 0 && cache.queue.position > 0)}
+  hasNext={hasNextTrack}
+  onprevious={() => playback.previous()}
+  onnext={() => playback.next()}
+/>
 
 {#snippet settingsRoute()}
   <Atmosphere />
@@ -177,7 +166,7 @@
     {session}
     {playback}
     {appName}
-    playbackState={playbackLoading ? "loading" : player?.playing ? "playing" : "paused"}
+    playbackState={playbackLoading ? "loading" : player.playing ? "playing" : "paused"}
   />
 {/snippet}
 
@@ -190,7 +179,7 @@
     {session}
     {playback}
     {appName}
-    playbackState={playbackLoading ? "loading" : player?.playing ? "playing" : "paused"}
+    playbackState={playbackLoading ? "loading" : player.playing ? "playing" : "paused"}
   />
 {/snippet}
 
