@@ -50,7 +50,7 @@ function toRemoteQueue(local: Immutable<CachedQueue>): RemoteQueue {
   };
 }
 
-/** Owns queue commands, transport coordination and server synchronization.
+/** Owns local queue commands, transport coordination and explicit server exchange.
  * Cache remains the authoritative queue and owns local durability; AudioTransport owns audio. */
 export class Playback {
   #selection: CacheSelection;
@@ -61,18 +61,14 @@ export class Playback {
   #cleanup?: () => void;
   #selectedTrackId?: string;
   #sourceIsCached = false;
-  #connection?: QueueConnection;
-  #refreshPending?: Promise<void>;
-  #refreshController?: AbortController;
-  #uploadTail: Promise<void> = Promise.resolve();
+  #connection = $state.raw<QueueConnection>();
+  #exchangeBusy = $state<"load" | "save" | undefined>();
+  #exchangeMessage = $state("");
+  #connectionVersion = 0;
+  #activityVersion = 0;
   #queueError = $state.raw<unknown>();
   #activity: PlaybackActivity = "inactive";
   #lastProgressFlush = 0;
-  // Reconnect/progress must not replace a remote queue with an offline one.
-  // Only server adoption or an explicit replacement grants upload permission.
-  #uploadAllowed = false;
-  #uploadPending = false;
-  #syncVersion = 0;
   #destroyed = false;
   #saveTimer?: ReturnType<typeof setTimeout>;
 
@@ -107,7 +103,7 @@ export class Playback {
   /** Session calls this after selecting/loading local data. */
   activate() {
     if (this.#destroyed) return;
-    this.#resetSync();
+    this.#invalidateExchange();
     this.#activity = "inactive";
     this.#lastProgressFlush = 0;
     this.#syncSelection();
@@ -115,7 +111,7 @@ export class Playback {
   setConnection(connection: QueueConnection | undefined) {
     if (this.#destroyed || connection === this.#connection) return;
     this.#connection = connection;
-    this.#resetSync();
+    this.#invalidateExchange();
   }
   setPosition(position: number) {
     if (!this.#player || this.#destroyed) return;
@@ -214,6 +210,7 @@ export class Playback {
       return;
     }
     if (!this.#canPlay(this.#localQueue.index)) return;
+    this.#activityVersion++;
     this.#setActivity("active");
     if (player.status !== "idle") await player.resume();
     else {
@@ -246,10 +243,9 @@ export class Playback {
     if (index >= 0 && index === this.#localQueue.index) await this.toggle();
     else await this.playIndex(index);
   }
-  /** Replace the queue without starting audio. Explicit replacements permit uploads
-   * on this connection; progress alone never promotes an offline queue. */
+  /** Replace the local queue without starting audio. */
   setQueue(state: QueueState) {
-    this.#changeQueue(state, { replace: true });
+    this.#changeQueue(state);
   }
   async replaceQueueAndPlay(tracks: readonly string[], startIndex = 0) {
     if (!tracks.length) {
@@ -257,7 +253,7 @@ export class Playback {
       return;
     }
     const index = Math.max(0, Math.min(startIndex, tracks.length - 1));
-    this.#changeQueue({ tracks, index, position: 0 }, { replace: true, restart: true });
+    this.#changeQueue({ tracks, index, position: 0 }, { restart: true });
     if (Number.isInteger(index)) await this.play();
   }
   async enqueue(tracks: readonly string[], placement: "next" | "last") {
@@ -273,7 +269,7 @@ export class Playback {
     }
   }
   clearQueue() {
-    this.#changeQueue({ tracks: [], position: 0 }, { replace: true, restart: true });
+    this.#changeQueue({ tracks: [], position: 0 }, { restart: true });
   }
   async playIndex(index: number) {
     if (
@@ -324,7 +320,7 @@ export class Playback {
     );
   }
 
-  #changeQueue(state: QueueState, { replace = false, restart = false } = {}) {
+  #changeQueue(state: QueueState, { restart = false } = {}) {
     const cache = this.#selection.cache;
     if (!cache || this.#destroyed) return;
     const requestedIndex = state.index ?? -1;
@@ -335,9 +331,7 @@ export class Playback {
     const index = validIndex ? requestedIndex : -1;
     const position =
       index >= 0 && Number.isFinite(state.position) ? Math.max(0, state.position) : 0;
-    if (replace) this.#uploadAllowed = this.#hasConnection(cache);
     cache.setQueue({ tracks: state.tracks, index, position });
-    this.#queueEdited(cache);
     this.#syncSelection(restart);
     this.#scheduleQueueFlush();
   }
@@ -347,7 +341,6 @@ export class Playback {
     position = Math.max(0, position);
     if (position === cache.queue.position) return;
     cache.setQueue({ ...cache.queue, position }, { checkpoint: true });
-    this.#queueEdited(cache);
     // A clock update never changes selection, but metadata may have removed the
     // selected track since playback began. Preserve its saved queue/resume point.
     if (this.#selectedTrackId !== undefined && !cache.tracks.has(this.#selectedTrackId)) {
@@ -355,23 +348,20 @@ export class Playback {
       this.suspend();
     }
   }
-  #queueEdited(cache: Cache) {
-    this.#refreshController?.abort();
-    this.#uploadPending = this.#uploadAllowed && this.#hasConnection(cache);
-  }
-
-  // Connection-scoped synchronization policy. No independent queue state or lifecycle.
-  #resetSync() {
-    this.#refreshController?.abort();
-    this.#refreshController = undefined;
-    this.#refreshPending = undefined;
-    this.#uploadTail = Promise.resolve();
+  #invalidateExchange() {
+    this.#connectionVersion++;
     this.#queueError = undefined;
-    this.#syncVersion++;
-    this.#uploadPending = false;
-    this.#uploadAllowed = false;
-    clearTimeout(this.#saveTimer);
-    this.#saveTimer = undefined;
+    this.#exchangeMessage = "";
+  }
+  get exchangeBusy() {
+    return this.#exchangeBusy;
+  }
+  get exchangeMessage() {
+    return this.#exchangeMessage;
+  }
+  get canExchangeQueue() {
+    const cache = this.#selection.cache;
+    return !!cache && !this.#destroyed && this.#hasConnection(cache);
   }
   #hasConnection(cache: Cache) {
     return (
@@ -380,12 +370,12 @@ export class Playback {
       cache.key === getAccountKey(this.#connection.account)
     );
   }
-  /** Commands publish intent before awaiting Player; explicit transport events
-   * reconcile actual status here. Both paths share idempotent save/read policy. */
+  /** Commands publish intent before awaiting transport; events reconcile status.
+   * Activity changes checkpoint locally and invalidate pending loads. */
   #setActivity(state: PlaybackActivity) {
     if (this.#destroyed || state === this.#activity) return;
     this.#activity = state;
-    if (state !== "inactive") this.#refreshController?.abort();
+    if (state !== "inactive") this.#activityVersion++;
     if (state === "active") this.#scheduleQueueFlush();
     else void this.flushQueue();
   }
@@ -403,89 +393,72 @@ export class Playback {
     this.#saveTimer = undefined;
     try {
       await this.#selection.cache?.flush();
-      await this.#uploadQueue();
     } catch {
       // Cache retains checkpoint errors and dirty data for retry.
     }
   }
-  #uploadQueue(): Promise<void> {
-    const connection = this.#connection;
-    const cache = this.#selection.cache;
-    if (!cache || !connection || !this.#hasConnection(cache) || this.#destroyed)
-      return Promise.resolve();
-    const version = this.#syncVersion;
-    const isCurrentConnection = () =>
-      !this.#destroyed &&
-      version === this.#syncVersion &&
-      cache === this.#selection.cache &&
-      !connection.signal.aborted;
-    const task = this.#uploadTail.then(async () => {
-      if (!isCurrentConnection()) return;
-      const revision = cache.queueRevision;
-      await cache.flush();
-      if (!isCurrentConnection() || !this.#uploadPending) return;
-      const checkpointIsCurrent = !cache.queueDirty && revision === cache.queueRevision;
-      if (!checkpointIsCurrent) return;
-      const state = cache.queue;
-      this.#queueError = undefined;
-      try {
-        await connection.write(toRemoteQueue(state));
-        if (isCurrentConnection() && revision === cache.queueRevision) this.#uploadPending = false;
-      } catch (error) {
-        if (isCurrentConnection()) this.#queueError = error;
-      }
-    });
-    // A failed checkpoint rejects this attempt without poisoning later attempts.
-    this.#uploadTail = task.catch(() => {});
-    return task;
+  /** Explicit exchange only. Callers confirm replacement/empty saves before invoking. */
+  loadServerQueue() {
+    return this.#exchangeQueue("load");
   }
-  refreshQueue(): Promise<void> {
+  saveServerQueue() {
+    return this.#exchangeQueue("save");
+  }
+  async #exchangeQueue(action: "load" | "save") {
     const connection = this.#connection;
     const cache = this.#selection.cache;
-    if (!connection || !cache || !this.#hasConnection(cache) || this.#destroyed)
-      return Promise.resolve();
-    if (this.#refreshPending) return this.#refreshPending;
-    const version = this.#syncVersion;
-    const controller = new AbortController();
-    this.#refreshController = controller;
-    const signal = AbortSignal.any([connection.signal, controller.signal]);
-    const isCurrentConnection = () =>
-      version === this.#syncVersion &&
+    if (this.#exchangeBusy || !connection || !cache || !this.canExchangeQueue) return;
+    const version = this.#connectionVersion;
+    const revision = cache.queueRevision;
+    const activityVersion = this.#activityVersion;
+    const snapshot = toRemoteQueue({ ...cache.queue, tracks: [...cache.queue.tracks] });
+    const current = () =>
       !this.#destroyed &&
+      version === this.#connectionVersion &&
       cache === this.#selection.cache &&
       !connection.signal.aborted;
-    return (this.#refreshPending = (async () => {
-      try {
-        try {
-          await this.#uploadQueue();
-        } catch {
-          // Cache reports checkpoint failures; do not retain a duplicate sync error.
+    this.#exchangeBusy = action;
+    this.#exchangeMessage = "";
+    this.#queueError = undefined;
+    try {
+      if (action === "save") {
+        await connection.write(snapshot);
+        if (current()) this.#exchangeMessage = "Queue saved to server.";
+      } else {
+        const remote = await connection.read();
+        if (!current()) {
+          if (!this.#destroyed)
+            this.#exchangeMessage = "Connection changed while loading. Nothing was replaced.";
           return;
         }
-        if (!isCurrentConnection()) return;
-        this.#queueError = undefined;
-        const revision = cache.queueRevision;
-        const remote = await connection.read();
-        if (!isCurrentConnection() || signal.aborted) return;
-        const queueWasEdited = revision !== cache.queueRevision;
-        const playbackInUse = this.#activity !== "inactive";
-        if (queueWasEdited || playbackInUse) return;
+        if (revision !== cache.queueRevision || activityVersion !== this.#activityVersion) {
+          this.#exchangeMessage = "Queue changed while loading. Nothing was replaced.";
+          return;
+        }
         cache.setQueue(fromRemoteQueue(remote, cache.queue));
-        this.#uploadPending = false;
-        this.#uploadAllowed = true;
-        this.#syncSelection();
-      } catch (error) {
-        if (isCurrentConnection() && !signal.aborted) this.#queueError = error;
+        this.#syncSelection(true);
+        this.#scheduleQueueFlush();
+        this.#exchangeMessage = "Server queue loaded. Playback is stopped.";
       }
-    })().finally(() => {
-      if (this.#refreshController === controller) this.#refreshController = undefined;
-      if (version === this.#syncVersion) this.#refreshPending = undefined;
-    }));
+    } catch {
+      // Never publish request URLs or arbitrary server error text.
+      if (current()) {
+        const message =
+          action === "load"
+            ? "Could not load server queue. Nothing was replaced."
+            : "Could not save queue to server. Try again.";
+        this.#queueError = new Error(message);
+        this.#exchangeMessage = message;
+      }
+    } finally {
+      this.#exchangeBusy = undefined;
+    }
   }
   destroy() {
     this.#destroyed = true;
     this.#cleanup?.();
-    this.#resetSync();
+    this.#invalidateExchange();
+    clearTimeout(this.#saveTimer);
     return (
       this.#selection.cache?.flush().then(
         () => {},

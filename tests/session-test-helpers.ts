@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 import { AuthStore, getAccountKey } from "../src/auth";
 import { TestSelection } from "./cache-selection-test-helpers.svelte";
 import { Network, type MetadataConnection } from "../src/network.svelte";
@@ -117,9 +117,11 @@ export function createSession(saved = false, storage = createStorage()) {
       .mockImplementation(() => {}),
   };
   const playback = {
-    setConnection: vi.spyOn(player, "setConnection").mockImplementation(() => {}),
+    setConnection: vi.spyOn(player, "setConnection"),
     activate: vi.spyOn(player, "activate").mockImplementation(() => {}),
-    refreshQueue: vi.spyOn(player, "refreshQueue").mockResolvedValue(undefined),
+    refreshQueue: vi.spyOn(player, "loadServerQueue").mockResolvedValue(undefined),
+    readQueue: vi.fn(async () => ({ trackIds: [], position: 0 })),
+    writeQueue: vi.fn(async () => {}),
     flushQueue: vi.spyOn(player, "flushQueue").mockResolvedValue(undefined),
     suspend: vi.spyOn(player, "suspend").mockImplementation(() => {}),
     suspendNetwork: vi.spyOn(player, "suspendNetwork").mockImplementation(() => {}),
@@ -132,6 +134,7 @@ export function createSession(saved = false, storage = createStorage()) {
     const active = accept(candidate);
     return {
       ...active,
+      queue: { ...active.queue, read: playback.readQueue, write: playback.writeQueue },
       metadata: {
         account: active.account,
         signal: active.signal,
@@ -151,6 +154,8 @@ export function createSession(saved = false, storage = createStorage()) {
   });
   return {
     async destroy() {
+      expect(playback.readQueue).not.toHaveBeenCalled();
+      expect(playback.writeQueue).not.toHaveBeenCalled();
       session.destroy();
       await player.destroy();
       covers.activate.mockRestore();
