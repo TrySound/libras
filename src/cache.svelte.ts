@@ -359,6 +359,7 @@ class CheckpointStore<T> {
     this.#value = this.options.initial();
     this.#savedRevision = ++this.#revision;
     this.#loaded = false;
+    this.#unreadable = false;
     this.error = undefined;
   }
 
@@ -1190,7 +1191,7 @@ export class Cache {
     this.#favourites = new CheckpointStore<Immutable<FavouriteState>>(this.#disk, {
       document: "favourites",
       preserveUnreadable: true,
-      initial: { fetchedAt: null, artists: [], albums: [], tracks: [] },
+      initial: () => ({ fetchedAt: null, artists: [], albums: [], tracks: [] }),
       parse: (value) => v.parse(favouritesSchema, value),
       serialize: (value) => value,
     });
@@ -1240,6 +1241,7 @@ export class Cache {
         this.#library.clear(),
         this.#queue.clear(),
         this.#playlists.clear(),
+        this.#favourites.clear(),
         this.#images.clear(),
         this.#downloads.clear(),
       ]);

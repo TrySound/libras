@@ -119,97 +119,112 @@ it.each([false, true])(
   },
 );
 
-it("preserves a submitted uncertain write through disconnect and failed same-account reconnect with real Cache", async () => {
-  installDisk();
-  const library = {
-    savedAt: 100,
-    lastModified: 100,
-    artists: [{ id: "artist", name: "Artist", localOnly: false }],
-    albums: [{ id: "album", title: "Album", artistIds: ["artist"], genres: [] }],
-    tracks: [{ id: "song", title: "Song", albumId: "album", artistIds: ["artist"], genres: [] }],
-  };
-  const seed = new Cache(getAccountKey(credentials));
-  await seed.load();
-  await seed.replaceLibrary(library);
-  seed.setFavourites({ fetchedAt: 1, artists: [], albums: [], tracks: [] });
-  await seed.flush();
-  const submitted = deferred();
-  const response = deferred();
-  let remoteStarred = false;
-  let failReads = false;
-  let writes = 0;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: string) => {
-      if (url.includes("star.view")) {
-        writes++;
-        remoteStarred = true;
-        submitted.resolve();
-        // Model a server-accepted write whose response outlives client cancellation.
-        await response.promise;
-      }
-      if (url.includes("getStarred2") && failReads) throw new Error("Mock transport unavailable");
-      return new Response(
-        JSON.stringify({
-          "subsonic-response": {
-            status: "ok",
-            indexes: { lastModified: 100 },
-            starred2: { song: remoteStarred ? [{ id: "song", title: "Song" }] : [] },
-          },
-        }),
-      );
-    }),
-  );
-  const storage = createStorage();
-  storage.setItem("navidrome-offline-mode", "true");
-  const s = createSession(true, storage, true);
-  s.loadCache.mockRestore();
-  s.saveLibrary.mockRestore();
-  s.metadata.readLibrary.mockResolvedValue(library);
-  try {
-    s.session.start();
-    await vi.waitFor(() => expect(s.session.localReady).toBe(true));
-    await vi.waitFor(() => expect(s.session.syncing).toBe(false));
-    const cache = s.selection.cache!;
-    expect(cache.tracks.has("song")).toBe(true);
-    const edit = s.favourites!.toggle({ kind: "tracks", id: "song" });
-    const retiredEdit = edit.catch((error) => error);
-    await submitted.promise;
-    s.session.disconnect();
-    expect(s.favourites!.outcomeUnknown).toBe(true);
-    failReads = true;
-    expect(
-      await s.session.connect({
-        host: credentials.host,
-        username: credentials.username,
-        password: "fixture",
+it.each(["normal", "credentials", "preferences"])(
+  "preserves a submitted uncertain write through %s disconnect and failed same-account reconnect with real Cache",
+  async (failure) => {
+    installDisk();
+    const library = {
+      savedAt: 100,
+      lastModified: 100,
+      artists: [{ id: "artist", name: "Artist", localOnly: false }],
+      albums: [{ id: "album", title: "Album", artistIds: ["artist"], genres: [] }],
+      tracks: [{ id: "song", title: "Song", albumId: "album", artistIds: ["artist"], genres: [] }],
+    };
+    const seed = new Cache(getAccountKey(credentials));
+    await seed.load();
+    await seed.replaceLibrary(library);
+    seed.setFavourites({ fetchedAt: 1, artists: [], albums: [], tracks: [] });
+    await seed.flush();
+    const submitted = deferred();
+    const response = deferred();
+    let remoteStarred = false;
+    let failReads = false;
+    let writes = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("star.view")) {
+          writes++;
+          remoteStarred = true;
+          submitted.resolve();
+          // Model a server-accepted write whose response outlives client cancellation.
+          await response.promise;
+        }
+        if (url.includes("getStarred2") && failReads) throw new Error("Mock transport unavailable");
+        return new Response(
+          JSON.stringify({
+            "subsonic-response": {
+              status: "ok",
+              indexes: { lastModified: 100 },
+              starred2: { song: remoteStarred ? [{ id: "song", title: "Song" }] : [] },
+            },
+          }),
+        );
       }),
-    ).toBe(true);
-    await vi.waitFor(() => expect(s.session.syncing).toBe(false));
-    expect(s.selection.cache).toBe(cache);
-    expect(s.favourites!.error).toBeDefined();
-    expect(s.favourites!.has({ kind: "tracks", id: "song" })).toBe(false);
-    await expect(s.favourites!.toggle({ kind: "tracks", id: "song" })).rejects.toThrow(
-      "Outcome unknown",
     );
-    response.resolve();
-    expect(await retiredEdit).toMatchObject({ name: "AbortError" });
-    expect(s.favourites!.outcomeUnknown).toBe(true);
-    expect(writes).toBe(1);
-    failReads = false;
-    await s.session.refresh();
-    expect(s.favourites!.has({ kind: "tracks", id: "song" })).toBe(true);
-    expect(s.favourites!.outcomeUnknown).toBe(false);
-    expect(writes).toBe(1);
-    await cache.flush();
-    const restored = new Cache(getAccountKey(credentials));
-    await restored.load();
-    expect(restored.favourites.tracks[0]?.id).toBe("song");
-  } finally {
-    response.resolve();
-    await s.destroy();
-  }
-});
+    const storage = createStorage();
+    storage.setItem("navidrome-offline-mode", "true");
+    const s = createSession(true, storage, true);
+    s.loadCache.mockRestore();
+    s.saveLibrary.mockRestore();
+    s.metadata.readLibrary.mockResolvedValue(library);
+    try {
+      s.session.start();
+      await vi.waitFor(() => expect(s.session.localReady).toBe(true));
+      await vi.waitFor(() => expect(s.session.syncing).toBe(false));
+      const cache = s.selection.cache!;
+      expect(cache.tracks.has("song")).toBe(true);
+      const edit = s.favourites!.toggle({ kind: "tracks", id: "song" });
+      const retiredEdit = edit.catch((error) => error);
+      await submitted.promise;
+      const failingStorage =
+        failure === "credentials"
+          ? vi.spyOn(s.auth, "clear").mockImplementation(() => {
+              throw new Error("Storage denied");
+            })
+          : failure === "preferences"
+            ? vi.spyOn(storage, "setItem").mockImplementation(() => {
+                throw new Error("Storage denied");
+              })
+            : undefined;
+      expect(s.session.disconnect()).toBe(failure === "normal");
+      expect(s.favourites!.available).toBe(false);
+      failingStorage?.mockRestore();
+      expect(s.favourites!.outcomeUnknown).toBe(true);
+      failReads = true;
+      expect(
+        await s.session.connect({
+          host: credentials.host,
+          username: credentials.username,
+          password: "fixture",
+        }),
+      ).toBe(true);
+      await vi.waitFor(() => expect(s.session.syncing).toBe(false));
+      expect(s.selection.cache).toBe(cache);
+      expect(s.favourites!.error).toBeDefined();
+      expect(s.favourites!.has({ kind: "tracks", id: "song" })).toBe(false);
+      await expect(s.favourites!.toggle({ kind: "tracks", id: "song" })).rejects.toThrow(
+        "Outcome unknown",
+      );
+      response.resolve();
+      expect(await retiredEdit).toMatchObject({ name: "AbortError" });
+      expect(s.favourites!.outcomeUnknown).toBe(true);
+      expect(writes).toBe(1);
+      failReads = false;
+      await s.session.refresh();
+      expect(s.favourites!.has({ kind: "tracks", id: "song" })).toBe(true);
+      expect(s.favourites!.outcomeUnknown).toBe(false);
+      expect(writes).toBe(1);
+      await cache.flush();
+      const restored = new Cache(getAccountKey(credentials));
+      await restored.load();
+      expect(restored.favourites.tracks[0]?.id).toBe("song");
+    } finally {
+      response.resolve();
+      await s.destroy();
+    }
+  },
+);
 
 it("retires an account with preserved corrupt favourites after a confirmed server refresh", async () => {
   const disk = installDisk();

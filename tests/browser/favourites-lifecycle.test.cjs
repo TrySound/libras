@@ -233,7 +233,7 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
       });
       await refresh();
       await waitUntil(() => favouriteWaiting);
-      await navigate("/search/:favourite");
+      await navigate("/search&favourite=1");
       if (pass === 0) {
         await open("Open menu for Ghost favourite", "#search-menu-popover");
         await page.keyboard.press("Escape");
@@ -268,7 +268,7 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
       await waitUntil(() => favouriteWaiting);
       await page.getByRole("switch", { name: "Offline library" }).setChecked(!offline);
       const busyRefresh = page.getByRole("button", { name: "Refreshing…", exact: true });
-      assert.equal(await busyRefresh.isDisabled(), true);
+      assert.equal(await busyRefresh.getAttribute("aria-disabled"), "true");
       assert.equal(await busyRefresh.getAttribute("aria-busy"), "true");
       releaseFavourite();
       favouriteGate = undefined;
@@ -303,7 +303,7 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
         ["/library/artist/owner", "Actions for Keep album"],
         ["/library/album/keep", "Actions for Keep album"],
         ["/library/album/keep", "Actions for Keep song"],
-        ["/search/:track", "Open menu for Keep song"],
+        ["/search&type=track", "Open menu for Keep song"],
       ]) {
         await navigate(path);
         const panel =
@@ -315,7 +315,7 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
         await open(name, panel);
         await recover(panel);
       }
-      await navigate("/search/:track");
+      await navigate("/search&type=track");
       await page.getByRole("button", { name: /^(Play|Toggle playback for) Keep song$/ }).click();
       await page.getByRole("button", { name: "Open Now Playing", exact: true }).click();
       await open("Actions for Keep song", "#playing-actions");

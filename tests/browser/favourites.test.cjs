@@ -6,7 +6,7 @@ const { mkdir } = require("node:fs/promises");
 const base = process.env.PREVIEW_URL ?? "http://127.0.0.1:5173";
 const evidence = process.env.SCREENSHOT_DIR;
 
-test("favourites actions, confirmation, overlay lifetimes, unavailable results and history drafts", async () => {
+test("favourites actions, confirmation, overlay lifetimes, unavailable results and URL criteria", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
     viewport: { width: 1280, height: 900 },
@@ -97,6 +97,13 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       await page.screenshot({ path: `${evidence}/${name}.png`, fullPage: true });
     }
   }
+  async function searchShots(state) {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await shot(`search-${state}-${width}`);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
   async function navigate(path) {
     await page.evaluate((path) => window.navigation.navigate(`?${path}`).finished, path);
   }
@@ -148,37 +155,50 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       "song",
       "same",
     ]);
-    await navigate("/search/:track");
+    await navigate("/search&type=track");
     const input = page.getByRole("searchbox");
     await input.waitFor();
-    assert.equal(await input.inputValue(), ":track");
-    assert.equal(
-      await page.getByRole("region", { name: "Tracks", exact: true }).locator(".track-row").count(),
-      10,
-    );
-    await page.getByRole("button", { name: "Show more tracks" }).click();
-    await input.fill(":track Fixture");
-    await page.getByRole("button", { name: "Show more tracks" }).click();
-    await navigate("/library/album/same");
-    await page.goBack();
-    await page.goForward();
-    await page.getByRole("heading", { name: "Fixture album", exact: true }).first().waitFor();
-    await page.goBack();
-    assert.equal(await input.inputValue(), ":track Fixture");
+    assert.equal(await input.inputValue(), "");
     assert.equal(
       await page.getByRole("region", { name: "Tracks", exact: true }).locator(".track-row").count(),
       14,
     );
-    await navigate("/library");
-    await navigate("/search/:track");
-    assert.equal(await input.inputValue(), ":track"); // Fresh native entry, not the edited older URL.
+    await searchShots("inactive");
+    const historyLength = await page.evaluate(() => history.length);
+    await input.fill("Fixture");
+    assert.equal(await page.evaluate(() => history.length), historyLength);
+    await page.getByRole("button", { name: "Favourites", exact: true }).click();
+    assert.equal(new URL(page.url()).searchParams.get("favourite"), "1");
+    assert.equal(
+      await page
+        .getByRole("button", { name: "Favourites", exact: true })
+        .evaluate((node) => node === document.activeElement),
+      true,
+    );
+    await page.goBack();
+    assert.equal(await input.inputValue(), "Fixture");
+    assert.equal(new URL(page.url()).searchParams.has("favourite"), false);
+    await page.goForward();
+    assert.equal(new URL(page.url()).searchParams.get("favourite"), "1");
     const encoded = ":track :favourite / 100% 日本語";
-    await navigate(`/search/${encodeURIComponent(encoded)}`);
+    await navigate(`/search&type=track&q=${encodeURIComponent(encoded)}#search-anchor`);
     assert.equal(await input.inputValue(), encoded);
     await page.reload();
     await input.waitFor();
     assert.equal(await input.inputValue(), encoded);
-    await input.fill(":favourite");
+    await page.getByRole("button", { name: "Favourites", exact: true }).click();
+    assert.equal(new URL(page.url()).hash, "#search-anchor");
+    assert.equal(await input.inputValue(), encoded);
+    await navigate("/search&favourite=1");
+    await searchShots("active");
+    const modifier = page.getByRole("button", { name: "Favourites", exact: true });
+    await modifier.focus();
+    await page.keyboard.press("Space");
+    await page.waitForFunction(() => !new URL(location.href).searchParams.has("favourite"));
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => new URL(location.href).searchParams.get("favourite") === "1");
+    assert.equal(await modifier.getAttribute("aria-pressed"), "true");
+    await shot("search-keyboard-focus");
     const unavailable = page.locator(".track-row").filter({ hasText: "Saved missing song" });
     await unavailable.waitFor();
     assert.match(await unavailable.textContent(), /Unavailable in your library/);
@@ -206,7 +226,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     ]);
     await unavailable.waitFor({ state: "hidden" });
     await page.waitForFunction(() => document.activeElement?.id === "library-search");
-    await input.fill(":track");
+    await navigate("/search&type=track");
     reject = true;
     let overlay = await open("Open menu for Fixture track 00", "#search-menu-popover");
     await overlay.getByRole("button", { name: "Remove from favourites", exact: true }).click();
@@ -262,10 +282,11 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await navigate("/settings");
     await page.getByRole("button", { name: "Refresh library", exact: true }).click();
     await page.getByRole("heading", { name: "Synchronization needs attention" }).waitFor();
-    await navigate("/search/:favourite");
+    await navigate("/search&favourite=1");
     await page.getByText(/Favourites need attention/).waitFor();
     await page.locator("main .track-row").filter({ hasText: "Fixture track 00" }).waitFor();
     await shot("favourites-cached-refresh-failure-1280");
+    await searchShots("failure");
     readsFail = false;
     await navigate("/settings");
     await page.getByRole("switch", { name: "Offline library" }).check();
@@ -285,10 +306,10 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     ]);
     await navigate("/settings");
     await page.getByRole("switch", { name: "Offline library" }).uncheck();
-    await navigate("/search/:favourite");
+    await navigate("/search&favourite=1");
     await page.setViewportSize({ width: 320, height: 900 });
     await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
-    await input.fill(":favourite");
+    await input.fill("");
     await shot("favourites-reflow-320");
     assert.equal(
       await page.evaluate(
@@ -298,7 +319,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     );
     await page.evaluate(() => (document.documentElement.style.fontSize = ""));
     await page.setViewportSize({ width: 390, height: 900 });
-    await input.fill(":track");
+    await navigate("/search&type=track");
     reject = true;
     overlay = await open("Open menu for Fixture track 01", "#search-menu");
     await overlay.getByRole("button", { name: "Add to favourites", exact: true }).click();
@@ -331,9 +352,10 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       releaseRead = resolve;
     });
     await page.getByRole("button", { name: "Refresh library", exact: true }).click();
-    await navigate("/search/:favourite");
+    await navigate("/search&favourite=1");
     await page.getByText("Loading favourites…", { exact: true }).waitFor();
     await shot("favourites-loading-cached-1280");
+    await searchShots("loading");
     // Simulate a server-side update; the subsequent explicit refresh is authoritative.
     starred.artist = [];
     starred.album = [];
@@ -342,9 +364,10 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     readGate = undefined;
     await page.getByRole("heading", { name: "No favourites yet." }).waitFor();
     await shot("favourites-confirmed-empty-1280");
+    await searchShots("empty");
     // A resize can hide the captured desktop invoker without dismissing its popover.
     // Success must then use this Search owner's input, not a global page selector.
-    await input.fill(":track");
+    await navigate("/search&type=track");
     overlay = await open("Open menu for Fixture track 02", "#search-menu-popover");
     gate = new Promise((resolve) => {
       release = resolve;
@@ -359,12 +382,16 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await page.waitForFunction(() => document.activeElement?.id === "library-search");
     await page.setViewportSize({ width: 1280, height: 900 });
     await navigate("/search");
-    await input.fill("bare account draft");
+    await input.fill("literal URL query");
     await navigate("/library");
     await navigate("/search");
-    assert.equal(await input.inputValue(), "bare account draft");
+    assert.equal(await input.inputValue(), ""); // A fresh bare URL has no hidden draft.
     await navigate("/settings");
     await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+    await page
+      .locator("#disconnect-dialog")
+      .getByRole("button", { name: "Disconnect", exact: true })
+      .click();
     await navigate("/library/album/same");
     overlay = await open("Actions for Fixture album", "#album-detail-menu-popover");
     assert.equal(
@@ -381,7 +408,21 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await page.locator(".tile").waitFor();
     await navigate("/search");
-    assert.equal(await input.inputValue(), ""); // Account replacement discards the old account's draft.
+    assert.equal(await input.inputValue(), ""); // Search state comes only from this URL.
+    await navigate("/search&favourite=1");
+    await page.locator("main .track-row").filter({ hasText: "Fixture track 02" }).waitFor();
+    await navigate("/settings");
+    await page.locator("#settings-disconnect").click();
+    const confirmation = page.locator("#disconnect-dialog");
+    await confirmation.getByRole("switch").check();
+    await confirmation.getByRole("button", { name: "Disconnect", exact: true }).click();
+    await confirmation.waitFor({ state: "hidden" });
+    await navigate("/search&favourite=1");
+    await page.getByText("Favourites haven’t been loaded.", { exact: true }).waitFor();
+    assert.equal(await page.locator("main .track-row").count(), 0);
+    await page.reload();
+    await page.getByText("Favourites haven’t been loaded.", { exact: true }).waitFor();
+    assert.equal(await page.locator("main .track-row").count(), 0);
     assert.deepEqual(errors, []);
   } finally {
     release?.();

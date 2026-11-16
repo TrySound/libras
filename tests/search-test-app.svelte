@@ -11,4 +11,14 @@
 </script>
 
 <button onclick={() => (visible = !visible)}>Toggle route</button>
-{#if visible}<Search {...props} />{/if}
+{#if visible}<Search
+    {...props}
+    favourites={props.favourites ??
+      ({
+        available: false,
+        has: () => false,
+        key: () => "",
+        pending: new Map(),
+        targetError: () => "",
+      } as unknown as import("../src/favourites.svelte").Favourites)}
+  />{/if}

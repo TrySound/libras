@@ -27,6 +27,18 @@ it("restores favourites independently and isolates accounts", async () => {
   expect(other.favourites.fetchedAt).toBeNull();
   expect(other.favourites.artists).toEqual([]);
 });
+it("clears favourites with optional account-local cleanup, including on reload", async () => {
+  installDisk();
+  const cache = new Cache("one");
+  await cache.load();
+  cache.setFavourites(state);
+  await cache.flush();
+  await cache.clear();
+  expect(cache.favourites).toEqual({ fetchedAt: null, artists: [], albums: [], tracks: [] });
+  const restored = new Cache("one");
+  await restored.load();
+  expect(restored.favourites).toEqual(cache.favourites);
+});
 it("does not undo server-confirmed memory on checkpoint failure", async () => {
   const disk = installDisk();
   const cache = new Cache("one");
