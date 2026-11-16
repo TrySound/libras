@@ -43,6 +43,30 @@ function fixture(count = 120) {
 }
 
 describe("independent search filters", () => {
+  it("preserves a retained group's section and first row when restricting types", async () => {
+    const target = document.createElement("main");
+    document.body.append(target);
+    const app = mount(Harness, { target, props: { props: fixture(3) } });
+    flushSync();
+    try {
+      const input = target.querySelector("input")!;
+      input.value = "Fixture";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      flushSync();
+      expect(target.querySelectorAll("section[aria-label]")).toHaveLength(3);
+      const section = target.querySelector('section[aria-label="Tracks"]')!;
+      const firstRow = section.querySelector(".track-row");
+      expect(firstRow).not.toBeNull();
+      target.querySelectorAll<HTMLButtonElement>("[aria-pressed]")[2].click();
+      flushSync();
+      expect(target.querySelectorAll("section[aria-label]")).toHaveLength(1);
+      expect(target.querySelector('section[aria-label="Tracks"]')).toBe(section);
+      expect(section.querySelector(".track-row")).toBe(firstRow);
+    } finally {
+      await unmount(app);
+      target.remove();
+    }
+  });
   it("appends batches, retains rows across hash changes and resets on new criteria", async () => {
     let callback: IntersectionObserverCallback;
     vi.stubGlobal(
@@ -61,27 +85,54 @@ describe("independent search filters", () => {
     const app = mount(Harness, { target, props: { props: fixture(120) } });
     flushSync();
     try {
+      const input = target.querySelector("input")!;
+      input.value = "Fixture";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      flushSync();
+      const section = target.querySelector('section[aria-label="Tracks"]')!;
+      const first = section.querySelector(".track-row")!;
+      const firstBatch = first.parentElement!;
+      target.querySelector<HTMLButtonElement>('[aria-label="Show more tracks"]')!.click();
+      flushSync();
+      expect(section.querySelector(".track-row")).toBe(first);
+      expect(first.parentElement).toBe(firstBatch);
       target.querySelectorAll<HTMLButtonElement>("[aria-pressed]")[2].click();
       flushSync();
-      const first = target.querySelector(".track-row");
-      expect(target.querySelectorAll(".track-row")).toHaveLength(48);
-      for (const size of [96, 120]) {
-        const sentinel = target.querySelector(".library-sentinel")!;
-        callback!(
-          [{ target: sentinel, isIntersecting: true } as IntersectionObserverEntry],
-          {} as IntersectionObserver,
-        );
-        flushSync();
+      const container = firstBatch.parentElement!;
+      let previous = [...container.children];
+      for (const [size, rowCounts] of [
+        [48, [40, 8]],
+        [96, [40, 40, 16]],
+        [120, [40, 40, 40]],
+      ] as const) {
+        if (size > 48) {
+          const sentinel = target.querySelector(".library-sentinel")!;
+          callback!(
+            [{ target: sentinel, isIntersecting: true } as IntersectionObserverEntry],
+            {} as IntersectionObserver,
+          );
+          flushSync();
+        }
         expect(target.querySelectorAll(".track-row")).toHaveLength(size);
-        expect(target.querySelector(".track-row")).toBe(first);
+        expect(section.querySelector(".track-row")).toBe(first);
+        expect(first.parentElement).toBe(firstBatch);
+        const wrappers = [...container.children] as HTMLElement[];
+        expect(wrappers.map((batch) => batch.childElementCount)).toEqual(rowCounts);
+        wrappers.forEach((batch, index) => {
+          expect(batch.style.getPropertyValue("--track-group-rows")).toBe(
+            String(batch.childElementCount),
+          );
+          expect(batch.classList.contains("track-group")).toBe(index > 0);
+        });
+        previous.forEach((batch, index) => expect(wrappers[index]).toBe(batch));
+        previous = wrappers;
       }
       expect(target.querySelector(".library-sentinel")).toBeNull();
       expect(target.textContent).toContain("119");
-      window.navigation.navigate("?/search&type=track#anchor", { history: "push" });
+      window.navigation.navigate("?/search&type=track&q=Fixture#anchor", { history: "push" });
       flushSync();
       expect(target.querySelectorAll(".track-row")).toHaveLength(120);
-      const input = target.querySelector("input")!;
-      input.value = "Fixture";
+      input.value = "Fixture track";
       input.dispatchEvent(new Event("input", { bubbles: true }));
       flushSync();
       expect(target.querySelectorAll(".track-row")).toHaveLength(48);

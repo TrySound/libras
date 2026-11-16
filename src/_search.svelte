@@ -211,13 +211,20 @@
       (cache.reportingError ? "Some local data could not be restored or saved." : ""),
   );
 
+  const resultGroupSize = 40;
   const results = $derived(
     matches.groups
       .filter((_, i) => !selectedTypes.length || selectedTypes.includes(searchTypes[i]))
-      .map((result) => ({
-        ...result,
-        records: result.records.slice(0, singleType ? limit : limits[result.group]),
-      })),
+      .map((result) => {
+        const records = result.records.slice(0, singleType ? limit : limits[result.group]);
+        return {
+          ...result,
+          records,
+          batches: Array.from({ length: Math.ceil(records.length / resultGroupSize) }, (_, index) =>
+            records.slice(index * resultGroupSize, (index + 1) * resultGroupSize),
+          ),
+        };
+      }),
   );
 
   function isAvailable(id: string) {
@@ -411,7 +418,7 @@
         <p class="body">Try another search or change the selected types.</p>
       </div>
     {:else}
-      {#each results as { group, records, total }}
+      {#each results as { group, records, total, batches } (group)}
         {#if total > 0}
           <section class="stack-lg" aria-label={group}>
             <header class="row-md row-justify">
@@ -419,65 +426,74 @@
               <span class="metadata text-subtle">{total}</span>
             </header>
             <div class="stack-sm">
-              {#each records as record (record.id)}
-                {@const track = group === "Tracks" ? cache.tracks.get(record.id) : undefined}
+              {#each batches as batch, batchIndex (batchIndex)}
+                <!-- The first batch is visible; only trailing, below-fold batches defer rendering. -->
                 <div
-                  class="menu-item track-row"
-                  aria-current={track && currentTrackId === track.id ? "true" : undefined}
+                  class="stack-sm"
+                  class:track-group={batchIndex > 0}
+                  style:--track-group-rows={batch.length}
                 >
-                  <div class="row-sm">
-                    <Artwork {covers} id={record.artworkId} size="sm" />
-                    <div>
-                      <p class="label">{record.title}</p>
-                      <p class="caption text-secondary">{supportingText(group, record)}</p>
+                  {#each batch as record (record.id)}
+                    {@const track = group === "Tracks" ? cache.tracks.get(record.id) : undefined}
+                    <div
+                      class="menu-item track-row"
+                      aria-current={track && currentTrackId === track.id ? "true" : undefined}
+                    >
+                      <div class="row-sm">
+                        <Artwork {covers} id={record.artworkId} size="sm" />
+                        <div>
+                          <p class="label">{record.title}</p>
+                          <p class="caption text-secondary">{supportingText(group, record)}</p>
+                        </div>
+                      </div>
+                      {#if record.href}
+                        <a
+                          class="button-quiet link-target"
+                          href={record.href}
+                          aria-label={record.title}
+                          data-longpressfor="search-menu"
+                          data-longpress="show-modal"
+                          onfocus={() => selectMenu(group, record.id)}
+                        ></a>
+                      {:else}
+                        <button
+                          class="button-quiet link-target"
+                          aria-label={currentTrackId === record.id
+                            ? `Toggle playback for ${record.title}`
+                            : `Play ${record.title}`}
+                          data-longpressfor="search-menu"
+                          data-longpress="show-modal"
+                          onfocus={() => selectMenu(group, record.id)}
+                          onclick={() => playback.toggleTrack(record.id, trackContext(record.id))}
+                        ></button>
+                      {/if}
+                      <div class="row-sm">
+                        {#if track?.duration !== undefined}
+                          <span class="metadata text-subtle">{formatDuration(track.duration)}</span>
+                        {/if}
+                        <button
+                          class="button only-mobile"
+                          data-variant="secondary"
+                          commandfor="search-menu"
+                          command="show-modal"
+                          aria-label={`Open menu for ${record.title}`}
+                          onclick={() => selectMenu(group, record.id)}
+                        >
+                          <Icon name="menu" />
+                        </button>
+                        <button
+                          class="button only-desktop"
+                          data-variant="secondary"
+                          commandfor="search-menu-popover"
+                          command="toggle-popover"
+                          aria-label={`Open menu for ${record.title}`}
+                          onclick={() => selectMenu(group, record.id)}
+                        >
+                          <Icon name="menu" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  {#if record.href}
-                    <a
-                      class="button-quiet link-target"
-                      href={record.href}
-                      aria-label={record.title}
-                      data-longpressfor="search-menu"
-                      data-longpress="show-modal"
-                      onfocus={() => selectMenu(group, record.id)}
-                    ></a>
-                  {:else}
-                    <button
-                      class="button-quiet link-target"
-                      aria-label={currentTrackId === record.id
-                        ? `Toggle playback for ${record.title}`
-                        : `Play ${record.title}`}
-                      data-longpressfor="search-menu"
-                      data-longpress="show-modal"
-                      onfocus={() => selectMenu(group, record.id)}
-                      onclick={() => playback.toggleTrack(record.id, trackContext(record.id))}
-                    ></button>
-                  {/if}
-                  <div class="row-sm">
-                    {#if track?.duration !== undefined}
-                      <span class="metadata text-subtle">{formatDuration(track.duration)}</span>
-                    {/if}
-                    <button
-                      class="button only-mobile"
-                      data-variant="secondary"
-                      commandfor="search-menu"
-                      command="show-modal"
-                      aria-label={`Open menu for ${record.title}`}
-                      onclick={() => selectMenu(group, record.id)}
-                    >
-                      <Icon name="menu" />
-                    </button>
-                    <button
-                      class="button only-desktop"
-                      data-variant="secondary"
-                      commandfor="search-menu-popover"
-                      command="toggle-popover"
-                      aria-label={`Open menu for ${record.title}`}
-                      onclick={() => selectMenu(group, record.id)}
-                    >
-                      <Icon name="menu" />
-                    </button>
-                  </div>
+                  {/each}
                 </div>
               {/each}
             </div>

@@ -35,15 +35,24 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
   }));
   const songs = Array.from({ length: 120 }, (_, i) => ({
     id: `track-${i}`,
-    title: `Search fixture track ${i}${i === 0 ? " — a long title with naturally wrapped lines and Unicode Beyoncé 東京" : ""}`,
+    title: `Search fixture track ${i}${i % 40 === 0 ? " — a long title with naturally wrapped lines and Unicode Beyoncé 東京" : ""}`,
     albumId: album.id,
     artists: [artist],
     duration: 123,
-    contentType: "audio/mpeg",
+    contentType: "audio/wav",
   }));
+  // PCM WAV header + one minute of silent mono 8kHz/16-bit audio.
+  const audio = Buffer.concat([
+    Buffer.from("UklGRiSmDgBXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQCmDgA=", "base64"),
+    Buffer.alloc(8000 * 2 * 60),
+  ]);
   await page.route("https://search.example.test/**", async (route) => {
     const url = new URL(route.request().url());
     const method = url.pathname.split("/").pop().replace(".view", "");
+    if (method === "stream") {
+      await route.fulfill({ contentType: "audio/wav", body: audio });
+      return;
+    }
     let fields = {};
     if (method === "ping")
       fields = { version: "1.16.1", type: "test", serverVersion: "1", openSubsonic: true };
@@ -97,6 +106,27 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
     assert.equal(await tracks.locator(".track-row").count(), 48);
     assert.equal(await tracks.locator("header .metadata").textContent(), "120");
     assert.equal(await page.getByRole("button", { name: "Show more tracks" }).count(), 0);
+    assert.equal(
+      await tracks
+        .locator(".track-row")
+        .first()
+        .evaluate((node) => getComputedStyle(node.parentElement).contentVisibility),
+      "visible",
+    );
+    const deferred = await tracks
+      .locator(".track-group")
+      .first()
+      .evaluate((node) => ({
+        visibility: getComputedStyle(node).contentVisibility,
+        intrinsic: getComputedStyle(node).containIntrinsicBlockSize,
+        belowViewport: node.getBoundingClientRect().top > innerHeight,
+        rows: node.style.getPropertyValue("--track-group-rows"),
+      }));
+    assert.equal(deferred.visibility, "auto");
+    assert.notEqual(deferred.intrinsic, "none");
+    assert.ok(deferred.intrinsic.includes("auto"));
+    assert.equal(deferred.belowViewport, true);
+    assert.equal(deferred.rows, "8");
 
     // Native menu behavior and utility-only layout at desktop and narrow widths.
     const options = tracks
@@ -161,6 +191,53 @@ test("Search filters, incremental lists, URLs and native actions", async () => {
       assert.equal(await first.evaluate((node) => node.isConnected), true);
     }
     assert.equal(await tracks.locator(".library-sentinel").count(), 0);
+    await tracks.locator(".track-row").last().scrollIntoViewIfNeeded();
+    await tracks.locator(".track-row").first().scrollIntoViewIfNeeded();
+    // Sequential Tab crosses from the uncontained first batch into the next batch.
+    await tracks
+      .locator(".track-row")
+      .nth(39)
+      .getByRole("button", { name: /^Open menu/ })
+      .filter({ visible: true })
+      .focus();
+    await page.keyboard.press("Tab");
+    const boundary = tracks.locator(".track-row").nth(40);
+    assert.equal(
+      await boundary.locator(".link-target").evaluate((node) => node === document.activeElement),
+      true,
+    );
+    await page.keyboard.press("Enter");
+    await tracks.locator('.track-row[aria-current="true"]').waitFor();
+    assert.equal(await boundary.getAttribute("aria-current"), "true");
+    await page
+      .getByRole("contentinfo", { name: "Music player", exact: true })
+      .locator('button[aria-label="Pause"][aria-busy="false"]')
+      .waitFor();
+    await page.setViewportSize({ width: 320, height: 900 });
+    const boundaryMenu = boundary
+      .getByRole("button", { name: /^Open menu/ })
+      .filter({ visible: true });
+    await boundaryMenu.click();
+    await sheet.waitFor({ state: "visible" });
+    assert.equal(await sheet.getByRole("heading").textContent(), songs[40].title);
+    if (screenshots) await page.screenshot({ path: `${screenshots}/search-contained-menu.png` });
+    await page.keyboard.press("Escape");
+    assert.equal(await boundaryMenu.evaluate((node) => node === document.activeElement), true);
+    const geometry = await tracks.locator(".track-row").evaluateAll((nodes) =>
+      [39, 40, 41].map((index) => {
+        const bounds = nodes[index].getBoundingClientRect();
+        return { top: bounds.top, bottom: bounds.bottom, height: bounds.height };
+      }),
+    );
+    assert.ok(geometry[1].height > 100);
+    assert.ok(geometry[1].top >= geometry[0].bottom);
+    assert.ok(geometry[2].top >= geometry[1].bottom);
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
+    if (screenshots) await page.screenshot({ path: `${screenshots}/search-contained-narrow.png` });
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.evaluate(() => {
       location.hash = "search-anchor";
     });
