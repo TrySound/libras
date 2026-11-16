@@ -64,8 +64,18 @@ describe("router", () => {
 
   it.each([
     ["/library", "library:{}"],
+    ["/player", "player:{}"],
+    ["/player=", "player:{}"],
+    ["/player=nonempty", "library:{}"],
+    ["/player==", "library:{}"],
+    ["q=one&/player", "library:{}"],
+    ["&/player", "library:{}"],
+    ["", "library:{}"],
     ["/library/artist/artist%201", 'artist:{"artistId":"artist 1"}'],
     ["/library/artist/a%2Fb%3Fc%23d%26e%25", 'artist:{"artistId":"a/b?c#d&e%"}'],
+    ["/library/artist/a%2Fb%3Fc%23d%26e%25&ignored=x", 'artist:{"artistId":"a/b?c#d&e%"}'],
+    ["/library/artist/a+b%2Bc%252F%26%3D=&ignored=x", 'artist:{"artistId":"a+b+c%2F&="}'],
+    ["/library/album/a+b%2Bc%252F%26%3D", 'album:{"albumId":"a+b+c%2F&="}'],
     ["/library/album/album-1", 'album:{"albumId":"album-1"}'],
     ["/library/album/a%2Fb%3Fc%23d%26e%25", 'album:{"albumId":"a/b?c#d&e%"}'],
     ["/unknown", "library:{}"],
@@ -111,6 +121,30 @@ describe("router", () => {
       expect(scroll).toHaveBeenCalledTimes(reducedMotion ? 0 : 1);
     },
   );
+
+  it("updates same-route search with native scrolling and preserved focus", async () => {
+    const { navigation } = setup("/search=&unknown=old&type=artist&q=one");
+    const start = vi.fn();
+    document.startViewTransition = start;
+    const intercept = vi.fn((options: { handler: () => Promise<void> }) => options.handler());
+    navigation.dispatchEvent(
+      Object.assign(navigationEvent(), {
+        navigationType: "push",
+        canIntercept: true,
+        destination: {
+          url: new URL(
+            "?/search=&unknown=first&type=track&type=album&q=two&q=three&unknown=last#anchor",
+            window.location.href,
+          ).href,
+        },
+        intercept,
+      }),
+    );
+    await intercept.mock.results[0].value;
+    expect(intercept.mock.calls[0][0]).toMatchObject({ focusReset: "manual" });
+    expect(intercept.mock.calls[0][0]).not.toHaveProperty("scroll");
+    expect(start).not.toHaveBeenCalled();
+  });
 
   it("does not navigate to the current URL", () => {
     const navigation = installNavigation("/library");

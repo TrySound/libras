@@ -1,12 +1,14 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import fuzzysort from "fuzzysort";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+
+afterEach(() => vi.unstubAllGlobals());
 import Harness from "./search-test-app.svelte";
 import type Search from "../src/_search.svelte";
 import type { ComponentProps } from "svelte";
 
-it("focuses the input, expands results, retains route state, and uses album playback", async () => {
+it("focuses the input, expands previews, retains URL criteria, and uses album playback", async () => {
   const tracks = Array.from({ length: 12 }, (_, i) => ({
     id: String(i),
     title: "Song",
@@ -36,7 +38,7 @@ it("focuses the input, expands results, retains route state, and uses album play
       ensureCover: () => cover,
     },
     playback,
-  } as unknown as Omit<ComponentProps<typeof Search>, "state">;
+  } as unknown as ComponentProps<typeof Search>;
   const target = document.createElement("div");
   document.body.append(target);
   const app = mount(Harness, { target, props: { props } });
@@ -151,7 +153,7 @@ it("focuses the input, expands results, retains route state, and uses album play
     flushSync();
     input = target.querySelector("input")!;
     expect(input.value).toBe("Song");
-    expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(12);
+    expect(target.querySelectorAll(".track-row button.link-target")).toHaveLength(3);
     // Native search cancellation emits an input event with an empty value.
     input.value = "";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -199,10 +201,12 @@ it.each([
       trackEngine: { getStatus: () => "idle" },
       covers: {},
       playback: {},
-    } as unknown as Omit<ComponentProps<typeof Search>, "state">;
+    } as unknown as ComponentProps<typeof Search>;
     const app = mount(Harness, { target, props: { props } });
     flushSync();
     try {
+      expect(target.querySelectorAll('[aria-label="Result types"] button')).toHaveLength(3);
+      if (!localReady) expect(target.textContent).toContain("Loading your library…");
       expect(target.querySelector("[aria-busy]")?.getAttribute("aria-busy")).toBe(
         String(!localReady),
       );
