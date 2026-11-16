@@ -16,7 +16,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
   page.on("pageerror", (e) => errors.push(e.message));
   const artist = { id: "same", name: "Fixture artist" };
   const album = { id: "same", name: "Fixture album", artists: [artist] };
-  const songs = Array.from({ length: 14 }, (_, i) => ({
+  const songs = Array.from({ length: 70 }, (_, i) => ({
     id: i ? `song-${i}` : "same",
     title: `Fixture track ${String(i).padStart(2, "0")}`,
     artists: [artist],
@@ -94,7 +94,10 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
   async function shot(name) {
     if (evidence) {
       await mkdir(evidence, { recursive: true });
-      await page.screenshot({ path: `${evidence}/${name}.png`, fullPage: true });
+      await page.screenshot({
+        path: `${evidence}/${name}.png`,
+        fullPage: !name.startsWith("player-"),
+      });
     }
   }
   async function searchShots(state) {
@@ -118,12 +121,23 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
   }
   async function toggle(name, panel, expected) {
     const overlay = await open(name, panel);
-    await overlay.getByRole("button", { name: /^(Add to|Remove from) favourites$/ }).click();
-    await overlay.waitFor({ state: "hidden" });
+    await overlay.getByRole("button", { name: /^(Add to|Remove from) favourites$/ }).focus();
+    await page.keyboard.press("Enter");
+    if (expected[2] === "missing") await overlay.waitFor({ state: "hidden" });
+    else {
+      await overlay
+        .getByRole("button", {
+          name: expected[0] === "star" ? "Remove from favourites" : "Add to favourites",
+          exact: true,
+        })
+        .waitFor();
+      assert.equal(await overlay.isVisible(), true);
+      await shot("menu-success-in-place");
+      await overlay.getByRole("button", { name: /^(Add to|Remove from) favourites$/ }).focus();
+      await shot("menu-keyboard");
+      await page.keyboard.press("Escape");
+    }
     assert.deepEqual(writes.at(-1), expected);
-    const invoker = page.getByRole("button", { name, exact: true }).filter({ visible: true });
-    if (await invoker.count())
-      assert.equal(await invoker.evaluate((node) => node === document.activeElement), true);
   }
   try {
     await page.goto(base);
@@ -155,14 +169,49 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       "song",
       "same",
     ]);
+    await navigate("/search&q=Fixture");
+    await page.getByRole("button", { name: "Show more tracks" }).click();
+    const trackRows = page
+      .getByRole("region", { name: "Tracks", exact: true })
+      .locator(".track-row");
+    assert.equal(await trackRows.count(), 13);
+    await toggle("Open menu for Fixture track 01", "#search-menu-popover", [
+      "star",
+      "song",
+      "song-1",
+    ]);
+    assert.equal(await trackRows.count(), 13);
+    await toggle("Open menu for Fixture track 01", "#search-menu-popover", [
+      "unstar",
+      "song",
+      "song-1",
+    ]);
+    assert.equal(await trackRows.count(), 13);
     await navigate("/search&type=track");
     const input = page.getByRole("searchbox");
     await input.waitFor();
     assert.equal(await input.inputValue(), "");
     assert.equal(
       await page.getByRole("region", { name: "Tracks", exact: true }).locator(".track-row").count(),
-      14,
+      48,
     );
+    await page.locator(".library-sentinel").scrollIntoViewIfNeeded();
+    await page.waitForFunction(
+      () => document.querySelectorAll('section[aria-label="Tracks"] .track-row').length === 70,
+    );
+    await toggle("Open menu for Fixture track 01", "#search-menu-popover", [
+      "star",
+      "song",
+      "song-1",
+    ]);
+    assert.equal(await trackRows.count(), 70);
+    await toggle("Open menu for Fixture track 01", "#search-menu-popover", [
+      "unstar",
+      "song",
+      "song-1",
+    ]);
+    assert.equal(await trackRows.count(), 70);
+    await input.scrollIntoViewIfNeeded();
     await searchShots("inactive");
     const historyLength = await page.evaluate(() => history.length);
     await input.fill("Fixture");
@@ -225,7 +274,6 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       "missing",
     ]);
     await unavailable.waitFor({ state: "hidden" });
-    await page.waitForFunction(() => document.activeElement?.id === "library-search");
     await navigate("/search&type=track");
     reject = true;
     let overlay = await open("Open menu for Fixture track 00", "#search-menu-popover");
@@ -258,22 +306,68 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Play Fixture track 00", exact: true }).click();
     await page.getByRole("button", { name: "Open Now Playing" }).click();
-    overlay = await open("Actions for Fixture track 00", "#playing-actions");
-    await shot("favourites-now-playing-1280");
-    await overlay.getByRole("button", { name: "Add to favourites", exact: true }).click();
-    await overlay.waitFor({ state: "hidden" });
-    assert.deepEqual(writes.at(-1), ["star", "song", "same"]);
-    assert.equal(
-      await page
-        .getByRole("button", { name: "Actions for Fixture track 00", exact: true })
-        .evaluate((node) => node === document.activeElement),
-      true,
-    );
+    const player = page.locator("#player-dialog");
+    const favourite = player.getByRole("button", { name: "Favourite current track", exact: true });
+    async function playerShots(state) {
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        const bounds = await player.locator('[aria-label="Playback controls"]').boundingBox();
+        const controls = await player.locator(".player-controls").boundingBox();
+        assert.ok(Math.abs(bounds.x + bounds.width / 2 - controls.x - controls.width / 2) < 1);
+        const button = await favourite.boundingBox();
+        assert.ok(button.width >= 44 && button.height >= 44);
+        await shot(`player-${state}-${width}`);
+      }
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
+    assert.equal(await favourite.getAttribute("aria-pressed"), "false");
+    await playerShots("unselected");
+    gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    await favourite.click();
+    await player.getByText("Adding to favourites…", { exact: true }).waitFor();
+    assert.equal(await favourite.isDisabled(), true);
+    assert.equal(await favourite.getAttribute("aria-pressed"), "false");
+    await playerShots("pending");
+    await player.getByRole("button", { name: "Next", exact: true }).click();
+    await player.getByRole("heading", { name: "Fixture track 01", exact: true }).waitFor();
+    assert.equal(await favourite.isEnabled(), true);
     reject = true;
-    overlay = await open("Actions for Fixture track 00", "#playing-actions");
-    await overlay.getByRole("button", { name: "Remove from favourites", exact: true }).click();
-    await overlay.getByText(/Fixture permission denied/).waitFor();
-    await overlay.getByRole("link", { name: "Open settings", exact: true }).click();
+    release();
+    gate = undefined;
+    await page.waitForTimeout(150);
+    assert.equal(await player.getByText(/Fixture permission denied/).count(), 0);
+    assert.equal(await favourite.getAttribute("aria-pressed"), "false");
+    await player.getByRole("button", { name: "Previous", exact: true }).click();
+    await player.getByText(/Fixture permission denied/).waitFor();
+    reject = false;
+    await favourite.click();
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('#player-dialog [aria-label="Favourite current track"]')
+          .getAttribute("aria-pressed") === "true",
+    );
+    assert.deepEqual(writes.at(-1), ["star", "song", "same"]);
+    await playerShots("selected");
+    reject = true;
+    await favourite.click();
+    await player.getByText(/Fixture permission denied/).waitFor();
+    await playerShots("failure");
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
+    await shot("player-feedback-enlarged");
+    assert.equal(await player.evaluate((node) => node.scrollWidth <= node.clientWidth), true);
+    await page.evaluate(() => (document.documentElement.style.fontSize = ""));
+    await page.setViewportSize({ width: 1280, height: 900 });
+    reject = false;
+    readsFail = true;
+    await favourite.click();
+    await player.getByText(/Outcome unknown/).waitFor();
+    assert.equal(await favourite.getAttribute("aria-pressed"), "true");
+    await playerShots("unknown");
+    await player.getByRole("link", { name: "Open settings", exact: true }).click();
     await page.locator("#player-dialog").waitFor({ state: "hidden" });
     await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
     reject = false;
@@ -365,8 +459,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await page.getByRole("heading", { name: "No favourites yet." }).waitFor();
     await shot("favourites-confirmed-empty-1280");
     await searchShots("empty");
-    // A resize can hide the captured desktop invoker without dismissing its popover.
-    // Success must then use this Search owner's input, not a global page selector.
+    // Async completion never dismisses the menu or pulls focus back to it.
     await navigate("/search&type=track");
     overlay = await open("Open menu for Fixture track 02", "#search-menu-popover");
     gate = new Promise((resolve) => {
@@ -376,22 +469,32 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await overlay.getByRole("button", { name: "Adding to favourites…", exact: true }).waitFor();
     await page.setViewportSize({ width: 390, height: 900 });
     assert.equal(await overlay.isVisible(), true);
+    await input.focus();
     release();
     gate = undefined;
-    await overlay.waitFor({ state: "hidden" });
-    await page.waitForFunction(() => document.activeElement?.id === "library-search");
+    await overlay.getByRole("button", { name: "Remove from favourites", exact: true }).waitFor();
+    assert.equal(await overlay.isVisible(), true);
+    assert.equal(await input.evaluate((node) => node === document.activeElement), true);
+    await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 1280, height: 900 });
     await navigate("/search");
     await input.fill("literal URL query");
     await navigate("/library");
     await navigate("/search");
     assert.equal(await input.inputValue(), ""); // A fresh bare URL has no hidden draft.
+    await navigate("/search&type=track");
+    await page.getByRole("button", { name: "Play Fixture track 02", exact: true }).click();
     await navigate("/settings");
     await page.getByRole("button", { name: "Disconnect", exact: true }).click();
     await page
       .locator("#disconnect-dialog")
       .getByRole("button", { name: "Disconnect", exact: true })
       .click();
+    await page.getByRole("button", { name: "Open Now Playing" }).click();
+    await player.getByText(/Reconnect in Settings/).waitFor();
+    await playerShots("reconnect");
+    await player.getByRole("link", { name: "Open settings", exact: true }).click();
+    await player.waitFor({ state: "hidden" });
     await navigate("/library/album/same");
     overlay = await open("Actions for Fixture album", "#album-detail-menu-popover");
     assert.equal(

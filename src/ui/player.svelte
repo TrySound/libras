@@ -24,7 +24,6 @@
 
   let { cache, covers, playback, favourites, trackEngine, audio, offlineMode }: Props = $props();
   let playerDialog = $state<HTMLDialogElement>();
-  let nowTitle = $state<HTMLHeadingElement>();
   const id = $props.id();
   const track = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const artist = $derived(track && cache.artists.get(track.artistIds[0]));
@@ -148,75 +147,12 @@
         <Icon name="cross" />
       </button>
     </header>
-    <div
-      id="playing-actions"
-      class="popover"
-      popover="auto"
-      role="dialog"
-      aria-labelledby="playing-actions-title"
-    >
-      <div class="stack-lg">
-        <header class="row-md row-justify">
-          <div class="row-md">
-            <Artwork {covers} id={track?.artworkId} size="lg" />
-            <h2 id="playing-actions-title" class="heading-md">{track?.title ?? "Current track"}</h2>
-          </div>
-          <button
-            class="button"
-            commandfor="playing-actions"
-            command="hide-popover"
-            aria-label="Close menu"><Icon name="cross" /></button
-          >
-        </header>
-        <div class="stack-sm">
-          <button
-            class="menu-item"
-            disabled={!track || (offlineMode && trackEngine.getStatus(track.id) !== "downloaded")}
-            onclick={() => {
-              void playback.toggle();
-              document.getElementById("playing-actions")?.hidePopover();
-            }}><Icon name="play" /><span>Play / pause</span></button
-          >
-          <button
-            class="menu-item"
-            disabled={!track}
-            onclick={() => {
-              if (track) void playback.enqueue([track.id], "next");
-              document.getElementById("playing-actions")?.hidePopover();
-            }}><Icon name="next" /><span>Play next</span></button
-          >
-          <button
-            class="menu-item"
-            disabled={!track}
-            onclick={() => {
-              if (track) void playback.enqueue([track.id], "last");
-              document.getElementById("playing-actions")?.hidePopover();
-            }}><Icon name="plus" /><span>Play last</span></button
-          >
-          <button
-            class="menu-item"
-            disabled={!track || !["idle", "failed"].includes(trackEngine.getStatus(track.id))}
-            onclick={() => {
-              if (track) trackEngine.downloadMany([track.id]);
-              document.getElementById("playing-actions")?.hidePopover();
-            }}><Icon name="download" /><span>Download</span></button
-          >
-          <FavouriteButton
-            {favourites}
-            focusFallback={nowTitle}
-            onsettings={() => playerDialog?.close()}
-            overlayId="playing-actions"
-            target={track ? { kind: "tracks", id: track.id } : undefined}
-          />
-        </div>
-      </div>
-    </div>
     <section class="split-layout large-player-content" aria-label="Playback and queue">
       <div class="player-panel">
         <Artwork {covers} id={track?.artworkId} size="cover" loading="eager" />
         <div class="stack-lg">
           <div class="stack-xs">
-            <h1 bind:this={nowTitle} id={`${id}-now-title`} class="heading-lg uppercase">
+            <h1 id={`${id}-now-title`} class="heading-lg uppercase">
               {track?.title ?? "Nothing playing"}
             </h1>
             {#if track}
@@ -271,15 +207,10 @@
                 <span>{formatDuration(duration)}</span>
               </div>
             </div>
-            <div class="player-controls row-xs row-justify">
-              <button
-                class="button"
-                commandfor="playing-actions"
-                command="toggle-popover"
-                disabled={!track}
-                aria-label={`Actions for ${track?.title ?? "current track"}`}
-                ><Icon name="menu" /></button
-              >
+            <div class="player-controls">
+              <a class="button" href={`#${id}-queue`} aria-label="Show queue" title="Show queue">
+                <Icon name="queue" />
+              </a>
               <div class="row-md" role="group" aria-label="Playback controls">
                 <button
                   class="button"
@@ -314,9 +245,14 @@
                   <Icon name="next" size="lg" />
                 </button>
               </div>
-              <a class="button" href={`#${id}-queue`} aria-label="Show queue" title="Show queue">
-                <Icon name="queue" />
-              </a>
+              <FavouriteButton
+                {favourites}
+                {cache}
+                icon
+                describedby={`${id}-now-title`}
+                onsettings={() => playerDialog?.close()}
+                target={track ? { kind: "tracks", id: track.id } : undefined}
+              />
             </div>
           </div>
           {#if audio?.status === "error"}
@@ -462,3 +398,21 @@
     </div>
   </div>
 </dialog>
+
+<style>
+  .player-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-sm);
+  }
+  .player-controls > a {
+    justify-self: start;
+  }
+  .player-controls > :global(button) {
+    justify-self: end;
+  }
+  .player-controls > :global(.favourite-feedback) {
+    grid-column: 1 / -1;
+  }
+</style>

@@ -202,17 +202,14 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
           await page.locator(panel).waitFor({ state: "hidden" });
           if (dismissed) {
             assert.equal(await safeFocus.evaluate((node) => node === document.activeElement), true);
-          } else if (scenario.heading) {
-            assert.notEqual(await page.evaluate(() => window.closedRowTitle), scenario.heading);
-            await page.waitForFunction(
-              (heading) =>
-                document.activeElement?.matches("h1") &&
-                document.activeElement.textContent === heading,
-              scenario.heading,
-            );
           } else {
-            await page.waitForFunction(
-              () => document.activeElement?.getAttribute("aria-labelledby") === "library-heading",
+            if (scenario.heading)
+              assert.notEqual(await page.evaluate(() => window.closedRowTitle), scenario.heading);
+            assert.equal(
+              await page.evaluate(
+                () => !!document.activeElement?.matches('h1, section[tabindex="-1"]'),
+              ),
+              false,
             );
           }
           assert.deepEqual(writes, []);
@@ -318,8 +315,10 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
       await navigate("/search&type=track");
       await page.getByRole("button", { name: /^(Play|Toggle playback for) Keep song$/ }).click();
       await page.getByRole("button", { name: "Open Now Playing", exact: true }).click();
-      await open("Actions for Keep song", "#playing-actions");
-      await recover("#playing-actions");
+      const player = page.locator("#player-dialog");
+      await player.getByRole("button", { name: "Favourite current track", exact: true }).click();
+      await player.getByText(/Fixture permission denied/).waitFor();
+      await player.getByRole("link", { name: "Open settings", exact: true }).click();
       await page.locator("#player-dialog").waitFor({ state: "hidden" });
     }
     assert.deepEqual(errors, []);

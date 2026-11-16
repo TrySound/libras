@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
+import fuzzysort from "fuzzysort";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type Search from "../src/_search.svelte";
 import Harness from "./search-test-app.svelte";
@@ -63,6 +64,42 @@ describe("independent search filters", () => {
       expect(target.querySelector('section[aria-label="Tracks"]')).toBe(section);
       expect(section.querySelector(".track-row")).toBe(firstRow);
     } finally {
+      await unmount(app);
+      target.remove();
+    }
+  });
+  it("builds only the active index and does not rebuild snapshots for text edits", async () => {
+    const props = fixture(3);
+    const membership = vi.fn(() => ({ fetchedAt: 1, artists: [], albums: [], tracks: [] }));
+    Object.defineProperty(props.cache, "favourites", { get: membership });
+    const snapshot = vi.spyOn(fuzzysort, "snapshot");
+    const target = document.createElement("main");
+    document.body.append(target);
+    const app = mount(Harness, { target, props: { props } });
+    flushSync();
+    try {
+      expect(membership).not.toHaveBeenCalled();
+      expect(snapshot).toHaveBeenCalledTimes(3);
+      const input = target.querySelector("input")!;
+      for (const query of ["Fixture", "Fixture track", "Fixture track 2"]) {
+        input.value = query;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        flushSync();
+      }
+      expect(snapshot).toHaveBeenCalledTimes(3);
+      expect(membership).not.toHaveBeenCalled();
+      [...target.querySelectorAll<HTMLButtonElement>("button")]
+        .find((button) => button.textContent?.trim() === "Favourites")!
+        .click();
+      flushSync();
+      expect(snapshot).toHaveBeenCalledTimes(6);
+      expect(membership).toHaveBeenCalled();
+      input.value = "different";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      flushSync();
+      expect(snapshot).toHaveBeenCalledTimes(6);
+    } finally {
+      snapshot.mockRestore();
       await unmount(app);
       target.remove();
     }

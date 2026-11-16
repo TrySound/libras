@@ -37,8 +37,6 @@
     appName = "Libras",
   }: Props = $props();
 
-  let section = $state<HTMLElement>();
-  let heading = $state<HTMLHeadingElement>();
   const loading = $derived(!session.localReady);
   const offlineMode = $derived(session.offlineMode);
   const libraryAvailable = $derived(cache.savedAt !== undefined);
@@ -99,19 +97,13 @@
     const wasOpen = sheet?.open || popover?.matches(":popover-open");
     if (wasOpen) dismissActions();
     menuAlbumId = undefined;
-    if (!wasOpen) return;
-    const fallback = heading ?? section;
-    if (fallback?.checkVisibility()) {
-      fallback.tabIndex = -1;
-      fallback.focus({ preventScroll: true });
-    }
   });
 </script>
 
 <svelte:head><title>{artist?.name ?? "Artist"} | {appName}</title></svelte:head>
 
 <Atmosphere src={libraryAvailable && artist ? atmosphere?.source : undefined} />
-<section bind:this={section} class="split-layout" aria-label="Artist details">
+<section class="split-layout" aria-label="Artist details">
   {#if libraryAvailable && artist}
     <div class="detail-panel view-slide-up">
       <Artwork
@@ -124,7 +116,7 @@
       <div class="stack-sm">
         <div class="row-md row-justify">
           <div class="stack-xs">
-            <h1 bind:this={heading} class="heading-lg uppercase">{artist.name}</h1>
+            <h1 class="heading-lg uppercase">{artist.name}</h1>
           </div>
           <div class="row-sm">
             <button
@@ -338,8 +330,7 @@
       </button>
       <FavouriteButton
         {favourites}
-        focusFallback={heading ?? section}
-        overlayId={target}
+        {cache}
         target={menuAlbum
           ? { kind: "albums", id: menuAlbum.id }
           : menuAlbumId === undefined && artist

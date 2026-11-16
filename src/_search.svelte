@@ -109,12 +109,6 @@
         album: albums.get(track.albumId)?.title ?? "",
       })),
     };
-    const membership = Object.fromEntries(
-      searchGroups.map((group) => [
-        group,
-        new Set(favourites?.[kindFor[group]].map((item) => item.id)),
-      ]),
-    ) as Record<SearchGroup, Set<string>>;
     if (!available && favourites) {
       for (const group of searchGroups) {
         const ids = new Set(records[group].map((item) => item.id));
@@ -132,13 +126,13 @@
       }
     }
     const groupIndex = (group: SearchGroup) => {
-      const prepare = (records: SearchRecord[]) => ({
-        records,
-        snapshot: fuzzysort.snapshot(records, { keys: ["title", "artist", "album"] }),
-      });
+      const membership = favourites && new Set(favourites[kindFor[group]].map((item) => item.id));
+      const candidates = membership
+        ? records[group].filter((record) => membership.has(record.id))
+        : records[group];
       return {
-        ordinary: prepare(records[group].filter((record) => !record.unavailable)),
-        favourite: prepare(records[group].filter((record) => membership[group].has(record.id))),
+        records: candidates,
+        snapshot: fuzzysort.snapshot(candidates, { keys: ["title", "artist", "album"] }),
       };
     };
     return {
@@ -156,11 +150,10 @@
     index: ReturnType<typeof createSearchIndex>,
     query: string,
     browse = false,
-    favourite = false,
   ) {
     query = query.trim().replace(/\s+/g, " ");
     const groups = searchGroups.map((group) => {
-      const { records, snapshot } = index[group][favourite ? "favourite" : "ordinary"];
+      const { records, snapshot } = index[group];
       // Retrieve matches explicitly without a library limit so equal scores can be
       // ordered deterministically before applying the UI limit.
       const matches = query
@@ -200,7 +193,6 @@
   import type { Session } from "./session.svelte";
   import type { Playback } from "./playback.svelte";
 
-  let searchInput = $state<HTMLInputElement>();
   let {
     favourites,
     cache,
@@ -219,23 +211,22 @@
     appName?: string;
   } = $props();
 
+  const parameters = $derived(getSearchParameters());
+  const criteria = $derived(parseSearch(parameters));
+  const favouriteMode = $derived(criteria.favourite);
   const index = $derived(
     createSearchIndex(
       cache.artists,
       cache.albums,
       cache.tracks,
       session.offlineMode ? isAvailable : undefined,
-      cache.favourites,
+      favouriteMode ? cache.favourites : undefined,
     ),
   );
 
-  const parameters = $derived(getSearchParameters());
-  const criteria = $derived(parseSearch(parameters));
   const selectedTypes = $derived(criteria.types);
   const singleType = $derived(selectedTypes.length === 1);
-  const matches = $derived(
-    searchLibrary(index, criteria.query, singleType || criteria.favourite, criteria.favourite),
-  );
+  const matches = $derived(searchLibrary(index, criteria.query, singleType || favouriteMode));
   // User increments override these derived limits until cache or URL criteria change.
   // The void reads intentionally track those dependencies so recomputation resets pagination.
   const pageSize = 48;
@@ -337,7 +328,6 @@
       // Consume the disappeared selection, even if its overlay was already dismissed.
       // Later background index changes must not steal the user's new focus.
       menuSelection = undefined;
-      if (wasOpen) searchInput?.focus({ preventScroll: true });
     }
   });
 
@@ -394,7 +384,6 @@
       <label class="label" for="library-search">Search library</label>
       <!-- svelte-ignore a11y_autofocus (Focus the primary input on the dedicated search page.) -->
       <input
-        bind:this={searchInput}
         class="input"
         id="library-search"
         type="search"
@@ -729,8 +718,7 @@
       </button>
       <FavouriteButton
         {favourites}
-        focusFallback={searchInput}
-        overlayId={target}
+        {cache}
         target={menuItem ? { kind: kindFor[menuItem.group], id: menuItem.id } : undefined}
       />
     </div>

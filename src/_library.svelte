@@ -31,7 +31,6 @@
     favourites,
     appName = "Libras",
   }: Props = $props();
-  let section = $state<HTMLElement>();
 
   // Long-press focuses the primary target before opening the shared dialog.
   let menuArtistId = $state<string>();
@@ -84,18 +83,12 @@
     const wasOpen = sheet?.open || popover?.matches(":popover-open");
     if (wasOpen) dismissActions();
     menuArtistId = undefined;
-    if (!wasOpen) return;
-    const fallback = section;
-    if (fallback?.checkVisibility()) {
-      fallback.tabIndex = -1;
-      fallback.focus({ preventScroll: true });
-    }
   });
 </script>
 
 <svelte:head><title>Your library | {appName}</title></svelte:head>
 
-<section bind:this={section} aria-labelledby="library-heading">
+<section aria-labelledby="library-heading">
   <h1 class="visually-hidden" id="library-heading">Your library</h1>
   {#if session.loadingAfterConnect}
     <div class="library-loading" role="status">
@@ -306,8 +299,7 @@
       </button>
       <FavouriteButton
         {favourites}
-        focusFallback={section}
-        overlayId={id}
+        {cache}
         target={menuArtist ? { kind: "artists", id: menuArtist.id } : undefined}
       />
     </div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import type { Cache } from "../cache.svelte";
   import type { Favourites } from "../favourites.svelte";
   import type { FavouriteTarget } from "../schema";
   import Icon from "../icon.svelte";
@@ -7,136 +7,120 @@
 
   let {
     favourites,
+    cache,
     target,
-    overlayId,
-    focusFallback,
+    icon = false,
+    describedby,
     onsettings,
   }: {
     favourites: Favourites;
+    cache: Cache;
     target: FavouriteTarget | undefined;
-    overlayId: string;
-    focusFallback: HTMLElement | undefined;
+    icon?: boolean;
+    describedby?: string;
     onsettings?: () => void;
   } = $props();
   const descriptionId = $props.id();
   const targetKey = $derived(target ? favourites.key(target) : undefined);
   const selected = $derived(target ? favourites.has(target) : false);
-  const pending = $derived(target ? favourites.pending.has(favourites.key(target)) : false);
-  const reason = $derived(
-    !favourites.available
-      ? "Reconnect in Settings to edit favourites."
-      : favourites.outcomeUnknown
-        ? "Outcome unknown; refresh in Settings before editing favourites."
-        : target
-          ? favourites.targetError(target)
-          : "",
+  const pending = $derived(targetKey !== undefined && favourites.pending.has(targetKey));
+  const progress = $derived(
+    pending
+      ? favourites.pending.get(targetKey!)
+        ? "Adding to favourites…"
+        : "Removing from favourites…"
+      : "",
   );
-  let error = $state("");
-  let lifetime = 0;
-  let overlay: HTMLElement | null = null;
-  let invoker: HTMLElement | null = null;
-  const visible = (element: HTMLElement | null) =>
-    !!element?.isConnected && element.checkVisibility();
-  const opened = () =>
-    overlay instanceof HTMLDialogElement ? overlay.open : !!overlay?.matches(":popover-open");
-  function dismiss() {
-    if (overlay instanceof HTMLDialogElement) overlay.close();
-    else overlay?.hidePopover();
-  }
-  function restoreFocus() {
-    const destination = visible(invoker) ? invoker : focusFallback;
-    if (destination && visible(destination)) {
-      if (!destination.matches("input, button, a[href], [tabindex]")) destination.tabIndex = -1;
-      destination.focus({ preventScroll: true });
-    }
-  }
-  $effect(() => {
-    void favourites;
-    void targetKey;
-    lifetime++;
-    error = "";
-  });
-  onMount(() => {
-    overlay = document.getElementById(overlayId);
-    const change = (event: Event) => {
-      lifetime++;
-      error = "";
-      if ((event as ToggleEvent).newState === "open") {
-        invoker =
-          ((event as ToggleEvent).source as HTMLElement | null) ??
-          (document.activeElement as HTMLElement);
-      }
-    };
-    overlay?.addEventListener("beforetoggle", change);
-    return () => {
-      lifetime++;
-      overlay?.removeEventListener("beforetoggle", change);
-    };
-  });
+  const reason = $derived(
+    !target
+      ? ""
+      : !favourites.available
+        ? "Reconnect in Settings to edit favourites."
+        : favourites.outcomeUnknown
+          ? "Outcome unknown; refresh in Settings before editing favourites."
+          : favourites.targetError(target),
+  );
+  let failure = $state.raw<{
+    favourites: Favourites;
+    cache: Cache;
+    key: string;
+    message: string;
+  }>();
+  const error = $derived(
+    failure?.favourites === favourites && failure.cache === cache && failure.key === targetKey
+      ? failure.message
+      : "",
+  );
   async function submit() {
     if (!target || pending || reason) return;
     const submitted = { ...target };
-    const opening = lifetime;
-    error = "";
+    const engine = favourites;
+    const owner = cache;
+    const key = engine.key(submitted);
+    failure = undefined;
     try {
-      await favourites.toggle(submitted);
-      if (opening !== lifetime || !opened()) return;
-      dismiss();
-      restoreFocus();
+      await engine.toggle(submitted);
     } catch (cause) {
-      if (
-        opening !== lifetime ||
-        !opened() ||
-        (cause instanceof DOMException && cause.name === "AbortError")
-      )
-        return;
-      error = cause instanceof Error ? cause.message : "Could not update favourites.";
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      failure = {
+        favourites: engine,
+        cache: owner,
+        key,
+        message: cause instanceof Error ? cause.message : "Could not update favourites.",
+      };
     }
   }
 </script>
 
-{#if target}
+{#if target || icon}
   <button
-    class="menu-item"
+    type="button"
+    class={icon ? "button" : "menu-item"}
+    data-variant={icon ? (selected ? "primary" : "secondary") : undefined}
+    aria-label={icon ? "Favourite current track" : undefined}
     aria-pressed={selected}
     aria-busy={pending}
-    disabled={!!reason || pending}
-    aria-describedby={reason || error ? descriptionId : undefined}
+    disabled={!target || !!reason || pending}
+    aria-describedby={[
+      describedby,
+      reason || error || (icon && pending) ? descriptionId : undefined,
+    ]
+      .filter(Boolean)
+      .join(" ") || undefined}
     onclick={submit}
   >
     {#if pending}<Loader />{:else}<Icon name="favourite" />{/if}
-    <span
-      >{pending
-        ? favourites.pending.get(favourites.key(target))
-          ? "Adding to favourites…"
-          : "Removing from favourites…"
-        : selected
-          ? "Remove from favourites"
-          : "Add to favourites"}</span
-    >
+    {#if !icon}<span>{progress || (selected ? "Remove from favourites" : "Add to favourites")}</span
+      >{/if}
   </button>
-  {#if reason || error}
-    <p
-      id={descriptionId}
-      class="caption"
-      style:color={error ? "var(--error-text)" : undefined}
-      aria-live="polite"
-    >
-      {error || reason}
-      <a
-        href="?/settings"
-        onclick={() => {
-          dismiss();
-          onsettings?.();
-        }}>Open settings</a
+  {#if target && (reason || error || (icon && pending))}
+    <div class="favourite-feedback stack-xs caption">
+      <p
+        id={descriptionId}
+        style:color={error ? "var(--error-text)" : undefined}
+        aria-live={error ? "polite" : undefined}
       >
-    </p>
+        {error || reason || progress}
+      </p>
+      {#if reason || error}
+        <a
+          href="?/settings"
+          onclick={(event) => {
+            if (onsettings) onsettings();
+            else {
+              event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
+              event.currentTarget.closest("dialog")?.close();
+            }
+          }}>Open settings</a
+        >
+      {/if}
+    </div>
   {/if}
 {/if}
 
 <style>
-  /* A submitted operation is busy, not unavailable. Keep its progress readable. */
-  .menu-item[aria-busy="true"]:disabled {
+  /* Busy progress remains readable while duplicate submission is disabled. */
+  button[aria-busy="true"]:disabled {
     opacity: 1;
     cursor: wait;
   }

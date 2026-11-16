@@ -20,8 +20,9 @@ const favourites: FavouriteState = {
   tracks: [{ id: "missing", title: "Saved song", artist: "Saved credit" }],
 };
 const index = createSearchIndex(artists, albums, tracks, undefined, favourites);
+const ordinary = createSearchIndex(artists, albums, tracks);
 const search = (query = "", favourite = true) =>
-  searchLibrary(index, query, true, favourite).groups;
+  searchLibrary(favourite ? index : ordinary, query, true).groups;
 
 describe("URL favourites modifier", () => {
   it("accepts only 1, omits false and canonicalizes types without interpreting text", () => {
@@ -55,9 +56,7 @@ describe("URL favourites modifier", () => {
     expect(search()[2].records[0].href).toBeUndefined();
     expect(search("Saved", false)[2].total).toBe(0);
     const empty = createSearchIndex(new Map(), new Map(), new Map(), undefined, favourites);
-    expect(searchLibrary(empty, "", true, true).groups.map((group) => group.total)).toEqual([
-      1, 0, 1,
-    ]);
+    expect(searchLibrary(empty, "", true).groups.map((group) => group.total)).toEqual([1, 0, 1]);
   });
   it("ANDs downloaded eligibility and preserves credited contributors", () => {
     const downloaded = createSearchIndex(artists, albums, tracks, (id) => id === "a", {
@@ -65,14 +64,18 @@ describe("URL favourites modifier", () => {
       artists: [{ id: "guest", title: "Guest" }],
     });
     expect(
-      searchLibrary(downloaded, "", true).groups[0].records.map((record) => record.id),
+      searchLibrary(
+        createSearchIndex(artists, albums, tracks, (id) => id === "a"),
+        "",
+        true,
+      ).groups[0].records.map((record) => record.id),
     ).toEqual(["same", "guest"]);
     expect(
-      searchLibrary(downloaded, "", true, true).groups.map((group) =>
+      searchLibrary(downloaded, "", true).groups.map((group) =>
         group.records.map((record) => record.id),
       ),
     ).toEqual([["guest"], [], []]);
-    expect(searchLibrary(downloaded, "Bravo").groups[2].total).toBe(1);
+    expect(searchLibrary(downloaded, "Bravo").groups[2].total).toBe(0);
   });
   it("reacts to confirmed removal without falling back to ordinary results", () => {
     const next = createSearchIndex(artists, albums, tracks, undefined, {
@@ -81,9 +84,7 @@ describe("URL favourites modifier", () => {
       albums: [],
       tracks: [],
     });
-    expect(searchLibrary(next, "", true, true).groups.every((group) => group.total === 0)).toBe(
-      true,
-    );
+    expect(searchLibrary(next, "", true).groups.every((group) => group.total === 0)).toBe(true);
     expect(favourites.artists).toHaveLength(1);
     expect(search()[0].total).toBe(1);
   });
