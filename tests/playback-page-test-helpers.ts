@@ -9,6 +9,7 @@ import { Cache } from "../src/cache.svelte";
 import { Covers } from "../src/covers.svelte";
 import { TrackEngine, type TrackSource } from "../src/track.svelte";
 import { Playback } from "../src/playback.svelte";
+import { Favourites } from "../src/favourites.svelte";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -37,6 +38,7 @@ export async function setupPlaybackPage(library: Parameters<Cache["replaceLibrar
   );
   await cache.replaceLibrary(library);
   const selection = { cache };
+  const favourites = new Favourites(selection);
   const covers = new Covers(selection);
   vi.spyOn(covers, "ensureCover").mockReturnValue({
     pending: false,
@@ -68,6 +70,7 @@ export async function setupPlaybackPage(library: Parameters<Cache["replaceLibrar
     covers,
     trackEngine: tracks,
     playback,
+    favourites,
     session: {
       localReady: true,
       get offlineMode() {
@@ -80,6 +83,7 @@ export async function setupPlaybackPage(library: Parameters<Cache["replaceLibrar
   cleanups.push(async () => {
     await unmount(app);
     await playback.destroy();
+    favourites.destroy();
     covers.destroy();
     tracks.destroy();
     target.remove();

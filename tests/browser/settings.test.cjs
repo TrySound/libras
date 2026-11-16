@@ -54,6 +54,7 @@ test("Settings native controls, layout, and persistence", async (t) => {
     } else if (method === "getIndexes") fields = { indexes: { lastModified: 1 } };
     else if (method === "getPlaylists") fields = { playlists: { playlist: [] } };
     else if (method === "getPlayQueue") fields = { playQueue: { entry: [] } };
+    else if (method === "getStarred2") fields = { starred2: {} };
     else if (method === "search3") {
       if (tailGate && Number(url.searchParams.get("songOffset")) > 0) await tailGate.promise;
       const slice = (values, name) => {

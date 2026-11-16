@@ -1,5 +1,7 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import FavouriteButton from "./ui/favourite-button.svelte";
+  import type { Favourites } from "./favourites.svelte";
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
@@ -21,6 +23,7 @@
     session: Session;
     playbackState: "loading" | "playing" | "paused";
     playback: Playback;
+    favourites: Favourites;
     appName?: string;
   }
 
@@ -32,6 +35,7 @@
     session,
     playbackState,
     playback,
+    favourites,
     appName = "Libras",
   }: Props = $props();
 
@@ -64,14 +68,20 @@
   }
 
   let menuTrackId = $state<string>();
-  const menuTrack = $derived(menuTrackId ? cache.tracks.get(menuTrackId) : undefined);
+  const menuTrack = $derived(visibleTracks.find((track) => track.id === menuTrackId));
   const albumTracks = $derived(album ? (cache.albumTracks.get(album.id) ?? []) : []);
   const totalDuration = $derived(
     visibleTracks.reduce((sum, track) => sum + (track.duration ?? 0), 0),
   );
-  const menuTrackIds = $derived(menuTrack ? [menuTrack.id] : visibleTrackIds);
+  const menuTrackIds = $derived(
+    menuTrackId !== undefined ? (menuTrack ? [menuTrack.id] : []) : visibleTrackIds,
+  );
   const menuDownloadIds = $derived(
-    menuTrack ? [menuTrack.id] : albumTracks.map((track) => track.id),
+    menuTrackId !== undefined
+      ? menuTrack
+        ? [menuTrack.id]
+        : []
+      : albumTracks.map((track) => track.id),
   );
   const menuDownloadStatus = $derived(menuTrack ? trackEngine.getStatus(menuTrack.id) : undefined);
 
@@ -81,6 +91,12 @@
     sheet.close();
     popover.hidePopover?.();
   }
+  $effect(() => {
+    if (album && (menuTrackId === undefined || menuTrack)) return;
+    const wasOpen = sheet?.open || popover?.matches(":popover-open");
+    if (wasOpen) dismissActions();
+    menuTrackId = undefined;
+  });
 </script>
 
 <svelte:head><title>{album?.title ?? "Album"} | {appName}</title></svelte:head>
@@ -276,8 +292,14 @@
   <div class="container-md stack-lg">
     <header class="row-md row-justify">
       <div class="row-md">
-        <Artwork {covers} id={menuTrack?.artworkId ?? album?.artworkId} size="lg" />
-        <h2 id={`${target}-title`} class="heading-md">{menuTrack?.title ?? album?.title}</h2>
+        <Artwork
+          {covers}
+          id={menuTrackId !== undefined ? menuTrack?.artworkId : album?.artworkId}
+          size="lg"
+        />
+        <h2 id={`${target}-title`} class="heading-md">
+          {menuTrackId !== undefined ? menuTrack?.title : album?.title}
+        </h2>
       </div>
       <button
         class="button"
@@ -353,6 +375,15 @@
                 : "Download"}
         </span>
       </button>
+      <FavouriteButton
+        {favourites}
+        {cache}
+        target={menuTrack
+          ? { kind: "tracks", id: menuTrack.id }
+          : menuTrackId === undefined && album
+            ? { kind: "albums", id: album.id }
+            : undefined}
+      />
     </div>
   </div>
 {/snippet}

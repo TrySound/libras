@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
+import fuzzysort from "fuzzysort";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type Search from "../src/_search.svelte";
 import Harness from "./search-test-app.svelte";
@@ -67,6 +68,88 @@ describe("independent search filters", () => {
       target.remove();
     }
   });
+  it("builds only the active index and does not rebuild snapshots for text edits", async () => {
+    const props = fixture(3);
+    const membership = vi.fn(() => ({ fetchedAt: 1, artists: [], albums: [], tracks: [] }));
+    Object.defineProperty(props.cache, "favourites", { get: membership });
+    const snapshot = vi.spyOn(fuzzysort, "snapshot");
+    const target = document.createElement("main");
+    document.body.append(target);
+    const app = mount(Harness, { target, props: { props } });
+    flushSync();
+    try {
+      expect(membership).not.toHaveBeenCalled();
+      expect(snapshot).toHaveBeenCalledTimes(3);
+      const input = target.querySelector("input")!;
+      for (const query of ["Fixture", "Fixture track", "Fixture track 2"]) {
+        input.value = query;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        flushSync();
+      }
+      expect(snapshot).toHaveBeenCalledTimes(3);
+      expect(membership).not.toHaveBeenCalled();
+      [...target.querySelectorAll<HTMLButtonElement>("button")]
+        .find((button) => button.textContent?.trim() === "Favourites")!
+        .click();
+      flushSync();
+      expect(snapshot).toHaveBeenCalledTimes(6);
+      expect(membership).toHaveBeenCalled();
+      input.value = "different";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      flushSync();
+      expect(snapshot).toHaveBeenCalledTimes(6);
+    } finally {
+      snapshot.mockRestore();
+      await unmount(app);
+      target.remove();
+    }
+  });
+  it.each(Array.from({ length: 8 }, (_, mask) => mask))(
+    "intersects favourites with type combination %s and text",
+    async (mask) => {
+      const props = fixture(3);
+      Object.assign(props.cache, {
+        favourites: {
+          fetchedAt: 1,
+          artists: [{ id: "a0", title: "Fixture artist 0" }],
+          albums: [{ id: "b1", title: "Fixture album 1" }],
+          tracks: [{ id: "t2", title: "Fixture track 2" }],
+        },
+      });
+      const target = document.createElement("main");
+      document.body.append(target);
+      const app = mount(Harness, { target, props: { props } });
+      flushSync();
+      try {
+        const chips = [...target.querySelectorAll<HTMLButtonElement>('[role="group"] button')];
+        chips.forEach((chip, i) => {
+          if (mask & (1 << i)) {
+            chip.click();
+            flushSync();
+          }
+        });
+        const modifier = [...target.querySelectorAll<HTMLButtonElement>("button")].find(
+          (button) => button.textContent?.trim() === "Favourites",
+        )!;
+        modifier.click();
+        flushSync();
+        expect(modifier.getAttribute("aria-pressed")).toBe("true");
+        const expected = mask ? chips.filter((_, i) => mask & (1 << i)).length : 3;
+        expect(target.querySelectorAll(".track-row")).toHaveLength(expected);
+        const input = target.querySelector("input")!;
+        input.value = "Fixture track 2";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        flushSync();
+        expect(target.querySelectorAll('section[aria-label="Tracks"] .track-row')).toHaveLength(
+          !mask || mask & 4 ? 1 : 0,
+        );
+        expect(modifier.getAttribute("aria-pressed")).toBe("true");
+      } finally {
+        await unmount(app);
+        target.remove();
+      }
+    },
+  );
   it("appends batches, retains rows across hash changes and resets on new criteria", async () => {
     let callback: IntersectionObserverCallback;
     vi.stubGlobal(
@@ -169,7 +252,7 @@ describe("independent search filters", () => {
       input.dispatchEvent(new Event("input", { bubbles: true }));
       flushSync();
       expect(target.textContent).toContain("No matches found.");
-      expect(target.querySelectorAll("[aria-pressed]")).toHaveLength(3);
+      expect(target.querySelectorAll("[aria-pressed]")).toHaveLength(4);
     } finally {
       await unmount(app);
       target.remove();
@@ -183,7 +266,9 @@ describe("independent search filters", () => {
       document.body.append(target);
       const app = mount(Harness, { target, props: { props } });
       flushSync();
-      const chips = [...target.querySelectorAll<HTMLButtonElement>("[aria-pressed]")];
+      const chips = [
+        ...target.querySelectorAll<HTMLButtonElement>('[role="group"] [aria-pressed]'),
+      ];
       try {
         chips.forEach((chip, i) => {
           if (mask & (1 << i)) {

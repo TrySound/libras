@@ -1,5 +1,7 @@
 <script lang="ts">
   import Icon from "../icon.svelte";
+  import FavouriteButton from "./favourite-button.svelte";
+  import type { Favourites } from "../favourites.svelte";
   import Artwork from "./artwork.svelte";
   import Atmosphere from "./atmosphere.svelte";
   import Loader from "./loader.svelte";
@@ -14,12 +16,14 @@
     cache: Cache;
     covers: Covers;
     playback: Playback;
+    favourites: Favourites;
     trackEngine: TrackEngine;
     audio: ReturnType<typeof AudioPlayer> | undefined;
     offlineMode: boolean;
   }
 
-  let { cache, covers, playback, trackEngine, audio, offlineMode }: Props = $props();
+  let { cache, covers, playback, favourites, trackEngine, audio, offlineMode }: Props = $props();
+  let playerDialog = $state<HTMLDialogElement>();
   const id = $props.id();
   const track = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const artist = $derived(track && cache.artists.get(track.artistIds[0]));
@@ -121,6 +125,7 @@
 {/if}
 
 <dialog
+  bind:this={playerDialog}
   id="player-dialog"
   class="large-player"
   closedby="any"
@@ -202,8 +207,10 @@
                 <span>{formatDuration(duration)}</span>
               </div>
             </div>
-            <div class="player-controls row-xs row-justify">
-              <div class="button-hidden-stub" aria-hidden="true"></div>
+            <div class="player-controls">
+              <a class="button" href={`#${id}-queue`} aria-label="Show queue" title="Show queue">
+                <Icon name="queue" />
+              </a>
               <div class="row-md" role="group" aria-label="Playback controls">
                 <button
                   class="button"
@@ -238,9 +245,14 @@
                   <Icon name="next" size="lg" />
                 </button>
               </div>
-              <a class="button" href={`#${id}-queue`} aria-label="Show queue" title="Show queue">
-                <Icon name="queue" />
-              </a>
+              <FavouriteButton
+                {favourites}
+                {cache}
+                icon
+                describedby={`${id}-now-title`}
+                onsettings={() => playerDialog?.close()}
+                target={track ? { kind: "tracks", id: track.id } : undefined}
+              />
             </div>
           </div>
           {#if audio?.status === "error"}
@@ -386,3 +398,21 @@
     </div>
   </div>
 </dialog>
+
+<style>
+  .player-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-sm);
+  }
+  .player-controls > a {
+    justify-self: start;
+  }
+  .player-controls > :global(button) {
+    justify-self: end;
+  }
+  .player-controls > :global(.favourite-feedback) {
+    grid-column: 1 / -1;
+  }
+</style>
