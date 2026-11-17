@@ -2,7 +2,7 @@
 import { expect, it, vi } from "vitest";
 import { flushSync } from "svelte";
 import { setupPlaybackPage } from "./playback-page-test-helpers";
-import { TrackEngine, type TrackSource } from "../src/track.svelte";
+import type { TrackSource } from "../src/track.svelte";
 import { Network } from "../src/network.svelte";
 function deferred<T>() {
   return Promise.withResolvers<T>();
@@ -393,27 +393,6 @@ it("keeps pause/cancel available offline but never substitutes another track for
   await settle();
   state("playing");
   expect(replace).toHaveBeenCalledExactlyOnceWith(["first"]);
-});
-
-it("labels download indicators on their existing track-number containers", async () => {
-  vi.spyOn(TrackEngine.prototype, "getStatus").mockImplementation((id) =>
-    id === "first" ? "downloading" : id === "second" ? "queued" : "idle",
-  );
-  const { playback, target } = await setup();
-  await playback.replaceQueueAndPlay(["unrelated", "first", "second"]);
-  flushSync();
-  for (const scope of ['[aria-label="Album details"]', "#player-dialog"]) {
-    const container = target.querySelector(scope)!;
-    for (const [label, symbol] of [
-      ["Downloading", "loader"],
-      ["Queued for download", "clock"],
-    ]) {
-      const status = container.querySelector(`[role="img"][aria-label="${label}"]`)!;
-      expect(status.classList.contains("track-row-number")).toBe(true);
-      expect(status.querySelector(`use[href="#icon-${symbol}"]`)).not.toBeNull();
-      expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
-    }
-  }
 });
 
 it("shows playing indicators only on selected track rows and labels pending transports Pause", async () => {

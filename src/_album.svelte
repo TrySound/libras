@@ -158,14 +158,6 @@
       <div class="stack-sm">
         {#each visibleTracks as track, index (track.id)}
           {@const downloadStatus = trackEngine.getStatus(track.id)}
-          {@const downloadLabel =
-            currentTrack?.id === track.id
-              ? undefined
-              : downloadStatus === "downloading"
-                ? "Downloading"
-                : downloadStatus === "queued"
-                  ? "Queued for download"
-                  : undefined}
           {@const credit =
             track.displayArtist?.trim() ||
             track.artistIds
@@ -176,11 +168,7 @@
             class="menu-item track-row"
             aria-current={currentTrack?.id === track.id ? "true" : undefined}
           >
-            <span
-              class="track-row-number metadata text-subtle"
-              role={downloadLabel ? "img" : undefined}
-              aria-label={downloadLabel}
-            >
+            <span class="track-row-number metadata text-subtle">
               {#if currentTrack?.id === track.id && playbackState === "loading"}
                 <Icon name="loader" />
               {:else if currentTrack?.id === track.id && playbackState === "playing"}
@@ -188,9 +176,13 @@
               {:else if currentTrack?.id === track.id}
                 <Icon name="play" color="var(--accent)" />
               {:else if downloadStatus === "downloading"}
-                <Icon name="loader" />
+                <span role="img" aria-label="Downloading">
+                  <Icon name="loader" />
+                </span>
               {:else if downloadStatus === "queued"}
-                <Icon name="clock" />
+                <span role="img" aria-label="Queued for download">
+                  <Icon name="clock" />
+                </span>
               {:else}
                 {String(track.number ?? index + 1).padStart(2, "0")}
               {/if}
