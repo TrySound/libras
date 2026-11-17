@@ -80,16 +80,39 @@
   >
     <path d="m3 11 9-8 9 8v10h-6v-6H9v6H3Z" />
   </symbol>
-  <symbol id="icon-disc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <symbol
+    id="icon-disc"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
     <circle cx="12" cy="12" r="9" />
     <circle cx="12" cy="12" r="2.5" />
     <path d="M6 12a6 6 0 0 1 6-6m6 6a6 6 0 0 1-6 6" />
   </symbol>
-  <symbol id="icon-queue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <symbol
+    id="icon-queue"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
     <path d="M3 5h18M3 12h10M3 19h10" />
     <path d="m17 11 5 4-5 4Z" />
   </symbol>
-  <symbol id="icon-menu-lines" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+  <symbol
+    id="icon-menu-lines"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.6"
+    stroke-linecap="round"
+  >
     <path d="M4 6h16M4 12h16M4 18h16" />
   </symbol>
   <symbol id="icon-menu" viewBox="0 0 24 24" fill="currentColor">
@@ -166,7 +189,9 @@
     stroke-linecap="round"
     stroke-linejoin="round"
   >
-    <path d="M7 18H6a4 4 0 0 1-.8-7.9A6.5 6.5 0 0 1 18 9a4.5 4.5 0 0 1 0 9H7Z" />
+    <path
+      d="M7 18H6a4 4 0 0 1-.8-7.9A6.5 6.5 0 0 1 18 9a4.5 4.5 0 0 1 0 9H7Z"
+    />
     <path d="m3 3 18 18" />
   </symbol>
   <symbol
@@ -205,67 +230,103 @@
     <rect x="0" width="1" height="100%" />
   </symbol>
   <style>
-
-  #icon-loader rect { width: calc((100% - 4 * var(--loader-gap, 2px)) / 5); fill: var(--loader-bg); scale: 1 0.35; transform-box: fill-box; transform-origin: center; }
-  #icon-loader rect:nth-child(2) { x: calc(20% + var(--loader-gap, 2px) / 5); }
-  #icon-loader rect:nth-child(3) { x: calc(40% + 2 * var(--loader-gap, 2px) / 5); }
-  #icon-loader rect:nth-child(4) { x: calc(60% + 3 * var(--loader-gap, 2px) / 5); }
-  #icon-loader rect:nth-child(5) { x: calc(80% + 4 * var(--loader-gap, 2px) / 5); }
-  #icon-loader rect:nth-child(2), #icon-loader rect:nth-child(4) { scale: 1 0.65; }
-  #icon-loader rect:nth-child(3) { scale: 1; fill: var(--accent); }
-  @keyframes libras-loader-wave {
-    0%, 50%, 100% { scale: 1 0.2; fill: var(--loader-bg); }
-    25% { scale: 1; fill: var(--accent); }
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    #icon-loader rect { animation: libras-loader-wave 1.5s var(--motion-ease) infinite backwards; }
-    #icon-loader rect:nth-child(2) { animation-delay: 0.2s; }
-    #icon-loader rect:nth-child(3) { animation-delay: 0.4s; }
-    #icon-loader rect:nth-child(4) { animation-delay: 0.6s; }
-    #icon-loader rect:nth-child(5) { animation-delay: 0.8s; }
-    #icon-sound-bars rect:nth-child(1) {
-      animation: libras-sound-first 650ms linear infinite;
+    #icon-loader rect {
+      width: calc((100% - 4 * var(--loader-gap, 2px)) / 5);
+      fill: var(--loader-bg);
+      scale: 1 0.35;
+      transform-box: fill-box;
+      transform-origin: center;
     }
-    #icon-sound-bars rect:nth-child(2) {
-      animation: libras-sound-middle 650ms linear -420ms infinite;
+    #icon-loader rect:nth-child(2) {
+      x: calc(20% + var(--loader-gap, 2px) / 5);
     }
-    #icon-sound-bars rect:nth-child(3) {
-      animation: libras-sound-last 650ms linear -210ms infinite;
+    #icon-loader rect:nth-child(3) {
+      x: calc(40% + 2 * var(--loader-gap, 2px) / 5);
     }
-  }
-  @keyframes libras-sound-first {
-    0%,
-    100% {
-      y: 12px;
-      height: 9px;
+    #icon-loader rect:nth-child(4) {
+      x: calc(60% + 3 * var(--loader-gap, 2px) / 5);
     }
-    50% {
-      y: 3px;
-      height: 18px;
+    #icon-loader rect:nth-child(5) {
+      x: calc(80% + 4 * var(--loader-gap, 2px) / 5);
     }
-  }
-  @keyframes libras-sound-middle {
-    0%,
-    100% {
-      y: 6px;
-      height: 15px;
+    #icon-loader rect:nth-child(2),
+    #icon-loader rect:nth-child(4) {
+      scale: 1 0.65;
     }
-    50% {
-      y: 14px;
-      height: 7px;
+    #icon-loader rect:nth-child(3) {
+      scale: 1;
+      fill: var(--accent);
     }
-  }
-  @keyframes libras-sound-last {
-    0%,
-    100% {
-      y: 10px;
-      height: 11px;
+    @keyframes libras-loader-wave {
+      0%,
+      50%,
+      100% {
+        scale: 1 0.2;
+        fill: var(--loader-bg);
+      }
+      25% {
+        scale: 1;
+        fill: var(--accent);
+      }
     }
-    50% {
-      y: 3px;
-      height: 18px;
+    @media (prefers-reduced-motion: no-preference) {
+      #icon-loader rect {
+        animation: libras-loader-wave 1.5s var(--motion-ease) infinite backwards;
+      }
+      #icon-loader rect:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      #icon-loader rect:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      #icon-loader rect:nth-child(4) {
+        animation-delay: 0.6s;
+      }
+      #icon-loader rect:nth-child(5) {
+        animation-delay: 0.8s;
+      }
+      #icon-sound-bars rect:nth-child(1) {
+        animation: libras-sound-first 650ms linear infinite;
+      }
+      #icon-sound-bars rect:nth-child(2) {
+        animation: libras-sound-middle 650ms linear -420ms infinite;
+      }
+      #icon-sound-bars rect:nth-child(3) {
+        animation: libras-sound-last 650ms linear -210ms infinite;
+      }
     }
-  }
-
+    @keyframes libras-sound-first {
+      0%,
+      100% {
+        y: 12px;
+        height: 9px;
+      }
+      50% {
+        y: 3px;
+        height: 18px;
+      }
+    }
+    @keyframes libras-sound-middle {
+      0%,
+      100% {
+        y: 6px;
+        height: 15px;
+      }
+      50% {
+        y: 14px;
+        height: 7px;
+      }
+    }
+    @keyframes libras-sound-last {
+      0%,
+      100% {
+        y: 10px;
+        height: 11px;
+      }
+      50% {
+        y: 3px;
+        height: 18px;
+      }
+    }
   </style>
 </svg>
