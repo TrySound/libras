@@ -500,7 +500,7 @@ describe("app settings", () => {
         expect(apply).toHaveBeenCalledOnce();
         expect(notice.querySelector("button")?.textContent).toContain("Updating…");
         expect(notice.querySelector("button")?.title).toContain("Applying the update");
-        const loader = notice.querySelector('svg:has(use[href^="#icon-loader-"])');
+        const loader = notice.querySelector('svg:has(use[href="#icon-loader"])');
         expect(loader?.getAttribute("aria-hidden")).toBe("true");
       }
     },

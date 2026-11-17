@@ -111,8 +111,10 @@
             >
               {#if artistPlaybackState === "loading"}
                 <Icon name="loader" />
+              {:else if artistCanPause}
+                <Icon name="pause" />
               {:else}
-                <Icon name={artistCanPause ? "pause" : "play"} />
+                <Icon name="play" />
               {/if}
             </button>
             <button

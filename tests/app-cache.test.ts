@@ -96,7 +96,7 @@ it.each([false, true])(
     flushSync();
     const region = target.querySelector('[aria-labelledby="library-heading"]')!;
     expect(region.querySelector('[role="status"]')?.textContent).toContain("Loading your library…");
-    expect(region.querySelector('use[href="#icon-loader-xl"]')).not.toBeNull();
+    expect(region.querySelector('use[href="#icon-loader"]')).not.toBeNull();
     expect(
       region.querySelector('[role="status"] .metadata')?.textContent?.replace(/\s+/g, " ").trim(),
     ).toBe("0 albums · 0 tracks");

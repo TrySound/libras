@@ -54,6 +54,20 @@ it("references the sound bars sprite symbol", async () => {
   }
 });
 
+it("exposes an optional accessible icon label", async () => {
+  const target = document.createElement("div");
+  const component = mount(Icon, { target, props: { name: "loader", label: "Downloading" } });
+  try {
+    flushSync();
+    const svg = target.querySelector("svg")!;
+    expect(svg.getAttribute("role")).toBe("img");
+    expect(svg.getAttribute("aria-label")).toBe("Downloading");
+    expect(svg.hasAttribute("aria-hidden")).toBe(false);
+  } finally {
+    await unmount(component);
+  }
+});
+
 it("allows a semantic status color", async () => {
   const target = document.createElement("div");
   const component = mount(Icon, {
@@ -75,13 +89,5 @@ it("keeps the typed icon names in sync with the sprite symbols", () => {
   const symbols = [...sprite.matchAll(/<symbol\s+id="([^"]+)"/g)].map((match) => match[1]);
   const nameType = component.match(/export type IconName =([^;]+);/)![1];
   const names = [...nameType.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
-  expect(
-    names
-      .flatMap((name) =>
-        name === "loader"
-          ? ["icon-loader-md", "icon-loader-lg", "icon-loader-xl"]
-          : [`icon-${name}`],
-      )
-      .sort(),
-  ).toEqual(symbols.sort());
+  expect(names.map((name) => `icon-${name}`).sort()).toEqual(symbols.sort());
 });

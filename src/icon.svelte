@@ -32,9 +32,10 @@
     size?: "md" | "lg" | "xl";
     class?: string;
     color?: string;
+    label?: string;
   }
 
-  let { name, size = "md", class: className, color }: Props = $props();
+  let { name, size = "md", class: className, color, label }: Props = $props();
   const dimension = $derived({ md: 24, lg: 40, xl: 96 }[size]);
 </script>
 
@@ -42,15 +43,11 @@
   class={className}
   class:loader-icon={name === "loader"}
   {color}
-  aria-hidden="true"
+  aria-hidden={label ? undefined : "true"}
+  role={label ? "img" : undefined}
+  aria-label={label}
   width={dimension}
   height={dimension}
 >
-  <use href={name === "loader" ? `#icon-loader-${size}` : `#icon-${name}`}></use>
+  <use href={`#icon-${name}`}></use>
 </svg>
-
-<style>
-  .loader-icon {
-    flex-shrink: 0;
-  }
-</style>

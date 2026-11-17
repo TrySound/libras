@@ -363,7 +363,7 @@ test("Edgerunner foundations and native controls", async (t) => {
         await busy.focus();
         assert.equal(await busy.evaluate((element) => element === document.activeElement), true);
         assert.match(await busy.getAttribute("title"), /Applying the update/);
-        assert.equal(await busy.locator('use[href="#icon-loader-md"]').count(), 1);
+        assert.equal(await busy.locator('use[href="#icon-loader"]').count(), 1);
         const failure = states.getByRole("complementary", {
           name: "Offline setup failed sidebar",
           exact: true,
@@ -513,7 +513,7 @@ test("Edgerunner foundations and native controls", async (t) => {
           const original = await play.innerHTML();
           await play.evaluate((button) => {
             button.setAttribute("aria-busy", "true");
-            button.innerHTML = `<svg width="40" height="40" aria-hidden="true"><use href="#icon-loader-lg"></use></svg>`;
+            button.innerHTML = `<svg width="40" height="40" aria-hidden="true"><use href="#icon-loader"></use></svg>`;
           });
           assert.deepEqual(
             await play.locator("svg").evaluate((node) => {

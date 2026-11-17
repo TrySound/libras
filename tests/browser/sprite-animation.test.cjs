@@ -13,7 +13,7 @@ test("sprite animations run only in visible instances and respect reduced motion
   try {
     const page = await browser.newPage({ reducedMotion: "no-preference" });
     await page.setContent(
-      `<style>body { --loader-bg: #8f7073; --accent: #ffcc00; --motion-ease: cubic-bezier(.445,.05,.55,.95); }</style><div hidden>${sprite}</div><svg width="120" height="120"><use href="#icon-sound-bars"></use></svg><svg width="96" height="96"><use href="#icon-loader-xl"></use></svg>`,
+      `<style>body { --loader-bg: #8f7073; --accent: #ffcc00; --motion-ease: cubic-bezier(.445,.05,.55,.95); }</style><div hidden>${sprite}</div><svg width="120" height="120"><use href="#icon-sound-bars"></use></svg><svg width="96" height="96"><use href="#icon-loader"></use></svg>`,
     );
     const icons = page.locator("body > svg");
     for (const icon of await icons.all()) {
