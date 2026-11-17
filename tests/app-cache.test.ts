@@ -96,7 +96,7 @@ it.each([false, true])(
     flushSync();
     const region = target.querySelector('[aria-labelledby="library-heading"]')!;
     expect(region.querySelector('[role="status"]')?.textContent).toContain("Loading your library…");
-    expect(region.querySelector('.loader[data-size="xl"]')).not.toBeNull();
+    expect(region.querySelector('use[href="#icon-loader"]')).not.toBeNull();
     expect(
       region.querySelector('[role="status"] .metadata')?.textContent?.replace(/\s+/g, " ").trim(),
     ).toBe("0 albums · 0 tracks");
@@ -284,7 +284,9 @@ it("restores downloads silently without flashing the empty state", () => {
   cleanups.push(() => unmount(component));
   flushSync();
   expect(target.textContent).not.toContain("Restoring local library…");
-  expect(target.querySelector("[aria-labelledby=downloads-heading] .loader")).toBeNull();
+  expect(
+    target.querySelector("[aria-labelledby=downloads-heading] svg:has(use[href$=loader])"),
+  ).toBeNull();
   expect(target.textContent).not.toContain("No downloads yet");
 });
 
@@ -758,7 +760,9 @@ it.each([
     flushSync();
     expect(target.textContent).not.toContain("Restoring local library…");
     expect(
-      target.querySelector("[aria-labelledby=library-heading] .loader, .scan-spinner"),
+      target.querySelector(
+        "[aria-labelledby=library-heading] svg:has(use[href$=loader]), .scan-spinner",
+      ),
     ).toBeNull();
     expect(target.querySelector(selector)).not.toBeNull();
     target.querySelector<HTMLElement>(selector)!.focus();

@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import Icon from "./icon.svelte";
-  import Loader from "./ui/loader.svelte";
   import type { Session } from "./session.svelte";
   import { navigate } from "./router.svelte";
 
@@ -154,7 +153,7 @@
           <p class="row-sm label">
             <span class="row-sm">
               {#if connectionLoading}
-                <Loader />
+                <Icon name="loader" />
               {:else}
                 <Icon
                   name={connectionFailed
@@ -208,7 +207,7 @@
         {/if}
 
         {#if cleaning}
-          <p class="row-sm body" role="status"><Loader /> Deleting local data…</p>
+          <p class="row-sm body" role="status"><Icon name="loader" /> Deleting local data…</p>
         {:else if !session.auth && demo}
           <p class="body">
             This demo uses a fixed music library and cannot connect to other servers. Reload to
@@ -296,7 +295,7 @@
                 aria-busy={session.busy}
               >
                 {#if session.busy}
-                  <Loader />
+                  <Icon name="loader" />
                 {/if}
                 {session.busy ? "Connecting…" : "Connect"}
               </button>

@@ -18,16 +18,11 @@ export function inlineSvgSprite(): Plugin {
     },
     async transformIndexHtml() {
       const sprite = await readFile(spritePath, "utf8");
-      // Keep the SVG rendered (not display:none) for animated <use> instances.
-      const inline = sprite.replace(
-        "<svg ",
-        '<svg aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute;overflow:hidden;pointer-events:none" ',
-      );
       return [
         {
           tag: "div",
-          attrs: { "data-icon-sprite": true },
-          children: inline,
+          attrs: { "data-icon-sprite": true, hidden: true },
+          children: sprite,
           injectTo: "body-prepend",
         },
       ];

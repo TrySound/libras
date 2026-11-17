@@ -147,7 +147,6 @@
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
-  import Loader from "./ui/loader.svelte";
   import { formatDuration } from "./time";
   import type { TrackEngine } from "./track.svelte";
   import type { Session } from "./session.svelte";
@@ -378,7 +377,7 @@
   <div class="stack-xl" aria-busy={!session.localReady}>
     {#if !session.localReady && index.size === 0}
       <div class="row-sm">
-        <Loader />
+        <Icon name="loader" />
         <p class="body">Loading your library…</p>
       </div>
     {:else if index.size === 0}
@@ -605,7 +604,7 @@
         }}
       >
         {#if menuDownloadStatus === "downloading"}
-          <Loader />
+          <Icon name="loader" />
         {:else}
           <Icon name={downloadPresentation[menuDownloadStatus].icon} />
         {/if}

@@ -7,7 +7,6 @@
   import AudioPlayer from "./audio-player.svelte";
   import Player from "./ui/player.svelte";
   import Atmosphere from "./ui/atmosphere.svelte";
-  import Loader from "./ui/loader.svelte";
   import Downloads from "./_downloads.svelte";
   import Settings from "./_settings.svelte";
   import AlbumRoute from "./_album.svelte";
@@ -250,7 +249,7 @@
           onclick={() => void updater?.update()}
         >
           {#if appUpdate.busy}
-            <Loader />
+            <Icon name="loader" />
           {:else}
             <Icon name="refresh" color="var(--text-subtle)" />
           {/if}

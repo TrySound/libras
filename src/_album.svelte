@@ -4,7 +4,6 @@
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
   import Atmosphere from "./ui/atmosphere.svelte";
-  import Loader from "./ui/loader.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -111,9 +110,11 @@
               }}
             >
               {#if albumPlaybackState === "loading"}
-                <Loader />
+                <Icon name="loader" />
+              {:else if albumCanPause}
+                <Icon name="pause" />
               {:else}
-                <Icon name={albumCanPause ? "pause" : "play"} />
+                <Icon name="play" />
               {/if}
             </button>
             <button
@@ -169,19 +170,15 @@
           >
             <span class="track-row-number metadata text-subtle">
               {#if currentTrack?.id === track.id && playbackState === "loading"}
-                <Loader />
+                <Icon name="loader" />
               {:else if currentTrack?.id === track.id && playbackState === "playing"}
                 <Icon name="sound-bars" color="var(--accent)" />
               {:else if currentTrack?.id === track.id}
                 <Icon name="play" color="var(--accent)" />
               {:else if downloadStatus === "downloading"}
-                <span role="img" aria-label="Downloading">
-                  <Loader />
-                </span>
+                <Icon name="loader" label="Downloading" />
               {:else if downloadStatus === "queued"}
-                <span role="img" aria-label="Queued for download">
-                  <Icon name="clock" />
-                </span>
+                <Icon name="clock" label="Queued for download" />
               {:else}
                 {String(track.number ?? index + 1).padStart(2, "0")}
               {/if}
@@ -333,7 +330,7 @@
         }}
       >
         {#if menuDownloadStatus === "downloading"}
-          <Loader />
+          <Icon name="loader" />
         {:else}
           <Icon
             name={menuDownloadStatus === "downloaded"

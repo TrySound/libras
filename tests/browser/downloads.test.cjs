@@ -215,7 +215,7 @@ test("Downloads redesign preserves real transfer states and offline files", asyn
         await page.getByRole("button", { name: "Close menu", exact: true }).click();
         await page.setViewportSize({ width: 1280, height: 900 });
         assert.equal(await rows.locator("time").count(), 0);
-        assert.equal(await rows.first().locator(".loader-bar").count(), 5);
+        assert.equal(await rows.first().locator('use[href="#icon-loader"]').count(), 1);
         assert.equal(
           await rows.first().evaluate((element) => getComputedStyle(element).borderTopWidth),
           "2px",

@@ -1,21 +1,19 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
 import { expect, it } from "vitest";
-import Loader from "../src/ui/loader.svelte";
+import Icon from "../src/icon.svelte";
 
-it.each([undefined, "md", "lg", "xl"] as const)(
-  "supports loader size=%s without changing its decoration",
-  async (size) => {
-    const target = document.createElement("div");
-    const component = mount(Loader, { target, props: { size } });
-    flushSync();
-    try {
-      const loader = target.querySelector<HTMLElement>(".loader")!;
-      expect(loader.getAttribute("data-size")).toBe(size ?? "md");
-      expect(loader.getAttribute("aria-hidden")).toBe("true");
-      expect(loader.querySelectorAll(".loader-bar")).toHaveLength(5);
-    } finally {
-      await unmount(component);
-    }
-  },
-);
+it.each([undefined, "xl"] as const)("renders sprite loader size=%s", async (size) => {
+  const target = document.createElement("div");
+  const component = mount(Icon, { target, props: { name: "loader", size } });
+  flushSync();
+  try {
+    const loader = target.querySelector("svg")!;
+    expect(loader.style.getPropertyValue("--loader-gap")).toBe(
+      size === "xl" ? "var(--space-xs, 4px)" : "",
+    );
+    expect(loader.querySelector("use")?.getAttribute("href")).toBe("#icon-loader");
+  } finally {
+    await unmount(component);
+  }
+});

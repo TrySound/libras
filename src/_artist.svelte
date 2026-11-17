@@ -4,7 +4,6 @@
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
   import Atmosphere from "./ui/atmosphere.svelte";
-  import Loader from "./ui/loader.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -111,9 +110,11 @@
               }}
             >
               {#if artistPlaybackState === "loading"}
-                <Loader />
+                <Icon name="loader" />
+              {:else if artistCanPause}
+                <Icon name="pause" />
               {:else}
-                <Icon name={artistCanPause ? "pause" : "play"} />
+                <Icon name="play" />
               {/if}
             </button>
             <button

@@ -1,7 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
   import Artwork from "./ui/artwork.svelte";
-  import Loader from "./ui/loader.svelte";
   import type { Cache } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import type { TrackEngine } from "./track.svelte";
@@ -121,7 +120,7 @@
           <div class="menu-item track-row" role="listitem">
             {#if entry.status === "downloading"}
               <span class="track-row-number row-sm" role="img" aria-label="Downloading">
-                <Loader />
+                <Icon name="loader" />
               </span>
             {:else if entry.status === "queued"}
               <span class="track-row-number row-sm" role="img" aria-label="Queued for download">

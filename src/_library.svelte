@@ -3,7 +3,6 @@
   import type { Cache, Immutable } from "./cache.svelte";
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
-  import Loader from "./ui/loader.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Artist } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -73,7 +72,7 @@
   <h1 class="visually-hidden" id="library-heading">Your library</h1>
   {#if session.loadingAfterConnect}
     <div class="library-loading" role="status">
-      <Loader size="xl" />
+      <Icon name="loader" size="xl" />
       <p class="heading-md">Loading your library…</p>
       <p class="metadata text-subtle">
         {(session.libraryProgress?.albums ?? 0).toLocaleString()} albums ·

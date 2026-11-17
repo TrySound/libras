@@ -2,7 +2,6 @@
   import Icon from "../icon.svelte";
   import Artwork from "./artwork.svelte";
   import Atmosphere from "./atmosphere.svelte";
-  import Loader from "./loader.svelte";
   import type { Covers } from "../covers.svelte";
   import type { Cache } from "../cache.svelte";
   import type { Playback } from "../playback.svelte";
@@ -103,9 +102,11 @@
         onclick={() => playback.toggle()}
       >
         {#if loading}
-          <Loader />
+          <Icon name="loader" />
+        {:else if playing}
+          <Icon name="pause" />
         {:else}
-          <Icon name={playing ? "pause" : "play"} />
+          <Icon name="play" />
         {/if}
       </button>
       <button
@@ -223,9 +224,11 @@
                   onclick={() => playback.toggle()}
                 >
                   {#if loading}
-                    <Loader size="lg" />
+                    <Icon name="loader" size="lg" />
+                  {:else if playing}
+                    <Icon name="pause" size="lg" />
                   {:else}
-                    <Icon name={playing ? "pause" : "play"} size="lg" />
+                    <Icon name="play" size="lg" />
                   {/if}
                 </button>
                 <button
@@ -298,19 +301,15 @@
                 >
                   <span class="track-row-number metadata text-subtle">
                     {#if index === cache.queue.index && loading}
-                      <Loader />
+                      <Icon name="loader" />
                     {:else if index === cache.queue.index && playing}
                       <Icon name="sound-bars" color="var(--accent)" />
                     {:else if index === cache.queue.index}
                       <Icon name="play" color="var(--accent)" />
                     {:else if downloadStatus === "downloading"}
-                      <span role="img" aria-label="Downloading">
-                        <Loader />
-                      </span>
+                      <Icon name="loader" label="Downloading" />
                     {:else if downloadStatus === "queued"}
-                      <span role="img" aria-label="Queued for download">
-                        <Icon name="clock" />
-                      </span>
+                      <Icon name="clock" label="Queued for download" />
                     {:else}
                       {String(visibleIndex + 1).padStart(2, "0")}
                     {/if}

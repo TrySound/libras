@@ -81,36 +81,38 @@
     <path d="m3 11 9-8 9 8v10h-6v-6H9v6H3Z" />
   </symbol>
   <symbol
-    id="icon-loading"
+    id="icon-disc"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    stroke-width="3"
+    stroke-width="1.6"
     stroke-linecap="round"
+    stroke-linejoin="round"
   >
-    <g>
-      <circle cx="12" cy="12" r="9" opacity="0.25" />
-      <path d="M12 3a9 9 0 0 1 9 9" />
-      <animateTransform
-        attributeName="transform"
-        type="rotate"
-        from="0 12 12"
-        to="360 12 12"
-        dur="900ms"
-        repeatCount="indefinite"
-      />
-    </g>
-  </symbol>
-  <symbol id="icon-disc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="12" cy="12" r="9" />
     <circle cx="12" cy="12" r="2.5" />
     <path d="M6 12a6 6 0 0 1 6-6m6 6a6 6 0 0 1-6 6" />
   </symbol>
-  <symbol id="icon-queue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <symbol
+    id="icon-queue"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
     <path d="M3 5h18M3 12h10M3 19h10" />
     <path d="m17 11 5 4-5 4Z" />
   </symbol>
-  <symbol id="icon-menu-lines" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+  <symbol
+    id="icon-menu-lines"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.6"
+    stroke-linecap="round"
+  >
     <path d="M4 6h16M4 12h16M4 18h16" />
   </symbol>
   <symbol id="icon-menu" viewBox="0 0 24 24" fill="currentColor">
@@ -154,42 +156,9 @@
     <path d="M19 5v14L9 12Zm-14 0h3v14H5Z" />
   </symbol>
   <symbol id="icon-sound-bars" viewBox="0 0 24 24" fill="currentColor">
-    <rect x="3" y="12" width="4" height="9" rx="2">
-      <animate attributeName="y" values="12;3;12" dur="650ms" repeatCount="indefinite" />
-      <animate attributeName="height" values="9;18;9" dur="650ms" repeatCount="indefinite" />
-    </rect>
-    <rect x="10" y="6" width="4" height="15" rx="2">
-      <animate
-        attributeName="y"
-        values="6;14;6"
-        dur="650ms"
-        begin="-420ms"
-        repeatCount="indefinite"
-      />
-      <animate
-        attributeName="height"
-        values="15;7;15"
-        dur="650ms"
-        begin="-420ms"
-        repeatCount="indefinite"
-      />
-    </rect>
-    <rect x="17" y="10" width="4" height="11" rx="2">
-      <animate
-        attributeName="y"
-        values="10;3;10"
-        dur="650ms"
-        begin="-210ms"
-        repeatCount="indefinite"
-      />
-      <animate
-        attributeName="height"
-        values="11;18;11"
-        dur="650ms"
-        begin="-210ms"
-        repeatCount="indefinite"
-      />
-    </rect>
+    <rect x="3" y="12" width="4" height="9" />
+    <rect x="10" y="6" width="4" height="15" />
+    <rect x="17" y="10" width="4" height="11" />
   </symbol>
   <symbol
     id="icon-cross"
@@ -220,7 +189,9 @@
     stroke-linecap="round"
     stroke-linejoin="round"
   >
-    <path d="M7 18H6a4 4 0 0 1-.8-7.9A6.5 6.5 0 0 1 18 9a4.5 4.5 0 0 1 0 9H7Z" />
+    <path
+      d="M7 18H6a4 4 0 0 1-.8-7.9A6.5 6.5 0 0 1 18 9a4.5 4.5 0 0 1 0 9H7Z"
+    />
     <path d="m3 3 18 18" />
   </symbol>
   <symbol
@@ -250,4 +221,112 @@
       d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"
     />
   </symbol>
+  <!-- No viewBox: percentage geometry follows the instance viewport, keeping gaps in pixels. -->
+  <symbol id="icon-loader">
+    <rect x="0" width="1" height="100%" />
+    <rect x="0" width="1" height="100%" />
+    <rect x="0" width="1" height="100%" />
+    <rect x="0" width="1" height="100%" />
+    <rect x="0" width="1" height="100%" />
+  </symbol>
+  <style>
+    #icon-loader rect {
+      width: calc((100% - 4 * var(--loader-gap, 2px)) / 5);
+      fill: var(--loader-bg);
+      scale: 1 0.35;
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+    #icon-loader rect:nth-child(2) {
+      x: calc(20% + var(--loader-gap, 2px) / 5);
+    }
+    #icon-loader rect:nth-child(3) {
+      x: calc(40% + 2 * var(--loader-gap, 2px) / 5);
+    }
+    #icon-loader rect:nth-child(4) {
+      x: calc(60% + 3 * var(--loader-gap, 2px) / 5);
+    }
+    #icon-loader rect:nth-child(5) {
+      x: calc(80% + 4 * var(--loader-gap, 2px) / 5);
+    }
+    #icon-loader rect:nth-child(2),
+    #icon-loader rect:nth-child(4) {
+      scale: 1 0.65;
+    }
+    #icon-loader rect:nth-child(3) {
+      scale: 1;
+      fill: var(--accent);
+    }
+    @keyframes libras-loader-wave {
+      0%,
+      50%,
+      100% {
+        scale: 1 0.2;
+        fill: var(--loader-bg);
+      }
+      25% {
+        scale: 1;
+        fill: var(--accent);
+      }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      #icon-loader rect {
+        animation: libras-loader-wave 1.5s var(--motion-ease) infinite backwards;
+      }
+      #icon-loader rect:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      #icon-loader rect:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      #icon-loader rect:nth-child(4) {
+        animation-delay: 0.6s;
+      }
+      #icon-loader rect:nth-child(5) {
+        animation-delay: 0.8s;
+      }
+      #icon-sound-bars rect:nth-child(1) {
+        animation: libras-sound-first 650ms linear infinite;
+      }
+      #icon-sound-bars rect:nth-child(2) {
+        animation: libras-sound-middle 650ms linear -420ms infinite;
+      }
+      #icon-sound-bars rect:nth-child(3) {
+        animation: libras-sound-last 650ms linear -210ms infinite;
+      }
+    }
+    @keyframes libras-sound-first {
+      0%,
+      100% {
+        y: 12px;
+        height: 9px;
+      }
+      50% {
+        y: 3px;
+        height: 18px;
+      }
+    }
+    @keyframes libras-sound-middle {
+      0%,
+      100% {
+        y: 6px;
+        height: 15px;
+      }
+      50% {
+        y: 14px;
+        height: 7px;
+      }
+    }
+    @keyframes libras-sound-last {
+      0%,
+      100% {
+        y: 10px;
+        height: 11px;
+      }
+      50% {
+        y: 3px;
+        height: 18px;
+      }
+    }
+  </style>
 </svg>
