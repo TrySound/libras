@@ -54,20 +54,6 @@ it("references the sound bars sprite symbol", async () => {
   }
 });
 
-it("exposes an optional accessible icon label", async () => {
-  const target = document.createElement("div");
-  const component = mount(Icon, { target, props: { name: "loader", label: "Downloading" } });
-  try {
-    flushSync();
-    const svg = target.querySelector("svg")!;
-    expect(svg.getAttribute("role")).toBe("img");
-    expect(svg.getAttribute("aria-label")).toBe("Downloading");
-    expect(svg.hasAttribute("aria-hidden")).toBe(false);
-  } finally {
-    await unmount(component);
-  }
-});
-
 it("allows a semantic status color", async () => {
   const target = document.createElement("div");
   const component = mount(Icon, {

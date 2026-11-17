@@ -289,6 +289,14 @@
               {#each group as { track, index }, rowIndex (index)}
                 {@const visibleIndex = groupIndex * queueGroupSize + rowIndex}
                 {@const downloadStatus = trackEngine.getStatus(track.id)}
+                {@const downloadLabel =
+                  index === cache.queue.index
+                    ? undefined
+                    : downloadStatus === "downloading"
+                      ? "Downloading"
+                      : downloadStatus === "queued"
+                        ? "Queued for download"
+                        : undefined}
                 {@const credit =
                   track.displayArtist?.trim() ||
                   track.artistIds
@@ -299,7 +307,11 @@
                   class="menu-item track-row"
                   aria-current={index === cache.queue.index ? "true" : undefined}
                 >
-                  <span class="track-row-number metadata text-subtle">
+                  <span
+                    class="track-row-number metadata text-subtle"
+                    role={downloadLabel ? "img" : undefined}
+                    aria-label={downloadLabel}
+                  >
                     {#if index === cache.queue.index && loading}
                       <Icon name="loader" />
                     {:else if index === cache.queue.index && playing}
@@ -307,9 +319,9 @@
                     {:else if index === cache.queue.index}
                       <Icon name="play" color="var(--accent)" />
                     {:else if downloadStatus === "downloading"}
-                      <Icon name="loader" label="Downloading" />
+                      <Icon name="loader" />
                     {:else if downloadStatus === "queued"}
-                      <Icon name="clock" label="Queued for download" />
+                      <Icon name="clock" />
                     {:else}
                       {String(visibleIndex + 1).padStart(2, "0")}
                     {/if}
