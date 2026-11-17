@@ -19,13 +19,10 @@ it("injects local animated symbols once into both HTML entry points", async () =
       const html = await server.transformIndexHtml(`/${page}`, await readFile(page, "utf8"));
       const document = new window.DOMParser().parseFromString(html, "text/html");
       expect(document.querySelectorAll("[data-icon-sprite]")).toHaveLength(1);
+      expect(document.querySelector("[data-icon-sprite]")!.hasAttribute("hidden")).toBe(true);
       const sprite = document.querySelector("[data-icon-sprite] svg")!;
-      expect(sprite.getAttribute("aria-hidden")).toBe("true");
-      expect(sprite.getAttribute("width")).toBe("0");
-      expect(sprite.getAttribute("height")).toBe("0");
       expect(sprite.querySelector("#icon-play")).not.toBeNull();
-      expect(sprite.querySelector("#icon-loading animateTransform")).not.toBeNull();
-      expect(sprite.querySelectorAll("#icon-sound-bars animate")).toHaveLength(6);
+      expect(sprite.querySelectorAll("animate, animateTransform")).toHaveLength(0);
       expect(sprite.querySelector("#play, #loading, #sound-bars")).toBeNull();
       const source = await readFile("src/sprite.svg", "utf8");
       expect(sprite.querySelectorAll("symbol")).toHaveLength(

@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Icon animation comparison</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+        background: #171820;
+        color: #f4f1f5;
+      }
+      body {
+        max-width: 960px;
+        padding: 2rem 1.25rem;
+        margin: auto;
+      }
+      h1 {
+        margin-bottom: 0.5rem;
+      }
+      p {
+        color: #c5bac6;
+        line-height: 1.5;
+      }
+      .comparison {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+      }
+      .panel {
+        border: 1px solid #564c59;
+        background: #24212b;
+        border-radius: 1rem;
+        padding: 1.25rem;
+        min-width: 0;
+      }
+      .panel h2 {
+        margin-top: 0;
+      }
+      .sample {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        border-top: 1px solid #564c59;
+        min-height: 110px;
+      }
+      .sample span {
+        min-width: 5rem;
+      }
+      svg {
+        color: #f17d9f;
+        flex: none;
+      }
+      .large {
+        width: 80px;
+        height: 80px;
+      }
+      .normal {
+        width: 24px;
+        height: 24px;
+      }
+
+      @media (max-width: 520px) {
+        .sample {
+          gap: 0.5rem;
+          flex-wrap: wrap;
+          padding: 1rem 0;
+        }
+        .sample span {
+          width: 100%;
+        }
+        .large {
+          width: 64px;
+          height: 64px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div hidden>
+      <svg xmlns="http://www.w3.org/2000/svg">
+        <style>
+          @media (prefers-reduced-motion: no-preference) {
+            #icon-sound-bars rect:nth-child(1) {
+              animation: libras-sound-first 650ms linear infinite;
+            }
+            #icon-sound-bars rect:nth-child(2) {
+              animation: libras-sound-middle 650ms linear -420ms infinite;
+            }
+            #icon-sound-bars rect:nth-child(3) {
+              animation: libras-sound-last 650ms linear -210ms infinite;
+            }
+          }
+          @keyframes libras-sound-first {
+            0%,
+            100% {
+              y: 12px;
+              height: 9px;
+            }
+            50% {
+              y: 3px;
+              height: 18px;
+            }
+          }
+          @keyframes libras-sound-middle {
+            0%,
+            100% {
+              y: 6px;
+              height: 15px;
+            }
+            50% {
+              y: 14px;
+              height: 7px;
+            }
+          }
+          @keyframes libras-sound-last {
+            0%,
+            100% {
+              y: 10px;
+              height: 11px;
+            }
+            50% {
+              y: 3px;
+              height: 18px;
+            }
+          }
+        </style>
+        <symbol id="icon-sound-bars" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="3" y="12" width="4" height="9" rx="2" />
+          <rect x="10" y="6" width="4" height="15" rx="2" />
+          <rect x="17" y="10" width="4" height="11" rx="2" />
+        </symbol>
+      </svg>
+    </div>
+    <h1>Icon animation comparison</h1>
+    <p>
+      Current CSS implementation on the left; original SMIL on the right. Each shows the icon
+      enlarged and at its normal 24px size. Reload to restart both. CSS respects reduced-motion
+      settings; original SMIL does not.
+    </p>
+    <div class="comparison">
+      <section class="panel" aria-labelledby="css-title">
+        <h2 id="css-title">Current CSS</h2>
+        <div class="sample">
+          <span>Playing</span>
+          <svg class="large" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-sound-bars"></use>
+          </svg>
+          <svg class="normal" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-sound-bars"></use>
+          </svg>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="smil-title">
+        <h2 id="smil-title">Original SMIL</h2>
+        <div class="sample">
+          <span>Playing</span>
+          <svg class="large" viewBox="0 0 24 24" aria-hidden="true">
+            <g fill="currentColor">
+              <rect x="3" y="12" width="4" height="9" rx="2">
+                <animate attributeName="y" values="12;3;12" dur="650ms" repeatCount="indefinite" />
+                <animate
+                  attributeName="height"
+                  values="9;18;9"
+                  dur="650ms"
+                  repeatCount="indefinite"
+                />
+              </rect>
+              <rect x="10" y="6" width="4" height="15" rx="2">
+                <animate
+                  attributeName="y"
+                  values="6;14;6"
+                  dur="650ms"
+                  begin="-420ms"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="height"
+                  values="15;7;15"
+                  dur="650ms"
+                  begin="-420ms"
+                  repeatCount="indefinite"
+                />
+              </rect>
+              <rect x="17" y="10" width="4" height="11" rx="2">
+                <animate
+                  attributeName="y"
+                  values="10;3;10"
+                  dur="650ms"
+                  begin="-210ms"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="height"
+                  values="11;18;11"
+                  dur="650ms"
+                  begin="-210ms"
+                  repeatCount="indefinite"
+                />
+              </rect>
+            </g>
+          </svg>
+          <svg class="normal" viewBox="0 0 24 24" aria-hidden="true">
+            <g fill="currentColor">
+              <rect x="3" y="12" width="4" height="9" rx="2">
+                <animate attributeName="y" values="12;3;12" dur="650ms" repeatCount="indefinite" />
+                <animate
+                  attributeName="height"
+                  values="9;18;9"
+                  dur="650ms"
+                  repeatCount="indefinite"
+                />
+              </rect>
+              <rect x="10" y="6" width="4" height="15" rx="2">
+                <animate
+                  attributeName="y"
+                  values="6;14;6"
+                  dur="650ms"
+                  begin="-420ms"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="height"
+                  values="15;7;15"
+                  dur="650ms"
+                  begin="-420ms"
+                  repeatCount="indefinite"
+                />
+              </rect>
+              <rect x="17" y="10" width="4" height="11" rx="2">
+                <animate
+                  attributeName="y"
+                  values="10;3;10"
+                  dur="650ms"
+                  begin="-210ms"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="height"
+                  values="11;18;11"
+                  dur="650ms"
+                  begin="-210ms"
+                  repeatCount="indefinite"
+                />
+              </rect>
+            </g>
+          </svg>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

@@ -7,7 +7,6 @@
     | "download"
     | "refresh"
     | "home"
-    | "loading"
     | "menu"
     | "menu-lines"
     | "disc"

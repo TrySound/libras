@@ -80,27 +80,6 @@
   >
     <path d="m3 11 9-8 9 8v10h-6v-6H9v6H3Z" />
   </symbol>
-  <symbol
-    id="icon-loading"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="3"
-    stroke-linecap="round"
-  >
-    <g>
-      <circle cx="12" cy="12" r="9" opacity="0.25" />
-      <path d="M12 3a9 9 0 0 1 9 9" />
-      <animateTransform
-        attributeName="transform"
-        type="rotate"
-        from="0 12 12"
-        to="360 12 12"
-        dur="900ms"
-        repeatCount="indefinite"
-      />
-    </g>
-  </symbol>
   <symbol id="icon-disc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="12" cy="12" r="9" />
     <circle cx="12" cy="12" r="2.5" />
@@ -154,42 +133,9 @@
     <path d="M19 5v14L9 12Zm-14 0h3v14H5Z" />
   </symbol>
   <symbol id="icon-sound-bars" viewBox="0 0 24 24" fill="currentColor">
-    <rect x="3" y="12" width="4" height="9" rx="2">
-      <animate attributeName="y" values="12;3;12" dur="650ms" repeatCount="indefinite" />
-      <animate attributeName="height" values="9;18;9" dur="650ms" repeatCount="indefinite" />
-    </rect>
-    <rect x="10" y="6" width="4" height="15" rx="2">
-      <animate
-        attributeName="y"
-        values="6;14;6"
-        dur="650ms"
-        begin="-420ms"
-        repeatCount="indefinite"
-      />
-      <animate
-        attributeName="height"
-        values="15;7;15"
-        dur="650ms"
-        begin="-420ms"
-        repeatCount="indefinite"
-      />
-    </rect>
-    <rect x="17" y="10" width="4" height="11" rx="2">
-      <animate
-        attributeName="y"
-        values="10;3;10"
-        dur="650ms"
-        begin="-210ms"
-        repeatCount="indefinite"
-      />
-      <animate
-        attributeName="height"
-        values="11;18;11"
-        dur="650ms"
-        begin="-210ms"
-        repeatCount="indefinite"
-      />
-    </rect>
+    <rect x="3" y="12" width="4" height="9" rx="2" />
+    <rect x="10" y="6" width="4" height="15" rx="2" />
+    <rect x="17" y="10" width="4" height="11" rx="2" />
   </symbol>
   <symbol
     id="icon-cross"
@@ -250,4 +196,52 @@
       d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"
     />
   </symbol>
+  <style>
+
+  @media (prefers-reduced-motion: no-preference) {
+    #icon-sound-bars rect:nth-child(1) {
+      animation: libras-sound-first 650ms linear infinite;
+    }
+    #icon-sound-bars rect:nth-child(2) {
+      animation: libras-sound-middle 650ms linear -420ms infinite;
+    }
+    #icon-sound-bars rect:nth-child(3) {
+      animation: libras-sound-last 650ms linear -210ms infinite;
+    }
+  }
+  @keyframes libras-sound-first {
+    0%,
+    100% {
+      y: 12px;
+      height: 9px;
+    }
+    50% {
+      y: 3px;
+      height: 18px;
+    }
+  }
+  @keyframes libras-sound-middle {
+    0%,
+    100% {
+      y: 6px;
+      height: 15px;
+    }
+    50% {
+      y: 14px;
+      height: 7px;
+    }
+  }
+  @keyframes libras-sound-last {
+    0%,
+    100% {
+      y: 10px;
+      height: 11px;
+    }
+    50% {
+      y: 3px;
+      height: 18px;
+    }
+  }
+
+  </style>
 </svg>
