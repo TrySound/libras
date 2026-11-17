@@ -176,13 +176,9 @@
               {:else if currentTrack?.id === track.id}
                 <Icon name="play" color="var(--accent)" />
               {:else if downloadStatus === "downloading"}
-                <span role="img" aria-label="Downloading">
-                  <Icon name="loader" />
-                </span>
+                <Icon name="loader" label="Downloading" />
               {:else if downloadStatus === "queued"}
-                <span role="img" aria-label="Queued for download">
-                  <Icon name="clock" />
-                </span>
+                <Icon name="clock" label="Queued for download" />
               {:else}
                 {String(track.number ?? index + 1).padStart(2, "0")}
               {/if}

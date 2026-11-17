@@ -32,9 +32,10 @@
     size?: "md" | "lg" | "xl";
     class?: string;
     color?: string;
+    label?: string;
   }
 
-  let { name, size = "md", class: className, color }: Props = $props();
+  let { name, size = "md", class: className, color, label }: Props = $props();
   const dimension = $derived({ md: 24, lg: 40, xl: 96 }[size]);
 </script>
 
@@ -42,7 +43,9 @@
   class={className}
   style:--loader-gap={name === "loader" && size === "xl" ? "var(--space-xs, 4px)" : undefined}
   {color}
-  aria-hidden="true"
+  aria-hidden={label ? undefined : "true"}
+  role={label ? "img" : undefined}
+  aria-label={label}
   width={dimension}
   height={dimension}
 >
