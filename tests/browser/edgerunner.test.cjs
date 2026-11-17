@@ -363,8 +363,7 @@ test("Edgerunner foundations and native controls", async (t) => {
         await busy.focus();
         assert.equal(await busy.evaluate((element) => element === document.activeElement), true);
         assert.match(await busy.getAttribute("title"), /Applying the update/);
-        assert.equal(await busy.locator(".loader-bar").count(), 5);
-        assert.equal(await busy.locator("svg").count(), 0);
+        assert.equal(await busy.locator('use[href="#icon-loader-md"]').count(), 1);
         const failure = states.getByRole("complementary", {
           name: "Offline setup failed sidebar",
           exact: true,
@@ -458,9 +457,9 @@ test("Edgerunner foundations and native controls", async (t) => {
 
     await t.test("loaders use square md, lg, and xl sizes", async () => {
       for (const [selector, size] of [
-        ["#loading-heading + .caption + .control-example .button .loader", 24],
-        ['.loader[aria-label="Large loading specimen"]', 40],
-        ['.loader[aria-label="Extra large loading specimen"]', 96],
+        ["#loading-heading + .caption + .control-example .button svg", 24],
+        ['svg[aria-label="Large loading specimen"]', 40],
+        ['svg[aria-label="Extra large loading specimen"]', 96],
       ]) {
         const dimensions = await page.locator(selector).evaluate((node) => {
           const box = node.getBoundingClientRect();
@@ -514,12 +513,10 @@ test("Edgerunner foundations and native controls", async (t) => {
           const original = await play.innerHTML();
           await play.evaluate((button) => {
             button.setAttribute("aria-busy", "true");
-            button.innerHTML = `<span class="loader" data-size="lg" aria-hidden="true">${'<span class="loader-bar"></span>'.repeat(
-              5,
-            )}</span>`;
+            button.innerHTML = `<svg width="40" height="40" aria-hidden="true"><use href="#icon-loader-lg"></use></svg>`;
           });
           assert.deepEqual(
-            await play.locator(".loader").evaluate((node) => {
+            await play.locator("svg").evaluate((node) => {
               const box = node.getBoundingClientRect();
               return [box.width, box.height];
             }),
@@ -550,20 +547,10 @@ test("Edgerunner foundations and native controls", async (t) => {
       assert.equal(await artwork.first().locator(".artwork-placeholder").isVisible(), false);
       assert.equal(await artwork.nth(1).locator(".artwork-placeholder").isVisible(), true);
       await page.emulateMedia({ reducedMotion: "reduce" });
-      assert.equal(
-        await page
-          .locator(".loader-bar")
-          .first()
-          .evaluate((element) => getComputedStyle(element).animationName),
-        "none",
-      );
-      assert.equal(
-        await page
-          .locator(".loader-bar")
-          .nth(2)
-          .evaluate((element) => getComputedStyle(element).scale),
-        "1",
-      );
+      const sprite = page.locator('svg[aria-label="Extra large loading specimen"]');
+      const before = await sprite.screenshot();
+      await page.waitForTimeout(200);
+      assert.ok(before.equals(await sprite.screenshot()));
     });
 
     assert.deepEqual(errors, []);

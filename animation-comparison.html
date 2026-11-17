@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Icon animation comparison</title>
+    <link rel="stylesheet" href="/src/edgerunner.css" />
     <style>
       :root {
         color-scheme: dark;
@@ -45,7 +46,7 @@
         border-top: 1px solid #564c59;
         min-height: 110px;
       }
-      .sample span {
+      .sample > .sample-label {
         min-width: 5rem;
       }
       svg {
@@ -67,7 +68,7 @@
           flex-wrap: wrap;
           padding: 1rem 0;
         }
-        .sample span {
+        .sample > .sample-label {
           width: 100%;
         }
         .large {
@@ -75,75 +76,142 @@
           height: 64px;
         }
       }
+      @scope (.design-reference) {
+        .loader {
+          display: inline-grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          align-items: center;
+          gap: 2px;
+          inline-size: 24px;
+          block-size: 24px;
+          flex-shrink: 0;
+
+          &[data-size="lg"] {
+            inline-size: 40px;
+            block-size: 40px;
+          }
+
+          &[data-size="xl"] {
+            inline-size: 96px;
+            block-size: 96px;
+            gap: var(--space-xs);
+          }
+
+          & > .loader-bar {
+            block-size: 100%;
+            background: var(--loader-bg);
+            scale: 1 0.35;
+
+            &:nth-child(2),
+            &:nth-child(4) {
+              scale: 1 0.65;
+            }
+
+            &:nth-child(3) {
+              scale: 1;
+              background: var(--accent);
+            }
+
+            @media (prefers-reduced-motion: no-preference) {
+              animation: --edgerunner-loader-wave 1.5s var(--motion-ease) infinite backwards;
+
+              &:nth-child(2) {
+                animation-delay: 0.2s;
+              }
+
+              &:nth-child(3) {
+                animation-delay: 0.4s;
+              }
+
+              &:nth-child(4) {
+                animation-delay: 0.6s;
+              }
+
+              &:nth-child(5) {
+                animation-delay: 0.8s;
+              }
+            }
+          }
+        }
+
+        @keyframes --edgerunner-loader-wave {
+          0%,
+          50%,
+          100% {
+            scale: 1 0.2;
+            background: var(--loader-bg);
+          }
+
+          25% {
+            scale: 1;
+            background: var(--accent);
+          }
+        }
+      }
     </style>
   </head>
-  <body>
-    <div hidden>
-      <svg xmlns="http://www.w3.org/2000/svg">
-        <style>
-          @media (prefers-reduced-motion: no-preference) {
-            #icon-sound-bars rect:nth-child(1) {
-              animation: libras-sound-first 650ms linear infinite;
-            }
-            #icon-sound-bars rect:nth-child(2) {
-              animation: libras-sound-middle 650ms linear -420ms infinite;
-            }
-            #icon-sound-bars rect:nth-child(3) {
-              animation: libras-sound-last 650ms linear -210ms infinite;
-            }
-          }
-          @keyframes libras-sound-first {
-            0%,
-            100% {
-              y: 12px;
-              height: 9px;
-            }
-            50% {
-              y: 3px;
-              height: 18px;
-            }
-          }
-          @keyframes libras-sound-middle {
-            0%,
-            100% {
-              y: 6px;
-              height: 15px;
-            }
-            50% {
-              y: 14px;
-              height: 7px;
-            }
-          }
-          @keyframes libras-sound-last {
-            0%,
-            100% {
-              y: 10px;
-              height: 11px;
-            }
-            50% {
-              y: 3px;
-              height: 18px;
-            }
-          }
-        </style>
-        <symbol id="icon-sound-bars" viewBox="0 0 24 24" fill="currentColor">
-          <rect x="3" y="12" width="4" height="9" rx="2" />
-          <rect x="10" y="6" width="4" height="15" rx="2" />
-          <rect x="17" y="10" width="4" height="11" rx="2" />
-        </symbol>
-      </svg>
-    </div>
+  <body class="design-reference">
     <h1>Icon animation comparison</h1>
     <p>
-      Current CSS implementation on the left; original SMIL on the right. Each shows the icon
-      enlarged and at its normal 24px size. Reload to restart both. CSS respects reduced-motion
-      settings; original SMIL does not.
+      Compare the legacy and sprite-based loaders below. Further down, the playing indicator
+      compares CSS with the original SMIL. Reload to restart animations. The app animations respect
+      reduced-motion settings; the original SMIL does not.
     </p>
+    <h2>Loading indicator</h2>
+    <p>
+      Legacy HTML loader on the left; sprite loader on the right. Both use the actual app styles,
+      with all three sizes.
+    </p>
+    <div class="comparison">
+      <section class="panel" aria-labelledby="legacy-loader-title">
+        <h3 id="legacy-loader-title">Legacy HTML</h3>
+        <div class="sample">
+          <span class="sample-label">24px</span
+          ><span class="loader" data-size="md" aria-hidden="true"
+            ><span class="loader-bar"></span><span class="loader-bar"></span
+            ><span class="loader-bar"></span><span class="loader-bar"></span
+            ><span class="loader-bar"></span
+          ></span>
+        </div>
+        <div class="sample">
+          <span class="sample-label">40px</span
+          ><span class="loader" data-size="lg" aria-hidden="true"
+            ><span class="loader-bar"></span><span class="loader-bar"></span
+            ><span class="loader-bar"></span><span class="loader-bar"></span
+            ><span class="loader-bar"></span
+          ></span>
+        </div>
+        <div class="sample">
+          <span class="sample-label">96px</span
+          ><span class="loader" data-size="xl" aria-hidden="true"
+            ><span class="loader-bar"></span><span class="loader-bar"></span
+            ><span class="loader-bar"></span><span class="loader-bar"></span
+            ><span class="loader-bar"></span
+          ></span>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="sprite-loader-title">
+        <h3 id="sprite-loader-title">Sprite SVG</h3>
+        <div class="sample">
+          <span class="sample-label">24px</span
+          ><svg width="24" height="24" aria-hidden="true"><use href="#icon-loader-md"></use></svg>
+        </div>
+        <div class="sample">
+          <span class="sample-label">40px</span
+          ><svg width="40" height="40" aria-hidden="true"><use href="#icon-loader-lg"></use></svg>
+        </div>
+        <div class="sample">
+          <span class="sample-label">96px</span
+          ><svg width="96" height="96" aria-hidden="true"><use href="#icon-loader-xl"></use></svg>
+        </div>
+      </section>
+    </div>
+    <h2>Playing indicator</h2>
     <div class="comparison">
       <section class="panel" aria-labelledby="css-title">
         <h2 id="css-title">Current CSS</h2>
         <div class="sample">
-          <span>Playing</span>
+          <span class="sample-label">Playing</span>
           <svg class="large" viewBox="0 0 24 24" aria-hidden="true">
             <use href="#icon-sound-bars"></use>
           </svg>
@@ -155,7 +223,7 @@
       <section class="panel" aria-labelledby="smil-title">
         <h2 id="smil-title">Original SMIL</h2>
         <div class="sample">
-          <span>Playing</span>
+          <span class="sample-label">Playing</span>
           <svg class="large" viewBox="0 0 24 24" aria-hidden="true">
             <g fill="currentColor">
               <rect x="3" y="12" width="4" height="9" rx="2">

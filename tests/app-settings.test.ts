@@ -225,7 +225,7 @@ describe("app settings", () => {
     const status = target.querySelector("#settings-connection-status")!;
     expect(session.localReady).toBe(false);
     expect(status.textContent).toContain("Synchronizing…");
-    expect(status.querySelector(".loader")).not.toBeNull();
+    expect(status.querySelector(".loader-icon")).not.toBeNull();
     expect(status.textContent).not.toContain("with server");
     expect(target.textContent).not.toContain("Restoring local library…");
     local.resolve();
@@ -237,7 +237,7 @@ describe("app settings", () => {
     await vi.waitFor(() => expect(session.syncing).toBe(false));
     flushSync();
     expect(status.textContent).toMatch(/Connected\s+·\s+listener@music\.example/);
-    expect(status.querySelector(".loader")).toBeNull();
+    expect(status.querySelector(".loader-icon")).toBeNull();
   });
 
   it("shows saved offline mode immediately while local data loads, without server requests", async () => {
@@ -254,7 +254,7 @@ describe("app settings", () => {
     const status = target.querySelector("#settings-connection-status")!;
     expect(status.textContent).toContain("Offline mode");
     expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-offline");
-    expect(status.querySelector(".loader")).toBeNull();
+    expect(status.querySelector(".loader-icon")).toBeNull();
     local.resolve();
     await vi.waitFor(() => expect(session.localReady).toBe(true));
     expect(metadata.getModifiedAt).not.toHaveBeenCalled();
@@ -418,7 +418,7 @@ describe("app settings", () => {
         expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
       } else {
         expect(status.textContent).toContain(label);
-        expect(status.querySelector(".loader")).not.toBeNull();
+        expect(status.querySelector(".loader-icon")).not.toBeNull();
       }
     };
     expectStatus("check", "listener@music.example");
@@ -500,9 +500,8 @@ describe("app settings", () => {
         expect(apply).toHaveBeenCalledOnce();
         expect(notice.querySelector("button")?.textContent).toContain("Updating…");
         expect(notice.querySelector("button")?.title).toContain("Applying the update");
-        expect(notice.querySelector(".loader")?.getAttribute("aria-hidden")).toBe("true");
-        expect(notice.querySelectorAll(".loader-bar")).toHaveLength(5);
-        expect(notice.querySelector("svg")).toBeNull();
+        const loader = notice.querySelector('svg:has(use[href^="#icon-loader-"])');
+        expect(loader?.getAttribute("aria-hidden")).toBe("true");
       }
     },
   );
@@ -533,7 +532,7 @@ describe("app settings", () => {
     expect(apply).toHaveBeenCalledTimes(2);
     for (const notice of target.querySelectorAll('[aria-label="App update"]')) {
       expect(notice.querySelector(".caption")).toBeNull();
-      expect(notice.querySelector(".loader")).not.toBeNull();
+      expect(notice.querySelector(".loader-icon")).not.toBeNull();
     }
   });
 
@@ -601,7 +600,7 @@ describe("app settings", () => {
         const status = target.querySelector("#settings-connection-status")!;
         expect(status.textContent).toMatch(/Connected\s+·\s+listener@music\.example/);
         expect(status.textContent).not.toContain("Synchronizing");
-        expect(status.querySelector(".loader")).toBeNull();
+        expect(status.querySelector(".loader-icon")).toBeNull();
         expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refreshing…");
       }
       await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
@@ -625,7 +624,7 @@ describe("app settings", () => {
       expect(target.querySelector("#settings-refresh")?.textContent).toContain(
         saved ? "Refreshing…" : "Refresh library",
       );
-      expect(target.querySelector("#settings-connection-status .loader")).not.toBeNull();
+      expect(target.querySelector("#settings-connection-status .loader-icon")).not.toBeNull();
       pending.resolve();
       await vi.waitFor(() => expect(playback.refreshQueue).toHaveBeenCalledTimes(queueCalls + 1));
       flushSync();
@@ -638,7 +637,7 @@ describe("app settings", () => {
       ).toBe(counter);
       expect(status.textContent).not.toContain("Synchronizing");
       expect(status.textContent).not.toContain("Connected");
-      expect(status.querySelector(".loader")).not.toBeNull();
+      expect(status.querySelector(".loader-icon")).not.toBeNull();
       expect(target.querySelector("#settings-refresh")?.textContent).toContain(
         saved ? "Refreshing…" : "Refresh library",
       );
@@ -652,7 +651,7 @@ describe("app settings", () => {
       flushSync();
       expect(status.textContent).toMatch(/Connected\s+·\s+listener@music\.example/);
       expect(status.querySelector("#settings-library-progress")).toBeNull();
-      expect(status.querySelector(".loader")).toBeNull();
+      expect(status.querySelector(".loader-icon")).toBeNull();
       expect(status.querySelector("use")?.getAttribute("href")).toBe("#icon-check");
       expect(target.querySelector("#settings-refresh")?.textContent).toContain("Refresh library");
     },
@@ -679,7 +678,7 @@ describe("app settings", () => {
     button("Refresh library").click();
     flushSync();
     expect(button("Refreshing…").getAttribute("aria-disabled")).toBe("true");
-    expect(button("Refreshing…").querySelector("svg, .loader")).toBeNull();
+    expect(button("Refreshing…").querySelector("svg, .loader-icon")).toBeNull();
     button("Refreshing…").click();
     await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
     button("Disconnect").click();

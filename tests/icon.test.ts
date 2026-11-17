@@ -75,5 +75,13 @@ it("keeps the typed icon names in sync with the sprite symbols", () => {
   const symbols = [...sprite.matchAll(/<symbol\s+id="([^"]+)"/g)].map((match) => match[1]);
   const nameType = component.match(/export type IconName =([^;]+);/)![1];
   const names = [...nameType.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
-  expect(names.map((name) => `icon-${name}`).sort()).toEqual(symbols.sort());
+  expect(
+    names
+      .flatMap((name) =>
+        name === "loader"
+          ? ["icon-loader-md", "icon-loader-lg", "icon-loader-xl"]
+          : [`icon-${name}`],
+      )
+      .sort(),
+  ).toEqual(symbols.sort());
 });

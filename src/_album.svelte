@@ -4,7 +4,6 @@
   import type { Covers } from "./covers.svelte";
   import Artwork from "./ui/artwork.svelte";
   import Atmosphere from "./ui/atmosphere.svelte";
-  import Loader from "./ui/loader.svelte";
   import type { TrackEngine } from "./track.svelte";
   import type { Track } from "./schema";
   import type { Playback } from "./playback.svelte";
@@ -111,7 +110,7 @@
               }}
             >
               {#if albumPlaybackState === "loading"}
-                <Loader />
+                <Icon name="loader" />
               {:else}
                 <Icon name={albumCanPause ? "pause" : "play"} />
               {/if}
@@ -169,14 +168,14 @@
           >
             <span class="track-row-number metadata text-subtle">
               {#if currentTrack?.id === track.id && playbackState === "loading"}
-                <Loader />
+                <Icon name="loader" />
               {:else if currentTrack?.id === track.id && playbackState === "playing"}
                 <Icon name="sound-bars" color="var(--accent)" />
               {:else if currentTrack?.id === track.id}
                 <Icon name="play" color="var(--accent)" />
               {:else if downloadStatus === "downloading"}
                 <span role="img" aria-label="Downloading">
-                  <Loader />
+                  <Icon name="loader" />
                 </span>
               {:else if downloadStatus === "queued"}
                 <span role="img" aria-label="Queued for download">
@@ -333,7 +332,7 @@
         }}
       >
         {#if menuDownloadStatus === "downloading"}
-          <Loader />
+          <Icon name="loader" />
         {:else}
           <Icon
             name={menuDownloadStatus === "downloaded"

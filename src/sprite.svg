@@ -133,9 +133,9 @@
     <path d="M19 5v14L9 12Zm-14 0h3v14H5Z" />
   </symbol>
   <symbol id="icon-sound-bars" viewBox="0 0 24 24" fill="currentColor">
-    <rect x="3" y="12" width="4" height="9" rx="2" />
-    <rect x="10" y="6" width="4" height="15" rx="2" />
-    <rect x="17" y="10" width="4" height="11" rx="2" />
+    <rect x="3" y="12" width="4" height="9" />
+    <rect x="10" y="6" width="4" height="15" />
+    <rect x="17" y="10" width="4" height="11" />
   </symbol>
   <symbol
     id="icon-cross"
@@ -196,9 +196,42 @@
       d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"
     />
   </symbol>
+  <symbol id="icon-loader-md" viewBox="0 0 24 24">
+    <rect x="0" y="0" width="3.2" height="24" />
+    <rect x="5.2" y="0" width="3.2" height="24" />
+    <rect x="10.4" y="0" width="3.2" height="24" />
+    <rect x="15.6" y="0" width="3.2" height="24" />
+    <rect x="20.8" y="0" width="3.2" height="24" />
+  </symbol>
+  <symbol id="icon-loader-lg" viewBox="0 0 40 40">
+    <rect x="0" y="0" width="6.4" height="40" />
+    <rect x="8.4" y="0" width="6.4" height="40" />
+    <rect x="16.8" y="0" width="6.4" height="40" />
+    <rect x="25.2" y="0" width="6.4" height="40" />
+    <rect x="33.6" y="0" width="6.4" height="40" />
+  </symbol>
+  <symbol id="icon-loader-xl" viewBox="0 0 96 96">
+    <rect x="0" y="0" width="16" height="96" />
+    <rect x="20" y="0" width="16" height="96" />
+    <rect x="40" y="0" width="16" height="96" />
+    <rect x="60" y="0" width="16" height="96" />
+    <rect x="80" y="0" width="16" height="96" />
+  </symbol>
   <style>
 
+  [id^="icon-loader-"] rect { fill: var(--loader-bg); scale: 1 0.35; transform-box: fill-box; transform-origin: center; }
+  [id^="icon-loader-"] rect:nth-child(2), [id^="icon-loader-"] rect:nth-child(4) { scale: 1 0.65; }
+  [id^="icon-loader-"] rect:nth-child(3) { scale: 1; fill: var(--accent); }
+  @keyframes libras-loader-wave {
+    0%, 50%, 100% { scale: 1 0.2; fill: var(--loader-bg); }
+    25% { scale: 1; fill: var(--accent); }
+  }
   @media (prefers-reduced-motion: no-preference) {
+    [id^="icon-loader-"] rect { animation: libras-loader-wave 1.5s var(--motion-ease) infinite backwards; }
+    [id^="icon-loader-"] rect:nth-child(2) { animation-delay: 0.2s; }
+    [id^="icon-loader-"] rect:nth-child(3) { animation-delay: 0.4s; }
+    [id^="icon-loader-"] rect:nth-child(4) { animation-delay: 0.6s; }
+    [id^="icon-loader-"] rect:nth-child(5) { animation-delay: 0.8s; }
     #icon-sound-bars rect:nth-child(1) {
       animation: libras-sound-first 650ms linear infinite;
     }

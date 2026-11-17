@@ -17,6 +17,7 @@
     | "plus"
     | "previous"
     | "queue"
+    | "loader"
     | "sound-bars"
     | "cross"
     | "error"
@@ -37,6 +38,19 @@
   const dimension = $derived({ md: 24, lg: 40, xl: 96 }[size]);
 </script>
 
-<svg class={className} {color} aria-hidden="true" width={dimension} height={dimension}>
-  <use href={`#icon-${name}`}></use>
+<svg
+  class={className}
+  class:loader-icon={name === "loader"}
+  {color}
+  aria-hidden="true"
+  width={dimension}
+  height={dimension}
+>
+  <use href={name === "loader" ? `#icon-loader-${size}` : `#icon-${name}`}></use>
 </svg>
+
+<style>
+  .loader-icon {
+    flex-shrink: 0;
+  }
+</style>

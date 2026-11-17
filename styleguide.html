@@ -354,34 +354,29 @@
           <p class="caption">Icons and loaders use md (24px), lg (40px), and xl (96px) sizes.</p>
           <div class="control-example row-md">
             <button class="button" data-variant="secondary" data-size="text" aria-busy="true">
-              <span class="loader" aria-hidden="true">
-                <span class="loader-bar"></span>
-                <span class="loader-bar"></span>
-                <span class="loader-bar"></span>
-                <span class="loader-bar"></span>
-                <span class="loader-bar"></span>
-              </span>
+              <svg class="loader-icon" width="24" height="24" aria-hidden="true">
+                <use href="#icon-loader-md"></use>
+              </svg>
               Loading…
             </button>
-            <span class="loader" data-size="lg" role="img" aria-label="Large loading specimen">
-              <span class="loader-bar"></span>
-              <span class="loader-bar"></span>
-              <span class="loader-bar"></span>
-              <span class="loader-bar"></span>
-              <span class="loader-bar"></span>
-            </span>
-            <span
-              class="loader"
-              data-size="xl"
+            <svg
+              class="loader-icon"
+              width="40"
+              height="40"
+              role="img"
+              aria-label="Large loading specimen"
+            >
+              <use href="#icon-loader-lg"></use>
+            </svg>
+            <svg
+              class="loader-icon"
+              width="96"
+              height="96"
               role="img"
               aria-label="Extra large loading specimen"
             >
-              <span class="loader-bar"></span>
-              <span class="loader-bar"></span>
-              <span class="loader-bar"></span>
-              <span class="loader-bar"></span>
-              <span class="loader-bar"></span>
-            </span>
+              <use href="#icon-loader-xl"></use>
+            </svg>
           </div>
           <div class="stack-sm">
             <p class="row-sm label">
@@ -747,13 +742,9 @@
                     aria-busy="true"
                     title="Applying the update. The app will reload when it is ready."
                   >
-                    <span class="loader" aria-hidden="true">
-                      <span class="loader-bar"></span>
-                      <span class="loader-bar"></span>
-                      <span class="loader-bar"></span>
-                      <span class="loader-bar"></span>
-                      <span class="loader-bar"></span>
-                    </span>
+                    <svg class="loader-icon" width="24" height="24" aria-hidden="true">
+                      <use href="#icon-loader-md"></use>
+                    </svg>
                     <span class="label text-subtle">Updating…</span>
                   </button>
                 </section>

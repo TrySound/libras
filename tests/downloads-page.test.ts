@@ -109,7 +109,7 @@ it("restores silently with a native heading and shows the empty state only once 
   expect(target.querySelector("header p")?.textContent).toMatch(
     /0\s+tracks available for offline listening, 0\s+pending/,
   );
-  expect(target.querySelectorAll(".loader-bar")).toHaveLength(0);
+  expect(target.querySelectorAll('use[href^="#icon-loader-"]')).toHaveLength(0);
   set({ loading: false });
   expect(target.querySelector('[role="status"]')).toBeNull();
   expect(target.textContent).toContain("No downloads yet");
@@ -138,7 +138,7 @@ it("preserves active-job precedence and newest-first saved files, including orph
     "Downloaded",
     "Downloaded",
   ]);
-  expect(rows[0].querySelectorAll(".loader-bar")).toHaveLength(5);
+  expect(rows[0].querySelectorAll('use[href^="#icon-loader-"]')).toHaveLength(1);
   expect(rows[0].querySelector("time")).toBeNull();
   expect(rows[2].textContent).toContain("newer artist · newer album");
   expect(rows[2].textContent).toContain("audio/flac");

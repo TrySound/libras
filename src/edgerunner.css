@@ -653,75 +653,8 @@
 }
 
 @scope (.app-root, .design-reference) {
-  .loader {
-    display: inline-grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    align-items: center;
-    gap: 2px;
-    inline-size: 24px;
-    block-size: 24px;
+  .loader-icon {
     flex-shrink: 0;
-
-    &[data-size="lg"] {
-      inline-size: 40px;
-      block-size: 40px;
-    }
-
-    &[data-size="xl"] {
-      inline-size: 96px;
-      block-size: 96px;
-      gap: var(--space-xs);
-    }
-
-    & > .loader-bar {
-      block-size: 100%;
-      background: var(--loader-bg);
-      scale: 1 0.35;
-
-      &:nth-child(2),
-      &:nth-child(4) {
-        scale: 1 0.65;
-      }
-
-      &:nth-child(3) {
-        scale: 1;
-        background: var(--accent);
-      }
-
-      @media (prefers-reduced-motion: no-preference) {
-        animation: --edgerunner-loader-wave 1.5s var(--motion-ease) infinite backwards;
-
-        &:nth-child(2) {
-          animation-delay: 0.2s;
-        }
-
-        &:nth-child(3) {
-          animation-delay: 0.4s;
-        }
-
-        &:nth-child(4) {
-          animation-delay: 0.6s;
-        }
-
-        &:nth-child(5) {
-          animation-delay: 0.8s;
-        }
-      }
-    }
-  }
-
-  @keyframes --edgerunner-loader-wave {
-    0%,
-    50%,
-    100% {
-      scale: 1 0.2;
-      background: var(--loader-bg);
-    }
-
-    25% {
-      scale: 1;
-      background: var(--accent);
-    }
   }
 
   .input {
