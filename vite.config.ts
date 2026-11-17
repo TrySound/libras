@@ -61,7 +61,6 @@ export default defineConfig({
       input: {
         app: "index.html",
         styleguide: "styleguide.html",
-        comparison: "animation-comparison.html",
       },
     },
   },

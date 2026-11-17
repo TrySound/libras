@@ -13,24 +13,28 @@ test("sprite animations run only in visible instances and respect reduced motion
   try {
     const page = await browser.newPage({ reducedMotion: "no-preference" });
     await page.setContent(
-      `<div hidden>${sprite}</div><svg width="120" height="120"><use href="#icon-sound-bars"></use></svg>`,
+      `<style>body { --loader-bg: #8f7073; --accent: #ffcc00; --motion-ease: cubic-bezier(.445,.05,.55,.95); }</style><div hidden>${sprite}</div><svg width="120" height="120"><use href="#icon-sound-bars"></use></svg><svg width="96" height="96"><use href="#icon-loader-xl"></use></svg>`,
     );
-    const icon = page.locator("body > svg");
-    const frames = [];
-    for (let i = 0; i < 4; i++) {
-      await page.waitForTimeout(110);
-      frames.push(await icon.screenshot());
+    const icons = page.locator("body > svg");
+    for (const icon of await icons.all()) {
+      const frames = [];
+      for (let i = 0; i < 4; i++) {
+        await page.waitForTimeout(110);
+        frames.push(await icon.screenshot());
+      }
+      assert.ok(
+        frames.some((frame) => !frame.equals(frames[0])),
+        "visible symbol animates",
+      );
     }
-    assert.ok(
-      frames.some((frame) => !frame.equals(frames[0])),
-      "visible symbol animates",
-    );
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.waitForTimeout(100);
-    const still = await icon.screenshot();
-    await page.waitForTimeout(200);
-    assert.ok(still.equals(await icon.screenshot()), "reduced motion leaves a static symbol");
-    await icon.evaluate((node) => node.remove());
+    for (const icon of await icons.all()) {
+      const still = await icon.screenshot();
+      await page.waitForTimeout(200);
+      assert.ok(still.equals(await icon.screenshot()), "reduced motion leaves a static symbol");
+    }
+    await icons.evaluateAll((nodes) => nodes.forEach((node) => node.remove()));
     await page.emulateMedia({ reducedMotion: "no-preference" });
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Performance.enable");
