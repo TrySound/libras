@@ -284,7 +284,9 @@ it("restores downloads silently without flashing the empty state", () => {
   cleanups.push(() => unmount(component));
   flushSync();
   expect(target.textContent).not.toContain("Restoring local library…");
-  expect(target.querySelector("[aria-labelledby=downloads-heading] .loader-icon")).toBeNull();
+  expect(
+    target.querySelector("[aria-labelledby=downloads-heading] svg:has(use[href$=loader])"),
+  ).toBeNull();
   expect(target.textContent).not.toContain("No downloads yet");
 });
 
@@ -758,7 +760,9 @@ it.each([
     flushSync();
     expect(target.textContent).not.toContain("Restoring local library…");
     expect(
-      target.querySelector("[aria-labelledby=library-heading] .loader-icon, .scan-spinner"),
+      target.querySelector(
+        "[aria-labelledby=library-heading] svg:has(use[href$=loader]), .scan-spinner",
+      ),
     ).toBeNull();
     expect(target.querySelector(selector)).not.toBeNull();
     target.querySelector<HTMLElement>(selector)!.focus();

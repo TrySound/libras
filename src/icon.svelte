@@ -41,7 +41,7 @@
 
 <svg
   class={className}
-  class:loader-icon={name === "loader"}
+  style:--loader-gap={name === "loader" && size === "xl" ? "var(--space-xs, 4px)" : undefined}
   {color}
   aria-hidden={label ? undefined : "true"}
   role={label ? "img" : undefined}

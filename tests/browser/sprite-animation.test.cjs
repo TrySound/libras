@@ -5,6 +5,28 @@ const { chromium } = require("playwright");
 
 const sprite = readFileSync("src/sprite.svg", "utf8");
 
+test("extra-large loader matches the legacy four-pixel gaps", async () => {
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.CHROMIUM_PATH,
+  });
+  try {
+    const page = await browser.newPage({ reducedMotion: "reduce", deviceScaleFactor: 1 });
+    await page.setContent(`<style>
+      body { background: white; --loader-bg: #8f7073; --accent: #ffcc00; }
+      .legacy { display: inline-grid; width: 96px; height: 96px; grid-template-columns: repeat(5, 1fr); align-items: center; gap: 4px; }
+      .legacy span { height: 100%; background: var(--loader-bg); scale: 1 .35; }
+      .legacy span:nth-child(2), .legacy span:nth-child(4) { scale: 1 .65; }
+      .legacy span:nth-child(3) { scale: 1; background: var(--accent); }
+    </style><div hidden>${sprite}</div><span class="legacy">${"<span></span>".repeat(5)}</span><svg width="96" height="96" style="--loader-gap: 4px"><use href="#icon-loader"></use></svg>`);
+    const legacy = await page.locator(".legacy").screenshot();
+    const migrated = await page.locator("body > svg").screenshot();
+    assert.ok(legacy.equals(migrated), "the full-size bars and gaps match the legacy loader");
+  } finally {
+    await browser.close();
+  }
+});
+
 test("sprite animations run only in visible instances and respect reduced motion", async () => {
   const browser = await chromium.launch({
     headless: true,

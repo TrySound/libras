@@ -17,6 +17,9 @@ it.each([
     expect(loader.getAttribute("aria-hidden")).toBe("true");
     expect(loader.getAttribute("width")).toBe(pixels);
     expect(loader.getAttribute("height")).toBe(pixels);
+    expect(loader.style.getPropertyValue("--loader-gap")).toBe(
+      size === "xl" ? "var(--space-xs, 4px)" : "",
+    );
     expect(loader.querySelector("use")?.getAttribute("href")).toBe("#icon-loader");
   } finally {
     await unmount(component);

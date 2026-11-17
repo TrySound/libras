@@ -653,10 +653,6 @@
 }
 
 @scope (.app-root, .design-reference) {
-  .loader-icon {
-    flex-shrink: 0;
-  }
-
   .input {
     box-sizing: border-box;
     inline-size: 100%;
