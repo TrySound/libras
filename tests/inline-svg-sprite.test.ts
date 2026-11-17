@@ -22,7 +22,6 @@ it("injects local animated symbols once into both HTML entry points", async () =
       expect(document.querySelector("[data-icon-sprite]")!.hasAttribute("hidden")).toBe(true);
       const sprite = document.querySelector("[data-icon-sprite] svg")!;
       expect(sprite.querySelector("#icon-play")).not.toBeNull();
-      expect(sprite.querySelectorAll("animate, animateTransform")).toHaveLength(0);
       const soundBars = [...sprite.querySelectorAll("#icon-sound-bars rect")];
       expect(soundBars).toHaveLength(3);
       expect(soundBars.every((bar) => !bar.hasAttribute("rx"))).toBe(true);

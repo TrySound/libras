@@ -680,7 +680,7 @@ describe("app settings", () => {
     button("Refresh library").click();
     flushSync();
     expect(button("Refreshing…").getAttribute("aria-disabled")).toBe("true");
-    expect(button("Refreshing…").querySelector("svg, svg:has(use[href$=loader])")).toBeNull();
+    expect(button("Refreshing…").querySelector("svg")).toBeNull();
     button("Refreshing…").click();
     await vi.waitFor(() => expect(metadata.readLibrary).toHaveBeenCalledOnce());
     button("Disconnect").click();

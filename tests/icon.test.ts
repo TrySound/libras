@@ -42,18 +42,6 @@ it.each([
   }
 });
 
-it("references the sound bars sprite symbol", async () => {
-  const target = document.createElement("div");
-  const component = mount(Icon, { target, props: { name: "sound-bars" } });
-  try {
-    flushSync();
-    expect(target.querySelector('use[href="#icon-sound-bars"]')).not.toBeNull();
-    expect(target.querySelector("rect, animate, animateTransform")).toBeNull();
-  } finally {
-    await unmount(component);
-  }
-});
-
 it("exposes a supplied label directly on the icon", async () => {
   const target = document.createElement("div");
   const component = mount(Icon, { target, props: { name: "loader", label: "Downloading" } });

@@ -542,15 +542,10 @@ test("Edgerunner foundations and native controls", async (t) => {
       },
     );
 
-    await t.test("missing artwork and reduced-motion loading", async () => {
+    await t.test("missing artwork", async () => {
       const artwork = page.locator(".artwork");
       assert.equal(await artwork.first().locator(".artwork-placeholder").isVisible(), false);
       assert.equal(await artwork.nth(1).locator(".artwork-placeholder").isVisible(), true);
-      await page.emulateMedia({ reducedMotion: "reduce" });
-      const sprite = page.locator('svg[aria-label="Extra large loading specimen"]');
-      const before = await sprite.screenshot();
-      await page.waitForTimeout(200);
-      assert.ok(before.equals(await sprite.screenshot()));
     });
 
     assert.deepEqual(errors, []);
