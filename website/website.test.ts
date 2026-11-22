@@ -42,12 +42,13 @@ it("serves landing content and destinations without executing JavaScript", () =>
   }
 });
 
-it("uses the original Plausible snippet on the website and demo, but not the real player", () => {
+it("loads Plausible on the website and demo, deferring demo initialization to its entry", () => {
   const demo = new DOMParser().parseFromString(
     readFileSync("website/demo/index.html", "utf8"),
     "text/html",
   );
-  for (const page of [landingPage(), demo]) {
+  const landing = landingPage();
+  for (const page of [landing, demo]) {
     const tracker = page.querySelectorAll(
       'script[src="https://analytics.trysound.io/js/pa-TW7XASCW3S5Ycin9s9tvc.js"]',
     );
@@ -57,7 +58,7 @@ it("uses the original Plausible snippet on the website and demo, but not the rea
     const context: Record<string, any> = {};
     context.window = context;
     runInNewContext(init.textContent!, context);
-    expect(context.plausible.o).toEqual({});
+    expect(context.plausible.o).toEqual(page === landing ? {} : undefined);
     context.plausible("test");
     expect([...context.plausible.q[0]]).toEqual(["test"]);
   }

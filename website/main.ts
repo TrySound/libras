@@ -1,5 +1,6 @@
 import { mount, unmount } from "svelte";
 import Demo from "./demo.svelte";
+import { trackDemoNavigation } from "./demo-analytics";
 import "../src/edgerunner.css";
 
 const target = document.getElementById("app");
@@ -16,10 +17,15 @@ async function start(target: HTMLElement) {
     await import("@virtualstate/navigation/polyfill");
   }
 
-  return mount(Demo, { target });
+  const stopTracking = trackDemoNavigation();
+  return { instance: mount(Demo, { target }), stopTracking };
 }
 
 const component = start(target);
-export const cleanup = () => component.then((instance) => unmount(instance));
+export const cleanup = () =>
+  component.then(({ instance, stopTracking }) => {
+    stopTracking();
+    return unmount(instance);
+  });
 
 if (import.meta.hot) import.meta.hot.dispose(cleanup);
