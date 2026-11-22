@@ -4,7 +4,7 @@ This pnpm workspace (`@libras/website`) serves the static landing page at `https
 
 ## Architecture
 
-- `index.html` contains the complete static landing page, feature illustrations, FAQ, calls to action, and SEO/social metadata. It has no JavaScript entry, live preview, or demo dialog. “Try live demo” is a normal link to `demo/`. `website.css` imports `src/edgerunner.css` directly and reuses its typography, row/stack utilities, semantic color roles, cards, and buttons. Only marketing layout, decorative illustrations, and website-specific sizing remain in the website stylesheet. Marketing rules are scoped to `.website`; the demo is a separate page. The landing page uses the same maroon/gold palette and self-hosted Rajdhani headings, with a preloaded bold font and system-color fallbacks for forced-colors mode.
+- `index.html` contains the complete static landing page, feature illustrations, FAQ, calls to action, and SEO/social metadata. It has no application JavaScript entry, live preview, or demo dialog. The original Plausible snippet is included directly in both website and demo HTML, without a shared bootstrap or custom host/path checks. “Try live demo” is a normal link to `demo/`. `website.css` imports `src/edgerunner.css` directly and reuses its typography, row/stack utilities, semantic color roles, cards, and buttons. Only marketing layout, decorative illustrations, and website-specific sizing remain in the website stylesheet. Marketing rules are scoped to `.website`; the demo is a separate page. The landing page uses the same maroon/gold palette and self-hosted Rajdhani headings, with a preloaded bold font and system-color fallbacks for forced-colors mode.
 - `demo/index.html` and `main.ts` mount Demo into `#app`, with the same `src/edgerunner.css`, dialog polyfill, full-width layout and query-based navigation as the regular app. There is no marketing wrapper. Hot reload unmounts the component.
 - `demo.svelte` constructs auth and network synchronously and renders the shared App directly, explicitly passing `undefined` for the updater and enabling demo-specific connection guidance. `DeezerSubsonicClient` is injected through the existing `Network` factory; library, settings, playback, downloads, errors and queue UI use the normal app components. Credits are HTML supplied through App's optional `settingsContent` snippet and rendered as a card in Settings: Deezer attribution followed by one linked artist/album/year entry per album, without a track-by-track list.
 - Cache/OPFS isolation comes from the synthetic `deezer-preview-demo` account identity, resolved against the website build base (not the `/demo/` page URL). Auth and preferences use a per-runtime `MemoryStorage` instance and never read or write localStorage.
@@ -32,6 +32,16 @@ The script refreshes album metadata, checking artist/album relationships, unique
 `deezer-api.ts` uses JSONP at `https://api.deezer.com/` because the API did not provide browser fetch CORS headers during testing. JSONP executes third-party JavaScript with page privileges. Only selected track lookups are allowed at playback time, with cancellation and a timeout. Returned recording, artist and album IDs must match the selection; an unexpected response reports the affected recording and IDs. No Libras credentials are sent. Preview audio plays directly from Deezer's CDN; there is no proxy or separate backend process.
 
 Approval is reported in #79; detailed conditions for JSONP access, metadata/artwork storage, and attribution are not recorded here. Unavailable-track UI remains follow-up work in that issue.
+
+## Website analytics
+
+The landing page uses the public site snippet from `https://analytics.trysound.io` for `libras-music.app`. This is a new integration, not a Cloud migration; no historical import is included. The live demo (`/demo/`) includes a separate copy of the original snippet in its own HTML entry point, without modifying shared app code. The real player (`/webapp/`) contains no analytics integration.
+
+Plausible records pageviews automatically. Button-shaped links use its declarative event classes, with four event names: `Connect server`, `Try demo`, `GitHub`, and `Setup requirements`. The `placement` property distinguishes the header, hero, servers, open-source, and bottom sections. These are **clicks**, not completed connections or demo sessions. Plausible adds each clicked link's public destination URL; no account, server, music, or search data is supplied. The landing page's generated tracker also supports automatic outbound-link and engagement tracking. Links and content still work if scripts are disabled or blocked.
+
+The demo uses Plausible's default automatic tracking, with no custom URL normalization, route filtering, or player-action instrumentation. Its pageviews distinguish actual demo visits from clicking “Try demo” on the landing page.
+
+In the Plausible dashboard, add custom-event goals matching those four names exactly to see conversions. After deployment, verify a pageview and representative button click in the dashboard. The snippet loads in all environments. Plausible ignores localhost by default, but remote preview and self-hosted deployments have no project-level exclusion. There is no pending history import recorded for this integration; if one is needed, complete it before deploying.
 
 ## Local development
 
@@ -66,7 +76,7 @@ cp -a website/dist/. pages/
 node website/verify-build.mjs --root pages
 ```
 
-`verify-build.mjs` checks all three HTML entry points, PWA separation and `/webapp/` scope, a script-free landing page, and the 1 GiB size limit. It rejects any leftover root `catalog/` export so old music files cannot accidentally be published. If you still have a local `website/public/catalog/` directory from the previous demo, move it outside `public/` or remove it before building. The landing page's Music credits link opens the demo's Settings card.
+`verify-build.mjs` checks all three HTML entry points, PWA separation and `/webapp/` scope, a landing page without the demo application bundle, and the 1 GiB size limit. It rejects any leftover root `catalog/` export so old music files cannot accidentally be published. If you still have a local `website/public/catalog/` directory from the previous demo, move it outside `public/` or remove it before building. The landing page's Music credits link opens the demo's Settings card.
 
 ## Tests
 

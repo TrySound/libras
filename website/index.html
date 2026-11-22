@@ -52,6 +52,21 @@
     />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <title>Libras — A free, open-source music player</title>
+    <!-- Privacy-friendly analytics by Plausible -->
+    <script async src="https://analytics.trysound.io/js/pa-TW7XASCW3S5Ycin9s9tvc.js"></script>
+    <script>
+      ((window.plausible =
+        window.plausible ||
+        function () {
+          (plausible.q = plausible.q || []).push(arguments);
+        }),
+        (plausible.init =
+          plausible.init ||
+          function (i) {
+            plausible.o = i || {};
+          }));
+      plausible.init();
+    </script>
     <link rel="stylesheet" href="/website.css" />
     <style>
       body {
@@ -69,7 +84,7 @@
       </a>
       <nav class="site-topbar-links row-sm body" aria-label="Primary">
         <a
-          class="button"
+          class="button plausible-event-name=GitHub plausible-event-placement=Header"
           data-size="text"
           data-variant="secondary"
           href="https://github.com/TrySound/libras"
@@ -91,7 +106,7 @@
         </p>
         <div class="site-actions">
           <a
-            class="button"
+            class="button plausible-event-name=Connect+server plausible-event-placement=Hero"
             data-size="large-text"
             data-variant="primary"
             href="/webapp/"
@@ -100,7 +115,7 @@
             >Connect your server</a
           >
           <a
-            class="button"
+            class="button plausible-event-name=Try+demo plausible-event-placement=Hero"
             data-size="large-text"
             data-variant="secondary"
             href="%BASE_URL%demo/"
@@ -213,7 +228,7 @@
           CORS.
         </p>
         <a
-          class="button"
+          class="button plausible-event-name=Setup+requirements plausible-event-placement=Servers"
           data-size="large-text"
           data-variant="secondary"
           href="https://github.com/TrySound/libras#get-started"
@@ -238,7 +253,7 @@
           own copy. If you find a bug or have a suggestion, let us know on GitHub.
         </p>
         <a
-          class="button"
+          class="button plausible-event-name=GitHub plausible-event-placement=Open+source"
           data-size="large-text"
           data-variant="secondary"
           href="https://github.com/TrySound/libras"
@@ -252,7 +267,7 @@
         <h2 class="heading-lg container-md text-subtle" id="cta-title">Start listening now.</h2>
         <div class="site-actions">
           <a
-            class="button"
+            class="button plausible-event-name=Connect+server plausible-event-placement=Bottom"
             data-size="large-text"
             data-variant="primary"
             href="/webapp/"
@@ -261,7 +276,7 @@
             >Connect your server</a
           >
           <a
-            class="button"
+            class="button plausible-event-name=Try+demo plausible-event-placement=Bottom"
             data-size="large-text"
             data-variant="secondary"
             href="%BASE_URL%demo/"
@@ -270,6 +285,10 @@
             >Try live demo</a
           >
         </div>
+        <p class="site-body body">
+          This website uses cookieless Plausible analytics for page visits and button clicks,
+          including live demo visits. Your own-server player is not tracked.
+        </p>
       </section>
     </main>
   </body>

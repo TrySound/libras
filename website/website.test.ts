@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options {"settings":{"disableCSSFileLoading":true,"handleDisabledFileLoadingAsSuccess":true}}
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { expect, it } from "vitest";
 
 function landingPage() {
@@ -17,7 +18,7 @@ it("serves landing content and destinations without executing JavaScript", () =>
   expect(page.querySelector("h1")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
     "Connect your music library and listen anywhere.",
   );
-  expect(page.querySelector("script")).toBeNull();
+  expect(page.querySelector('script[type="module"]')).toBeNull();
   expect(page.querySelector('link[rel="stylesheet"]')).not.toBeNull();
   expect(link("Try live demo")?.getAttribute("href")).toBe("/demo/");
   expect(link("Connect your server")?.getAttribute("href")).toBe("/webapp/");
@@ -39,6 +40,46 @@ it("serves landing content and destinations without executing JavaScript", () =>
   for (const anchor of page.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')) {
     expect(page.getElementById(anchor.hash.slice(1))).not.toBeNull();
   }
+});
+
+it("uses the original Plausible snippet on the website and demo, but not the real player", () => {
+  const demo = new DOMParser().parseFromString(
+    readFileSync("website/demo/index.html", "utf8"),
+    "text/html",
+  );
+  for (const page of [landingPage(), demo]) {
+    const tracker = page.querySelectorAll(
+      'script[src="https://analytics.trysound.io/js/pa-TW7XASCW3S5Ycin9s9tvc.js"]',
+    );
+    expect(tracker).toHaveLength(1);
+    expect(tracker[0].hasAttribute("async")).toBe(true);
+    const init = page.querySelector("script:not([src])")!;
+    const context: Record<string, any> = {};
+    context.window = context;
+    runInNewContext(init.textContent!, context);
+    expect(context.plausible.o).toEqual({});
+    context.plausible("test");
+    expect([...context.plausible.q[0]]).toEqual(["test"]);
+  }
+  for (const path of ["index.html", "src/main.ts", "website/main.ts"]) {
+    expect(readFileSync(path, "utf8")).not.toContain("plausible");
+  }
+});
+
+it("marks every landing-page button with a named event and placement", () => {
+  const buttons = [...landingPage().querySelectorAll("a.button")];
+  const values = buttons.map((button) =>
+    [...button.classList].filter((name) => name.startsWith("plausible-event-")),
+  );
+  expect(values).toEqual([
+    ["plausible-event-name=GitHub", "plausible-event-placement=Header"],
+    ["plausible-event-name=Connect+server", "plausible-event-placement=Hero"],
+    ["plausible-event-name=Try+demo", "plausible-event-placement=Hero"],
+    ["plausible-event-name=Setup+requirements", "plausible-event-placement=Servers"],
+    ["plausible-event-name=GitHub", "plausible-event-placement=Open+source"],
+    ["plausible-event-name=Connect+server", "plausible-event-placement=Bottom"],
+    ["plausible-event-name=Try+demo", "plausible-event-placement=Bottom"],
+  ]);
 });
 
 it("removes the FAQ and keeps server descriptions in regular text color", () => {
