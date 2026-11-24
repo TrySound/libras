@@ -119,6 +119,33 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     assert.match(labels.at(-1), /favourites/);
     return overlay;
   }
+  async function checkHeart(action, selected) {
+    const paint = await action.locator(".favourite-icon").evaluate((icon) => {
+      const probe = document.createElement("span");
+      probe.style.color = "color-mix(in srgb, var(--item-border), var(--palette-white) 5%)";
+      icon.parentElement.append(probe);
+      const borderColor = getComputedStyle(probe).color;
+      probe.remove();
+      const style = getComputedStyle(icon);
+      return {
+        color: style.color,
+        fill: style.getPropertyValue("--icon-fill").trim(),
+        borderColor,
+      };
+    });
+    assert.equal(paint.fill, selected ? "currentColor" : "");
+    if (selected) assert.equal(paint.color, paint.borderColor);
+    assert.equal(
+      await page.locator("#icon-favourite").getAttribute("fill"),
+      "var(--icon-fill, none)",
+    );
+  }
+  async function waitPending(overlay, label) {
+    const action = overlay.locator('button[aria-busy="true"]');
+    await action.waitFor();
+    assert.equal((await action.textContent()).trim(), label);
+    assert.equal(await action.locator(".loader").count(), 0);
+  }
   async function waitGlobalError(message) {
     await page.waitForFunction(
       (message) =>
@@ -141,6 +168,10 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
         })
         .waitFor();
       assert.equal(await overlay.isVisible(), true);
+      await checkHeart(
+        overlay.getByRole("button", { name: /^(Add to|Remove from) favourites$/ }),
+        expected[0] === "star",
+      );
       await shot("menu-success-in-place");
       await overlay.getByRole("button", { name: /^(Add to|Remove from) favourites$/ }).focus();
       await shot("menu-keyboard");
@@ -248,6 +279,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     assert.equal(new URL(page.url()).hash, "#search-anchor");
     assert.equal(await input.inputValue(), encoded);
     await navigate("/search&favourite=1");
+    await checkHeart(page.getByRole("button", { name: "Favourites", exact: true }), true);
     await searchShots("active");
     const modifier = page.getByRole("button", { name: "Favourites", exact: true });
     await modifier.focus();
@@ -295,7 +327,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       release = resolve;
     });
     await overlay.getByRole("button", { name: "Remove from favourites", exact: true }).click();
-    await overlay.getByRole("button", { name: "Removing from favourites…", exact: true }).waitFor();
+    await waitPending(overlay, "Remove from favourites");
     assert.equal(await overlay.locator('button[aria-busy="true"]').isDisabled(), true);
     assert.equal(
       await overlay
@@ -346,6 +378,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       await page.setViewportSize({ width: 1280, height: 900 });
     }
     assert.equal(await favourite.getAttribute("aria-pressed"), "false");
+    await checkHeart(favourite, false);
     await playerShots("unselected");
     gate = new Promise((resolve) => {
       release = resolve;
@@ -386,6 +419,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
           .getAttribute("aria-pressed") === "true",
     );
     assert.deepEqual(writes.at(-1), ["star", "song", "same"]);
+    await checkHeart(favourite, true);
     await playerShots("selected");
     reject = true;
     await favourite.click();
@@ -481,7 +515,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       release = resolve;
     });
     await overlay.getByRole("button", { name: "Add to favourites", exact: true }).click();
-    await overlay.getByRole("button", { name: "Adding to favourites…", exact: true }).waitFor();
+    await waitPending(overlay, "Add to favourites");
     assert.equal(await overlay.locator('button[aria-busy="true"]').isDisabled(), true);
     assert.equal(
       await overlay
@@ -523,7 +557,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       release = resolve;
     });
     await overlay.getByRole("button", { name: "Add to favourites", exact: true }).click();
-    await overlay.getByRole("button", { name: "Adding to favourites…", exact: true }).waitFor();
+    await waitPending(overlay, "Add to favourites");
     await page.setViewportSize({ width: 390, height: 900 });
     assert.equal(await overlay.isVisible(), true);
     await input.focus();

@@ -2,7 +2,6 @@
   import type { Favourites } from "../favourites.svelte";
   import type { FavouriteTarget } from "../schema";
   import Icon from "../icon.svelte";
-  import Loader from "./loader.svelte";
 
   let {
     favourites,
@@ -19,13 +18,6 @@
   const targetKey = $derived(target ? favourites.key(target) : undefined);
   const selected = $derived(target ? favourites.has(target) : false);
   const pending = $derived(targetKey !== undefined && favourites.pending.has(targetKey));
-  const progress = $derived(
-    pending
-      ? favourites.pending.get(targetKey!)
-        ? "Adding to favourites…"
-        : "Removing from favourites…"
-      : "",
-  );
   const reason = $derived(
     !target
       ? ""
@@ -49,7 +41,7 @@
   <button
     type="button"
     class={icon ? "button" : "menu-item"}
-    data-variant={icon ? (selected ? "primary" : "secondary") : undefined}
+    data-variant={icon ? "secondary" : undefined}
     aria-label={icon ? "Favourite current track" : undefined}
     aria-pressed={selected}
     aria-busy={pending}
@@ -59,9 +51,10 @@
       undefined}
     onclick={submit}
   >
-    {#if pending && !icon}<Loader />{:else}<Icon name="favourite" />{/if}
-    {#if !icon}<span>{progress || (selected ? "Remove from favourites" : "Add to favourites")}</span
-      >{/if}
+    <Icon name="favourite" class="favourite-icon" />
+    {#if !icon}
+      <span>{selected ? "Remove from favourites" : "Add to favourites"}</span>
+    {/if}
   </button>
   {#if reason}
     <span id={descriptionId} class="visually-hidden">{reason}</span>

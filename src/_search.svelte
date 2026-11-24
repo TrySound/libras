@@ -421,13 +421,13 @@
         type="button"
         class="button"
         data-size="text"
-        data-variant={criteria.favourite ? "primary" : "secondary"}
+        data-variant="secondary"
         aria-pressed={criteria.favourite}
         onclick={() =>
           navigate(
             searchHref(criteria.query, selectedTypes, !criteria.favourite).slice(1) +
               window.location.hash,
-          )}><Icon name="favourite" />Favourites</button
+          )}><Icon name="favourite" class="favourite-icon" />Favourites</button
       >
     </div>
   </div>

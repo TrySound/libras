@@ -555,7 +555,7 @@ describe("app settings", () => {
     ).toBeNull();
   });
 
-  it("offers error details beside Settings, never inside the player", async () => {
+  it("shares error details between the app header and player header", async () => {
     const { target, session, button } = await setup();
     expect(button("Show errors")).toBeUndefined();
     session.error = "Connection failed";
@@ -569,9 +569,18 @@ describe("app settings", () => {
     expect(popover.querySelectorAll('[role="alert"]')).toHaveLength(1);
     const notice = popover.querySelector('[role="alert"]')!;
     expect(notice.textContent).toContain("Connection failed");
-    expect(button("Close errors").getAttribute("commandfor")).toBe("error-popover");
-    expect(button("Close errors").getAttribute("command")).toBe("hide-popover");
-    expect(target.querySelector("#player-dialog [role='alert']")).toBeNull();
+    for (const id of ["error-popover", "player-error-popover"]) {
+      const panel = target.querySelector(`#${id}`)!;
+      expect(panel.textContent).toContain("Connection failed");
+      const close = panel.querySelector('[aria-label="Close errors"]')!;
+      expect(close.getAttribute("commandfor")).toBe(id);
+      expect(close.getAttribute("command")).toBe("hide-popover");
+    }
+    expect(
+      target
+        .querySelector('#player-dialog header [aria-label="Show errors"]')
+        ?.getAttribute("commandfor"),
+    ).toBe("player-error-popover");
     expect(target.querySelector("#player-dialog [commandfor='error-popover']")).toBeNull();
     session.error = "";
     flushSync();
@@ -740,7 +749,7 @@ describe("app settings", () => {
     expect(
       target.querySelector("#settings-server form")?.getAttribute("aria-describedby"),
     ).toContain("settings-server-error");
-    expect(target.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(target.querySelectorAll('#error-popover [role="alert"]')).toHaveLength(1);
     expect(button("Show errors").getAttribute("commandfor")).toBe("error-popover");
     expect(session.error).toBe("Unauthorized");
     expect(offline().checked).toBe(true);
