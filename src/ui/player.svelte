@@ -1,5 +1,8 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import Icon from "../icon.svelte";
+  import FavouriteButton from "./favourite-button.svelte";
+  import type { Favourites } from "../favourites.svelte";
   import Artwork from "./artwork.svelte";
   import Atmosphere from "./atmosphere.svelte";
   import type { Covers } from "../covers.svelte";
@@ -13,12 +16,16 @@
     cache: Cache;
     covers: Covers;
     playback: Playback;
+    favourites: Favourites;
     trackEngine: TrackEngine;
     audio: ReturnType<typeof AudioPlayer> | undefined;
     offlineMode: boolean;
+    errors?: Snippet<[closePlayer: () => void]>;
   }
 
-  let { cache, covers, playback, trackEngine, audio, offlineMode }: Props = $props();
+  let { cache, covers, playback, favourites, trackEngine, audio, offlineMode, errors }: Props =
+    $props();
+  let playerDialog = $state<HTMLDialogElement>();
   const id = $props.id();
   const track = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
   const artist = $derived(track && cache.artists.get(track.artistIds[0]));
@@ -122,6 +129,7 @@
 {/if}
 
 <dialog
+  bind:this={playerDialog}
   id="player-dialog"
   class="large-player"
   closedby="any"
@@ -133,15 +141,18 @@
     <header class="topbar row-md row-justify">
       <span class="dialog-handle only-mobile" data-side="top" aria-hidden="true"></span>
       <h2 id="playing-title" class="heading-md uppercase">Now Playing</h2>
-      <button
-        class="button"
-        data-variant="ghost"
-        commandfor="player-dialog"
-        command="close"
-        aria-label="Close player"
-      >
-        <Icon name="cross" />
-      </button>
+      <div class="row-sm">
+        {@render errors?.(() => playerDialog?.close())}
+        <button
+          class="button"
+          data-variant="ghost"
+          commandfor="player-dialog"
+          command="close"
+          aria-label="Close player"
+        >
+          <Icon name="cross" />
+        </button>
+      </div>
     </header>
     <section class="split-layout large-player-content" aria-label="Playback and queue">
       <div class="player-panel">
@@ -203,8 +214,10 @@
                 <span>{formatDuration(duration)}</span>
               </div>
             </div>
-            <div class="player-controls row-xs row-justify">
-              <div class="button-hidden-stub" aria-hidden="true"></div>
+            <div class="player-controls">
+              <a class="button" href={`#${id}-queue`} aria-label="Show queue" title="Show queue">
+                <Icon name="queue" />
+              </a>
               <div class="row-md" role="group" aria-label="Playback controls">
                 <button
                   class="button"
@@ -241,28 +254,14 @@
                   <Icon name="next" size="lg" />
                 </button>
               </div>
-              <a class="button" href={`#${id}-queue`} aria-label="Show queue" title="Show queue">
-                <Icon name="queue" />
-              </a>
+              <FavouriteButton
+                {favourites}
+                icon
+                describedby={`${id}-now-title`}
+                target={track ? { kind: "tracks", id: track.id } : undefined}
+              />
             </div>
           </div>
-          {#if audio?.status === "error"}
-            <div class="card stack-sm">
-              <p class="caption" role="alert">
-                {audio.error instanceof Error
-                  ? audio.error.message
-                  : String(audio.error ?? "Playback failed.")}
-              </p>
-              <button
-                class="button"
-                data-size="text"
-                data-variant="secondary"
-                onclick={() => void playback.play()}
-              >
-                Retry playback
-              </button>
-            </div>
-          {/if}
         </div>
       </div>
       <div class="stack-lg scroll-runway" role="region" aria-label="Queue">
@@ -385,3 +384,18 @@
     </div>
   </div>
 </dialog>
+
+<style>
+  .player-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-sm);
+  }
+  .player-controls > a {
+    justify-self: start;
+  }
+  .player-controls > :global(button) {
+    justify-self: end;
+  }
+</style>

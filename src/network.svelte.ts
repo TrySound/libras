@@ -16,6 +16,8 @@ import type {
   ImageMetadata,
   Playlist,
   PlaylistEntry,
+  FavouriteTarget,
+  FavouriteState,
 } from "./schema";
 
 /** Browsers do not expose a reliable CORS diagnosis. */
@@ -51,6 +53,7 @@ export type ActiveNetworkConnection = Readonly<
   NetworkConnection & {
     queue: QueueConnection;
     playlists: PlaylistConnection;
+    favourites: FavouritesConnection;
     artwork: ArtworkConnection;
     audio: AudioConnection;
   }
@@ -149,6 +152,48 @@ function playlistAccess(account: Readonly<Account>, client: SubsonicApi, request
 
 export type PlaylistConnection = ReturnType<typeof playlistAccess>;
 
+function favouritesAccess(account: Readonly<Account>, client: SubsonicApi, request: Request) {
+  return Object.freeze({
+    account,
+    signal: client.signal,
+    async read(): Promise<FavouriteState> {
+      const result = await request(() => client.getStarred2());
+      const credit = (value: {
+        artist?: string;
+        displayArtist?: string;
+        artists?: { name: string }[];
+      }) =>
+        value.displayArtist ||
+        (value.artists?.length
+          ? value.artists.map((artist) => artist.name).join(", ")
+          : value.artist);
+      return {
+        fetchedAt: Date.now(),
+        artists: result.artists.map((value) => ({
+          id: value.id,
+          title: value.name,
+          artworkId: value.coverArt || undefined,
+        })),
+        albums: result.albums.map((value) => ({
+          id: value.id,
+          title: value.name,
+          artist: credit(value),
+          artworkId: value.coverArt || undefined,
+        })),
+        tracks: result.tracks.map((value) => ({
+          id: value.id,
+          title: value.title,
+          artist: credit(value),
+          artworkId: value.coverArt || undefined,
+        })),
+      };
+    },
+    mutate: (target: FavouriteTarget, selected: boolean) =>
+      request(() => (selected ? client.star(target) : client.unstar(target))),
+  });
+}
+export type FavouritesConnection = ReturnType<typeof favouritesAccess>;
+
 type AudioFormat = "raw" | "mp3";
 
 export type AudioConnection = ReturnType<typeof audioAccess>;
@@ -222,7 +267,13 @@ function normalizeLibrary(
     const existing = id ? artists.get(id) : name ? byName.get(name) : undefined;
     if (existing) return existing;
     const resolvedName = name || "Unknown artist";
-    const artist: Artist = { id: id || syntheticId(resolvedName), name: resolvedName };
+    let resolvedId = id || syntheticId(resolvedName);
+    if (!id) while (artists.has(resolvedId)) resolvedId += ":";
+    const artist: Artist = {
+      id: resolvedId,
+      name: resolvedName,
+      localOnly: !id,
+    };
     artists.set(artist.id, artist);
     byName.set(artist.name, artist);
     return artist;
@@ -254,6 +305,7 @@ function normalizeLibrary(
       collection = {
         id,
         title: "Singles",
+        localOnly: true,
         artists: credits,
         displayArtist: track.displayArtist,
         genres: [],
@@ -277,6 +329,7 @@ function normalizeLibrary(
     albums.push({
       id: source.id,
       title: source.title,
+      localOnly: source.localOnly ?? false,
       artistIds: owners.map((artist) => artist.id),
       displayArtist: source.displayArtist || owners.map((artist) => artist.name).join(", "),
       artworkId,
@@ -365,17 +418,18 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicApi, request
               signal,
             ),
           );
-          collect(
+          collect<Artist>(
             "artists",
             page.artists.map((artist) => ({
               id: artist.id,
               name: artist.name,
+              localOnly: false,
               artworkId: artist.coverArt || undefined,
             })),
             artists,
             (artist) => artist.id,
           );
-          collect(
+          collect<RemoteAlbum>(
             "albums",
             page.albums.map((album) => ({
               id: album.id,
@@ -389,7 +443,7 @@ function metadataAccess(account: Readonly<Account>, client: SubsonicApi, request
             albums,
             (album) => album.id,
           );
-          collect(
+          collect<RemoteTrack>(
             "tracks",
             page.tracks.map((track) => ({
               id: track.id,
@@ -611,6 +665,7 @@ export class Network {
       ...connection,
       queue: queueAccess(connection.account, client, request),
       playlists: playlistAccess(connection.account, client, request),
+      favourites: favouritesAccess(connection.account, client, request),
       artwork: artworkAccess(connection.account, client, request),
       audio: audioAccess(connection.account, client, request),
     });

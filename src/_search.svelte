@@ -1,6 +1,6 @@
 <script module lang="ts">
   import fuzzysort from "fuzzysort";
-  import type { Album, Artist, Track } from "./schema";
+  import type { Album, Artist, Track, FavouriteState } from "./schema";
   import type { Immutable } from "./cache.svelte";
 
   export const searchTypes = ["artist", "album", "track"] as const;
@@ -10,18 +10,22 @@
     const selected = parameters.getAll("type");
     return {
       query: parameters.get("q") ?? "",
+      favourite: parameters.get("favourite") === "1",
       types: searchTypes.filter((type) => selected.includes(type)),
     };
   }
 
   /** Keep the route bare; encode only search criteria, never the full parameter collection. */
-  export function searchHref(query = "", types: readonly SearchType[] = []) {
+  export function searchHref(query = "", types: readonly SearchType[] = [], favourite = false) {
     const parameters = new URLSearchParams();
     for (const type of searchTypes) if (types.includes(type)) parameters.append("type", type);
+    if (favourite) parameters.set("favourite", "1");
     if (query) parameters.set("q", query);
     const suffix = parameters.toString();
     return `?/search${suffix ? `&${suffix}` : ""}`;
   }
+
+  const kindFor = { Artists: "artists", Albums: "albums", Tracks: "tracks" } as const;
 
   const searchGroups = ["Artists", "Albums", "Tracks"] as const;
 
@@ -34,6 +38,7 @@
     album: string;
     href?: string;
     artworkId?: string;
+    unavailable?: boolean;
   }
 
   function availableTrackIds(
@@ -57,6 +62,7 @@
     albums: ReadonlyMap<string, Immutable<Album>>,
     tracks: ReadonlyMap<string, Immutable<Track>>,
     available?: (id: string) => boolean,
+    favourites?: Immutable<FavouriteState>,
   ) {
     const eligibleTracks = [...tracks.values()].filter(
       (track) => !available || available(track.id),
@@ -65,7 +71,14 @@
     const eligibleAlbums = [...albums.values()].filter(
       (album) => !available || albumIds.has(album.id),
     );
-    const artistIds = new Set(eligibleAlbums.flatMap((album) => album.artistIds));
+    const artistIds = new Set([
+      ...eligibleAlbums.flatMap((album) => album.artistIds),
+      // A downloaded album remains browsable under every credited contributor,
+      // including guests whose own track has not been downloaded.
+      ...[...tracks.values()]
+        .filter((track) => albumIds.has(track.albumId))
+        .flatMap((track) => track.artistIds),
+    ]);
     const artistPath = (id: string) => `?/library/artist/${encodeURIComponent(id)}`;
     const records: Record<SearchGroup, SearchRecord[]> = {
       Artists: [...artists.values()]
@@ -96,16 +109,40 @@
         album: albums.get(track.albumId)?.title ?? "",
       })),
     };
-    const snapshot = (group: SearchGroup) =>
-      fuzzysort.snapshot(records[group], {
-        keys: ["title", "artist", "album"],
-      });
+    if (!available && favourites) {
+      for (const group of searchGroups) {
+        const ids = new Set(records[group].map((item) => item.id));
+        for (const item of favourites[kindFor[group]]) {
+          if (!ids.has(item.id)) {
+            ids.add(item.id);
+            records[group].push({
+              ...item,
+              artist: item.artist ?? "",
+              album: "",
+              unavailable: true,
+            });
+          }
+        }
+      }
+    }
+    const groupIndex = (group: SearchGroup) => {
+      const membership = favourites && new Set(favourites[kindFor[group]].map((item) => item.id));
+      const candidates = membership
+        ? records[group].filter((record) => membership.has(record.id))
+        : records[group];
+      return {
+        records: candidates,
+        snapshot: fuzzysort.snapshot(candidates, { keys: ["title", "artist", "album"] }),
+      };
+    };
     return {
-      records,
-      Artists: snapshot("Artists"),
-      Albums: snapshot("Albums"),
-      Tracks: snapshot("Tracks"),
-      size: Object.values(records).reduce((sum, group) => sum + group.length, 0),
+      Artists: groupIndex("Artists"),
+      Albums: groupIndex("Albums"),
+      Tracks: groupIndex("Tracks"),
+      size: Object.values(records).reduce(
+        (sum, group) => sum + group.filter((record) => !record.unavailable).length,
+        0,
+      ),
     };
   }
 
@@ -116,11 +153,12 @@
   ) {
     query = query.trim().replace(/\s+/g, " ");
     const groups = searchGroups.map((group) => {
+      const { records, snapshot } = index[group];
       // Retrieve matches explicitly without a library limit so equal scores can be
       // ordered deterministically before applying the UI limit.
       const matches = query
         ? [
-            ...fuzzysort.go(query, index[group], {
+            ...fuzzysort.go(query, snapshot, {
               limit: 0,
               // Keep consonant abbreviations such as “frmtn” → “Formation”.
               threshold: 0.2,
@@ -132,8 +170,8 @@
         : [];
       return {
         group,
-        total: !query && browse ? index.records[group].length : matches.length,
-        records: !query && browse ? index.records[group] : matches.map((result) => result.obj),
+        total: !query && browse ? records.length : matches.length,
+        records: !query && browse ? records : matches.map((result) => result.obj),
       };
     });
     return { query, groups };
@@ -142,6 +180,8 @@
 
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import FavouriteButton from "./ui/favourite-button.svelte";
+  import type { Favourites } from "./favourites.svelte";
   import { getSearchParameters, navigate } from "./router.svelte";
   import { onVisible } from "./viewport";
   import type { Cache } from "./cache.svelte";
@@ -153,6 +193,7 @@
   import type { Playback } from "./playback.svelte";
 
   let {
+    favourites,
     cache,
     covers,
     trackEngine,
@@ -160,6 +201,7 @@
     playback,
     appName = "Libras",
   }: {
+    favourites: Favourites;
     cache: Cache;
     covers: Covers;
     trackEngine: TrackEngine;
@@ -168,31 +210,35 @@
     appName?: string;
   } = $props();
 
+  const parameters = $derived(getSearchParameters());
+  const criteria = $derived(parseSearch(parameters));
+  const favouriteMode = $derived(criteria.favourite);
   const index = $derived(
     createSearchIndex(
       cache.artists,
       cache.albums,
       cache.tracks,
       session.offlineMode ? isAvailable : undefined,
+      favouriteMode ? cache.favourites : undefined,
     ),
   );
 
-  const parameters = $derived(getSearchParameters());
-  const criteria = $derived(parseSearch(parameters));
   const selectedTypes = $derived(criteria.types);
   const singleType = $derived(selectedTypes.length === 1);
-  const matches = $derived(searchLibrary(index, criteria.query, singleType));
+  const matches = $derived(searchLibrary(index, criteria.query, singleType || favouriteMode));
   // User increments override these derived limits until cache or URL criteria change.
   // The void reads intentionally track those dependencies so recomputation resets pagination.
   const pageSize = 48;
   let limit = $derived.by(() => {
     void cache;
+    void index;
     void criteria;
     return pageSize;
   });
   // Grouped previews reset on the same dependencies as the single-type batch limit.
   let limits = $derived.by(() => {
     void cache;
+    void index;
     void criteria;
     return { Artists: 3, Albums: 3, Tracks: 3 };
   });
@@ -201,7 +247,7 @@
     const types = selectedTypes.includes(type)
       ? selectedTypes.filter((value) => value !== type)
       : [...selectedTypes, type];
-    navigate(searchHref(criteria.query, types).slice(1) + window.location.hash);
+    navigate(searchHref(criteria.query, types, criteria.favourite).slice(1) + window.location.hash);
   }
   const currentTrackId = $derived(cache.queue.tracks[cache.queue.index]);
   const libraryError = $derived(
@@ -239,19 +285,14 @@
   const menuItem = $derived.by(() => {
     if (!menuSelection || menuSelection.cache !== cache) return;
     const { group, id } = menuSelection;
-    const item =
-      group === "Artists"
-        ? cache.artists.get(id)
-        : group === "Albums"
-          ? cache.albums.get(id)
-          : cache.tracks.get(id);
-    return item
-      ? { group, id, title: "name" in item ? item.name : item.title, artworkId: item.artworkId }
-      : undefined;
+    const item = results
+      .find((result) => result.group === group)
+      ?.records.find((record) => record.id === id);
+    return item ? { ...item, group } : undefined;
   });
 
   const menuTracks = $derived.by(() => {
-    if (!menuItem) return [];
+    if (!menuItem || menuItem.unavailable) return [];
     if (menuItem.group === "Artists") {
       return (cache.artistAlbums.get(menuItem.id) ?? []).flatMap(
         (album) => cache.albumTracks.get(album.id) ?? [],
@@ -279,7 +320,19 @@
     popover?.hidePopover?.();
   }
 
+  $effect(() => {
+    if (!menuItem && menuSelection) {
+      const wasOpen = sheet?.open || popover?.matches(":popover-open");
+      if (wasOpen) dismissActions();
+      // Consume the disappeared selection, even if its overlay was already dismissed.
+      // Later background index changes must not steal the user's new focus.
+      menuSelection = undefined;
+    }
+  });
+
   function supportingText(group: SearchGroup, record: SearchRecord) {
+    if (record.unavailable)
+      return [record.artist, "Unavailable in your library"].filter(Boolean).join(" · ");
     if (group === "Artists") {
       const albums = (cache.artistAlbums.get(record.id) ?? []).filter(
         (album) =>
@@ -341,27 +394,54 @@
         value={criteria.query}
         oninput={(event) =>
           navigate(
-            searchHref(event.currentTarget.value, selectedTypes).slice(1) + window.location.hash,
+            searchHref(event.currentTarget.value, selectedTypes, criteria.favourite).slice(1) +
+              window.location.hash,
             "replace",
           )}
         autofocus
       />
     </search>
-    <div class="row-sm row-wrap" role="group" aria-label="Result types">
-      {#each searchTypes as type}
-        <button
-          type="button"
-          class="button"
-          data-size="text"
-          data-variant={selectedTypes.includes(type) ? "primary" : "secondary"}
-          aria-pressed={selectedTypes.includes(type)}
-          onclick={() => toggleType(type)}
-        >
-          {#if type === "artist"}Artist{:else if type === "album"}Album{:else}Track{/if}
-        </button>
-      {/each}
+    <div class="row-md row-wrap">
+      <div class="row-sm row-wrap" role="group" aria-label="Result types">
+        {#each searchTypes as type}
+          <button
+            type="button"
+            class="button"
+            data-size="text"
+            data-variant={selectedTypes.includes(type) ? "primary" : "secondary"}
+            aria-pressed={selectedTypes.includes(type)}
+            onclick={() => toggleType(type)}
+          >
+            {#if type === "artist"}Artist{:else if type === "album"}Album{:else}Track{/if}
+          </button>
+        {/each}
+      </div>
+      <button
+        type="button"
+        class="button"
+        data-size="text"
+        data-variant="secondary"
+        aria-pressed={criteria.favourite}
+        onclick={() =>
+          navigate(
+            searchHref(criteria.query, selectedTypes, !criteria.favourite).slice(1) +
+              window.location.hash,
+          )}><Icon name="favourite" class="favourite-icon" />Favourites</button
+      >
     </div>
   </div>
+  {#if criteria.favourite && (favourites.loading || cache.favouritesError || cache.favourites.fetchedAt === null)}
+    <div class="card stack-sm" aria-busy={favourites.loading}>
+      <p class="caption">
+        {favourites.loading
+          ? "Loading favourites…"
+          : cache.favourites.fetchedAt === null
+            ? "Favourites haven’t been loaded."
+            : "Confirmed favourites could not be saved to this device cache."}
+      </p>
+      <a href="?/settings">Open settings</a>
+    </div>
+  {/if}
   {#if libraryError}
     <div class="card stack-md">
       <h2 class="heading-sm">Library needs attention</h2>
@@ -374,13 +454,16 @@
       </div>
     </div>
   {/if}
-  <div class="stack-xl" aria-busy={!session.localReady}>
-    {#if !session.localReady && index.size === 0}
+  <div
+    class="stack-xl"
+    aria-busy={!session.localReady || (criteria.favourite && favourites.loading)}
+  >
+    {#if !session.localReady && index.size === 0 && !criteria.favourite}
       <div class="row-sm">
         <Icon name="loader" />
         <p class="body">Loading your library…</p>
       </div>
-    {:else if index.size === 0}
+    {:else if index.size === 0 && !criteria.favourite}
       <div class="stack-md">
         <h2 class="heading-sm">
           {cache.savedAt === undefined
@@ -406,15 +489,35 @@
           >
         </div>
       </div>
-    {:else if !matches.query && !singleType}
+    {:else if !matches.query && !singleType && !criteria.favourite}
       <p class="body text-secondary">
         Type to find music in your library.
         {#if selectedTypes.length > 1}Select one type to browse your library.{/if}
       </p>
     {:else if results.every((result) => result.total === 0)}
       <div class="stack-md">
-        <h2 class="heading-sm">No matches found.</h2>
-        <p class="body">Try another search or change the selected types.</p>
+        <h2 class="heading-sm">
+          {criteria.favourite
+            ? cache.favourites.fetchedAt === null
+              ? "Favourites are not available yet."
+              : !cache.favourites.artists.length &&
+                  !cache.favourites.albums.length &&
+                  !cache.favourites.tracks.length
+                ? "No favourites yet."
+                : "No matching favourites."
+            : "No matches found."}
+        </h2>
+        <p class="body">
+          {criteria.favourite
+            ? cache.favourites.fetchedAt === null
+              ? "Open Settings to load your favourites."
+              : !cache.favourites.artists.length &&
+                  !cache.favourites.albums.length &&
+                  !cache.favourites.tracks.length
+                ? "Add favourites through item Actions."
+                : "Try another search or change the filters."
+            : "Try another search or change the selected types."}
+        </p>
       </div>
     {:else}
       {#each results as { group, records, total, batches } (group)}
@@ -454,7 +557,7 @@
                           data-longpress="show-modal"
                           onfocus={() => selectMenu(group, record.id)}
                         ></a>
-                      {:else}
+                      {:else if !record.unavailable && group === "Tracks"}
                         <button
                           class="button-quiet link-target"
                           aria-label={currentTrackId === record.id
@@ -546,7 +649,7 @@
 </div>
 
 {#snippet actions(target: string, isPopover: boolean)}
-  <div class="container-md stack-lg">
+  <div class="stack-lg">
     <header class="row-md row-justify">
       <div class="row-md">
         <Artwork {covers} id={menuItem?.artworkId} size="lg" />
@@ -610,6 +713,10 @@
         {/if}
         <span>{downloadPresentation[menuDownloadStatus].label}</span>
       </button>
+      <FavouriteButton
+        {favourites}
+        target={menuItem ? { kind: kindFor[menuItem.group], id: menuItem.id } : undefined}
+      />
     </div>
   </div>
 {/snippet}

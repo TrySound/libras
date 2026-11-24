@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./icon.svelte";
+  import { Favourites } from "./favourites.svelte";
   import { onDestroy, onMount, untrack, type Snippet } from "svelte";
   import { installLongPress } from "./long-press";
   import { Playback } from "./playback.svelte";
@@ -49,6 +50,7 @@
   const hasPreviousTrack = $derived(cache.queue.index > 0);
   const covers = new Covers(selection);
   const playlists = new Playlists(selection);
+  const favourites = new Favourites(selection);
   const trackEngine = new TrackEngine({ selection });
   let player = $state<ReturnType<typeof AudioPlayer>>();
   const playback: Playback = new Playback({
@@ -67,6 +69,7 @@
         tracks: trackEngine,
         playback,
         playlists,
+        favourites,
         preferences: auth.storage,
       }),
   );
@@ -103,6 +106,7 @@
     session.destroy();
     playback.destroy();
     playlists.destroy();
+    favourites.destroy();
     covers.destroy();
     trackEngine.destroy();
   });
@@ -146,16 +150,17 @@
 
 {#snippet libraryRoute()}
   <Atmosphere />
-  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
+  <LibraryRoute {cache} {covers} {trackEngine} {session} {playback} {favourites} {appName} />
 {/snippet}
 
 {#snippet searchRoute()}
   <Atmosphere />
-  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} {appName} />
+  <SearchRoute {cache} {covers} {trackEngine} {session} {playback} {favourites} {appName} />
 {/snippet}
 
 {#snippet artistRoute(params: RouteParams)}
   <ArtistRoute
+    {favourites}
     {params}
     {cache}
     {covers}
@@ -169,6 +174,7 @@
 
 {#snippet albumRoute(params: RouteParams)}
   <AlbumRoute
+    {favourites}
     {params}
     {cache}
     {covers}
@@ -263,22 +269,75 @@
   {/if}
 {/snippet}
 
+{#snippet errorButton(popoverId: string)}
+  {#if hasErrors}
+    <button
+      type="button"
+      class="button"
+      data-variant="ghost"
+      commandfor={popoverId}
+      command="toggle-popover"
+      aria-label="Show errors"
+      title="Show errors"
+    >
+      <Icon name="error" color="var(--error-text)" />
+    </button>
+  {/if}
+{/snippet}
+
+{#snippet errorPopover(popoverId: string, onsettings?: () => void)}
+  {#if hasErrors}
+    <div id={popoverId} class="notification-popover" popover="auto" aria-label="Errors">
+      <div class="stack-sm">
+        {#each alerts as alert (alert.id)}
+          {#if alert.message}
+            <div class="stack-sm" role="alert">
+              <p class="caption">{alert.message}</p>
+              {#if alert.id === "playback" && playback.track}
+                <p class="caption text-secondary">{playback.track.title}</p>
+                <button
+                  class="button"
+                  data-size="text"
+                  data-variant="secondary"
+                  onclick={(event) => {
+                    event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
+                    void playback.play();
+                  }}>Retry playback</button
+                >
+              {:else if alert.id === "refresh"}
+                <a
+                  href="?/settings"
+                  onclick={(event) => {
+                    event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
+                    onsettings?.();
+                  }}
+                >
+                  Open settings
+                </a>
+              {/if}
+            </div>
+          {/if}
+        {/each}
+      </div>
+      <button
+        type="button"
+        class="button"
+        data-variant="ghost"
+        aria-label="Close errors"
+        commandfor={popoverId}
+        command="hide-popover"
+      >
+        <Icon name="cross" />
+      </button>
+    </div>
+  {/if}
+{/snippet}
+
 <div class="app-root">
   <div class="app-shell">
     <div class="app-stage">
       {#snippet actions()}
-        {#if hasErrors}
-          <button
-            class="button"
-            data-variant="ghost"
-            commandfor="error-popover"
-            command="toggle-popover"
-            aria-label="Show errors"
-            title="Show errors"
-          >
-            <Icon name="error" color="var(--error-text)" />
-          </button>
-        {/if}
+        {@render errorButton("error-popover")}
       {/snippet}
       <aside class="sidebar app-sidebar stack-lg view-shell" aria-label="Navigation">
         {@render brand()}
@@ -325,41 +384,13 @@
           />
         {/if}
       </main>
-      <Player {cache} {covers} {playback} {trackEngine} {offlineMode} audio={player} />
-      {#if hasErrors}
-        <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
-          <div class="stack-sm">
-            {#each alerts as alert (alert.id)}
-              {#if alert.message}
-                <div class="stack-sm" role="alert">
-                  <p class="caption">{alert.message}</p>
-                  {#if alert.id === "playback" && playback.track}
-                    <p class="caption text-secondary">{playback.track.title}</p>
-                    <button
-                      class="button"
-                      data-size="text"
-                      data-variant="secondary"
-                      onclick={(event) => {
-                        event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
-                        void playback.play();
-                      }}>Retry playback</button
-                    >
-                  {/if}
-                </div>
-              {/if}
-            {/each}
-          </div>
-          <button
-            class="button"
-            data-variant="ghost"
-            aria-label="Close errors"
-            commandfor="error-popover"
-            command="hide-popover"
-          >
-            <Icon name="cross" />
-          </button>
-        </div>
-      {/if}
+      <Player {cache} {covers} {playback} {trackEngine} {favourites} {offlineMode} audio={player}>
+        {#snippet errors(closePlayer)}
+          {@render errorButton("player-error-popover")}
+          {@render errorPopover("player-error-popover", closePlayer)}
+        {/snippet}
+      </Player>
+      {@render errorPopover("error-popover")}
       <dialog
         class="top-sheet"
         id="navigation-dialog"

@@ -968,6 +968,12 @@
 }
 
 @scope (.app-root, .design-reference) {
+  :is(.button, .menu-item)[aria-pressed="true"] > .favourite-icon {
+    /* Keep the menu-border pink readable on hovered button backgrounds. */
+    color: color-mix(in srgb, var(--item-border), var(--palette-white) 5%);
+    --icon-fill: currentColor;
+  }
+
   /* Foreground artwork shares surfaces, crop, geometry and missing-cover state. */
   .artwork {
     box-shadow: var(--shadow-md);
