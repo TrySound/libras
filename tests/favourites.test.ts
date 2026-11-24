@@ -51,31 +51,27 @@ describe("server-confirmed favourites", () => {
     expect(s.engine.has(artist)).toBe(false);
     expect(s.engine.has({ kind: "tracks", id: "same" })).toBe(true);
   });
-  it.each([true, false])(
-    "stores pending intent %s once, including a false removal, and guards duplicates",
-    async (intended) => {
-      const s = setup();
-      if (!intended) await s.engine.toggle(artist);
-      const before = s.connection.mutate.mock.calls.length;
-      const gate = Promise.withResolvers<void>();
-      const apply = s.connection.mutate.getMockImplementation()!;
-      s.connection.mutate.mockImplementationOnce(async (...args) => {
-        await gate.promise;
-        await apply(...args);
-      });
-      const edit = s.engine.toggle(artist);
-      const key = s.engine.key(artist);
-      expect(s.engine.pending.has(key)).toBe(true);
-      expect(s.engine.pending.get(key)).toBe(intended);
-      await s.engine.toggle(artist);
-      await vi.waitFor(() => expect(s.connection.mutate).toHaveBeenCalledTimes(before + 1));
-      expect(s.engine.has(artist)).toBe(!intended);
-      gate.resolve();
-      await edit;
-      expect(s.engine.pending.has(key)).toBe(false);
-      expect(s.engine.has(artist)).toBe(intended);
-    },
-  );
+  it.each([true, false])("guards duplicate pending writes while adding: %s", async (intended) => {
+    const s = setup();
+    if (!intended) await s.engine.toggle(artist);
+    const before = s.connection.mutate.mock.calls.length;
+    const gate = Promise.withResolvers<void>();
+    const apply = s.connection.mutate.getMockImplementation()!;
+    s.connection.mutate.mockImplementationOnce(async (...args) => {
+      await gate.promise;
+      await apply(...args);
+    });
+    const edit = s.engine.toggle(artist);
+    const key = s.engine.key(artist);
+    expect(s.engine.pending.has(key)).toBe(true);
+    await s.engine.toggle(artist);
+    await vi.waitFor(() => expect(s.connection.mutate).toHaveBeenCalledTimes(before + 1));
+    expect(s.engine.has(artist)).toBe(!intended);
+    gate.resolve();
+    await edit;
+    expect(s.engine.pending.has(key)).toBe(false);
+    expect(s.engine.has(artist)).toBe(intended);
+  });
   it("does not let retired completion remove a newer pending removal for the same key", async () => {
     const s = setup();
     const old = Promise.withResolvers<void>();
@@ -97,11 +93,9 @@ describe("server-confirmed favourites", () => {
     const key = s.engine.key(artist);
     await vi.waitFor(() => expect(s.connection.read).toHaveBeenCalledTimes(3));
     expect(s.engine.pending.has(key)).toBe(true);
-    expect(s.engine.pending.get(key)).toBe(false);
     old.resolve();
     expect(await oldEdit).toMatchObject({ name: "AbortError" });
     expect(s.engine.pending.has(key)).toBe(true);
-    expect(s.engine.pending.get(key)).toBe(false);
     expect(s.engine.error).toBeUndefined();
     current.resolve();
     await currentEdit;

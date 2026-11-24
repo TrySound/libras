@@ -96,12 +96,6 @@
       message: refreshError ? `${refreshError} Your existing library is still available.` : "",
     },
     { id: "playback", message: playbackError },
-    {
-      id: "favourites",
-      message: favourites.error
-        ? `Favourites: ${favourites.error instanceof Error ? favourites.error.message : String(favourites.error)}`
-        : "",
-    },
   ]);
   const hasErrors = $derived(alerts.some((alert) => alert.message));
 
@@ -311,7 +305,7 @@
                     void playback.play();
                   }}>Retry playback</button
                 >
-              {:else if alert.id === "favourites"}
+              {:else if alert.id === "refresh"}
                 <a
                   href="?/settings"
                   onclick={(event) => {

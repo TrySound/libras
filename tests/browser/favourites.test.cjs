@@ -154,6 +154,10 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       message,
     );
     assert.equal(await page.locator(".favourite-feedback").count(), 0);
+    assert.equal(
+      await page.locator('#error-popover [role="alert"]').filter({ hasText: message }).count(),
+      1,
+    );
   }
   async function toggle(name, panel, expected) {
     const overlay = await open(name, panel);
@@ -429,7 +433,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       await page.setViewportSize({ width, height: 900 });
       await player.getByRole("button", { name: "Show errors", exact: true }).click();
       const errors = player.locator("#player-error-popover");
-      await errors.getByText(/^Favourites: Fixture permission denied/).waitFor();
+      await errors.getByText(/^Synchronization failed: Fixture permission denied/).waitFor();
       await errors.getByRole("link", { name: "Open settings", exact: true }).focus();
       assert.equal(await errors.evaluate((node) => node.contains(document.activeElement)), true);
       assert.equal(await player.evaluate((node) => node.matches(":modal")), true);
@@ -453,7 +457,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await player.getByRole("button", { name: "Show errors", exact: true }).click();
     await player
       .locator("#player-error-popover")
-      .getByText(/^Favourites: Outcome unknown/)
+      .getByText(/^Synchronization failed: Outcome unknown/)
       .waitFor();
     await player
       .locator("#player-error-popover")
@@ -468,7 +472,16 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await page.getByRole("button", { name: "Refresh library", exact: true }).click();
     await page.getByRole("heading", { name: "Synchronization needs attention" }).waitFor();
     await navigate("/search&favourite=1");
-    await page.getByText(/Favourites need attention/).waitFor();
+    await page.waitForFunction(() =>
+      document.querySelector("#error-popover")?.textContent.includes("Synchronization failed:"),
+    );
+    assert.equal(
+      await page
+        .locator("main")
+        .getByText(/Favourites need attention/)
+        .count(),
+      0,
+    );
     await page.locator("main .track-row").filter({ hasText: "Fixture track 00" }).waitFor();
     await shot("favourites-cached-refresh-failure-1280");
     await searchShots("failure");

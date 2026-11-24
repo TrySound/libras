@@ -1279,9 +1279,6 @@ export class Cache {
   get favouritesError() {
     return this.#favourites.error;
   }
-  get favouritesDirty() {
-    return this.#favourites.dirty;
-  }
   setFavourites(value: Immutable<FavouriteState>) {
     this.#requireDisk();
     this.#favourites.set(structuredClone(value));

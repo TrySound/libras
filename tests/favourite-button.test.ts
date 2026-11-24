@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { flushSync, mount, unmount } from "svelte";
-import { SvelteMap } from "svelte/reactivity";
+import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import { expect, it, vi } from "vitest";
 import FavouriteButton from "../src/ui/favourite-button.svelte";
 import type { Favourites } from "../src/favourites.svelte";
@@ -19,7 +19,7 @@ it.each([false, true])(
     const engine = {
       available: true,
       outcomeUnknown: false,
-      pending: new SvelteMap<string, boolean>(),
+      pending: new SvelteSet<string>(),
       key: (target: { id: string }) => target.id,
       has: () => state.get("selected") === true,
       targetError: () => "",
@@ -54,17 +54,15 @@ it.each([false, true])(
       expect(target.textContent).not.toContain("Permission denied");
       expect(document.activeElement).toBe(input);
       expect(target.querySelector(".favourite-feedback")).toBeNull();
-      for (const selected of [true, false]) {
-        engine.pending.set("A", selected);
-        flushSync();
-        expect(button.disabled).toBe(true);
-        expect(button.getAttribute("aria-busy")).toBe("true");
-        expect(button.querySelector("svg")).toBe(heart);
-        expect(button.querySelector(".loader")).toBeNull();
-        expect(target.textContent?.trim()).toBe(icon ? "" : "Add to favourites");
-        button.click();
-        expect(toggle).toHaveBeenCalledTimes(1);
-      }
+      engine.pending.add("A");
+      flushSync();
+      expect(button.disabled).toBe(true);
+      expect(button.getAttribute("aria-busy")).toBe("true");
+      expect(button.querySelector("svg")).toBe(heart);
+      expect(button.querySelector(".loader")).toBeNull();
+      expect(target.textContent?.trim()).toBe(icon ? "" : "Add to favourites");
+      button.click();
+      expect(toggle).toHaveBeenCalledTimes(1);
       state.set("id", "B");
       flushSync();
       expect(button.disabled).toBe(false);
@@ -78,7 +76,7 @@ it.each([false, true])(
       flushSync();
       expect(target.textContent).not.toContain("Retired");
       state.set("selected", true);
-      engine.pending.set("A", false);
+      engine.pending.add("A");
       flushSync();
       expect(button.getAttribute("aria-pressed")).toBe("true");
       expect(button.querySelector("svg")!.classList.contains("favourite-icon")).toBe(true);
@@ -98,7 +96,7 @@ it.each([false, true])(
 it("explains unavailable actions without adding visible feedback or settings links", async () => {
   const engine = {
     available: false,
-    pending: new SvelteMap(),
+    pending: new SvelteSet(),
     key: () => "A",
     has: () => false,
   } as unknown as Favourites;

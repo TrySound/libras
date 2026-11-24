@@ -431,16 +431,14 @@
       >
     </div>
   </div>
-  {#if criteria.favourite && (favourites.loading || favourites.error || cache.favouritesError || cache.favourites.fetchedAt === null)}
+  {#if criteria.favourite && (favourites.loading || cache.favouritesError || cache.favourites.fetchedAt === null)}
     <div class="card stack-sm" aria-busy={favourites.loading}>
       <p class="caption">
         {favourites.loading
           ? "Loading favourites…"
-          : favourites.error
-            ? `Favourites need attention: ${favourites.error instanceof Error ? favourites.error.message : "Could not load favourites."}`
-            : cache.favourites.fetchedAt === null
-              ? "Favourites haven’t been loaded."
-              : "Confirmed favourites could not be saved to this device cache."}
+          : cache.favourites.fetchedAt === null
+            ? "Favourites haven’t been loaded."
+            : "Confirmed favourites could not be saved to this device cache."}
       </p>
       <a href="?/settings">Open settings</a>
     </div>

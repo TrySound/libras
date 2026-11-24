@@ -1,4 +1,4 @@
-import { SvelteSet, SvelteMap } from "svelte/reactivity";
+import { SvelteSet } from "svelte/reactivity";
 import { getAccountKey } from "./auth";
 import type { Cache, CacheSelection } from "./cache.svelte";
 import type { FavouritesConnection } from "./network.svelte";
@@ -11,7 +11,7 @@ export class Favourites {
   #connection?: FavouritesConnection;
   #generation = 0;
   #tail: Promise<unknown> = Promise.resolve();
-  pending = new SvelteMap<string, boolean>();
+  pending = new SvelteSet<string>();
   loading = $state(false);
   available = $state(false);
   error = $state.raw<unknown>();
@@ -109,7 +109,7 @@ export class Favourites {
     if (this.pending.has(key)) return;
     if (this.outcomeUnknown) throw new Error("Outcome unknown; refresh before retrying.");
     const selected = !this.has(target);
-    this.pending.set(key, selected);
+    this.pending.add(key);
     try {
       await this.#serialize(async () => {
         scope.check();
