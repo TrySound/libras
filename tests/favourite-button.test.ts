@@ -4,9 +4,8 @@ import { SvelteMap } from "svelte/reactivity";
 import { expect, it, vi } from "vitest";
 import FavouriteButton from "../src/ui/favourite-button.svelte";
 import type { Favourites } from "../src/favourites.svelte";
-import type { Cache } from "../src/cache.svelte";
 
-it("keeps mutation failures local to the captured engine, cache and target without focus effects", async () => {
+it("keeps the heart stable while pending and leaves errors to the global message", async () => {
   let reject!: (error: Error) => void;
   const toggle = vi.fn(
     () =>
@@ -23,13 +22,7 @@ it("keeps mutation failures local to the captured engine, cache and target witho
     targetError: () => "",
     toggle,
   } as unknown as Favourites;
-  const firstCache = {} as Cache;
-  const nextCache = {} as Cache;
-  const state = new SvelteMap<string, unknown>([
-    ["engine", engine],
-    ["cache", firstCache],
-    ["id", "A"],
-  ]);
+  const state = new SvelteMap<string, unknown>([["id", "A"]]);
   const target = document.createElement("div");
   document.body.append(target);
   const input = document.createElement("input");
@@ -37,12 +30,7 @@ it("keeps mutation failures local to the captured engine, cache and target witho
   const app = mount(FavouriteButton, {
     target,
     props: {
-      get favourites() {
-        return state.get("engine") as Favourites;
-      },
-      get cache() {
-        return state.get("cache") as Cache;
-      },
+      favourites: engine,
       get target() {
         const id = state.get("id") as string | undefined;
         return id === undefined ? undefined : { kind: "tracks" as const, id };
@@ -52,47 +40,71 @@ it("keeps mutation failures local to the captured engine, cache and target witho
   });
   flushSync();
   try {
-    target.querySelector("button")!.click();
+    const button = target.querySelector("button")!;
+    const heart = button.querySelector("svg");
+    expect(heart!.querySelector("use")!.getAttribute("href")).toBe("#icon-favourite");
+    button.click();
     expect(toggle).toHaveBeenCalledWith({ kind: "tracks", id: "A" });
-    state.set("id", "B");
-    flushSync();
     input.focus();
-    reject(new Error("A rejected"));
+    reject(new Error("Permission denied"));
     await Promise.resolve();
     flushSync();
-    expect(target.textContent).not.toContain("A rejected");
+    expect(target.textContent).not.toContain("Permission denied");
     expect(document.activeElement).toBe(input);
-    expect(target.querySelector("button")!.disabled).toBe(false);
+    expect(target.querySelector(".favourite-feedback")).toBeNull();
+    for (const selected of [true, false]) {
+      engine.pending.set("A", selected);
+      flushSync();
+      expect(button.disabled).toBe(true);
+      expect(button.getAttribute("aria-busy")).toBe("true");
+      expect(button.querySelector("svg")).toBe(heart);
+      expect(button.querySelector(".loader")).toBeNull();
+      expect(target.textContent).not.toMatch(/Adding|Removing/);
+      button.click();
+      expect(toggle).toHaveBeenCalledTimes(1);
+    }
+    state.set("id", "B");
+    flushSync();
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute("aria-busy")).toBe("false");
+    engine.pending.delete("A");
     state.set("id", "A");
     flushSync();
-    await vi.waitFor(() => {
-      flushSync();
-      expect(target.textContent).toContain("A rejected");
-    });
-    state.set("cache", nextCache);
-    flushSync();
-    expect(target.textContent).not.toContain("A rejected");
-    state.set("cache", firstCache);
-    state.set("engine", { ...engine });
-    flushSync();
-    expect(target.textContent).not.toContain("A rejected");
-    state.set("engine", engine);
-    flushSync();
-    target.querySelector("button")!.click();
+    button.click();
     reject(new DOMException("Retired", "AbortError"));
     await new Promise((resolve) => setTimeout(resolve, 0));
     flushSync();
-    expect(target.textContent).not.toContain("A rejected");
     expect(target.textContent).not.toContain("Retired");
-    engine.pending.set("A", false);
-    flushSync();
-    expect(target.querySelector("button")!.disabled).toBe(true);
-    expect(target.textContent).toContain("Removing from favourites…");
-    target.querySelector("button")!.click();
-    expect(toggle).toHaveBeenCalledTimes(2);
     state.delete("id");
     flushSync();
-    expect(target.querySelector("button")!.disabled).toBe(true);
+    expect(button.disabled).toBe(true);
+  } finally {
+    await unmount(app);
+    target.remove();
+  }
+});
+
+it("explains unavailable actions without adding visible feedback or settings links", async () => {
+  const engine = {
+    available: false,
+    pending: new SvelteMap(),
+    key: () => "A",
+    has: () => false,
+  } as unknown as Favourites;
+  const target = document.createElement("div");
+  document.body.append(target);
+  const app = mount(FavouriteButton, {
+    target,
+    props: { favourites: engine, target: { kind: "tracks", id: "A" }, icon: true },
+  });
+  flushSync();
+  try {
+    const button = target.querySelector("button")!;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toContain("Reconnect in Settings");
+    const description = target.querySelector(".visually-hidden")!;
+    expect(button.getAttribute("aria-describedby")).toBe(description.id);
+    expect(target.querySelector("a")).toBeNull();
     expect(target.querySelector(".favourite-feedback")).toBeNull();
   } finally {
     await unmount(app);

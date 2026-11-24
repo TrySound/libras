@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import Icon from "../icon.svelte";
   import FavouriteButton from "./favourite-button.svelte";
   import type { Favourites } from "../favourites.svelte";
@@ -20,9 +21,11 @@
     trackEngine: TrackEngine;
     audio: ReturnType<typeof AudioPlayer> | undefined;
     offlineMode: boolean;
+    errors?: Snippet<[closePlayer: () => void]>;
   }
 
-  let { cache, covers, playback, favourites, trackEngine, audio, offlineMode }: Props = $props();
+  let { cache, covers, playback, favourites, trackEngine, audio, offlineMode, errors }: Props =
+    $props();
   let playerDialog = $state<HTMLDialogElement>();
   const id = $props.id();
   const track = $derived(cache.tracks.get(cache.queue.tracks[cache.queue.index]));
@@ -137,15 +140,18 @@
     <header class="topbar row-md row-justify">
       <span class="dialog-handle only-mobile" data-side="top" aria-hidden="true"></span>
       <h2 id="playing-title" class="heading-md uppercase">Now Playing</h2>
-      <button
-        class="button"
-        data-variant="ghost"
-        commandfor="player-dialog"
-        command="close"
-        aria-label="Close player"
-      >
-        <Icon name="cross" />
-      </button>
+      <div class="row-sm">
+        {@render errors?.(() => playerDialog?.close())}
+        <button
+          class="button"
+          data-variant="ghost"
+          commandfor="player-dialog"
+          command="close"
+          aria-label="Close player"
+        >
+          <Icon name="cross" />
+        </button>
+      </div>
     </header>
     <section class="split-layout large-player-content" aria-label="Playback and queue">
       <div class="player-panel">
@@ -247,31 +253,12 @@
               </div>
               <FavouriteButton
                 {favourites}
-                {cache}
                 icon
                 describedby={`${id}-now-title`}
-                onsettings={() => playerDialog?.close()}
                 target={track ? { kind: "tracks", id: track.id } : undefined}
               />
             </div>
           </div>
-          {#if audio?.status === "error"}
-            <div class="card stack-sm">
-              <p class="caption" role="alert">
-                {audio.error instanceof Error
-                  ? audio.error.message
-                  : String(audio.error ?? "Playback failed.")}
-              </p>
-              <button
-                class="button"
-                data-size="text"
-                data-variant="secondary"
-                onclick={() => void playback.play()}
-              >
-                Retry playback
-              </button>
-            </div>
-          {/if}
         </div>
       </div>
       <div class="stack-lg scroll-runway" role="region" aria-label="Queue">
@@ -411,8 +398,5 @@
   }
   .player-controls > :global(button) {
     justify-self: end;
-  }
-  .player-controls > :global(.favourite-feedback) {
-    grid-column: 1 / -1;
   }
 </style>

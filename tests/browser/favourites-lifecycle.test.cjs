@@ -275,15 +275,35 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
       await settled();
       assert.equal(favouriteReads, before + 1);
     }
-    // Each explicit owner forwards the same domain and owns Settings recovery.
+    // Every favourites action reports through the shared header error message.
     rejectWrites = true;
     async function recover(panel) {
       const overlay = page.locator(panel);
-      await overlay.getByRole("button", { name: /^(Add to|Remove from) favourites$/ }).click();
-      await overlay.getByText(/Fixture permission denied/).waitFor();
-      const settings = overlay.getByRole("link", { name: "Open settings", exact: true });
-      await settings.focus();
-      assert.equal(await overlay.evaluate((node) => node.contains(document.activeElement)), true);
+      const action = overlay.getByRole("button", {
+        name:
+          panel === "#player-dialog"
+            ? "Favourite current track"
+            : /^(Add to|Remove from) favourites$/,
+        exact: true,
+      });
+      await action.click();
+      await page.waitForFunction(
+        () =>
+          !document.querySelector('button[aria-pressed][aria-busy="true"]') &&
+          document
+            .querySelector("#error-popover")
+            ?.textContent.includes("Fixture permission denied"),
+      );
+      assert.equal(await overlay.locator(".favourite-feedback").count(), 0);
+      if (panel !== "#player-dialog") await page.keyboard.press("Escape");
+      const scope = panel === "#player-dialog" ? overlay : page;
+      await scope
+        .getByRole("button", { name: "Show errors", exact: true })
+        .filter({ visible: true })
+        .click();
+      const settings = page
+        .locator(panel === "#player-dialog" ? "#player-error-popover" : "#error-popover")
+        .getByRole("link", { name: "Open settings", exact: true });
       await settings.click();
       await overlay.waitFor({ state: "hidden" });
       await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
@@ -315,10 +335,7 @@ test("disappeared Library/detail rows close without retargeting; dismissed Searc
       await navigate("/search&type=track");
       await page.getByRole("button", { name: /^(Play|Toggle playback for) Keep song$/ }).click();
       await page.getByRole("button", { name: "Open Now Playing", exact: true }).click();
-      const player = page.locator("#player-dialog");
-      await player.getByRole("button", { name: "Favourite current track", exact: true }).click();
-      await player.getByText(/Fixture permission denied/).waitFor();
-      await player.getByRole("link", { name: "Open settings", exact: true }).click();
+      await recover("#player-dialog");
       await page.locator("#player-dialog").waitFor({ state: "hidden" });
     }
     assert.deepEqual(errors, []);

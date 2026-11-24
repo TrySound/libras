@@ -299,7 +299,6 @@
       </button>
       <FavouriteButton
         {favourites}
-        {cache}
         target={menuArtist ? { kind: "artists", id: menuArtist.id } : undefined}
       />
     </div>

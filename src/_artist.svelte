@@ -330,7 +330,6 @@
       </button>
       <FavouriteButton
         {favourites}
-        {cache}
         target={menuAlbum
           ? { kind: "albums", id: menuAlbum.id }
           : menuAlbumId === undefined && artist

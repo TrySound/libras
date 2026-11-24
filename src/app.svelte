@@ -96,6 +96,12 @@
       message: refreshError ? `${refreshError} Your existing library is still available.` : "",
     },
     { id: "playback", message: playbackError },
+    {
+      id: "favourites",
+      message: favourites.error
+        ? `Favourites: ${favourites.error instanceof Error ? favourites.error.message : String(favourites.error)}`
+        : "",
+    },
   ]);
   const hasErrors = $derived(alerts.some((alert) => alert.message));
 
@@ -270,22 +276,75 @@
   {/if}
 {/snippet}
 
+{#snippet errorButton(popoverId: string)}
+  {#if hasErrors}
+    <button
+      type="button"
+      class="button"
+      data-variant="ghost"
+      commandfor={popoverId}
+      command="toggle-popover"
+      aria-label="Show errors"
+      title="Show errors"
+    >
+      <Icon name="error" color="var(--error-text)" />
+    </button>
+  {/if}
+{/snippet}
+
+{#snippet errorPopover(popoverId: string, onsettings?: () => void)}
+  {#if hasErrors}
+    <div id={popoverId} class="notification-popover" popover="auto" aria-label="Errors">
+      <div class="stack-sm">
+        {#each alerts as alert (alert.id)}
+          {#if alert.message}
+            <div class="stack-sm" role="alert">
+              <p class="caption">{alert.message}</p>
+              {#if alert.id === "playback" && playback.track}
+                <p class="caption text-secondary">{playback.track.title}</p>
+                <button
+                  class="button"
+                  data-size="text"
+                  data-variant="secondary"
+                  onclick={(event) => {
+                    event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
+                    void playback.play();
+                  }}>Retry playback</button
+                >
+              {:else if alert.id === "favourites"}
+                <a
+                  href="?/settings"
+                  onclick={(event) => {
+                    event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
+                    onsettings?.();
+                  }}
+                >
+                  Open settings
+                </a>
+              {/if}
+            </div>
+          {/if}
+        {/each}
+      </div>
+      <button
+        type="button"
+        class="button"
+        data-variant="ghost"
+        aria-label="Close errors"
+        commandfor={popoverId}
+        command="hide-popover"
+      >
+        <Icon name="cross" />
+      </button>
+    </div>
+  {/if}
+{/snippet}
+
 <div class="app-root">
   <div class="app-shell">
     <div class="app-stage">
       {#snippet actions()}
-        {#if hasErrors}
-          <button
-            class="button"
-            data-variant="ghost"
-            commandfor="error-popover"
-            command="toggle-popover"
-            aria-label="Show errors"
-            title="Show errors"
-          >
-            <Icon name="error" color="var(--error-text)" />
-          </button>
-        {/if}
+        {@render errorButton("error-popover")}
       {/snippet}
       <aside class="sidebar app-sidebar stack-lg view-shell" aria-label="Navigation">
         {@render brand()}
@@ -332,41 +391,13 @@
           />
         {/if}
       </main>
-      <Player {cache} {covers} {playback} {trackEngine} {favourites} {offlineMode} audio={player} />
-      {#if hasErrors}
-        <div id="error-popover" class="notification-popover" popover="auto" aria-label="Errors">
-          <div class="stack-sm">
-            {#each alerts as alert (alert.id)}
-              {#if alert.message}
-                <div class="stack-sm" role="alert">
-                  <p class="caption">{alert.message}</p>
-                  {#if alert.id === "playback" && playback.track}
-                    <p class="caption text-secondary">{playback.track.title}</p>
-                    <button
-                      class="button"
-                      data-size="text"
-                      data-variant="secondary"
-                      onclick={(event) => {
-                        event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
-                        void playback.play();
-                      }}>Retry playback</button
-                    >
-                  {/if}
-                </div>
-              {/if}
-            {/each}
-          </div>
-          <button
-            class="button"
-            data-variant="ghost"
-            aria-label="Close errors"
-            commandfor="error-popover"
-            command="hide-popover"
-          >
-            <Icon name="cross" />
-          </button>
-        </div>
-      {/if}
+      <Player {cache} {covers} {playback} {trackEngine} {favourites} {offlineMode} audio={player}>
+        {#snippet errors(closePlayer)}
+          {@render errorButton("player-error-popover")}
+          {@render errorPopover("player-error-popover", closePlayer)}
+        {/snippet}
+      </Player>
+      {@render errorPopover("error-popover")}
       <dialog
         class="top-sheet"
         id="navigation-dialog"

@@ -718,7 +718,6 @@
       </button>
       <FavouriteButton
         {favourites}
-        {cache}
         target={menuItem ? { kind: kindFor[menuItem.group], id: menuItem.id } : undefined}
       />
     </div>

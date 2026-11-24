@@ -119,6 +119,15 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     assert.match(labels.at(-1), /favourites/);
     return overlay;
   }
+  async function waitGlobalError(message) {
+    await page.waitForFunction(
+      (message) =>
+        !document.querySelector('button[aria-pressed][aria-busy="true"]') &&
+        document.querySelector("#error-popover")?.textContent.includes(message),
+      message,
+    );
+    assert.equal(await page.locator(".favourite-feedback").count(), 0);
+  }
   async function toggle(name, panel, expected) {
     const overlay = await open(name, panel);
     await overlay.getByRole("button", { name: /^(Add to|Remove from) favourites$/ }).focus();
@@ -278,7 +287,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     reject = true;
     let overlay = await open("Open menu for Fixture track 00", "#search-menu-popover");
     await overlay.getByRole("button", { name: "Remove from favourites", exact: true }).click();
-    await overlay.getByText(/Fixture permission denied/).waitFor();
+    await waitGlobalError("Fixture permission denied");
     await shot("favourites-error-1280");
     assert.equal(await overlay.isVisible(), true);
     reject = false;
@@ -308,6 +317,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await page.getByRole("button", { name: "Open Now Playing" }).click();
     const player = page.locator("#player-dialog");
     const favourite = player.getByRole("button", { name: "Favourite current track", exact: true });
+    const idleBounds = new Map();
     async function playerShots(state) {
       for (const width of [1280, 390]) {
         await page.setViewportSize({ width, height: 900 });
@@ -316,6 +326,21 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
         assert.ok(Math.abs(bounds.x + bounds.width / 2 - controls.x - controls.width / 2) < 1);
         const button = await favourite.boundingBox();
         assert.ok(button.width >= 44 && button.height >= 44);
+        if (state === "unselected") idleBounds.set(width, { button, controls });
+        if (state === "pending") {
+          const idle = idleBounds.get(width);
+          for (const [name, box] of Object.entries({ button, controls })) {
+            for (const dimension of ["x", "y", "width", "height"]) {
+              assert.ok(
+                Math.abs(box[dimension] - idle[name][dimension]) < 1,
+                `${width}px: ${name} ${dimension} shifted during favourite mutation`,
+              );
+            }
+          }
+          assert.equal(await favourite.locator(".loader").count(), 0);
+          assert.equal(await favourite.locator("use").getAttribute("href"), "#icon-favourite");
+          assert.equal(await player.locator(".favourite-feedback").count(), 0);
+        }
         await shot(`player-${state}-${width}`);
       }
       await page.setViewportSize({ width: 1280, height: 900 });
@@ -326,7 +351,12 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       release = resolve;
     });
     await favourite.click();
-    await player.getByText("Adding to favourites…", { exact: true }).waitFor();
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('#player-dialog [aria-label="Favourite current track"]')
+          ?.getAttribute("aria-busy") === "true",
+    );
     assert.equal(await favourite.isDisabled(), true);
     assert.equal(await favourite.getAttribute("aria-pressed"), "false");
     await playerShots("pending");
@@ -337,10 +367,16 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     release();
     gate = undefined;
     await page.waitForTimeout(150);
-    assert.equal(await player.getByText(/Fixture permission denied/).count(), 0);
+    assert.equal(
+      await player
+        .getByText(/Fixture permission denied/)
+        .filter({ visible: true })
+        .count(),
+      0,
+    );
     assert.equal(await favourite.getAttribute("aria-pressed"), "false");
+    await waitGlobalError("Fixture permission denied");
     await player.getByRole("button", { name: "Previous", exact: true }).click();
-    await player.getByText(/Fixture permission denied/).waitFor();
     reject = false;
     await favourite.click();
     await page.waitForFunction(
@@ -353,8 +389,21 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     await playerShots("selected");
     reject = true;
     await favourite.click();
-    await player.getByText(/Fixture permission denied/).waitFor();
+    await waitGlobalError("Fixture permission denied");
     await playerShots("failure");
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await player.getByRole("button", { name: "Show errors", exact: true }).click();
+      const errors = player.locator("#player-error-popover");
+      await errors.getByText(/^Favourites: Fixture permission denied/).waitFor();
+      await errors.getByRole("link", { name: "Open settings", exact: true }).focus();
+      assert.equal(await errors.evaluate((node) => node.contains(document.activeElement)), true);
+      assert.equal(await player.evaluate((node) => node.matches(":modal")), true);
+      await shot(`player-error-popover-${width}`);
+      await errors.getByRole("button", { name: "Close errors", exact: true }).click();
+      await errors.waitFor({ state: "hidden" });
+      assert.equal(await player.isVisible(), true);
+    }
     await page.setViewportSize({ width: 320, height: 900 });
     await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
     await shot("player-feedback-enlarged");
@@ -364,10 +413,18 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     reject = false;
     readsFail = true;
     await favourite.click();
-    await player.getByText(/Outcome unknown/).waitFor();
+    await waitGlobalError("Outcome unknown");
     assert.equal(await favourite.getAttribute("aria-pressed"), "true");
     await playerShots("unknown");
-    await player.getByRole("link", { name: "Open settings", exact: true }).click();
+    await player.getByRole("button", { name: "Show errors", exact: true }).click();
+    await player
+      .locator("#player-error-popover")
+      .getByText(/^Favourites: Outcome unknown/)
+      .waitFor();
+    await player
+      .locator("#player-error-popover")
+      .getByRole("link", { name: "Open settings", exact: true })
+      .click();
     await page.locator("#player-dialog").waitFor({ state: "hidden" });
     await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
     reject = false;
@@ -417,7 +474,7 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
     reject = true;
     overlay = await open("Open menu for Fixture track 01", "#search-menu");
     await overlay.getByRole("button", { name: "Add to favourites", exact: true }).click();
-    await overlay.getByText(/Fixture permission denied/).waitFor();
+    await waitGlobalError("Fixture permission denied");
     await shot("favourites-error-390");
     reject = false;
     gate = new Promise((resolve) => {
@@ -491,9 +548,10 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       .getByRole("button", { name: "Disconnect", exact: true })
       .click();
     await page.getByRole("button", { name: "Open Now Playing" }).click();
-    await player.getByText(/Reconnect in Settings/).waitFor();
+    assert.match(await favourite.getAttribute("title"), /Reconnect in Settings/);
+    assert.equal(await favourite.isDisabled(), true);
     await playerShots("reconnect");
-    await player.getByRole("link", { name: "Open settings", exact: true }).click();
+    await player.getByRole("button", { name: "Close player", exact: true }).click();
     await player.waitFor({ state: "hidden" });
     await navigate("/library/album/same");
     overlay = await open("Actions for Fixture album", "#album-detail-menu-popover");
@@ -501,9 +559,15 @@ test("favourites actions, confirmation, overlay lifetimes, unavailable results a
       await overlay.getByRole("button", { name: "Add to favourites", exact: true }).isDisabled(),
       true,
     );
-    await overlay.getByText(/Reconnect in Settings/).waitFor();
+    assert.match(
+      await overlay
+        .getByRole("button", { name: "Add to favourites", exact: true })
+        .getAttribute("title"),
+      /Reconnect in Settings/,
+    );
     await shot("favourites-disconnected-1280");
-    await overlay.getByRole("link", { name: "Open settings", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await navigate("/settings");
     await overlay.waitFor({ state: "hidden" });
     await page.getByLabel("Host", { exact: true }).fill("https://favourites.example.test");
     await page.getByLabel("Username", { exact: true }).fill("fixture-other");
